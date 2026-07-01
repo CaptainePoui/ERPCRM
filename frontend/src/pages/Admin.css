@@ -1,0 +1,31 @@
+.adm-page { padding: 24px; max-width: 900px; margin: 0 auto; }
+.adm-header { margin-bottom: 20px; }
+.adm-title { font-size: 22px; font-weight: 700; color: #111827; margin: 0; }
+
+.adm-tabs { display: flex; gap: 2px; border-bottom: 2px solid #E5E7EB; margin-bottom: 24px; }
+.adm-tab { background: none; border: none; padding: 10px 18px; cursor: pointer; font-size: 14px; font-weight: 500; color: #6B7280; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: all .15s; }
+.adm-tab:hover { color: #374151; }
+.adm-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
+
+.adm-body { }
+.adm-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.adm-count { color: #6B7280; font-size: 13px; }
+
+.adm-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.adm-table th { text-align: left; padding: 10px 14px; background: #F9FAFB; border-bottom: 2px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: .4px; }
+.adm-table td { padding: 12px 14px; border-bottom: 1px solid #F3F4F6; vertical-align: middle; }
+.adm-row-inactive td { opacity: 0.5; }
+.adm-name { font-weight: 600; }
+
+.adm-role { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 3px 8px; }
+.adm-toggle { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 3px 10px; border: none; cursor: pointer; }
+.adm-toggle.active { background: #D1FAE5; color: #059669; }
+.adm-toggle.inactive { background: #F3F4F6; color: #6B7280; }
+
+.adm-edit-btn { background: #EFF6FF; color: #2563EB; border: none; border-radius: 5px; padding: 5px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.adm-edit-btn:hover { background: #DBEAFE; }
+.adm-del-btn { background: none; border: none; color: #D1D5DB; cursor: pointer; font-size: 14px; padding: 4px 6px; }
+.adm-del-btn:hover { color: #DC2626; }
+
+.adm-error { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 12px 16px; border-radius: 8px; font-size: 14px; }
+.adm-form-error { background: #FEF2F2; border: 1px solid #FECACA; color: #DC2626; padding: 10px 12px; border-radius: 6px; font-size: 13px; margin-bottom: 12px; }

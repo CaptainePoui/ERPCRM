@@ -1,0 +1,15 @@
+.po-page { padding: 24px; max-width: 1000px; margin: 0 auto; }
+.po-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.po-title { font-size: 22px; font-weight: 700; color: #111827; margin: 0; }
+
+.po-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.po-table th { text-align: left; padding: 10px 14px; background: #F9FAFB; border-bottom: 2px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: .4px; }
+.po-table td { padding: 12px 14px; border-bottom: 1px solid #F3F4F6; }
+.po-row { cursor: pointer; transition: background .12s; }
+.po-row:hover { background: #F9FAFB; }
+.po-num { font-weight: 700; font-family: monospace; color: #2563EB; }
+.po-badge { font-size: 11px; font-weight: 700; border-radius: 10px; padding: 3px 8px; }
+.po-total { font-weight: 600; font-family: monospace; }
+.po-arrow { color: #D1D5DB; font-size: 16px; }
+
+.empty-state { text-align: center; color: #9CA3AF; padding: 48px; font-size: 15px; }

@@ -1,0 +1,31 @@
+.tkt-table-wrap { overflow-x: auto; }
+.tkt-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tkt-table th { text-align: left; padding: 10px 14px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; letter-spacing: 0.4px; }
+.tkt-table td { padding: 12px 14px; border-bottom: 1px solid #F3F4F6; color: #111827; }
+.tkt-row { cursor: pointer; }
+.tkt-row:hover td { background: #F9FAFB; }
+.tkt-title { font-weight: 600; }
+.tkt-badge { display: inline-block; padding: 3px 8px; border-radius: 20px; color: #fff; font-size: 11px; font-weight: 700; }
+
+/* Detail */
+.tkt-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+@media (max-width: 700px) { .tkt-detail-grid { grid-template-columns: 1fr; } }
+.tkt-section { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 18px; }
+.tkt-section-title { font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
+.tkt-info-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F3F4F6; font-size: 14px; }
+.tkt-info-row:last-child { border-bottom: none; }
+.tkt-info-row span:first-child { color: #6B7280; }
+.tkt-desc { font-size: 14px; color: #374151; line-height: 1.6; white-space: pre-wrap; }
+
+.tkt-entries-section { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 18px; }
+.tkt-entries-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 12px; }
+.tkt-entries-table th { text-align: left; padding: 8px 10px; border-bottom: 2px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; }
+.tkt-entries-table td { padding: 10px; border-bottom: 1px solid #F3F4F6; }
+.tkt-billable { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 11px; font-weight: 700; background: #EFF6FF; color: #184FA0; }
+.tkt-time-total { display: flex; justify-content: flex-end; gap: 40px; padding-top: 8px; border-top: 1px solid #E5E7EB; font-size: 15px; font-weight: 700; color: #111827; }
+
+.tkt-select-inline { border: 1px solid #E5E7EB; border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+
+/* Chrono */
+.tkt-chrono { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.tkt-chrono-display { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 2px; }

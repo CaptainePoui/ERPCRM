@@ -1,0 +1,25 @@
+.ecom-page { padding: 24px; max-width: 1000px; margin: 0 auto; }
+.ecom-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.ecom-title { font-size: 22px; font-weight: 700; margin: 0; color: #111827; }
+
+.ecom-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ecom-table th { text-align: left; padding: 10px 14px; background: #F9FAFB; border-bottom: 2px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; }
+.ecom-table td { padding: 12px 14px; border-bottom: 1px solid #F3F4F6; }
+.ecom-row { cursor: pointer; transition: background .12s; }
+.ecom-row:hover { background: #F9FAFB; }
+
+.ecom-detail-page { padding: 24px; max-width: 900px; margin: 0 auto; }
+.ecom-back { color: #6B7280; text-decoration: none; font-size: 13px; display: block; margin-bottom: 12px; }
+.ecom-back:hover { color: #2563EB; }
+.ecom-detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+.ecom-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.ecom-info-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px; }
+.ecom-card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #9CA3AF; margin-bottom: 10px; }
+.ecom-info-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid #F3F4F6; font-size: 14px; }
+.ecom-info-row span { color: #6B7280; }
+.ecom-info-row:last-child { border-bottom: none; }
+.ecom-lines-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px; }
+.ecom-lines-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.ecom-lines-table th { text-align: left; padding: 8px 14px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; }
+.ecom-lines-table td { padding: 10px 14px; border-bottom: 1px solid #F3F4F6; }
+.ecom-lines-table tfoot td { background: #F9FAFB; border-top: 2px solid #E5E7EB; }

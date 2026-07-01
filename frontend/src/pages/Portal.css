@@ -1,0 +1,25 @@
+.portal-login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: #F3F4F6; }
+.portal-login-card { background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.1); padding: 40px; width: 360px; }
+.portal-logo { font-size: 20px; font-weight: 800; color: #1E3A5F; text-align: center; margin-bottom: 8px; }
+.portal-login-title { font-size: 16px; font-weight: 600; color: #374151; text-align: center; margin: 0 0 24px; }
+.portal-login-btn { width: 100%; padding: 12px; background: #2563EB; color: #fff; border: none; border-radius: 8px; font-size: 15px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+.portal-login-btn:hover:not(:disabled) { background: #1D4ED8; }
+.portal-login-btn:disabled { opacity: .6; cursor: not-allowed; }
+.portal-error { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 6px; padding: 10px; font-size: 13px; margin-bottom: 14px; }
+
+.portal-page { min-height: 100vh; background: #F9FAFB; }
+.portal-topbar { background: #1E3A5F; color: #fff; padding: 0 24px; height: 52px; display: flex; align-items: center; justify-content: space-between; }
+.portal-brand { font-weight: 700; font-size: 16px; }
+.portal-logout { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 5px; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.portal-logout:hover { background: rgba(255,255,255,.25); }
+
+.portal-body { max-width: 900px; margin: 0 auto; padding: 24px; }
+.portal-tabs { display: flex; gap: 2px; border-bottom: 2px solid #E5E7EB; margin-bottom: 20px; }
+.portal-tab { background: none; border: none; padding: 10px 20px; cursor: pointer; font-size: 14px; font-weight: 500; color: #6B7280; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+.portal-tab:hover { color: #374151; }
+.portal-tab.active { color: #2563EB; border-bottom-color: #2563EB; font-weight: 600; }
+
+.portal-table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+.portal-table th { text-align: left; padding: 10px 16px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; text-transform: uppercase; }
+.portal-table td { padding: 12px 16px; border-bottom: 1px solid #F3F4F6; }
+.portal-table tr:last-child td { border-bottom: none; }

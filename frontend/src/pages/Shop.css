@@ -1,0 +1,49 @@
+.shop-page { min-height: 100vh; background: #F9FAFB; }
+.shop-topbar { background: #1E3A5F; color: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.shop-brand { font-size: 18px; font-weight: 800; }
+.shop-cart-btn { background: #2563EB; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 600; }
+.shop-cart-btn:hover { background: #1D4ED8; }
+.shop-back-btn { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+.shop-back-btn:hover { background: rgba(255,255,255,.25); }
+
+.shop-body { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+.shop-section-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0 0 20px; }
+
+.shop-filters { display: flex; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.shop-search { border: 1px solid #D1D5DB; border-radius: 6px; padding: 8px 14px; font-size: 14px; min-width: 200px; }
+.shop-cats { display: flex; gap: 6px; flex-wrap: wrap; }
+.shop-cat { background: #F3F4F6; color: #6B7280; border: none; border-radius: 20px; padding: 5px 14px; cursor: pointer; font-size: 13px; }
+.shop-cat.active { background: #2563EB; color: #fff; }
+
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; }
+.shop-card { background: #fff; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.07); overflow: hidden; display: flex; flex-direction: column; }
+.shop-card-img { width: 100%; height: 160px; object-fit: cover; }
+.shop-card-img-placeholder { width: 100%; height: 160px; background: #F3F4F6; display: flex; align-items: center; justify-content: center; font-size: 48px; }
+.shop-card-body { padding: 16px; flex: 1; display: flex; flex-direction: column; }
+.shop-card-cat { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #9CA3AF; letter-spacing: .5px; margin-bottom: 4px; }
+.shop-card-name { font-weight: 700; font-size: 15px; color: #111827; margin-bottom: 6px; }
+.shop-card-desc { font-size: 13px; color: #6B7280; flex: 1; margin-bottom: 12px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.shop-card-footer { display: flex; align-items: center; justify-content: space-between; margin-top: auto; }
+.shop-card-price { font-weight: 700; font-size: 16px; color: #1E3A5F; font-family: monospace; }
+.shop-add-btn { background: #2563EB; color: #fff; border: none; border-radius: 6px; padding: 7px 14px; cursor: pointer; font-size: 13px; font-weight: 600; }
+.shop-add-btn:hover { background: #1D4ED8; }
+.shop-in-cart { font-size: 12px; color: #059669; font-weight: 700; }
+
+.shop-cart { max-width: 700px; margin: 0 auto; }
+.shop-cart-table { width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px; }
+.shop-cart-table th { text-align: left; padding: 10px; background: #F9FAFB; border-bottom: 1px solid #E5E7EB; font-size: 12px; font-weight: 600; color: #6B7280; }
+.shop-cart-table td { padding: 12px 10px; border-bottom: 1px solid #F3F4F6; }
+.shop-cart-total { text-align: right; font-size: 18px; margin-bottom: 16px; color: #111827; }
+.shop-checkout-btn { display: block; width: 100%; padding: 14px; background: #2563EB; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; }
+.shop-checkout-btn:hover:not(:disabled) { background: #1D4ED8; }
+.shop-checkout-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.shop-checkout { max-width: 560px; margin: 0 auto; }
+.shop-checkout-form { display: flex; flex-direction: column; gap: 2px; }
+.shop-order-summary { background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px; padding: 16px; margin: 16px 0; }
+.shop-error { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 6px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
+
+.shop-confirm { text-align: center; max-width: 480px; margin: 48px auto; }
+.shop-confirm-icon { width: 64px; height: 64px; background: #D1FAE5; color: #059669; border-radius: 50%; font-size: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+.shop-confirm h2 { font-size: 22px; font-weight: 700; margin-bottom: 12px; }
+.shop-confirm p { color: #4B5563; font-size: 15px; line-height: 1.6; }

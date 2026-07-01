@@ -1,0 +1,162 @@
+.page {
+  max-width: 1200px;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.page-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.page-sub {
+  font-size: 13px;
+  color: #6B7280;
+}
+
+.btn-primary {
+  background: #184FA0;
+  color: #fff;
+  border: none;
+  padding: 9px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  white-space: nowrap;
+}
+
+.btn-primary:hover {
+  background: #124898;
+}
+
+.page-toolbar {
+  margin-bottom: 16px;
+}
+
+.search-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 9px 14px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: #184FA0;
+  box-shadow: 0 0 0 3px rgba(24,79,160,0.1);
+}
+
+.table-wrap {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #E5E7EB;
+  overflow: hidden;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.data-table th {
+  background: #F9FAFB;
+  color: #6B7280;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 10px 16px;
+  text-align: left;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.data-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid #F3F4F6;
+  vertical-align: middle;
+}
+
+.clickable-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.clickable-row:hover {
+  background: #F0F7FF;
+}
+
+.clickable-row:last-child td {
+  border-bottom: none;
+}
+
+.company-name {
+  font-weight: 600;
+  color: #184FA0;
+}
+
+.company-legal {
+  font-size: 12px;
+  color: #6B7280;
+  margin-top: 2px;
+}
+
+.status-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.status-chip {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 12px;
+  border: 1px solid;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.account-tag {
+  font-family: monospace;
+  font-size: 12px;
+  background: #F3F4F6;
+  padding: 2px 7px;
+  border-radius: 4px;
+  color: #374151;
+}
+
+.fiscal-tag {
+  font-size: 12px;
+  color: #059669;
+  font-weight: 500;
+}
+
+.fiscal-tag.exempt {
+  color: #9CA3AF;
+}
+
+.loading {
+  color: #6B7280;
+  font-size: 14px;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.empty-row {
+  text-align: center;
+  color: #9CA3AF;
+  padding: 40px !important;
+  font-size: 14px;
+}

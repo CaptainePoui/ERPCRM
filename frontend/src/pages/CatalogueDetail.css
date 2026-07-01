@@ -1,0 +1,40 @@
+.catd-grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 800px) { .catd-grid { grid-template-columns: 1fr; } }
+
+.catd-left { display: flex; flex-direction: column; gap: 16px; }
+.catd-right { display: flex; flex-direction: column; gap: 16px; }
+
+.catd-img { height: 220px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 10px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; position: relative; transition: background 0.15s; }
+.catd-img:hover { background: #EFF6FF; }
+.catd-img.drag-over { background: #DBEAFE; border: 2px dashed #184FA0; }
+.catd-img img { width: 100%; height: 100%; object-fit: contain; padding: 12px; }
+.catd-img-placeholder { font-size: 13px; color: #9CA3AF; text-align: center; padding: 20px; }
+.catd-img-overlay { position: absolute; inset: 0; background: rgba(24,79,160,0.75); color: #fff; font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.15s; }
+.catd-img:hover .catd-img-overlay { opacity: 1; }
+
+.catd-section { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 18px; display: flex; flex-direction: column; gap: 0; }
+.catd-section-title { font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+
+.cat-type-badge { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 2px 8px; border-radius: 10px; }
+.cat-type-badge.service { background: #EFF6FF; color: #184FA0; }
+.cat-type-badge.materiel { background: #F0FDF4; color: #059669; }
+
+/* Inline fields — reuse from CompanyDetail.css pattern */
+.ifield { padding: 8px 0; border-bottom: 1px solid #F3F4F6; }
+.ifield:last-child { border-bottom: none; }
+.ifield-label { font-size: 11px; color: #9CA3AF; font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
+.ifield-view { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 4px 6px; border-radius: 6px; min-height: 28px; }
+.ifield-view:hover { background: #F3F4F6; }
+.ifield-value { font-size: 14px; color: #111827; white-space: pre-wrap; }
+.ifield-empty { font-size: 13px; color: #D1D5DB; font-style: italic; }
+.ifield-pencil { font-size: 13px; color: #D1D5DB; margin-left: 6px; flex-shrink: 0; }
+.ifield-view:hover .ifield-pencil { color: #184FA0; }
+
+.ifield-edit { display: flex; gap: 6px; align-items: flex-start; }
+.ifield-edit input, .ifield-edit select { flex: 1; border: 1.5px solid #184FA0; border-radius: 6px; padding: 6px 8px; font-size: 14px; font-family: inherit; outline: none; }
+.ifield-edit textarea { flex: 1; border: 1.5px solid #184FA0; border-radius: 6px; padding: 6px 8px; font-size: 14px; font-family: inherit; outline: none; resize: vertical; }
+.ifield-ok, .ifield-x { padding: 6px 10px; border-radius: 6px; border: none; cursor: pointer; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+.ifield-ok { background: #184FA0; color: #fff; }
+.ifield-ok:hover { background: #1e40af; }
+.ifield-x { background: #F3F4F6; color: #6B7280; }
+.ifield-x:hover { background: #E5E7EB; }

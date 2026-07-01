@@ -1,0 +1,145 @@
+import uuid
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.core.database import get_db
+from app.api.v1.endpoints.auth import get_current_user
+from app.models.entity import Entity, EntityType
+from app.models.contact import Contact
+from app.models.status import Status, EntityStatus
+from app.models.contact_company import ContactCompany, ContactCompanyFunction
+from app.models.user import User
+from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut, ContactListItem, CompanyInContactOut
+
+router = APIRouter()
+
+
+def _load_opts():
+    return [
+        selectinload(Contact.entity).selectinload(Entity.statuses).selectinload(EntityStatus.status),
+        selectinload(Contact.contact_companies).selectinload(ContactCompany.company),
+        selectinload(Contact.contact_companies).selectinload(ContactCompany.functions).selectinload(ContactCompanyFunction.function),
+    ]
+
+
+def _build_contact_out(contact: Contact) -> ContactOut:
+    companies_out = [CompanyInContactOut(
+        contact_company_id=cc.id,
+        company_id=cc.company.id,
+        company_name=cc.company.name,
+        is_primary=cc.is_primary,
+        is_active=cc.is_active,
+        functions=[f.function.name for f in cc.functions],
+    ) for cc in contact.contact_companies]
+    return ContactOut(
+        id=contact.id,
+        entity_id=contact.entity.id,
+        first_name=contact.first_name,
+        last_name=contact.last_name,
+        email=contact.email,
+        phone=contact.phone,
+        mobile=contact.mobile,
+        extension=contact.extension,
+        notes_internal=contact.notes_internal,
+        is_active=contact.is_active,
+        created_at=contact.entity.created_at,
+        updated_at=contact.entity.updated_at,
+        statuses=[es.status for es in contact.entity.statuses],
+        companies=companies_out,
+    )
+
+
+@router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
+async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    entity = Entity(entity_type=EntityType.person)
+    db.add(entity)
+    await db.flush()
+
+    contact = Contact(
+        id=entity.id,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+        email=payload.email,
+        phone=payload.phone,
+        mobile=payload.mobile,
+        extension=payload.extension,
+        notes_internal=payload.notes_internal,
+    )
+    db.add(contact)
+    await db.flush()
+
+    for status_id in payload.status_ids:
+        db.add(EntityStatus(entity_id=entity.id, status_id=status_id))
+
+    await db.commit()
+
+    result = await db.execute(select(Contact).where(Contact.id == contact.id).options(*_load_opts()))
+    return _build_contact_out(result.scalar_one())
+
+
+@router.get("", response_model=list[ContactListItem])
+async def list_contacts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(Contact).options(*_load_opts()).order_by(Contact.last_name, Contact.first_name))
+    contacts = result.scalars().all()
+    return [ContactListItem(
+        id=c.id,
+        entity_id=c.entity.id,
+        first_name=c.first_name,
+        last_name=c.last_name,
+        is_active=c.is_active,
+        created_at=c.entity.created_at,
+        statuses=[es.status for es in c.entity.statuses],
+        companies=[CompanyInContactOut(
+            contact_company_id=cc.id,
+            company_id=cc.company.id,
+            company_name=cc.company.name,
+            is_primary=cc.is_primary,
+            is_active=cc.is_active,
+            functions=[f.function.name for f in cc.functions],
+        ) for cc in c.contact_companies],
+        email=c.email,
+        phone=c.phone,
+        mobile=c.mobile,
+    ) for c in contacts]
+
+
+@router.get("/{contact_id}", response_model=ContactOut)
+async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    return _build_contact_out(contact)
+
+
+@router.put("/{contact_id}", response_model=ContactOut)
+async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(Contact).where(Contact.id == contact_id))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(contact, field, value)
+    await db.commit()
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    return _build_contact_out(result.scalar_one())
+
+
+@router.post("/{contact_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def assign_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    if not (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    existing = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == contact_id, EntityStatus.status_id == status_id))
+    if not existing.scalar_one_or_none():
+        db.add(EntityStatus(entity_id=contact_id, status_id=status_id))
+        await db.commit()
+
+
+@router.delete("/{contact_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == contact_id, EntityStatus.status_id == status_id))
+    es = result.scalar_one_or_none()
+    if es:
+        await db.delete(es)
+        await db.commit()
