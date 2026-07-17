@@ -33,6 +33,14 @@ class PortalTokenResponse(BaseModel):
     full_name: str
     permissions: dict
 
+TELEPHONY_PERM_FIELDS = [
+    "can_view_own_extension", "can_edit_extension_name", "can_edit_call_forward",
+    "can_edit_dnd", "can_edit_voicemail", "can_view_own_cdr", "can_view_voicemail_messages",
+    "can_receive_alerts", "can_manage_telephony", "can_manage_ivr", "can_manage_groups",
+    "can_manage_audio_prompts", "can_view_company_cdr",
+]
+
+
 class PortalUserOut(BaseModel):
     id: uuid.UUID
     contact_id: uuid.UUID | None
@@ -44,6 +52,19 @@ class PortalUserOut(BaseModel):
     can_view_tickets: bool
     can_create_tickets: bool
     can_view_equipment: bool
+    can_view_own_extension: bool
+    can_edit_extension_name: bool
+    can_edit_call_forward: bool
+    can_edit_dnd: bool
+    can_edit_voicemail: bool
+    can_view_own_cdr: bool
+    can_view_voicemail_messages: bool
+    can_receive_alerts: bool
+    can_manage_telephony: bool
+    can_manage_ivr: bool
+    can_manage_groups: bool
+    can_manage_audio_prompts: bool
+    can_view_company_cdr: bool
     notes: str | None
     created_at: datetime
     last_login: datetime | None
@@ -58,6 +79,19 @@ class PortalUserCreate(BaseModel):
     can_view_tickets: bool = True
     can_create_tickets: bool = False
     can_view_equipment: bool = False
+    can_view_own_extension: bool = False
+    can_edit_extension_name: bool = False
+    can_edit_call_forward: bool = False
+    can_edit_dnd: bool = False
+    can_edit_voicemail: bool = False
+    can_view_own_cdr: bool = False
+    can_view_voicemail_messages: bool = False
+    can_receive_alerts: bool = False
+    can_manage_telephony: bool = False
+    can_manage_ivr: bool = False
+    can_manage_groups: bool = False
+    can_manage_audio_prompts: bool = False
+    can_view_company_cdr: bool = False
     notes: str | None = None
 
 class PortalUserUpdate(BaseModel):
@@ -69,6 +103,19 @@ class PortalUserUpdate(BaseModel):
     can_view_tickets: bool | None = None
     can_create_tickets: bool | None = None
     can_view_equipment: bool | None = None
+    can_view_own_extension: bool | None = None
+    can_edit_extension_name: bool | None = None
+    can_edit_call_forward: bool | None = None
+    can_edit_dnd: bool | None = None
+    can_edit_voicemail: bool | None = None
+    can_view_own_cdr: bool | None = None
+    can_view_voicemail_messages: bool | None = None
+    can_receive_alerts: bool | None = None
+    can_manage_telephony: bool | None = None
+    can_manage_ivr: bool | None = None
+    can_manage_groups: bool | None = None
+    can_manage_audio_prompts: bool | None = None
+    can_view_company_cdr: bool | None = None
     notes: str | None = None
 
 
@@ -78,6 +125,7 @@ def _perms(u: PortalUser) -> dict:
         "can_view_tickets": u.can_view_tickets,
         "can_create_tickets": u.can_create_tickets,
         "can_view_equipment": u.can_view_equipment,
+        **{f: getattr(u, f) for f in TELEPHONY_PERM_FIELDS},
     }
 
 def _out(u: PortalUser) -> PortalUserOut:
@@ -87,6 +135,7 @@ def _out(u: PortalUser) -> PortalUserOut:
         can_view_invoices=u.can_view_invoices, can_view_tickets=u.can_view_tickets,
         can_create_tickets=u.can_create_tickets, can_view_equipment=u.can_view_equipment,
         notes=u.notes, created_at=u.created_at, last_login=u.last_login,
+        **{f: getattr(u, f) for f in TELEPHONY_PERM_FIELDS},
     )
 
 

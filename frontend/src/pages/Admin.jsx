@@ -211,6 +211,8 @@ function PortalUsersPanel() {
     u.can_view_tickets && 'Tickets',
     u.can_create_tickets && 'Créer tickets',
     u.can_view_equipment && 'Équipements',
+    u.can_view_own_extension && 'Mon poste',
+    u.can_manage_telephony && 'Gestionnaire téléphonie',
   ].filter(Boolean).join(', ') || 'Aucune'
 
   return (
@@ -255,6 +257,11 @@ function PortalUserModal({ onClose, onSaved }) {
   const [form, setForm] = useState({
     company_id: '', full_name: '', email: '', password: '',
     can_view_invoices: true, can_view_tickets: true, can_create_tickets: false, can_view_equipment: false,
+    can_view_own_extension: false, can_edit_extension_name: false, can_edit_call_forward: false,
+    can_edit_dnd: false, can_edit_voicemail: false, can_view_own_cdr: false,
+    can_view_voicemail_messages: false, can_receive_alerts: false,
+    can_manage_telephony: false, can_manage_ivr: false, can_manage_groups: false,
+    can_manage_audio_prompts: false, can_view_company_cdr: false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -304,6 +311,42 @@ function PortalUserModal({ onClose, onSaved }) {
               {label}
             </label>
           ))}
+        </div>
+        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>TÉLÉPHONIE — MON POSTE</div>
+          {[
+            ['can_view_own_extension', 'Voir son propre poste (statut, extension)'],
+            ['can_edit_extension_name', 'Modifier le nom affiché de son poste'],
+            ['can_edit_call_forward', 'Gérer ses renvois d\'appel'],
+            ['can_edit_dnd', 'Activer/désactiver Ne pas déranger'],
+            ['can_edit_voicemail', 'Gérer ses options de messagerie vocale'],
+            ['can_view_own_cdr', 'Voir son historique d\'appels personnel'],
+            ['can_view_voicemail_messages', 'Écouter ses messages vocaux'],
+            ['can_receive_alerts', 'Recevoir les alertes (poste hors ligne, etc.)'],
+          ].map(([key, label]) => (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />
+              {label}
+            </label>
+          ))}
+        </div>
+        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>TÉLÉPHONIE — GESTIONNAIRE (toute la compagnie)</div>
+          {[
+            ['can_manage_telephony', 'Gérer les postes de la compagnie (nom, voicemail, renvois)'],
+            ['can_manage_ivr', 'Gérer les menus IVR'],
+            ['can_manage_groups', 'Gérer les groupes d\'appel / ring groups'],
+            ['can_manage_audio_prompts', 'Gérer les messages audio / musique d\'attente'],
+            ['can_view_company_cdr', 'Voir l\'historique d\'appels de toute la compagnie'],
+          ].map(([key, label]) => (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />
+              {label}
+            </label>
+          ))}
+          <div style={{ fontSize: 12, color: '#92400E', marginTop: 4 }}>
+            Jamais exposé au client, peu importe ces permissions : trunks, routes sortantes, DIDs principaux, 911, sécurité.
+          </div>
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
