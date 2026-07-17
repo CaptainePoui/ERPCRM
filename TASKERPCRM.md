@@ -136,7 +136,7 @@ Fichiers touchés :
 | TASK-015.5 | tasks agenda    | Tâches — vue "Mes tâches" vs "Toute l'équipe"                                  |
 | TASK-016   | sipv contact    | SIPV — champs sipv_sync + phone_other sur Contact (TASK-S037) ✓                |
 | TASK-017   | sipv portal     | SIPV — permissions téléphoniques sur PortalUser (TASK-S027) ✓                  |
-| TASK-018   | sipv webhook    | SIPV — endpoint webhook SIPV→ERPCRM (sync nom contact, sipv_sync)              |
+| TASK-018   | sipv webhook    | SIPV — endpoint webhook SIPV→ERPCRM (sync nom contact, sipv_sync) ✓            |
 | TASK-019   | sipv mon poste  | SIPV — portail "Mon poste" dans Portal.jsx (TASK-S028)                         |
 | TASK-020   | sipv gestion    | SIPV — portail "Gestion téléphonique" dans Portal.jsx (TASK-S029)              |
 | TASK-021   | sipv billing    | SIPV — endpoint billing events SIPV→ERPCRM (TASK-S032)                         |
@@ -184,21 +184,44 @@ Fichiers : backend/app/models/portal.py, backend/app/api/v1/endpoints/portal.py,
            backend/alembic/versions/j1k2l3m4n5o6_portal_telephony_permissions.py,
            frontend/src/pages/Admin.jsx.
 
-### TASK-018 [ ] Endpoint webhook SIPV→ERPCRM
+### TASK-018 [x] Endpoint webhook SIPV→ERPCRM + auth clé API sur /v1/contacts
 Lien TASKSIPV : TASK-S022, TASK-S038.
-But : SIPV peut appeler ERPCRM pour :
-  1. Chercher un contact par nom/numéro (GET /api/v1/contacts?search=...)  ← existe déjà
-  2. Cocher sipv_sync sur un contact existant (PATCH /api/v1/contacts/{id})  ← existe déjà
-  3. Créer un contact si absent (POST /api/v1/contacts)  ← existe déjà
-  4. Notifier d'un changement de nom d'extension → mettre à jour extension sur contact
-  5. Décocher sipv_sync quand une extension est supprimée dans SIPV
-Travail requis :
-- Créer endpoint POST /api/v1/sipv/event (authentifié par X-Api-Key = settings.SIPV_API_KEY)
-- Actions supportées : contact_name_changed, extension_deleted, extension_created
-- Payload : { action, erpcrm_contact_id, data: { ... } }
-- Valider X-Api-Key dans un dependency dédié (ne pas réutiliser get_current_user)
-Nouveau fichier : backend/app/api/v1/endpoints/sipv_events.py.
-Enregistrer dans main.py.
+⚠️ Correction avant implémentation : la spec initiale supposait que search/PATCH/POST sur
+/v1/contacts "existaient déjà" avec accès clé API — FAUX. Ces routes existaient (sauf le
+paramètre search) mais étaient protégées SEULEMENT par login JWT humain (get_current_user),
+aucune clé API n'était acceptée nulle part sur ERPCRM. Corrigé dans cette tâche.
+
+Fait :
+1. `search` ajouté sur GET /api/v1/contacts (filtre ilike sur first_name/last_name)
+2. Nouvelle dépendance `get_current_user_or_service()` dans auth.py — accepte soit un JWT
+   normal (retourne un User), soit X-Api-Key = settings.SIPV_API_KEY (retourne None).
+   Appliquée sur GET /contacts (liste+search), GET /contacts/{id}, POST /contacts,
+   PUT /contacts/{id} — ce sont les 4 routes dont SIPV a besoin pour chercher/créer/lier
+   un contact. PUT fait déjà exclude_unset=True donc couvre le besoin "PATCH" sans
+   ajouter de route dupliquée.
+3. `settings.SIPV_API_KEY` ajouté à config.py (vide par défaut, doit être configuré en .env)
+4. Nouveau endpoint POST /api/v1/sipv/event (X-Api-Key seul, dependency séparée
+   `verify_sipv_api_key`, jamais get_current_user) — actions contact_name_changed,
+   extension_deleted, extension_created, payload {action, erpcrm_contact_id, data}
+5. Deux clés API distinctes générées (secrets.token_urlsafe(32)) — une par sens, pas
+   une clé partagée :
+   - `ERPCRM_API_KEY` dans sipv/backend/.env : ERPCRM présente cette clé en appelant SIPV
+     (/sync/company) — SIPV la valide
+   - `SIPV_API_KEY` dans erpcrm/backend/.env : SIPV présente cette clé en appelant ERPCRM
+     (/contacts, /sipv/event) — ERPCRM la valide
+   Aucune des deux jamais commitée — .env est gitignore des deux côtés.
+⚠️ Découverte additionnelle : /sync/company (ERPCRM→SIPV, censé être fait depuis SIPV-T-009)
+   ne fonctionnait pas non plus — ERPCRM_API_KEY était vide côté SIPV (donc le check
+   `if not settings.ERPCRM_API_KEY` rejetait tout). Corrigé en configurant la clé, MAIS
+   `companies.py` côté ERPCRM n'appelle jamais /sync/company nulle part — la synchronisation
+   ERPCRM→SIPV à la création d'une compagnie n'est PAS câblée. Pas corrigé ici (hors scope
+   de cette tâche, à faire séparément si confirmé).
+Reste à faire (hors scope ici, c'est TASK-S022 côté SIPV) : le code SIPV qui appelle
+réellement ces endpoints (chercher/créer/lier un contact depuis extensions.py) n'existe
+pas encore — cette tâche ne fait que débloquer l'accès, pas l'utiliser.
+Fichiers : backend/app/core/config.py, backend/app/api/v1/endpoints/auth.py,
+backend/app/api/v1/endpoints/contacts.py, backend/app/api/v1/endpoints/sipv_events.py
+(nouveau), backend/app/main.py, backend/.env (+ sipv/backend/.env).
 
 ### TASK-019 [ ] Portail "Mon poste"
 Lien TASKSIPV : TASK-S028.

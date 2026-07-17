@@ -8,6 +8,7 @@ class CompanyInContactOut(BaseModel):
     contact_company_id: uuid.UUID
     company_id: uuid.UUID
     company_name: str
+    email: str | None = None
     is_primary: bool
     is_active: bool
     functions: list[str]
@@ -22,6 +23,8 @@ class ContactCreate(BaseModel):
     phone: str | None = None
     mobile: str | None = None
     extension: str | None = None
+    phone_other: str | None = None
+    sipv_sync: bool = False
     notes_internal: str | None = None
     status_ids: list[uuid.UUID] = []
 
@@ -33,6 +36,8 @@ class ContactUpdate(BaseModel):
     phone: str | None = None
     mobile: str | None = None
     extension: str | None = None
+    phone_other: str | None = None
+    sipv_sync: bool | None = None
     notes_internal: str | None = None
     is_active: bool | None = None
 
@@ -62,6 +67,8 @@ class ContactOut(BaseModel):
     phone: str | None
     mobile: str | None
     extension: str | None
+    phone_other: str | None
+    sipv_sync: bool
     notes_internal: str | None
     is_active: bool
     created_at: datetime
@@ -74,11 +81,13 @@ class ContactOut(BaseModel):
 
 class ContactCompanyLink(BaseModel):
     contact_id: uuid.UUID
+    email: str | None = None
     function_ids: list[uuid.UUID] = []
     is_primary: bool = False
 
 
 class ContactCompanyUpdate(BaseModel):
+    email: str | None = None
     function_ids: list[uuid.UUID] = []
     is_primary: bool | None = None
     is_active: bool | None = None

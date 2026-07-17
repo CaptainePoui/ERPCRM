@@ -8,6 +8,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
 from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom
+from app.api.v1.endpoints import sipv_events
 from app.services.imap_poller import run_poller
 
 
@@ -60,6 +61,7 @@ app.include_router(purchase_orders.router, prefix="/api/v1/purchase-orders", tag
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
 app.include_router(portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(ecom.router, prefix="/api/v1/ecom", tags=["ecom"])
+app.include_router(sipv_events.router, prefix="/api/v1/sipv", tags=["sipv"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 
 

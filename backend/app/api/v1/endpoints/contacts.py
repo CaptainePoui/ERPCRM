@@ -1,10 +1,10 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
-from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.auth import get_current_user, get_current_user_or_service
 from app.models.entity import Entity, EntityType
 from app.models.contact import Contact
 from app.models.status import Status, EntityStatus
@@ -28,6 +28,7 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         contact_company_id=cc.id,
         company_id=cc.company.id,
         company_name=cc.company.name,
+        email=cc.email,
         is_primary=cc.is_primary,
         is_active=cc.is_active,
         functions=[f.function.name for f in cc.functions],
@@ -51,7 +52,7 @@ def _build_contact_out(contact: Contact) -> ContactOut:
 
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
-async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_db), _: User | None = Depends(get_current_user_or_service)):
     entity = Entity(entity_type=EntityType.person)
     db.add(entity)
     await db.flush()
@@ -64,6 +65,8 @@ async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_
         phone=payload.phone,
         mobile=payload.mobile,
         extension=payload.extension,
+        phone_other=payload.phone_other,
+        sipv_sync=payload.sipv_sync,
         notes_internal=payload.notes_internal,
     )
     db.add(contact)
@@ -79,9 +82,35 @@ async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("", response_model=list[ContactListItem])
-async def list_contacts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(Contact).options(*_load_opts()).order_by(Contact.last_name, Contact.first_name))
-    contacts = result.scalars().all()
+async def list_contacts(
+    company_id: uuid.UUID | None = Query(default=None),
+    search: str | None = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _: User | None = Depends(get_current_user_or_service),
+):
+    q = select(Contact).options(*_load_opts()).order_by(Contact.last_name, Contact.first_name)
+    if company_id:
+        q = q.join(Contact.contact_companies).where(
+            ContactCompany.company_id == company_id,
+            ContactCompany.is_active == True,
+        )
+    if search:
+        like = f"%{search}%"
+        q = q.where((Contact.first_name.ilike(like)) | (Contact.last_name.ilike(like)))
+    result = await db.execute(q)
+    contacts = result.scalars().unique().all()
+    def _email_for(c: Contact, filt_company_id) -> str | None:
+        """Return company-specific email if filtered, else first CC email found, else personal."""
+        if filt_company_id:
+            for cc in c.contact_companies:
+                if cc.company_id == filt_company_id:
+                    return cc.email
+        # fallback: first non-null CC email, then personal
+        for cc in c.contact_companies:
+            if cc.email:
+                return cc.email
+        return c.email
+
     return [ContactListItem(
         id=c.id,
         entity_id=c.entity.id,
@@ -94,18 +123,19 @@ async def list_contacts(db: AsyncSession = Depends(get_db), _: User = Depends(ge
             contact_company_id=cc.id,
             company_id=cc.company.id,
             company_name=cc.company.name,
+            email=cc.email,
             is_primary=cc.is_primary,
             is_active=cc.is_active,
             functions=[f.function.name for f in cc.functions],
         ) for cc in c.contact_companies],
-        email=c.email,
+        email=_email_for(c, company_id),
         phone=c.phone,
         mobile=c.mobile,
     ) for c in contacts]
 
 
 @router.get("/{contact_id}", response_model=ContactOut)
-async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User | None = Depends(get_current_user_or_service)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
     contact = result.scalar_one_or_none()
     if not contact:
@@ -114,7 +144,7 @@ async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db),
 
 
 @router.put("/{contact_id}", response_model=ContactOut)
-async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), _: User | None = Depends(get_current_user_or_service)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
     contact = result.scalar_one_or_none()
     if not contact:

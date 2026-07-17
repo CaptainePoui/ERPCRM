@@ -15,6 +15,8 @@ class Contact(Base):
     phone: Mapped[str | None] = mapped_column(String(50))
     mobile: Mapped[str | None] = mapped_column(String(50))
     extension: Mapped[str | None] = mapped_column(String(20))
+    phone_other: Mapped[str | None] = mapped_column(String(50))
+    sipv_sync: Mapped[bool] = mapped_column(Boolean, default=False)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
