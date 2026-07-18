@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import NewTaskModal from '../components/NewTaskModal'
 import './Invoices.css'
 
 const STATUS_LABELS = {
@@ -39,6 +40,8 @@ export default function InvoiceDetail() {
   const [payments, setPayments] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
   const [showAddPayment, setShowAddPayment] = useState(false)
+  const [showTaskModal, setShowTaskModal] = useState(false)
+  const [pricePrompt, setPricePrompt] = useState(null)
 
   useEffect(() => {
     Promise.all([
@@ -139,6 +142,7 @@ export default function InvoiceDetail() {
           ))}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
+          <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           {editable && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
         </div>
       </div>
@@ -229,8 +233,13 @@ export default function InvoiceDetail() {
               <tr key={line.id} className={editable ? 'inv-line-row' : ''}>
                 {editingLine === line.id
                   ? <EditLineRow line={line} onSave={async (data) => {
+                      const priceChanged = data.unit_price !== line.unit_price
                       const r = await api.put(`/v1/invoices/${id}/lines/${line.id}`, data)
-                      setInv(r.data); setEditingLine(null)
+                      setInv(r.data)
+                      setEditingLine(null)
+                      if (line.catalogue_item_id && priceChanged) {
+                        setPricePrompt({ catalogue_item_id: line.catalogue_item_id, newPrice: data.unit_price })
+                      }
                     }} onCancel={() => setEditingLine(null)} />
                   : <>
                       <td onClick={() => editable && setEditingLine(line.id)}>{line.description}</td>
@@ -313,6 +322,16 @@ export default function InvoiceDetail() {
         </div>
       )}
 
+      {pricePrompt && (
+        <PricePromptModal
+          onClientOnly={() => setPricePrompt(null)}
+          onUpdateCatalogue={async () => {
+            await api.put(`/v1/catalogue/${pricePrompt.catalogue_item_id}`, { price: pricePrompt.newPrice })
+            setPricePrompt(null)
+          }}
+        />
+      )}
+
       {showAddPayment && (
         <AddPaymentModal
           methods={paymentMethods}
@@ -324,6 +343,14 @@ export default function InvoiceDetail() {
             await loadPayments()
             setShowAddPayment(false)
           }}
+        />
+      )}
+      {showTaskModal && (
+        <NewTaskModal
+          prefillInvoice={{ id: inv.id, label: `Facture ${inv.number}` }}
+          prefillCompany={inv.company_id ? { id: inv.company_id, label: inv.company_name } : null}
+          onClose={() => setShowTaskModal(false)}
+          onCreated={() => setShowTaskModal(false)}
         />
       )}
     </div>
@@ -403,6 +430,32 @@ function AddPaymentModal({ methods, invoiceTotal, amountPaid, onClose, onSave })
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
           <button className="btn-primary" onClick={save} disabled={saving || !form.method_code || amount <= 0}>{saving ? '...' : 'Encaisser'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PricePromptModal({ onClientOnly, onUpdateCatalogue }) {
+  const [saving, setSaving] = useState(false)
+
+  async function updateCatalogue() {
+    setSaving(true)
+    try { await onUpdateCatalogue() } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Mise à jour du prix</h3>
+        <p style={{ fontSize: 14, color: '#374151', marginBottom: 20, lineHeight: 1.5 }}>
+          Ce prix vient du catalogue. Voulez-vous mettre à jour le catalogue pour tous les futurs clients ?
+        </p>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClientOnly}>Juste pour ce client</button>
+          <button className="btn-primary" onClick={updateCatalogue} disabled={saving}>
+            {saving ? '...' : 'Prix fournisseur a changé'}
+          </button>
         </div>
       </div>
     </div>

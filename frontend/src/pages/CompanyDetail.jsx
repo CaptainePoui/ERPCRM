@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import Autocomplete from '../components/Autocomplete'
+import NewTicketModal from '../components/NewTicketModal'
+import NewInvoiceModal from '../components/NewInvoiceModal'
+import NewTaskModal from '../components/NewTaskModal'
 import './CompanyDetail.css'
 
-const TABS = ['Général', 'Contacts', 'Maintenance', 'Inventaire', 'Téléphonie', 'Journal']
+const TABS = ['Général', 'Contacts', 'Maintenance', 'Inventaire', 'Téléphonie', 'Tâches', 'Journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -46,6 +50,49 @@ function InlineField({ label, value, display, onSave, type = 'text', options, mu
           <span className="ifield-pencil">✎</span>
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Vendor autocomplete field ─────────────────────────────────────────────────
+function VendorField({ company, contacts, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const items = contacts.map(c => ({ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), sub: c.email || '' }))
+  const vendorName = company.vendor ? `${company.vendor.first_name} ${company.vendor.last_name}`.trim() : null
+
+  if (!editing) {
+    return (
+      <div className="ifield">
+        <div className="ifield-label">Vendeur</div>
+        <div className="ifield-view" onClick={() => setEditing(true)}>
+          {vendorName ? <span className="ifield-value">{vendorName}</span> : <span className="ifield-empty">Non indiqué</span>}
+          <span className="ifield-pencil">✎</span>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="ifield ifield-active">
+      <div className="ifield-label">Vendeur</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <Autocomplete
+          items={items}
+          value={company.vendor ? { id: company.vendor.contact_id, label: vendorName } : null}
+          onSelect={async contact => { if (contact) { await onSave(contact.id); setEditing(false) } }}
+          placeholder="Rechercher un contact..."
+          autoFocus
+        />
+        <div style={{ display: 'flex', gap: 8 }}>
+          {company.vendor_id && (
+            <button onClick={async () => { await onSave(null); setEditing(false) }}
+              style={{ fontSize: 12, color: '#DC2626', background: 'none', border: '1px solid #FCA5A5', borderRadius: 5, cursor: 'pointer', padding: '3px 8px' }}>
+              Retirer
+            </button>
+          )}
+          <button className="ifield-x" onClick={() => setEditing(false)}>✕</button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -222,11 +269,16 @@ export default function CompanyDetail({ isNew }) {
   const [statuses, setStatuses] = useState([])
   const [functions, setFunctions] = useState([])
   const [managers, setManagers] = useState([])
+  const [showTicket, setShowTicket] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [showTask, setShowTask] = useState(false)
+  const [allContacts, setAllContacts] = useState([])
 
   useEffect(() => {
     api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
     api.get('/v1/ref/functions').then(r => setFunctions(r.data))
     api.get('/v1/ref/users/managers').then(r => setManagers(r.data))
+    api.get('/v1/contacts').then(r => setAllContacts(r.data))
     if (!isNew) load()
   }, [id, isNew])
 
@@ -242,6 +294,11 @@ export default function CompanyDetail({ isNew }) {
     setCompany(prev => ({ ...prev, [fieldName]: value }))
   }
 
+  async function saveVendor(contactId) {
+    await api.put(`/v1/companies/${id}`, { vendor_id: contactId })
+    await load()
+  }
+
   if (loading) return <div className="detail-loading">Chargement...</div>
 
   const c = company
@@ -254,7 +311,34 @@ export default function CompanyDetail({ isNew }) {
           {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span></>}
           {isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">Nouvelle compagnie</span></>}
         </div>
+        {!isNew && c && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
+            <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>
+            <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
+          </div>
+        )}
       </div>
+      {showTicket && c && (
+        <NewTicketModal
+          prefillCompany={{ id: c.id, label: c.name }}
+          onClose={() => setShowTicket(false)}
+          onCreated={t => navigate(`/tickets/${t.id}`)}
+        />
+      )}
+      {showInvoice && c && (
+        <NewInvoiceModal
+          prefillCompany={{ id: c.id, label: c.name }}
+          onClose={() => setShowInvoice(false)}
+        />
+      )}
+      {showTask && c && (
+        <NewTaskModal
+          prefillCompany={{ id: c.id, label: c.name }}
+          onClose={() => setShowTask(false)}
+          onCreated={() => setShowTask(false)}
+        />
+      )}
 
       {!isNew && (
         <div className="detail-tabs">
@@ -292,6 +376,7 @@ export default function CompanyDetail({ isNew }) {
                   <InlineField label="Chiffre d'affaires ($)" value={c.annual_revenue != null ? String(c.annual_revenue) : ''} type="number" onSave={v => saveField('annual_revenue', v ? Number(v) : null)} />
                   <InlineField label="Site web" value={c.website} onSave={v => saveField('website', v)} />
                   <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
+                  <VendorField company={c} contacts={allContacts} onSave={saveVendor} />
                 </div>
                 <div className="ifield-section-title" style={{ marginTop: 24 }}>Taxes</div>
                 <div className="tax-checks">
@@ -319,7 +404,8 @@ export default function CompanyDetail({ isNew }) {
             {tab === 2 && <MaintenanceTab companyId={id} />}
             {tab === 3 && <InventaireTab companyId={id} />}
             {tab === 4 && <TelephonyTab companyId={id} />}
-            {tab === 5 && <JournalTab entityId={id} />}
+            {tab === 5 && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
+            {tab === 6 && <JournalTab entityId={id} />}
           </>
         )}
       </div>
@@ -441,8 +527,10 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
 function ContactsTab({ companyId, contacts, functions, onRefresh }) {
   const [linking, setLinking] = useState(false)
   const [allContacts, setAllContacts] = useState([])
-  const [form, setForm] = useState({ contact_id: '', function_ids: [], is_primary: false })
+  const [form, setForm] = useState({ contact_id: '', email: '', function_ids: [], is_primary: false })
   const [saving, setSaving] = useState(false)
+  const [editingEmail, setEditingEmail] = useState(null) // contact_id being edited
+  const [emailDraft, setEmailDraft] = useState('')
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -460,16 +548,27 @@ function ContactsTab({ companyId, contacts, functions, onRefresh }) {
     if (!form.contact_id) return
     setSaving(true)
     try {
-      await api.post(`/v1/companies/${companyId}/contacts`, form)
+      await api.post(`/v1/companies/${companyId}/contacts`, {
+        contact_id: form.contact_id,
+        email: form.email || null,
+        function_ids: form.function_ids,
+        is_primary: form.is_primary,
+      })
       await onRefresh()
       setLinking(false)
-      setForm({ contact_id: '', function_ids: [], is_primary: false })
+      setForm({ contact_id: '', email: '', function_ids: [], is_primary: false })
     } catch (e) { alert(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
   }
 
   async function unlink(contactId) {
     if (!confirm('Retirer ce contact de la compagnie ?')) return
     await api.delete(`/v1/companies/${companyId}/contacts/${contactId}`)
+    await onRefresh()
+  }
+
+  async function saveEmail(contactId) {
+    await api.patch(`/v1/companies/${companyId}/contacts/${contactId}`, { email: emailDraft || null })
+    setEditingEmail(null)
     await onRefresh()
   }
 
@@ -484,6 +583,32 @@ function ContactsTab({ companyId, contacts, functions, onRefresh }) {
             </button>
             {c.is_primary && <span className="primary-badge">Principal</span>}
             {c.functions.length > 0 && <div className="contact-fns">{c.functions.join(' · ')}</div>}
+            <div className="contact-email-row">
+              {editingEmail === c.contact_id ? (
+                <>
+                  <input
+                    type="email"
+                    value={emailDraft}
+                    onChange={e => setEmailDraft(e.target.value)}
+                    placeholder="courriel@entreprise.com"
+                    style={{ fontSize: 13, padding: '3px 7px', border: '1px solid #CBD5E1', borderRadius: 5, width: 230 }}
+                    onKeyDown={e => { if (e.key === 'Enter') saveEmail(c.contact_id); if (e.key === 'Escape') setEditingEmail(null) }}
+                    autoFocus
+                  />
+                  <button className="ifield-ok" onClick={() => saveEmail(c.contact_id)} title="Confirmer" style={{ fontSize: 12 }}>✓</button>
+                  <button className="ifield-x" onClick={() => setEditingEmail(null)} title="Annuler" style={{ fontSize: 12 }}>✕</button>
+                </>
+              ) : (
+                <span
+                  className="contact-email-val"
+                  onClick={() => { setEditingEmail(c.contact_id); setEmailDraft(c.email || '') }}
+                  title="Cliquer pour modifier le courriel professionnel"
+                >
+                  {c.email ? <><span style={{ color: '#6B7280', fontSize: 12 }}>✉ </span>{c.email}</> : <span style={{ color: '#CBD5E1', fontSize: 12 }}>✉ Ajouter courriel</span>}
+                  <span className="ifield-pencil" style={{ fontSize: 11 }}>✎</span>
+                </span>
+              )}
+            </div>
             {c.communications.map(ch => (
               <div key={ch.id} className="contact-comm">{ch.channel_type}: {ch.value}</div>
             ))}
@@ -498,6 +623,12 @@ function ContactsTab({ companyId, contacts, functions, onRefresh }) {
             <option value="">— Sélectionner un contact —</option>
             {allContacts.map(c => <option key={c.id} value={c.id}>{c.last_name}, {c.first_name}</option>)}
           </select>
+          <input
+            type="email"
+            placeholder="Courriel professionnel (optionnel)"
+            value={form.email}
+            onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
+          />
           <div className="fn-selector">
             <label>Fonctions :</label>
             <div className="fn-options">
@@ -978,6 +1109,80 @@ function NewExtModal({ companyId, dids, onClose, onCreated }) {
           <button className="btn-primary" onClick={save} disabled={saving || !form.extension.trim() || !form.name.trim()}>{saving ? '...' : 'Enregistrer'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Tâches Tab ────────────────────────────────────────────────────────────────
+const PRIORITY_COLORS = { basse: '#6B7280', normale: '#2563EB', haute: '#D97706', urgente: '#DC2626' }
+const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
+const STATUS_LABELS_T = { en_cours: 'En cours', attente_info_client: 'Attente client', attente_info_sip: 'Attente SIP', complete: 'Complété', annule: 'Annulé' }
+const STATUS_COLORS_T = { en_cours: '#2563EB', attente_info_client: '#D97706', attente_info_sip: '#7C3AED', complete: '#16A34A', annule: '#9CA3AF' }
+
+function TachesTab({ companyId, companyName, onShowTask }) {
+  const [tasks, setTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showCompleted, setShowCompleted] = useState(false)
+
+  useEffect(() => {
+    api.get(`/v1/tasks?company_id=${companyId}`).then(r => { setTasks(r.data); setLoading(false) })
+  }, [companyId])
+
+  async function toggleComplete(task) {
+    if (task.completed) {
+      const r = await api.put(`/v1/tasks/${task.id}`, { completed: false, status: 'en_cours' })
+      setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+    } else {
+      const r = await api.post(`/v1/tasks/${task.id}/complete`)
+      setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+    }
+  }
+
+  const filtered = tasks.filter(t => showCompleted || !t.completed)
+
+  if (loading) return <div className="empty-tab">Chargement...</div>
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#6B7280', cursor: 'pointer' }}>
+          <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+          Afficher complétées
+        </label>
+        <button className="btn-secondary" onClick={onShowTask} style={{ fontSize: 13 }}>+ Nouvelle tâche</button>
+      </div>
+      {filtered.length === 0 ? (
+        <div className="empty-tab">Aucune tâche en cours pour ce client.</div>
+      ) : (
+        filtered.map(t => {
+          const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+          return (
+            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 8, background: t.completed ? '#F9FAFB' : '#fff' }}>
+              <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 15, height: 15, accentColor: '#184FA0', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLORS[t.priority], background: '#F3F4F6', padding: '1px 6px', borderRadius: 8 }}>{PRIORITY_LABELS[t.priority]}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS_T[t.status], background: '#F3F4F6', padding: '1px 6px', borderRadius: 8 }}>{STATUS_LABELS_T[t.status]}</span>
+                </div>
+                {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 3 }}>{t.description}</div>}
+                <div style={{ fontSize: 12, color: overdue ? '#DC2626' : '#9CA3AF', marginTop: 4, display: 'flex', gap: 12 }}>
+                  {t.due_date && <span>{overdue ? '⚠ ' : ''}Prévu : {new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}{t.due_time ? ` ${t.due_time}` : ''}</span>}
+                  {t.assigned_name && <span>👤 {t.assigned_name}</span>}
+                  {t.contact_name && <span>· {t.contact_name}</span>}
+                  {t.ticket_title && <span>🎫 {t.ticket_title}</span>}
+                </div>
+                {t.checklist_items?.length > 0 && (
+                  <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                    Checklist : {t.checklist_items.filter(c => c.completed).length}/{t.checklist_items.length}
+                    {' '}{'▓'.repeat(t.checklist_items.filter(c => c.completed).length)}{'░'.repeat(t.checklist_items.length - t.checklist_items.filter(c => c.completed).length)}
+                  </div>
+                )}
+              </div>
+            </div>
+          )
+        })
+      )}
     </div>
   )
 }

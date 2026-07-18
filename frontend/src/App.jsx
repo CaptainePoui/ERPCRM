@@ -18,6 +18,9 @@ import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import Shop from './pages/Shop'
 import { EcomOrderList, EcomOrderDetail } from './pages/EcomOrders'
+import Settings from './pages/Settings'
+import Employees from './pages/Employees'
+import Tasks from './pages/Tasks'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -59,6 +62,10 @@ function InternalApp() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/ecom-orders" element={<EcomOrderList />} />
         <Route path="/ecom-orders/:id" element={<EcomOrderDetail />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/employees" element={<Employees />} />
+        <Route path="/tasks" element={<Tasks />} />
+        <Route path="/agenda" element={<Tasks defaultView="month" />} />
       </Routes>
     </Layout>
   )

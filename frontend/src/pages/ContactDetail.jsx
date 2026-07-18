@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import NewTicketModal from '../components/NewTicketModal'
+import NewInvoiceModal from '../components/NewInvoiceModal'
+import NewTaskModal from '../components/NewTaskModal'
 import './CompanyDetail.css'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
@@ -137,6 +140,9 @@ export default function ContactDetail({ isNew }) {
   const [contact, setContact] = useState(null)
   const [loading, setLoading] = useState(!isNew)
   const [statuses, setStatuses] = useState([])
+  const [showTicket, setShowTicket] = useState(false)
+  const [showInvoice, setShowInvoice] = useState(false)
+  const [showTask, setShowTask] = useState(false)
 
   useEffect(() => {
     api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
@@ -169,7 +175,45 @@ export default function ContactDetail({ isNew }) {
             {isNew ? 'Nouveau contact' : `${c.first_name} ${c.last_name}`.trim()}
           </span>
         </div>
+        {!isNew && c && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
+            <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>
+            <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
+          </div>
+        )}
       </div>
+      {showTicket && c && (() => {
+        const primary = c.companies?.find(x => x.is_primary) || c.companies?.[0]
+        return (
+          <NewTicketModal
+            prefillContact={{ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), companies: c.companies || [] }}
+            prefillCompany={primary ? { id: primary.company_id, label: primary.company_name } : null}
+            onClose={() => setShowTicket(false)}
+            onCreated={t => navigate(`/tickets/${t.id}`)}
+          />
+        )
+      })()}
+      {showInvoice && c && (() => {
+        const primary = c.companies?.find(x => x.is_primary) || c.companies?.[0]
+        return (
+          <NewInvoiceModal
+            prefillCompany={primary ? { id: primary.company_id, label: primary.company_name } : null}
+            onClose={() => setShowInvoice(false)}
+          />
+        )
+      })()}
+      {showTask && c && (() => {
+        const primary = c.companies?.find(x => x.is_primary) || c.companies?.[0]
+        return (
+          <NewTaskModal
+            prefillContact={{ id: c.id, label: `${c.first_name} ${c.last_name}`.trim() }}
+            prefillCompany={primary ? { id: primary.company_id, label: primary.company_name } : null}
+            onClose={() => setShowTask(false)}
+            onCreated={() => setShowTask(false)}
+          />
+        )
+      })()}
 
       <div className="detail-body">
         {isNew ? <NewContactForm /> : (
@@ -182,12 +226,36 @@ export default function ContactDetail({ isNew }) {
               <InlineField label="Prénom" value={c.first_name} onSave={v => saveField('first_name', v)} />
               <InlineField label="Nom" value={c.last_name} onSave={v => saveField('last_name', v)} />
               <InlineField label="Téléphone bureau" value={c.phone} onSave={v => saveField('phone', v)} />
-              <InlineField label="Poste" value={c.extension} onSave={v => saveField('extension', v)} />
+              <InlineField label="Poste SIP" value={c.extension} onSave={v => saveField('extension', v)} />
               <InlineField label="Cellulaire" value={c.mobile} onSave={v => saveField('mobile', v)} />
+              <InlineField label="Autre numéro" value={c.phone_other} onSave={v => saveField('phone_other', v)} />
               <InlineField label="Courriel" value={c.email} onSave={v => saveField('email', v)} />
               <div className="ifield-full">
                 <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
               </div>
+            </div>
+
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Téléphonie</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>
+              <input
+                type="checkbox"
+                id="sipv_sync"
+                checked={c.sipv_sync || false}
+                onChange={async e => {
+                  const val = e.target.checked
+                  await api.put(`/v1/contacts/${id}`, { sipv_sync: val })
+                  setContact(prev => ({ ...prev, sipv_sync: val }))
+                }}
+                style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+              />
+              <label htmlFor="sipv_sync" style={{ fontSize: 13, color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+                Synchroniser avec SIPV
+              </label>
+              {c.sipv_sync && (
+                <span style={{ fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>
+                  SIP actif
+                </span>
+              )}
             </div>
 
             {c.companies.length > 0 && (
@@ -207,9 +275,66 @@ export default function ContactDetail({ isNew }) {
               Créé le {new Date(c.created_at).toLocaleString('fr-CA')}
               {c.updated_at !== c.created_at && <> · Modifié le {new Date(c.updated_at).toLocaleString('fr-CA')}</>}
             </div>
+
+            <ContactTachesSection contactId={id} onNewTask={() => setShowTask(true)} />
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function ContactTachesSection({ contactId, onNewTask }) {
+  const [tasks, setTasks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showCompleted, setShowCompleted] = useState(false)
+
+  useEffect(() => {
+    api.get(`/v1/tasks?contact_id=${contactId}`).then(r => { setTasks(r.data); setLoading(false) })
+  }, [contactId])
+
+  async function toggleComplete(task) {
+    if (task.completed) {
+      const r = await api.put(`/v1/tasks/${task.id}`, { completed: false, status: 'en_cours' })
+      setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+    } else {
+      const r = await api.post(`/v1/tasks/${task.id}/complete`)
+      setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+    }
+  }
+
+  const filtered = tasks.filter(t => showCompleted || !t.completed)
+  if (loading) return null
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <div className="ifield-section-title" style={{ margin: 0 }}>Tâches & Suivi</div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+            Complétées
+          </label>
+          <button className="btn-secondary" onClick={onNewTask} style={{ fontSize: 12, padding: '4px 10px' }}>+ Tâche</button>
+        </div>
+      </div>
+      {filtered.length === 0 ? (
+        <div style={{ fontSize: 13, color: '#9CA3AF', padding: '12px 0' }}>Aucune tâche en cours.</div>
+      ) : filtered.map(t => {
+        const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+        return (
+          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: '#184FA0', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</div>
+              <div style={{ fontSize: 11, color: overdue ? '#DC2626' : '#9CA3AF', marginTop: 2 }}>
+                {t.due_date && <span>{overdue ? '⚠ ' : ''}{new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}{t.due_time ? ` ${t.due_time}` : ''}</span>}
+                {t.assigned_name && <span style={{ marginLeft: 8 }}>· {t.assigned_name}</span>}
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }

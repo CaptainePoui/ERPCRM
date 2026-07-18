@@ -11,6 +11,9 @@ const NAV = [
   { to: '/tickets',          label: 'Tickets',    icon: '🎫' },
   { to: '/purchase-orders',  label: 'Commandes',  icon: '📋' },
   { to: '/ecom-orders',      label: 'Web orders', icon: '🛒' },
+  { to: '/employees',        label: 'Employés',   icon: '👷' },
+  { to: '/tasks',            label: 'Tâches',     icon: '✓' },
+  { to: '/agenda',           label: 'Agenda',     icon: '📅' },
   { to: '/admin',            label: 'Admin',      icon: '⚙️' },
 ]
 
@@ -98,6 +101,7 @@ export default function Layout({ user, onLogout, children }) {
         </div>
         <GlobalSearch />
         <div className="layout-user">
+          <NavLink to="/settings" className={({ isActive }) => `settings-btn${isActive ? ' active' : ''}`} title="Paramètres">⚙</NavLink>
           <span className="user-name">{user.full_name}</span>
           <span className="user-role">{user.role}</span>
           <button onClick={onLogout} className="logout-btn">Déconnexion</button>

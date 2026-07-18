@@ -183,6 +183,11 @@
 .contact-comm { font-size: 12px; color: #9CA3AF; }
 .unlink-btn { background: none; border: 1px solid #E5E7EB; color: #9CA3AF; font-size: 12px; padding: 3px 10px; border-radius: 6px; cursor: pointer; flex-shrink: 0; }
 .unlink-btn:hover { border-color: #EF4444; color: #EF4444; }
+.contact-email-row { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+.contact-email-val { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #374151; cursor: pointer; padding: 2px 4px; border-radius: 4px; }
+.contact-email-val:hover { background: #F3F4F6; }
+.contact-email-val .ifield-pencil { opacity: 0; transition: opacity 0.15s; }
+.contact-email-val:hover .ifield-pencil { opacity: 1; }
 
 /* Inline add forms */
 .inline-form { background: #F9FAFB; border: 1.5px solid #E5E7EB; border-radius: 8px; padding: 16px; margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }

@@ -128,6 +128,28 @@ export default function CatalogueDetail() {
             <InlineField label="Type" value={item.type} onSave={v => save('type', v)}
               options={[{ value: 'service', label: 'Service' }, { value: 'materiel', label: 'Matériel' }]} />
             <InlineField label="Prix (CAD)" value={String(item.price)} onSave={v => save('price', parseFloat(v) || 0)} type="number" />
+            {item.type === 'service' && (
+              <div className="ifield" style={{ cursor: 'default' }}>
+                <div className="ifield-label">Catégorie</div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!item.linked_to_hourly_rate}
+                    onChange={async e => {
+                      const r = await api.put(`/v1/catalogue/${id}`, { linked_to_hourly_rate: e.target.checked })
+                      setItem(r.data)
+                    }}
+                    style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: 14, color: '#374151' }}>
+                    Connaissance Simple IP <span style={{ fontSize: 12, color: '#6B7280' }}>(lié au taux horaire)</span>
+                  </span>
+                </label>
+                {!item.linked_to_hourly_rate && (
+                  <div style={{ fontSize: 12, color: '#6B7280', paddingLeft: 26 }}>Service serveur — lié à l'inflation</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

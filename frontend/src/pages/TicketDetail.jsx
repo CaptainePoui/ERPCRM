@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import NewTaskModal from '../components/NewTaskModal'
 import './Tickets.css'
 
 const PRIORITY_LABELS = {
@@ -32,6 +33,7 @@ const STATUS_TRANSITIONS = {
 
 function fmtMins(min) {
   if (!min) return '0m'
+  if (min < 0) return `-${fmtMins(-min)}`
   const h = Math.floor(min / 60), m = min % 60
   return h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`
 }
@@ -49,11 +51,28 @@ export default function TicketDetail() {
   const [ticket, setTicket] = useState(null)
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState([])
-  const [showAddEntry, setShowAddEntry] = useState(false)
   const [sendingSum, setSendingSum] = useState(false)
   const [sumMsg, setSumMsg] = useState('')
+  const [showTaskModal, setShowTaskModal] = useState(false)
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
-  const [catalogue, setCatalogue] = useState([])
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0)
+
+  // ── Timer permanent ──
+  const timerIntervalRef = useRef(null)
+  const timerStartRef = useRef(Date.now())
+  const timerBaseRef = useRef(0)
+  const lastNoteSecsRef = useRef(0)   // valeur du chrono au moment de la dernière note enregistrée
+  const [timerSecs, setTimerSecs] = useState(0)
+  const [timerRunning, setTimerRunning] = useState(true)
+
+  // ── Note inline ──
+  const [noteDesc, setNoteDesc] = useState('')
+  const [noteBillable, setNoteBillable] = useState(false)
+  const [noteCatItem, setNoteCatItem] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
+
+  // ── Donner du temps ──
+  const [showDonner, setShowDonner] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -67,6 +86,81 @@ export default function TicketDetail() {
     })
   }, [id])
 
+  // Timer — démarre automatiquement, utilise Date.now() pour précision même en arrière-plan
+  useEffect(() => {
+    if (!timerRunning) {
+      clearInterval(timerIntervalRef.current)
+      return
+    }
+    timerIntervalRef.current = setInterval(() => {
+      setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartRef.current) / 1000))
+    }, 1000)
+    return () => clearInterval(timerIntervalRef.current)
+  }, [timerRunning])
+
+  // Recalcul immédiat quand la page redevient visible (après arrière-plan)
+  useEffect(() => {
+    const onVisible = () => {
+      if (timerRunning) {
+        setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartRef.current) / 1000))
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [timerRunning])
+
+  function pauseTimer() {
+    timerBaseRef.current = timerSecs
+    setTimerRunning(false)
+  }
+
+  function resumeTimer() {
+    timerStartRef.current = Date.now()
+    setTimerRunning(true)
+  }
+
+  // Un clic n'importe où sur la page relance le chrono s'il est en pause
+  // (sauf sur le bouton Pause/Reprendre, qui gère déjà son propre clic)
+  useEffect(() => {
+    function onAnyClick(e) {
+      if (!timerRunning && !e.target.closest('[data-timer-btn]')) {
+        resumeTimer()
+      }
+    }
+    document.addEventListener('click', onAnyClick)
+    return () => document.removeEventListener('click', onAnyClick)
+  }, [timerRunning])
+
+  async function saveNote() {
+    const deltaSecs = timerSecs - lastNoteSecsRef.current
+    if (!noteDesc.trim() || deltaSecs < 1) return
+    const mins = Math.max(1, Math.ceil(deltaSecs / 60))
+    lastNoteSecsRef.current = timerSecs   // chrono continue, on avance juste le marqueur
+    setSavingNote(true)
+    try {
+      const r = await api.post(`/v1/tickets/${id}/entries`, {
+        description: noteDesc,
+        duration_minutes: mins,
+        is_billable: noteBillable,
+        catalogue_item_id: noteCatItem || null,
+      })
+      setTicket(r.data)
+      setNoteDesc('')
+      setNoteBillable(false)
+      setNoteCatItem('')
+    } finally { setSavingNote(false) }
+  }
+
+  async function donnerTemps(mins) {
+    const r = await api.post(`/v1/tickets/${id}/entries`, {
+      description: `Temps offert (${mins} min)`,
+      duration_minutes: -mins,
+      is_billable: true,
+      catalogue_item_id: null,
+    })
+    setTicket(r.data)
+  }
+
   async function changeStatus(s) {
     const r = await api.put(`/v1/tickets/${id}`, { status: s })
     setTicket(r.data)
@@ -74,6 +168,11 @@ export default function TicketDetail() {
 
   async function changePriority(p) {
     const r = await api.put(`/v1/tickets/${id}`, { priority: p })
+    setTicket(r.data)
+  }
+
+  async function toggleBillable(v) {
+    const r = await api.put(`/v1/tickets/${id}`, { is_billable: v })
     setTicket(r.data)
   }
 
@@ -112,6 +211,9 @@ export default function TicketDetail() {
   const closed = ['ferme', 'annule', 'facture'].includes(ticket.status)
   const canInvoice = ticket.status === 'fermer_a_facturer' && !ticket.invoice_id
   const hasContactEmail = !!ticket.contact_email
+  const deltaSecs = timerSecs - lastNoteSecsRef.current
+  const deltaMins = Math.ceil(deltaSecs / 60)
+  const totalSecs = Math.max(0, ticket.total_minutes * 60 + timerSecs)
 
   return (
     <div className="page">
@@ -136,9 +238,27 @@ export default function TicketDetail() {
               🧾 Créer facture
             </button>
           )}
+          <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           {!closed && <button className="btn-danger" onClick={deleteTicket}>Supprimer</button>}
         </div>
       </div>
+
+      {/* ── Barre de timer permanente ── */}
+      {!closed && (
+        <div style={{ background: '#1E293B', color: '#fff', padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 700, letterSpacing: 2, color: timerRunning ? '#4ADE80' : '#FCA5A5', minWidth: 80 }}>
+            {fmtSecs(totalSecs)}
+          </span>
+          {timerRunning
+            ? <button data-timer-btn onClick={pauseTimer} style={{ fontSize: 12, padding: '4px 14px', background: 'transparent', border: '1px solid #94A3B8', borderRadius: 6, color: '#94A3B8', cursor: 'pointer' }}>⏸ Pause</button>
+            : <button data-timer-btn onClick={resumeTimer} style={{ fontSize: 12, padding: '4px 14px', background: 'transparent', border: '1px solid #4ADE80', borderRadius: 6, color: '#4ADE80', cursor: 'pointer' }}>▶ Reprendre</button>
+          }
+          <span style={{ fontSize: 12, color: '#64748B' }}>Temps total du ticket — inclut toutes les saisies</span>
+          <button onClick={() => setShowDonner(true)} style={{ marginLeft: 'auto', fontSize: 12, padding: '5px 14px', background: '#059669', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>
+            🎁 Donner du temps
+          </button>
+        </div>
+      )}
 
       <div className="tkt-detail-grid">
         <div className="tkt-section">
@@ -173,7 +293,18 @@ export default function TicketDetail() {
               <strong>{new Date(ticket.closed_at).toLocaleDateString('fr-CA')}</strong>
             </div>
           )}
-          <div className="tkt-info-row"><span>Temps total</span><strong>{fmtMins(ticket.total_minutes)}</strong></div>
+          {!closed && (
+            <div className="tkt-info-row">
+              <span>Temps réponse</span>
+              <strong style={{ fontFamily: 'monospace' }}>{fmtSecs(deltaSecs)}</strong>
+            </div>
+          )}
+          <div className="tkt-info-row">
+            <span>Facturable</span>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={ticket.is_billable} onChange={e => toggleBillable(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+            </label>
+          </div>
           {ticket.invoice_id && (
             <div className="tkt-info-row">
               <span>Facture liée</span>
@@ -221,10 +352,50 @@ export default function TicketDetail() {
         </div>
       </div>
 
+      <TicketTachesSection ticketId={id} onNewTask={() => setShowTaskModal(true)} refreshKey={taskRefreshKey} />
+
+      {/* ── Note de travail inline (remplace le modal AddEntry) ── */}
+      {!closed && (
+          <div className="tkt-entries-section" style={{ marginTop: 0 }}>
+            <div className="tkt-section-title" style={{ marginBottom: 10 }}>
+              Note de travail
+            </div>
+            <textarea
+              rows={3}
+              value={noteDesc}
+              onChange={e => {
+                setNoteDesc(e.target.value)
+                if (!timerRunning && e.target.value.trim()) resumeTimer()
+              }}
+              placeholder="Décrivez ce que vous avez fait… (le chrono reprend automatiquement si vous commencez à taper)"
+              style={{ width: '100%', borderRadius: 8, border: '1px solid #D1D5DB', padding: '10px 12px', fontSize: 13, color: '#374151', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }}
+            />
+            <div style={{ display: 'flex', gap: 12, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              {catalogue.length > 0 && (
+                <select value={noteCatItem} onChange={e => setNoteCatItem(e.target.value)} style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, minWidth: 160 }}>
+                  <option value="">Service : Aucun</option>
+                  {catalogue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
+                <input type="checkbox" checked={noteBillable} onChange={e => setNoteBillable(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+                Facturable
+              </label>
+              <button
+                className="btn-primary"
+                onClick={saveNote}
+                disabled={savingNote || !noteDesc.trim() || deltaSecs < 1}
+                style={{ marginLeft: 'auto', fontSize: 13 }}
+              >
+                {savingNote ? '...' : deltaSecs >= 60 ? `Enregistrer (${deltaMins} min)` : 'Enregistrer (< 1 min)'}
+              </button>
+            </div>
+          </div>
+      )}
+
       <div className="tkt-entries-section">
         <div className="tkt-section-title" style={{ marginBottom: 12 }}>
           Saisies de temps
-          {!closed && <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowAddEntry(true)}>+ Ajouter</button>}
         </div>
         <table className="tkt-entries-table">
           <thead>
@@ -258,20 +429,17 @@ export default function TicketDetail() {
         {ticket.entries.length > 0 && (
           <div className="tkt-time-total">
             <span>Total : {fmtMins(ticket.total_minutes)}</span>
-            <span style={{ color: '#059669' }}>Facturable : {fmtMins(ticket.entries.filter(e => e.is_billable).reduce((s, e) => s + e.duration_minutes, 0))}</span>
+            <span style={{ color: ticket.is_billable ? '#059669' : '#9CA3AF' }}>
+              {ticket.is_billable ? `Facturable : ${fmtMins(Math.max(0, ticket.total_minutes))}` : 'Ticket non facturable'}
+            </span>
           </div>
         )}
       </div>
 
-      {showAddEntry && (
-        <AddEntryModal
-          catalogue={catalogue}
-          onClose={() => setShowAddEntry(false)}
-          onSave={async (data) => {
-            const r = await api.post(`/v1/tickets/${id}/entries`, data)
-            setTicket(r.data)
-            setShowAddEntry(false)
-          }}
+      {showDonner && (
+        <DonnerDuTempsModal
+          onClose={() => setShowDonner(false)}
+          onSave={donnerTemps}
         />
       )}
 
@@ -286,107 +454,70 @@ export default function TicketDetail() {
           }}
         />
       )}
+      {showTaskModal && (
+        <NewTaskModal
+          prefillTicket={{ id: ticket.id, label: ticket.title }}
+          prefillCompany={ticket.company_id ? { id: ticket.company_id, label: ticket.company_name } : null}
+          prefillContact={ticket.contact_id ? { id: ticket.contact_id, label: ticket.contact_name } : null}
+          onClose={() => setShowTaskModal(false)}
+          onCreated={() => { setShowTaskModal(false); setTaskRefreshKey(k => k + 1) }}
+        />
+      )}
     </div>
   )
 }
 
-function AddEntryModal({ catalogue, onClose, onSave }) {
-  const [form, setForm] = useState({ description: '', duration_minutes: 0, is_billable: false, catalogue_item_id: '' })
+function DonnerDuTempsModal({ onClose, onSave }) {
+  const [minsInput, setMinsInput] = useState('')
   const [saving, setSaving] = useState(false)
-  const [running, setRunning] = useState(false)
-  const [elapsed, setElapsed] = useState(0)
-  const timerRef = useRef(null)
-  const startRef = useRef(null)
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  const startTimer = useCallback(() => {
-    startRef.current = Date.now() - elapsed * 1000
-    timerRef.current = setInterval(() => {
-      const secs = Math.floor((Date.now() - startRef.current) / 1000)
-      setElapsed(secs)
-    }, 1000)
-    setRunning(true)
-  }, [elapsed])
+  const mins = parseInt(minsInput) || 0
+  const rounded = Math.floor(mins / 5) * 5
 
-  const stopTimer = useCallback(() => {
-    clearInterval(timerRef.current)
-    setRunning(false)
-    const mins = Math.max(1, Math.ceil(elapsed / 60))
-    setForm(p => ({ ...p, duration_minutes: mins }))
-  }, [elapsed])
-
-  const resetTimer = () => {
-    clearInterval(timerRef.current)
-    setRunning(false)
-    setElapsed(0)
-    setForm(p => ({ ...p, duration_minutes: 0 }))
-  }
-
-  useEffect(() => () => clearInterval(timerRef.current), [])
-
-  async function save() {
-    if (!form.description.trim()) return
-    if (running) stopTimer()
-    const mins = form.duration_minutes || Math.max(1, Math.ceil(elapsed / 60))
-    if (!mins) return
+  async function submit() {
+    if (rounded < 5) return
     setSaving(true)
     try {
-      await onSave({ ...form, catalogue_item_id: form.catalogue_item_id || null, duration_minutes: parseInt(mins) })
-    } finally { setSaving(false) }
+      await onSave(rounded)
+      onClose()
+    } catch { setSaving(false) }
   }
-
-  const h = Math.floor(form.duration_minutes / 60), m = form.duration_minutes % 60
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
-        <h3 className="modal-title">Saisie de temps</h3>
-
-        {/* Chrono */}
-        <div className="tkt-chrono">
-          <div className="tkt-chrono-display" style={{ color: running ? '#059669' : elapsed > 0 ? '#D97706' : '#374151' }}>
-            {fmtSecs(elapsed)}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {!running
-              ? <button type="button" className="btn-primary" style={{ fontSize: 12, padding: '4px 14px' }} onClick={startTimer}>▶ Démarrer</button>
-              : <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '4px 14px', color: '#D97706', borderColor: '#D97706' }} onClick={stopTimer}>⏹ Arrêter</button>
+        <h3 className="modal-title">Donner du temps</h3>
+        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+          Le temps offert est arrondi au 5 min inférieur (avantage du tarif). Il crée un crédit négatif facturable sur le ticket.
+        </p>
+        <div className="form-group">
+          <label>Minutes à offrir</label>
+          <input
+            type="number"
+            min={1}
+            value={minsInput}
+            onChange={e => setMinsInput(e.target.value)}
+            placeholder="Ex: 60"
+            autoFocus
+          />
+        </div>
+        {mins > 0 && (
+          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#166534' }}>
+            {rounded > 0
+              ? <><strong>{rounded} min</strong> offertes (arrondi depuis {mins} min) → crédit de <strong>-{rounded} min</strong> sur le ticket</>
+              : <span style={{ color: '#DC2626' }}>Minimum 5 minutes</span>
             }
-            {elapsed > 0 && !running && (
-              <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} onClick={resetTimer}>↺ Reset</button>
-            )}
-          </div>
-          {elapsed > 0 && <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 2 }}>{Math.max(1, Math.ceil(elapsed / 60))} minute{Math.ceil(elapsed/60) > 1 ? 's' : ''} arrondi</div>}
-        </div>
-
-        <div className="form-group">
-          <label>Durée (minutes) — {h > 0 ? `${h}h ` : ''}{m > 0 ? `${m}m` : form.duration_minutes === 0 ? '0m' : ''}</label>
-          <input type="number" min={1} value={form.duration_minutes} onChange={e => f('duration_minutes', parseInt(e.target.value) || 0)} placeholder="Ex: 30" />
-        </div>
-
-        <div className="form-group">
-          <label>Description *</label>
-          <textarea rows={3} value={form.description} onChange={e => f('description', e.target.value)} autoFocus placeholder="Ex: Remplacement routeur, configuration VPN..." />
-        </div>
-        {catalogue.length > 0 && (
-          <div className="form-group">
-            <label>Service associé</label>
-            <select value={form.catalogue_item_id} onChange={e => f('catalogue_item_id', e.target.value)}>
-              <option value="">-- Aucun --</option>
-              {catalogue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
           </div>
         )}
-        <div style={{ marginTop: 4 }}>
-          <label className="tax-check" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
-            <input type="checkbox" checked={form.is_billable} onChange={e => f('is_billable', e.target.checked)} />
-            <span>Facturable</span>
-          </label>
-        </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !form.description.trim() || (form.duration_minutes < 1 && elapsed < 1)}>
-            {saving ? '...' : 'Ajouter'}
+          <button
+            className="btn-primary"
+            onClick={submit}
+            disabled={saving || rounded < 5}
+            style={{ background: '#059669' }}
+          >
+            {saving ? '...' : `Offrir ${rounded > 0 ? rounded : '?'} min`}
           </button>
         </div>
       </div>
@@ -400,8 +531,7 @@ function InvoiceModal({ ticket, catalogue, onClose, onCreated }) {
   const [error, setError] = useState('')
 
   const totalMins = ticket.entries.reduce((s, e) => s + e.duration_minutes, 0)
-  const billableMins = ticket.entries.filter(e => e.is_billable).reduce((s, e) => s + e.duration_minutes, 0)
-  const workMins = billableMins > 0 ? billableMins : totalMins
+  const workMins = ticket.is_billable ? Math.max(0, totalMins) : 0
   const rounded = Math.ceil(workMins / 15) * 15
   const hours = rounded / 60
   const labour = Math.round(hours * 145 * 100) / 100
@@ -429,13 +559,12 @@ function InvoiceModal({ ticket, catalogue, onClose, onCreated }) {
         <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
           <div style={{ fontSize: 13, color: '#166534', marginBottom: 4 }}>Résumé du temps</div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
-            {workMins > 0
-              ? `${Math.floor(rounded / 60)}h${String(rounded % 60).padStart(2,'0')}min arrondi → ${labour.toFixed(2)} $ (à 145$/h)`
-              : 'Aucun temps saisi — ligne main d\'œuvre omise'}
+            {!ticket.is_billable
+              ? 'Ticket non facturable — ligne main d\'œuvre omise'
+              : workMins > 0
+                ? `${Math.floor(rounded / 60)}h${String(rounded % 60).padStart(2,'0')}min arrondi → ${labour.toFixed(2)} $ (à 145$/h)`
+                : 'Aucun temps saisi — ligne main d\'œuvre omise'}
           </div>
-          {billableMins > 0 && billableMins !== totalMins && (
-            <div style={{ fontSize: 12, color: '#166534', marginTop: 2 }}>Uniquement le temps facturable ({Math.floor(billableMins/60)}h{billableMins%60}min)</div>
-          )}
         </div>
 
         <div className="form-group">
@@ -453,6 +582,57 @@ function InvoiceModal({ ticket, catalogue, onClose, onCreated }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ── Tâches liées au ticket ────────────────────────────────────────────────────
+function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
+  const [tasks, setTasks] = useState([])
+  const [showCompleted, setShowCompleted] = useState(false)
+
+  useEffect(() => {
+    api.get(`/v1/tasks?ticket_id=${ticketId}`).then(r => setTasks(r.data))
+  }, [ticketId, refreshKey])
+
+  async function toggleComplete(task) {
+    const r = task.completed
+      ? await api.put(`/v1/tasks/${task.id}`, { completed: false, status: 'en_cours' })
+      : await api.post(`/v1/tasks/${task.id}/complete`)
+    setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+  }
+
+  const filtered = tasks.filter(t => showCompleted || !t.completed)
+
+  return (
+    <div className="tkt-entries-section" style={{ marginTop: 0 }}>
+      <div className="tkt-section-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
+        Tâches liées
+        {tasks.length > 0 && (
+          <label style={{ fontSize: 12, fontWeight: 400, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+            <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+            Voir complétées
+          </label>
+        )}
+        <button className="btn-secondary" onClick={onNewTask} style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}>+ Tâche</button>
+      </div>
+      {filtered.length === 0 && (
+        <div style={{ color: '#9CA3AF', fontSize: 13, padding: '8px 0' }}>Aucune tâche liée à ce ticket.</div>
+      )}
+      {filtered.map(t => {
+        const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+        return (
+          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'center' }}>
+            <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: '#184FA0', cursor: 'pointer', flexShrink: 0 }} />
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+            {t.subtasks?.length > 0 && (
+              <span style={{ fontSize: 11, color: '#9CA3AF' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
+            )}
+            {t.due_date && <span style={{ fontSize: 12, color: overdue ? '#DC2626' : '#9CA3AF' }}>{overdue ? '⚠ ' : ''}{new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}</span>}
+            {t.assigned_name && <span style={{ fontSize: 12, color: '#6B7280' }}>· {t.assigned_name}</span>}
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import NewTicketModal from '../components/NewTicketModal'
 import './Tickets.css'
 
 const PRIORITY_LABELS = {
@@ -116,80 +117,3 @@ export default function Tickets() {
   )
 }
 
-function NewTicketModal({ onClose, onCreated }) {
-  const [companies, setCompanies] = useState([])
-  const [contacts, setContacts] = useState([])
-  const [form, setForm] = useState({ company_id: '', contact_id: '', title: '', priority: 'normal', description: '' })
-  const [saving, setSaving] = useState(false)
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  useEffect(() => { api.get('/v1/companies').then(r => setCompanies(r.data)) }, [])
-
-  useEffect(() => {
-    if (!form.company_id) { setContacts([]); f('contact_id', ''); return }
-    api.get(`/v1/contacts?company_id=${form.company_id}`).then(r => {
-      setContacts(r.data)
-      f('contact_id', '')
-    })
-  }, [form.company_id])
-
-  async function save() {
-    if (!form.company_id || !form.title.trim()) return
-    setSaving(true)
-    try {
-      const r = await api.post('/v1/tickets', {
-        company_id: form.company_id,
-        contact_id: form.contact_id || null,
-        title: form.title,
-        priority: form.priority,
-        description: form.description || null,
-      })
-      onCreated(r.data)
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()}>
-        <h3 className="modal-title">Nouveau ticket</h3>
-        <div className="form-group">
-          <label>Compagnie *</label>
-          <select value={form.company_id} onChange={e => f('company_id', e.target.value)} autoFocus>
-            <option value="">-- Sélectionner --</option>
-            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        {contacts.length > 0 && (
-          <div className="form-group">
-            <label>Contact (pour notifications courriel)</label>
-            <select value={form.contact_id} onChange={e => f('contact_id', e.target.value)}>
-              <option value="">-- Aucun --</option>
-              {contacts.map(c => <option key={c.id} value={c.id}>{c.full_name}{c.email ? ` — ${c.email}` : ''}</option>)}
-            </select>
-          </div>
-        )}
-        <div className="form-group">
-          <label>Titre *</label>
-          <input value={form.title} onChange={e => f('title', e.target.value)} placeholder="Titre du ticket" />
-        </div>
-        <div className="form-group">
-          <label>Priorité</label>
-          <select value={form.priority} onChange={e => f('priority', e.target.value)}>
-            <option value="faible">Faible</option>
-            <option value="normal">Normal</option>
-            <option value="urgent">Urgent</option>
-            <option value="critique">Critique</option>
-          </select>
-        </div>
-        <div className="form-group">
-          <label>Description</label>
-          <textarea value={form.description} onChange={e => f('description', e.target.value)} rows={3} />
-        </div>
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !form.company_id || !form.title.trim()}>{saving ? '...' : 'Créer'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}

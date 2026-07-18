@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import NewInvoiceModal from '../components/NewInvoiceModal'
 import './Invoices.css'
 
 const STATUS_LABELS = {
@@ -120,62 +121,8 @@ export default function Invoices() {
         </div>
       )}
 
-      {showNew && <NewInvoiceModal onClose={() => setShowNew(false)} onCreated={inv => { setInvoices(p => [inv, ...p]); navigate(`/invoices/${inv.id}`) }} />}
+      {showNew && <NewInvoiceModal onClose={() => setShowNew(false)} />}
     </div>
   )
 }
 
-function NewInvoiceModal({ onClose, onCreated }) {
-  const [companies, setCompanies] = useState([])
-  const [form, setForm] = useState({ company_id: '', apply_tps: true, apply_tvq: true, is_recurring: false })
-  const [saving, setSaving] = useState(false)
-  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  useEffect(() => {
-    api.get('/v1/companies').then(r => setCompanies(r.data))
-  }, [])
-
-  async function save() {
-    if (!form.company_id) return
-    setSaving(true)
-    try {
-      const r = await api.post('/v1/invoices', form)
-      onCreated(r.data)
-    } finally { setSaving(false) }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={e => e.stopPropagation()}>
-        <h3 className="modal-title">Nouvelle facture</h3>
-        <div className="form-group">
-          <label>Compagnie *</label>
-          <select value={form.company_id} onChange={e => f('company_id', e.target.value)} autoFocus>
-            <option value="">-- Sélectionner --</option>
-            {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
-        <div style={{ display: 'flex', gap: 16 }}>
-          <label className="tax-check"><input type="checkbox" checked={form.apply_tps} onChange={e => f('apply_tps', e.target.checked)} /><span>TPS 5%</span></label>
-          <label className="tax-check"><input type="checkbox" checked={form.apply_tvq} onChange={e => f('apply_tvq', e.target.checked)} /><span>TVQ 9,975%</span></label>
-          <label className="tax-check"><input type="checkbox" checked={form.is_recurring} onChange={e => f('is_recurring', e.target.checked)} /><span>Récurrente</span></label>
-        </div>
-        {form.is_recurring && (
-          <div className="form-group">
-            <label>Fréquence</label>
-            <select value={form.recurrence_frequency || ''} onChange={e => f('recurrence_frequency', e.target.value)}>
-              <option value="">-- Choisir --</option>
-              <option value="mensuel">Mensuelle</option>
-              <option value="trimestriel">Trimestrielle</option>
-              <option value="annuel">Annuelle</option>
-            </select>
-          </div>
-        )}
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !form.company_id}>{saving ? '...' : 'Créer'}</button>
-        </div>
-      </div>
-    </div>
-  )
-}
