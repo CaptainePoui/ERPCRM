@@ -15,7 +15,7 @@ from app.models.contact_company import ContactCompany, ContactCompanyFunction
 from app.models.function import Function
 from app.models.entity_log import EntityLog
 from app.models.user import User
-from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut, CompanyListItem, ContactInCompanyOut
+from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut, CompanyListItem, ContactInCompanyOut, VendorRef
 from app.schemas.contact import ContactCompanyLink, ContactCompanyUpdate
 
 router = APIRouter()
@@ -29,6 +29,7 @@ def _load_opts():
         selectinload(Company.internal_manager),
         selectinload(Company.contact_companies).selectinload(ContactCompany.contact).selectinload(Contact.entity).selectinload(Entity.communication_channels),
         selectinload(Company.contact_companies).selectinload(ContactCompany.functions).selectinload(ContactCompanyFunction.function),
+        selectinload(Company.vendor),
     ]
 
 
@@ -42,6 +43,7 @@ def _build_company_out(company: Company) -> CompanyOut:
             contact_id=c.id,
             first_name=c.first_name,
             last_name=c.last_name,
+            email=cc.email,
             is_primary=cc.is_primary,
             is_active=cc.is_active,
             functions=[f.function.name for f in cc.functions],
@@ -63,6 +65,8 @@ def _build_company_out(company: Company) -> CompanyOut:
         is_active=company.is_active,
         internal_manager_id=company.internal_manager_id,
         internal_manager=company.internal_manager,
+        vendor_id=company.vendor_id,
+        vendor=VendorRef(contact_id=company.vendor.id, first_name=company.vendor.first_name, last_name=company.vendor.last_name) if company.vendor else None,
         currency=company.currency,
         is_taxable=company.is_taxable,
         tvq_applicable=company.tvq_applicable,
@@ -248,7 +252,7 @@ async def link_contact(company_id: uuid.UUID, payload: ContactCompanyLink, db: A
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Ce contact est déjà lié à cette compagnie")
 
-    cc = ContactCompany(contact_id=payload.contact_id, company_id=company_id, is_primary=payload.is_primary)
+    cc = ContactCompany(contact_id=payload.contact_id, company_id=company_id, email=payload.email, is_primary=payload.is_primary)
     db.add(cc)
     await db.flush()
 
@@ -262,6 +266,30 @@ async def link_contact(company_id: uuid.UUID, payload: ContactCompanyLink, db: A
          description=f"Contact « {contact_name} » lié")
     await db.commit()
     return {"ok": True, "contact_company_id": str(cc.id)}
+
+
+@router.patch("/{company_id}/contacts/{contact_id}")
+async def update_contact_link(company_id: uuid.UUID, contact_id: uuid.UUID, payload: ContactCompanyUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(ContactCompany).options(
+        selectinload(ContactCompany.functions)
+    ).where(ContactCompany.company_id == company_id, ContactCompany.contact_id == contact_id))
+    cc = result.scalar_one_or_none()
+    if not cc:
+        raise HTTPException(status_code=404, detail="Lien introuvable")
+    if payload.email is not None:
+        cc.email = payload.email or None
+    if payload.is_primary is not None:
+        cc.is_primary = payload.is_primary
+    if payload.is_active is not None:
+        cc.is_active = payload.is_active
+    if payload.function_ids is not None:
+        for f in cc.functions:
+            await db.delete(f)
+        await db.flush()
+        for fid in payload.function_ids:
+            db.add(ContactCompanyFunction(contact_company_id=cc.id, function_id=fid))
+    await db.commit()
+    return {"ok": True}
 
 
 @router.delete("/{company_id}/contacts/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)

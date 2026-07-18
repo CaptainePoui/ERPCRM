@@ -1,5 +1,5 @@
 """
-IMAP poller: checks inbox every 60s.
+IMAP poller: checks inbox every 30s.
 - Subject matches [Ticket #XXXXXXXX] → adds entry to existing ticket
 - Otherwise → finds contact by sender email → creates new ticket
 """
@@ -23,7 +23,7 @@ from app.models.contact_company import ContactCompany
 log = logging.getLogger("imap_poller")
 
 _TICKET_RE = re.compile(r'\[Ticket #([A-F0-9]{8})\]', re.IGNORECASE)
-_POLL_INTERVAL = 60  # seconds
+_POLL_INTERVAL = 30  # seconds
 
 
 def _decode_header(value: str) -> str:
@@ -122,6 +122,34 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
 
     # 2. No match or no reference — try to create new ticket from sender email
     if not sender:
+        return
+
+    # Search by CC email first, then fallback to Contact.email
+    cc_result = await db.execute(
+        select(ContactCompany)
+        .options(
+            selectinload(ContactCompany.contact).selectinload(Contact.contact_companies).selectinload(ContactCompany.company),
+            selectinload(ContactCompany.company),
+        )
+        .where(func.lower(ContactCompany.email) == sender, ContactCompany.is_active == True)
+    )
+    cc_match = cc_result.scalar_one_or_none()
+
+    if cc_match:
+        contact = cc_match.contact
+        cc = cc_match
+        ticket_title = subject.strip() or f"Email de {sender}"
+        ticket = Ticket(
+            company_id=cc.company_id,
+            contact_id=contact.id,
+            title=ticket_title[:255],
+            description=body or None,
+            priority='normal',
+            status='ouvert',
+        )
+        db.add(ticket)
+        await db.commit()
+        log.info("Created ticket from CC email of %s (company %s): %s", sender, cc.company_id, ticket_title)
         return
 
     result = await db.execute(

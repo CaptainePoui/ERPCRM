@@ -24,6 +24,9 @@ class Company(Base):
     # Gestionnaire interne
     internal_manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
 
+    # Vendeur référent (contact)
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"))
+
     # Devise
     currency: Mapped[str] = mapped_column(String(3), default="CAD")
     exchange_rate: Mapped[float] = mapped_column(Float, default=1.0)
@@ -38,4 +41,5 @@ class Company(Base):
 
     entity: Mapped["Entity"] = relationship("Entity", back_populates="company")
     internal_manager: Mapped["User"] = relationship("User", foreign_keys=[internal_manager_id])
+    vendor: Mapped["Contact"] = relationship("Contact", foreign_keys=[vendor_id])
     contact_companies: Mapped[list["ContactCompany"]] = relationship("ContactCompany", back_populates="company", cascade="all, delete-orphan")

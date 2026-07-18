@@ -25,6 +25,7 @@ class CatalogueOut(BaseModel):
     image_url: str | None
     description: str | None
     notes: str | None
+    linked_to_hourly_rate: bool
     model_config = {"from_attributes": True}
 
 
@@ -42,6 +43,7 @@ class CatalogueUpdate(BaseModel):
     is_active: bool | None = None
     description: str | None = None
     notes: str | None = None
+    linked_to_hourly_rate: bool | None = None
 
 
 @router.get("", response_model=list[CatalogueOut])

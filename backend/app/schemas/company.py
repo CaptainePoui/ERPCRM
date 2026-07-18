@@ -3,12 +3,19 @@ from datetime import datetime
 import uuid
 from app.schemas.common import StatusOut, AddressOut, CommunicationOut, UserRefOut
 
+class VendorRef(BaseModel):
+    contact_id: uuid.UUID
+    first_name: str
+    last_name: str
+    model_config = {"from_attributes": True}
+
 
 class ContactInCompanyOut(BaseModel):
     contact_company_id: uuid.UUID
     contact_id: uuid.UUID
     first_name: str
     last_name: str
+    email: str | None
     is_primary: bool
     is_active: bool
     functions: list[str]
@@ -29,6 +36,7 @@ class CompanyCreate(BaseModel):
     annual_revenue: float | None = None
     notes_internal: str | None = None
     internal_manager_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = None
     currency: str = "CAD"
     exchange_rate: float = 1.0
     is_taxable: bool = True
@@ -50,6 +58,7 @@ class CompanyUpdate(BaseModel):
     annual_revenue: float | None = None
     notes_internal: str | None = None
     internal_manager_id: uuid.UUID | None = None
+    vendor_id: uuid.UUID | None = None
     currency: str | None = None
     exchange_rate: float | None = None
     is_taxable: bool | None = None
@@ -89,6 +98,8 @@ class CompanyOut(BaseModel):
     is_active: bool
     internal_manager_id: uuid.UUID | None
     internal_manager: UserRefOut | None
+    vendor_id: uuid.UUID | None
+    vendor: VendorRef | None
     currency: str
     is_taxable: bool
     tvq_applicable: bool

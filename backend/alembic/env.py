@@ -29,6 +29,20 @@ import app.models.contact_company
 import app.models.communication
 import app.models.address
 import app.models.user
+import app.models.catalogue
+import app.models.invoice
+import app.models.payment
+import app.models.ticket
+import app.models.maintenance
+import app.models.equipment
+import app.models.telephony
+import app.models.purchase_order
+import app.models.portal
+import app.models.ecom
+import app.models.employee
+import app.models.app_settings
+import app.models.entity_log
+import app.models.task
 target_metadata = Base.metadata
 
 # other values from the config, defined by the needs of env.py,

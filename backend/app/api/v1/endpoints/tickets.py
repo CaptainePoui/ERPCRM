@@ -11,18 +11,19 @@ from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.ticket import Ticket, TicketEntry
 from app.models.company import Company
+from app.models.contact import Contact
+from app.models.contact_company import ContactCompany
 from app.models.user import User
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.catalogue import CatalogueItem
-from app.core.email import send_ticket_entry_email, send_ticket_close_email
+from app.core.email import send_ticket_entry_email, send_ticket_close_email, send_ticket_open_email
+from app.core.config import settings
+from app.api.v1.endpoints.settings import get_setting
 
 router = APIRouter()
 
 PRIORITIES = ["faible", "normal", "urgent", "critique"]
 STATUSES   = ["ouvert", "en_cours", "en_attente", "fermer_a_facturer", "facture", "ferme", "annule"]
-
-HOURLY_RATE = 145.0  # $/h
-ROUND_TO_MIN = 15    # round to nearest 15 min
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -52,6 +53,7 @@ class TicketOut(BaseModel):
     priority: str
     status: str
     invoice_id: uuid.UUID | None
+    is_billable: bool
     created_at: datetime
     closed_at: datetime | None
     entries: list[EntryOut]
@@ -66,6 +68,7 @@ class TicketListItem(BaseModel):
     title: str
     priority: str
     status: str
+    is_billable: bool
     created_at: datetime
     total_minutes: int
 
@@ -84,6 +87,7 @@ class TicketUpdate(BaseModel):
     description: str | None = None
     priority: str | None = None
     status: str | None = None
+    is_billable: bool | None = None
 
 class EntryCreate(BaseModel):
     description: str
@@ -106,7 +110,7 @@ async def _get_ticket(ticket_id: uuid.UUID, db: AsyncSession) -> Ticket:
         select(Ticket)
         .options(
             selectinload(Ticket.company),
-            selectinload(Ticket.contact),
+            selectinload(Ticket.contact).selectinload(Contact.contact_companies),
             selectinload(Ticket.assigned_to),
             selectinload(Ticket.entries).selectinload(TicketEntry.user),
         )
@@ -116,6 +120,16 @@ async def _get_ticket(ticket_id: uuid.UUID, db: AsyncSession) -> Ticket:
     if not t:
         raise HTTPException(status_code=404, detail="Ticket introuvable")
     return t
+
+
+def _contact_email(t: Ticket) -> str | None:
+    """Return the contact's email for this ticket's company (CC email), fallback to personal."""
+    if not t.contact:
+        return None
+    for cc in t.contact.contact_companies:
+        if cc.company_id == t.company_id and cc.email:
+            return cc.email
+    return t.contact.email
 
 def _build_entry(e: TicketEntry) -> EntryOut:
     return EntryOut(
@@ -132,12 +146,12 @@ def _build_out(t: Ticket) -> TicketOut:
         id=t.id, company_id=t.company_id, company_name=t.company.name,
         contact_id=t.contact_id,
         contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
-        contact_email=t.contact.email if t.contact else None,
+        contact_email=_contact_email(t),
         assigned_to_id=t.assigned_to_id,
         assigned_name=t.assigned_to.full_name if t.assigned_to else None,
         title=t.title, description=t.description,
         priority=t.priority, status=t.status,
-        invoice_id=t.invoice_id,
+        invoice_id=t.invoice_id, is_billable=t.is_billable,
         created_at=t.created_at, closed_at=t.closed_at,
         entries=[_build_entry(e) for e in t.entries],
         total_minutes=total,
@@ -172,6 +186,7 @@ async def list_tickets(
         contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
         assigned_name=t.assigned_to.full_name if t.assigned_to else None,
         title=t.title, priority=t.priority, status=t.status,
+        is_billable=t.is_billable,
         created_at=t.created_at,
         total_minutes=sum(e.duration_minutes for e in t.entries),
     ) for t in tickets]
@@ -184,11 +199,25 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
     if payload.priority not in PRIORITIES:
         raise HTTPException(status_code=400, detail=f"Priorité invalide: {payload.priority}")
-    t = Ticket(**payload.model_dump())
+    t = Ticket(**payload.model_dump(), status="en_cours")
     db.add(t)
     await db.commit()
     t = await _get_ticket(t.id, db)
-    return _build_out(t)
+    out = _build_out(t)
+    contact_email = _contact_email(t)
+    if contact_email:
+        portal_url = f"http://{settings.ERPCRM_HOST}:3010/portal"
+        asyncio.create_task(send_ticket_open_email(
+            to_email=contact_email,
+            ticket_id=str(t.id),
+            ticket_title=t.title,
+            company_name=t.company.name,
+            contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
+            priority=t.priority,
+            description=t.description,
+            portal_url=portal_url,
+        ))
+    return out
 
 
 @router.get("/{ticket_id}", response_model=TicketOut)
@@ -240,9 +269,10 @@ async def add_entry(ticket_id: uuid.UUID, payload: EntryCreate, current_user: Us
     out = _build_out(t)
 
     # Fire-and-forget email to contact
-    if t.contact and t.contact.email:
+    contact_email = _contact_email(t)
+    if contact_email:
         asyncio.create_task(send_ticket_entry_email(
-            to_email=t.contact.email,
+            to_email=contact_email,
             ticket_id=str(t.id),
             ticket_title=t.title,
             company_name=t.company.name,
@@ -282,7 +312,8 @@ async def send_summary(
     _: User = Depends(get_current_user),
 ):
     t = await _get_ticket(ticket_id, db)
-    if not t.contact or not t.contact.email:
+    contact_email = _contact_email(t)
+    if not contact_email:
         raise HTTPException(status_code=400, detail="Ce ticket n'a pas de contact avec courriel")
 
     total = sum(e.duration_minutes for e in t.entries)
@@ -298,7 +329,7 @@ async def send_summary(
     ]
 
     await send_ticket_close_email(
-        to_email=t.contact.email,
+        to_email=contact_email,
         ticket_id=str(t.id),
         ticket_title=t.title,
         company_name=t.company.name,
@@ -342,15 +373,18 @@ async def create_invoice_from_ticket(
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
 
-    # Billable minutes or total minutes
-    billable_mins = sum(e.duration_minutes for e in t.entries if e.is_billable)
-    total_mins = sum(e.duration_minutes for e in t.entries)
-    work_mins = billable_mins if billable_mins > 0 else total_mins
+    # Read dynamic settings
+    hourly_rate = float(await get_setting(db, "hourly_rate"))
+    round_to_min = int(await get_setting(db, "labour_round_minutes"))
 
-    # Round up to nearest 15 min
-    rounded_mins = math.ceil(work_mins / ROUND_TO_MIN) * ROUND_TO_MIN if work_mins > 0 else 0
+    # Ticket au complet est facturable ou non — le temps facturé est le total du ticket
+    total_mins = sum(e.duration_minutes for e in t.entries)
+    work_mins = max(0, total_mins) if t.is_billable else 0
+
+    # Round up to nearest X min
+    rounded_mins = math.ceil(work_mins / round_to_min) * round_to_min if work_mins > 0 else 0
     hours = rounded_mins / 60.0
-    labour_total = round(hours * HOURLY_RATE, 2)
+    labour_total = round(hours * hourly_rate, 2)
 
     # Next invoice number
     year = date.today().year
@@ -395,15 +429,13 @@ async def create_invoice_from_ticket(
     if rounded_mins > 0:
         h_int = int(hours)
         m_int = int((hours - h_int) * 60)
-        time_desc = f"Main d'œuvre — {h_int}h{m_int:02d}min à {HOURLY_RATE:.0f}$/h"
-        if billable_mins > 0 and billable_mins != total_mins:
-            time_desc += f" (temps facturable arrondi à {ROUND_TO_MIN} min)"
+        time_desc = f"Main d'œuvre — {h_int}h{m_int:02d}min à {hourly_rate:.0f}$/h"
         line2 = InvoiceLine(
             invoice_id=inv.id,
             catalogue_item_id=None,
             description=time_desc,
             qty=hours,
-            unit_price=HOURLY_RATE,
+            unit_price=hourly_rate,
             line_total=labour_total,
             sort_order=sort,
         )

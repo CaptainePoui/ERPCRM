@@ -15,6 +15,7 @@ class CatalogueItem(Base):
     price: Mapped[float] = mapped_column(Float, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="CAD")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    linked_to_hourly_rate: Mapped[bool] = mapped_column(Boolean, default=False)
     image_url: Mapped[str | None] = mapped_column(String(500))
     description: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
