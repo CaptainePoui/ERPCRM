@@ -42,6 +42,8 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         phone=contact.phone,
         mobile=contact.mobile,
         extension=contact.extension,
+        phone_other=contact.phone_other,
+        sipv_sync=contact.sipv_sync,
         notes_internal=contact.notes_internal,
         is_active=contact.is_active,
         created_at=contact.entity.created_at,
