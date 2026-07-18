@@ -322,3 +322,28 @@ avec l'extension de test "200"/isolation).
 Fichiers : backend/app/core/sipv_client.py, backend/app/api/v1/endpoints/companies.py,
 backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/CompanyDetail.jsx,
 frontend/src/pages/ContactDetail.jsx.
+
+### TASK-023.1 [x] Fusion postes SIP dans la liste Extensions + IP publique/privée
+Demande de l'utilisateur : ne pas dupliquer "Extensions" et "Postes SIP" en deux
+listes séparées — les postes SIP SONT les extensions. Voir le statut en pastille
+verte/rouge (pas en texte) et avoir l'IP publique + IP privée de chaque poste
+enregistré, comme dans ScopServ, pour diagnostiquer SIP ALG / double NAT chez le
+client (IP publique = IP privée → ALG actif ou double NAT).
+Fait :
+- SIPV `esl.py` : `_parse_registrations()` extrait `network_ip` (IP publique vue par
+  FreeSWITCH) et l'IP du champ Contact SIP via regex (IP privée annoncée par le
+  poste) depuis `show registrations as json`. `RegistrationOut` gagne `public_ip`,
+  `private_ip`, `port`. `tenant_registrations()` appelle `show_registrations()` une
+  seule fois pour tout le tenant au lieu d'un appel ESL par poste.
+- ERPCRM `companies.py` GET /{id}/sip-extensions : copie `public_ip`/`private_ip`/
+  `reg_port` dans la fusion extensions + registrations.
+- CompanyDetail.jsx : suppression de la section séparée "Postes SIP" ; nouveau calcul
+  `mergedExtensions` qui fusionne les fiches ERPCRM (`Extension`, DID/messagerie) et
+  les postes SIPV réels par numéro de poste (SIPV = source de vérité pour l'existence
+  du poste — la plupart des postes n'ont pas de fiche ERPCRM). Colonnes ajoutées au
+  tableau Extensions : pastille de statut (vert/rouge/gris si pas de poste SIPV),
+  IP publique, IP privée avec ⚠ si les deux sont identiques. Bouton supprimer visible
+  seulement pour les postes ayant une vraie fiche ERPCRM.
+Fichiers : sipv/backend/app/api/v1/endpoints/esl.py,
+erpcrm/backend/app/api/v1/endpoints/companies.py,
+erpcrm/frontend/src/pages/CompanyDetail.jsx.
