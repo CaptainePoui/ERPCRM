@@ -299,6 +299,21 @@ export default function CompanyDetail({ isNew }) {
     await load()
   }
 
+  const [confirmSipv, setConfirmSipv] = useState(null) // null | true | false — valeur ciblee en attente de confirmation
+  const [sipvError, setSipvError] = useState('')
+
+  async function toggleSipvTenant() {
+    if (confirmSipv === null) return
+    setSipvError('')
+    try {
+      const r = await api.post(`/v1/companies/${id}/sipv-tenant`, { enabled: confirmSipv })
+      setCompany(r.data)
+      setConfirmSipv(null)
+    } catch (e) {
+      setSipvError(e.response?.data?.detail || 'Erreur de communication avec SIPV')
+    }
+  }
+
   if (loading) return <div className="detail-loading">Chargement...</div>
 
   const c = company
@@ -340,6 +355,37 @@ export default function CompanyDetail({ isNew }) {
         />
       )}
 
+      {confirmSipv !== null && c && (
+        <div className="modal-overlay" onClick={() => { setConfirmSipv(null); setSipvError('') }}>
+          <div className="modal-box" style={{ width: 460 }} onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">
+              {confirmSipv ? 'Créer/activer le tenant SIPV ?' : 'Désactiver le tenant SIPV ?'}
+            </h3>
+            {confirmSipv ? (
+              <p>
+                Ceci va créer (ou réactiver) un vrai tenant téléphonique dans SIPV pour
+                <strong> {c.name}</strong> (compte <code>{c.account_number}</code>).
+                Assure-toi que cette compagnie a vraiment besoin de service téléphonique
+                avant de continuer — ne coche pas ça par erreur.
+              </p>
+            ) : (
+              <p>
+                Ceci va désactiver le tenant téléphonique de <strong>{c.name}</strong> côté
+                SIPV. Les postes existants ne pourront plus s'enregistrer tant que ce n'est
+                pas réactivé. Le tenant n'est pas supprimé — réversible en recochant.
+              </p>
+            )}
+            {sipvError && <div className="adm-form-error">{sipvError}</div>}
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => { setConfirmSipv(null); setSipvError('') }}>Annuler</button>
+              <button className="btn-primary" onClick={toggleSipvTenant}>
+                {confirmSipv ? 'Activer' : 'Désactiver'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!isNew && (
         <div className="detail-tabs">
           {TABS.map((t, i) => (
@@ -364,6 +410,19 @@ export default function CompanyDetail({ isNew }) {
                   </div>
                   <InlineField label="Nom de compagnie" value={c.name} onSave={v => saveField('name', v)} />
                   <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
+                  <div className="ifield">
+                    <div className="ifield-label">Tenant téléphonique SIPV</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={c.sipv_enabled}
+                        onChange={e => setConfirmSipv(e.target.checked)}
+                      />
+                      {c.sipv_enabled
+                        ? <span style={{ color: '#059669', fontWeight: 600 }}>Actif</span>
+                        : <span style={{ color: '#9CA3AF' }}>Inactif</span>}
+                    </label>
+                  </div>
                   <InlineField label="NEQ" value={c.neq} onSave={v => saveField('neq', v)} />
                   <InlineField label="Gestionnaire interne"
                     value={c.internal_manager_id || ''}

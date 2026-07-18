@@ -1,9 +1,12 @@
 import uuid
+import httpx
+from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
+from app.core import sipv_client
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.entity import Entity, EntityType
 from app.models.company import Company
@@ -63,6 +66,8 @@ def _build_company_out(company: Company) -> CompanyOut:
         annual_revenue=company.annual_revenue,
         notes_internal=company.notes_internal,
         is_active=company.is_active,
+        sipv_enabled=company.sipv_enabled,
+        sipv_tenant_id=company.sipv_tenant_id,
         internal_manager_id=company.internal_manager_id,
         internal_manager=company.internal_manager,
         vendor_id=company.vendor_id,
@@ -178,6 +183,55 @@ async def update_company(company_id: uuid.UUID, payload: CompanyUpdate, db: Asyn
                  new_value=str(new_value) if new_value is not None else None)
         setattr(company, field, new_value)
 
+    await db.commit()
+
+    result = await db.execute(select(Company).where(Company.id == company_id).options(*_load_opts()))
+    return _build_company_out(result.scalar_one())
+
+
+class SipvTenantToggle(BaseModel):
+    enabled: bool
+
+
+@router.post("/{company_id}/sipv-tenant", response_model=CompanyOut)
+async def toggle_sipv_tenant(
+    company_id: uuid.UUID,
+    payload: SipvTenantToggle,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Active ou desactive le tenant telephonique SIPV d'une compagnie.
+    Activer = cree le tenant s'il n'existe pas encore (ou le reactive s'il existait).
+    Desactiver = desactive le tenant cote SIPV (les postes ne peuvent plus s'enregistrer),
+    ne le supprime pas — reversible en reactivant.
+    """
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+
+    if payload.enabled and not company.account_number:
+        raise HTTPException(status_code=400, detail="Le numéro de compte (tenant) doit être renseigné avant d'activer le tenant SIPV")
+
+    try:
+        sipv_result = await sipv_client.sync_company(
+            account_number=company.account_number,
+            company_name=company.name,
+            erpcrm_company_id=str(company.id),
+            is_active=payload.enabled,
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable ou en erreur : {e}")
+
+    company.sipv_enabled = payload.enabled
+    if sipv_result.get("tenant_id"):
+        company.sipv_tenant_id = uuid.UUID(sipv_result["tenant_id"])
+
+    _log(db, company_id, current_user, "field_change",
+         field_name="sipv_enabled",
+         old_value=str(not payload.enabled),
+         new_value=str(payload.enabled))
     await db.commit()
 
     result = await db.execute(select(Company).where(Company.id == company_id).options(*_load_opts()))

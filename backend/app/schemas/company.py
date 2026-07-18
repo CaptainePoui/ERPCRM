@@ -96,6 +96,8 @@ class CompanyOut(BaseModel):
     annual_revenue: float | None
     notes_internal: str | None
     is_active: bool
+    sipv_enabled: bool
+    sipv_tenant_id: uuid.UUID | None
     internal_manager_id: uuid.UUID | None
     internal_manager: UserRefOut | None
     vendor_id: uuid.UUID | None

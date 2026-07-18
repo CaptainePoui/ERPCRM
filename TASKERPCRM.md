@@ -140,6 +140,7 @@ Fichiers touchés :
 | TASK-019   | sipv mon poste  | SIPV — portail "Mon poste" dans Portal.jsx (TASK-S028)                         |
 | TASK-020   | sipv gestion    | SIPV — portail "Gestion téléphonique" dans Portal.jsx (TASK-S029)              |
 | TASK-021   | sipv billing    | SIPV — endpoint billing events SIPV→ERPCRM (TASK-S032)                         |
+| TASK-022   | sipv tenant     | Checkbox activer/désactiver le tenant SIPV sur la fiche compagnie ✓            |
 
 ---
 
@@ -267,3 +268,27 @@ Travail requis :
 - Lien avec le module Invoice existant (TASK-005)
 Fichier cible : backend/app/api/v1/endpoints/billing_sipv.py.
 Enregistrer dans main.py.
+
+### TASK-022 [x] Checkbox tenant SIPV sur fiche compagnie
+Constat avant implémentation : le champ `account_number` était juste un texte libre —
+rien n'appelait jamais SIPV pour créer le tenant réellement (déjà noté dans TASK-018).
+Fait :
+- Migration `k2l3m4n5o6p7` : `sipv_enabled` (bool, défaut false) + `sipv_tenant_id`
+  (UUID nullable) sur companies
+- `core/sipv_client.py` (nouveau) : client httpx vers SIPV `/api/v1/sync/company`
+  (X-Api-Key = settings.ERPCRM_API_KEY — nouvelle clé ajoutée, distincte de SIPV_API_KEY
+  qui sert à valider les appels entrants de SIPV)
+- POST /v1/companies/{id}/sipv-tenant {enabled: bool} — active (crée/réactive le tenant,
+  exige account_number renseigné, erreur 400 sinon) ou désactive (is_active=false côté
+  SIPV, réversible, ne supprime rien). Erreurs SIPV remontées en 502, pas best-effort ici
+  (contrairement au lien contact↔extension TASK-S022 SIPV) car c'est une action explicite
+  de l'utilisateur qui doit savoir si ça a fonctionné.
+- CompanyDetail.jsx : checkbox + modal de confirmation (texte différent activer/désactiver,
+  avertissement explicite pour éviter de cocher par erreur) dans l'onglet Identification
+- httpx ajouté à requirements.txt (n'était pas installé sur ce serveur, installé + épinglé)
+- Migration appliquée en prod (alembic upgrade head), service erpcrm-backend redémarré
+Fichiers : backend/app/models/company.py, backend/app/schemas/company.py,
+backend/app/api/v1/endpoints/companies.py, backend/app/core/sipv_client.py (nouveau),
+backend/app/core/config.py, backend/requirements.txt,
+backend/alembic/versions/k2l3m4n5o6p7_company_sipv_tenant.py,
+frontend/src/pages/CompanyDetail.jsx.
