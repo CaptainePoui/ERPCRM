@@ -1031,48 +1031,21 @@ function TelephonyTab({ companyId }) {
     return <span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>{status === 'en_transit' ? 'En transit' : status.charAt(0).toUpperCase() + status.slice(1)}</span>
   }
 
+  // Fusionne les extensions ERPCRM (fiches DID/messagerie) et les postes SIPV reels
+  // (statut/IP en direct), matches par numero de poste. La plupart des postes n'ont
+  // pas de fiche ERPCRM correspondante (jamais creee) — SIPV est la source de verite
+  // pour l'existence du poste, ERPCRM ajoute juste le DID/messagerie/suppression si presents.
+  const mergedExtensions = (() => {
+    const byExt = new Map()
+    for (const e of exts) byExt.set(e.extension, { ...e, erpcrm: true, sip: sipExts.find(se => se.extension === e.extension) })
+    for (const se of sipExts) {
+      if (!byExt.has(se.extension)) byExt.set(se.extension, { id: `sip-${se.id}`, extension: se.extension, name: se.name, is_active: se.is_active, did_number: null, voicemail_email: null, erpcrm: false, sip: se })
+    }
+    return [...byExt.values()].sort((a, b) => a.extension.localeCompare(b.extension, undefined, { numeric: true }))
+  })()
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Postes SIP reels (SIPV) */}
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Postes SIP ({sipExts.length})</div>
-          <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={loadSipExtensions}>↻ Actualiser</button>
-        </div>
-        {sipExtsLoading ? <div className="empty-tab">Chargement...</div> : sipExts.length === 0 ? (
-          <div className="empty-tab">Aucun poste SIP (tenant SIPV inactif ou aucune extension créée — voir la case "Tenant téléphonique SIPV" dans l'onglet Général).</div>
-        ) : (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#F9FAFB' }}>
-                {['Poste','Nom','Username SIP','Statut connexion','Actif'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {sipExts.map(e => (
-                <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 700, fontFamily: 'monospace' }}>{e.extension}</td>
-                  <td style={{ padding: '10px 12px' }}>{e.name}</td>
-                  <td style={{ padding: '10px 12px', color: '#6B7280' }}><code>{e.username}</code></td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <span style={{
-                      background: e.registered ? '#F0FDF4' : '#F3F4F6',
-                      color: e.registered ? '#059669' : '#6B7280',
-                      fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px',
-                    }}>
-                      {e.registered ? 'Enregistré' : 'Hors ligne'}
-                    </span>
-                  </td>
-                  <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{e.is_active ? 'Oui' : 'Non'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
       {/* DIDs */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -1107,29 +1080,55 @@ function TelephonyTab({ companyId }) {
       {/* Extensions */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Extensions ({exts.length})</div>
-          <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNewExt(true)}>+ Ajouter</button>
+          <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            Extensions ({mergedExtensions.length})
+            {sipExtsLoading && <span style={{ fontSize: 11, fontWeight: 400, color: '#9CA3AF', marginLeft: 8 }}>chargement statut SIP...</span>}
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={loadSipExtensions}>↻ Statut SIP</button>
+            <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNewExt(true)}>+ Ajouter</button>
+          </div>
         </div>
-        {exts.length === 0 ? <div className="empty-tab">Aucune extension enregistrée.</div> : (
+        {mergedExtensions.length === 0 ? <div className="empty-tab">Aucune extension enregistrée.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
-                {['Ext.','Nom','DID associé','Messagerie','Actif',''].map(h => (
+                {['','Ext.','Nom','DID associé','Messagerie','Actif','IP publique','IP privée',''].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {exts.map(e => (
-                <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                  <td style={{ padding: '10px 12px', fontWeight: 700, fontFamily: 'monospace' }}>{e.extension}</td>
-                  <td style={{ padding: '10px 12px' }}>{e.name}</td>
-                  <td style={{ padding: '10px 12px', color: '#6B7280', fontFamily: 'monospace', fontSize: 12 }}>{e.did_number || '—'}</td>
-                  <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{e.voicemail_email || '—'}</td>
-                  <td style={{ padding: '10px 12px' }}>{e.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Oui</span> : <span style={{ color: '#9CA3AF' }}>Non</span>}</td>
-                  <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={() => removeExt(e.id)}>✕</button></td>
-                </tr>
-              ))}
+              {mergedExtensions.map(e => {
+                const sip = e.sip
+                return (
+                  <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                    <td style={{ padding: '10px 12px' }}>
+                      {sip ? (
+                        <span title={sip.registered ? 'En ligne' : 'Hors ligne'} style={{
+                          display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                          background: sip.registered ? '#22C55E' : '#EF4444',
+                        }} />
+                      ) : (
+                        <span title="Pas de poste SIPV" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#D1D5DB' }} />
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 12px', fontWeight: 700, fontFamily: 'monospace' }}>{e.extension}</td>
+                    <td style={{ padding: '10px 12px' }}>{e.name}</td>
+                    <td style={{ padding: '10px 12px', color: '#6B7280', fontFamily: 'monospace', fontSize: 12 }}>{e.did_number || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{e.voicemail_email || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>{e.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Oui</span> : <span style={{ color: '#9CA3AF' }}>Non</span>}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>{sip?.public_ip || '—'}</td>
+                    <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>
+                      {sip?.private_ip || '—'}
+                      {sip?.registered && sip.public_ip && sip.private_ip && sip.public_ip === sip.private_ip && (
+                        <span title="IP publique = IP privée : SIP ALG actif ou double NAT chez le client" style={{ marginLeft: 6, color: '#D97706', fontWeight: 700 }}>⚠</span>
+                      )}
+                    </td>
+                    <td style={{ padding: '10px 12px' }}>{e.erpcrm && <button className="inv-del-btn" onClick={() => removeExt(e.id)}>✕</button>}</td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         )}

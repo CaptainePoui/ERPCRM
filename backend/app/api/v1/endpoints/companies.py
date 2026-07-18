@@ -259,6 +259,9 @@ async def get_company_sip_extensions(company_id: uuid.UUID, db: AsyncSession = D
     for ext in extensions:
         reg = reg_by_username.get(ext["username"])
         ext["registered"] = reg["registered"] if reg else False
+        ext["public_ip"] = reg["public_ip"] if reg else None
+        ext["private_ip"] = reg["private_ip"] if reg else None
+        ext["reg_port"] = reg["port"] if reg else None
     return extensions
 
 
