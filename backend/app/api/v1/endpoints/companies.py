@@ -238,6 +238,30 @@ async def toggle_sipv_tenant(
     return _build_company_out(result.scalar_one())
 
 
+@router.get("/{company_id}/sip-extensions")
+async def get_company_sip_extensions(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    Postes SIP de cette compagnie (via SIPV, proxy) avec statut d'enregistrement en
+    direct. Retourne une liste vide si le tenant SIPV n'est pas actif ou si SIPV est
+    injoignable — jamais d'accès direct SIPV depuis le frontend.
+    """
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return []
+    try:
+        extensions = await sipv_client.list_extensions(str(company.sipv_tenant_id))
+        regs = await sipv_client.tenant_registrations(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        return []
+    reg_by_username = {r["username"]: r for r in regs}
+    for ext in extensions:
+        reg = reg_by_username.get(ext["username"])
+        ext["registered"] = reg["registered"] if reg else False
+    return extensions
+
+
 @router.post("/{company_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Company).where(Company.id == company_id))

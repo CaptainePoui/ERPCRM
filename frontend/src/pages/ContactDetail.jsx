@@ -143,6 +143,8 @@ export default function ContactDetail({ isNew }) {
   const [showTicket, setShowTicket] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
+  const [sipExt, setSipExt] = useState(null)
+  const [sipExtLoading, setSipExtLoading] = useState(false)
 
   useEffect(() => {
     api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
@@ -154,6 +156,17 @@ export default function ContactDetail({ isNew }) {
     const r = await api.get(`/v1/contacts/${id}`)
     setContact(r.data)
     setLoading(false)
+    if (r.data.sipv_sync) loadSipExtension()
+  }
+
+  async function loadSipExtension() {
+    setSipExtLoading(true)
+    try {
+      const r = await api.get(`/v1/contacts/${id}/sip-extension`)
+      setSipExt(r.data)
+    } finally {
+      setSipExtLoading(false)
+    }
   }
 
   async function saveField(field, value) {
@@ -245,6 +258,8 @@ export default function ContactDetail({ isNew }) {
                   const val = e.target.checked
                   await api.put(`/v1/contacts/${id}`, { sipv_sync: val })
                   setContact(prev => ({ ...prev, sipv_sync: val }))
+                  if (val) loadSipExtension()
+                  else setSipExt(null)
                 }}
                 style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
               />
@@ -257,6 +272,27 @@ export default function ContactDetail({ isNew }) {
                 </span>
               )}
             </div>
+
+            {c.sipv_sync && (
+              <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+                {sipExtLoading && <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement du poste SIP...</div>}
+                {!sipExtLoading && !sipExt && (
+                  <div style={{ fontSize: 13, color: '#6B7280' }}>
+                    Aucun poste SIP lié à ce contact pour l'instant (sera lié automatiquement à la création d'un poste dans SIPV, ou hors ligne si SIPV est injoignable).
+                  </div>
+                )}
+                {!sipExtLoading && sipExt && (
+                  <div className="ifields-grid">
+                    <div className="ifield"><div className="ifield-label">Poste</div><div className="ifield-value">{sipExt.extension}</div></div>
+                    <div className="ifield"><div className="ifield-label">Nom SIP</div><div className="ifield-value">{sipExt.name}</div></div>
+                    <div className="ifield"><div className="ifield-label">Username SIP</div><div className="ifield-value"><code>{sipExt.username}</code></div></div>
+                    <div className="ifield"><div className="ifield-label">Actif</div><div className="ifield-value">{sipExt.is_active ? 'Oui' : 'Non'}</div></div>
+                    <div className="ifield"><div className="ifield-label">Messagerie vocale</div><div className="ifield-value">{sipExt.voicemail_enabled ? 'Activée' : 'Désactivée'}</div></div>
+                    <div className="ifield"><div className="ifield-label">Synchronisé FreeSWITCH</div><div className="ifield-value">{sipExt.freeswitch_synced ? 'Oui' : 'En attente'}</div></div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {c.companies.length > 0 && (
               <>

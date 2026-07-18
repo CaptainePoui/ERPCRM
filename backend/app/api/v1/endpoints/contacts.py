@@ -1,9 +1,11 @@
 import uuid
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
+from app.core import sipv_client
 from app.api.v1.endpoints.auth import get_current_user, get_current_user_or_service
 from app.models.entity import Entity, EntityType
 from app.models.contact import Contact
@@ -143,6 +145,24 @@ async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db),
     if not contact:
         raise HTTPException(status_code=404, detail="Contact introuvable")
     return _build_contact_out(contact)
+
+
+@router.get("/{contact_id}/sip-extension")
+async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    Poste SIP lie a ce contact (via SIPV, proxy — jamais d'appel direct SIPV depuis
+    le frontend). Retourne null si pas de poste lie ou si SIPV est injoignable.
+    """
+    contact = await db.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if not contact.sipv_sync:
+        return None
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+    except httpx.HTTPError:
+        return None
+    return extensions[0] if extensions else None
 
 
 @router.put("/{contact_id}", response_model=ContactOut)
