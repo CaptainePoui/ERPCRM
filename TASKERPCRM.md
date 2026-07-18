@@ -141,6 +141,7 @@ Fichiers touchés :
 | TASK-020   | sipv gestion    | SIPV — portail "Gestion téléphonique" dans Portal.jsx (TASK-S029)              |
 | TASK-021   | sipv billing    | SIPV — endpoint billing events SIPV→ERPCRM (TASK-S032)                         |
 | TASK-022   | sipv tenant     | Checkbox activer/désactiver le tenant SIPV sur la fiche compagnie ✓            |
+| TASK-023   | sipv postes     | Postes SIP visibles sur fiche contact + fiche compagnie (proxy SIPV) ✓         |
 
 ---
 
@@ -292,3 +293,32 @@ backend/app/api/v1/endpoints/companies.py, backend/app/core/sipv_client.py (nouv
 backend/app/core/config.py, backend/requirements.txt,
 backend/alembic/versions/k2l3m4n5o6p7_company_sipv_tenant.py,
 frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-023 [x] Postes SIP visibles sur fiche contact + fiche compagnie
+Demande de l'utilisateur : voir/gérer les infos SIP d'une personne depuis sa fiche
+contact (pas juste depuis la compagnie), et voir la liste des postes + statut de
+connexion en direct sur la fiche compagnie.
+Fait :
+- `sipv_client.py` : `get_extensions_by_contact()`, `list_extensions()`,
+  `tenant_registrations()` — 3 nouveaux appels proxy vers SIPV
+- GET /v1/contacts/{id}/sip-extension : poste lié à CE contact (via erpcrm_contact_id,
+  null si pas synchronisé ou pas encore lié)
+- GET /v1/companies/{id}/sip-extensions : tous les postes du tenant + statut
+  d'enregistrement en direct (fusionne extensions.py + esl.py côté SIPV)
+- ContactDetail.jsx : section Téléphonie (déjà existante pour le checkbox sipv_sync)
+  affiche maintenant le poste lié — poste, nom, username, actif, messagerie, sync
+  FreeSWITCH — quand sipv_sync est coché
+- CompanyDetail.jsx onglet Téléphonie : nouvelle liste "Postes SIP" avec badge
+  Enregistré/Hors ligne, distincte des anciennes fiches DID/poste ERPCRM
+  (`models/telephony.py`, jamais connectées à SIPV — toujours présentes, pas touchées)
+Côté SIPV (voir TASKSIPV.md) : nouvelle dépendance combinée JWT/API-key
+(`get_current_user_or_service`) appliquée à GET /extensions/tenant/{id} et
+GET /esl/registrations/tenant/{id}, + nouveau GET /extensions/by-contact/{id}.
+Écart de données découvert : les extensions de test 100/101 (créées avant ce
+correctif) n'avaient pas `erpcrm_contact_id` malgré le lien automatique ayant créé
+les contacts — corrigé manuellement en DB pour ces deux-là ; le code de création
+(TASK-S022 SIPV) fonctionne correctement pour les nouvelles extensions (vérifié
+avec l'extension de test "200"/isolation).
+Fichiers : backend/app/core/sipv_client.py, backend/app/api/v1/endpoints/companies.py,
+backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/CompanyDetail.jsx,
+frontend/src/pages/ContactDetail.jsx.
