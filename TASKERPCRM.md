@@ -478,6 +478,38 @@ Fichiers additionnels : sipv/backend/app/models/sip.py,
 sipv/backend/alembic/versions/0027_fwd_offline_enabled.py,
 sipv/backend/alembic/versions/0028_record_categories.py.
 
+### TASK-023.5 [x] Plan d'appel + caller ID interne/externe sur la fiche contact
+Demande de l'utilisateur (2026-07-24, "mega prompt" fiche poste complète, GO explicite
+"je veux tout ça dans mon erpcrm lié au SIPV") : exposer côté ERPCRM le plan d'appel
+réellement câblé (TASKSIPV TASK-S018.5) et le caller ID séparé interne/externe
+(TASKSIPV TASK-S018.6), tous deux nouvellement construits côté SIPV cette session.
+
+Fait :
+- `SipExtensionUpdate` (contacts.py) étendu avec les nouveaux champs — aucun nouveau
+  code de proxy nécessaire, `sipv_client.update_extension()` transmet déjà n'importe
+  quel champ générique (`**fields`) vers `PUT /extensions/{id}` côté SIPV. La lecture
+  (`GET /sip-extension`) est un passthrough brut de `ExtOut` — pas de changement requis
+  non plus, les nouveaux champs SIPV apparaissent automatiquement.
+- ContactDetail.jsx, section Téléphonie : nouvelle sous-section "Caller ID" (nom/numéro
+  interne, nom/numéro externe, case Masquer) et "Plan d'appel" (Canada/US/international/
+  numéros payants avec état "hérite du défaut compagnie" quand `null`, pays/préfixes
+  bloqués, limite mensuelle, NIP d'autorisation en écriture seule — jamais affiché en
+  clair, `has_ld_pin` seulement).
+- Trunk préféré (`preferred_trunk_id`) volontairement PAS exposé ici — réglage
+  technique rare, reste géré uniquement dans l'admin SIPV (cohérent avec le principe
+  "SIPV expose tout, ERPCRM expose le sous-ensemble fréquent").
+
+⚠️ Incident pendant le déploiement : `systemctl restart erpcrm-backend erpcrm-backend-tls`
+a échoué (pas de sudo NOPASSWD configuré sur ce serveur, contrairement à SIPV) — les
+deux process ont été tués (SIGTERM) sans redémarrage automatique (pas de code=failure),
+causant une coupure de quelques minutes. Rétabli manuellement (nohup) le temps qu'un
+`sudo systemctl restart` soit fait par l'utilisateur pour revenir sous supervision
+systemd normale. Testé après coup : port 8010 sert du vrai trafic, port 8011 (TLS)
+répond bien depuis SIPV (401, attendu sans clé). À corriger structurellement si ça se
+reproduit : configurer un sudoers NOPASSWD scopé à `systemctl restart erpcrm-backend*`
+pour cet utilisateur, ou toujours demander avant un restart sur ce serveur.
+Fichiers : backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/ContactDetail.jsx.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
