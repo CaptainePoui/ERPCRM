@@ -989,6 +989,8 @@ function TelephonyTab({ companyId }) {
   const [showNewExt, setShowNewExt] = useState(false)
   const [ringGroups, setRingGroups] = useState([])
   const [ringGroupsLoading, setRingGroupsLoading] = useState(true)
+  const [pagingGroups, setPagingGroups] = useState([])
+  const [pagingGroupsLoading, setPagingGroupsLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
@@ -997,7 +999,15 @@ function TelephonyTab({ companyId }) {
     ]).then(([d, e]) => { setDids(d.data); setExts(e.data) }).finally(() => setLoading(false))
     loadSipExtensions()
     loadRingGroups()
+    loadPagingGroups()
   }, [companyId])
+
+  function loadPagingGroups() {
+    setPagingGroupsLoading(true)
+    api.get(`/v1/companies/${companyId}/paging-groups`)
+      .then(r => setPagingGroups(r.data))
+      .finally(() => setPagingGroupsLoading(false))
+  }
 
   function loadSipExtensions() {
     setSipExtsLoading(true)
@@ -1141,6 +1151,9 @@ function TelephonyTab({ companyId }) {
         sipExts={sipExts} onRefresh={loadRingGroups} />
 
       <PickupGroupSection companyId={companyId} sipExts={sipExts} onRefresh={loadSipExtensions} />
+
+      <PagingGroupsSection companyId={companyId} pagingGroups={pagingGroups} pagingGroupsLoading={pagingGroupsLoading}
+        sipExts={sipExts} onRefresh={loadPagingGroups} />
 
       {showNewDid && (
         <NewDIDModal companyId={companyId} onClose={() => setShowNewDid(false)}
@@ -1333,6 +1346,135 @@ function PickupGroupSection({ companyId, sipExts, onRefresh }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+// ── Groupe de paging — TASK-023.24, 3e section separee ────────────────────────
+function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sipExts, onRefresh }) {
+  const [showNew, setShowNew] = useState(false)
+  const [form, setForm] = useState({ name: '', extension: '', mode: 'unidirectional', multicast_address: '', multicast_port: '' })
+  const [expanded, setExpanded] = useState(null)
+  const [newMemberExt, setNewMemberExt] = useState('')
+
+  async function createGroup() {
+    if (!form.name.trim() || !form.extension.trim()) return
+    await api.post(`/v1/companies/${companyId}/paging-groups`, {
+      ...form,
+      multicast_port: form.multicast_port ? parseInt(form.multicast_port, 10) : null,
+      multicast_address: form.multicast_address || null,
+    })
+    setForm({ name: '', extension: '', mode: 'unidirectional', multicast_address: '', multicast_port: '' })
+    setShowNew(false)
+    onRefresh()
+  }
+
+  async function updateGroup(pgId, field, value) {
+    await api.put(`/v1/companies/${companyId}/paging-groups/${pgId}`, { [field]: value })
+    onRefresh()
+  }
+
+  async function removeGroup(pgId) {
+    if (!confirm('Supprimer ce groupe de paging ?')) return
+    await api.delete(`/v1/companies/${companyId}/paging-groups/${pgId}`)
+    onRefresh()
+  }
+
+  async function addMember(pgId) {
+    const ext = sipExts.find(e => e.extension === newMemberExt)
+    if (!ext) return
+    await api.post(`/v1/companies/${companyId}/paging-groups/${pgId}/members`, { extension_id: ext.id })
+    setNewMemberExt('')
+    onRefresh()
+  }
+
+  async function updateMember(memberId, field, value) {
+    await api.put(`/v1/companies/${companyId}/paging-groups/members/${memberId}`, { [field]: value })
+    onRefresh()
+  }
+
+  async function removeMember(memberId) {
+    await api.delete(`/v1/companies/${companyId}/paging-groups/members/${memberId}`)
+    onRefresh()
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Groupe de paging ({pagingGroups.length})
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
+      </div>
+      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+        Unidirectionnelle = annonce (le récepteur écoute seulement) ; bidirectionnelle = intercom (les deux entendent). ⚠ le mode unidirectionnel ne coupe pas encore réellement l'audio du récepteur — voir TASKSIPV.
+      </div>
+      {showNew && (
+        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="form-group"><label>Nom</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+          <div className="form-group"><label>Extension</label><input value={form.extension} onChange={e => setForm(p => ({ ...p, extension: e.target.value }))} style={{ width: 80 }} /></div>
+          <div className="form-group">
+            <label>Mode</label>
+            <select value={form.mode} onChange={e => setForm(p => ({ ...p, mode: e.target.value }))}>
+              <option value="unidirectional">Unidirectionnelle</option>
+              <option value="bidirectional">Bidirectionnelle</option>
+            </select>
+          </div>
+          <div className="form-group"><label>Adresse multicast</label><input value={form.multicast_address} onChange={e => setForm(p => ({ ...p, multicast_address: e.target.value }))} placeholder="239.1.1.1" style={{ width: 110 }} /></div>
+          <div className="form-group"><label>Port multicast</label><input value={form.multicast_port} onChange={e => setForm(p => ({ ...p, multicast_port: e.target.value }))} style={{ width: 70 }} /></div>
+          <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createGroup}>Créer</button>
+        </div>
+      )}
+      {pagingGroupsLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : pagingGroups.length === 0 ? (
+        <div className="empty-tab">Aucun groupe de paging.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: '#F9FAFB' }}>
+              {['Nom', 'Ext.', 'Mode', 'Multicast', 'Membres', ''].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {pagingGroups.map(pg => (
+              <Fragment key={pg.id}>
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === pg.id ? null : pg.id)}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{pg.name}</td>
+                  <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pg.extension}</td>
+                  <td style={{ padding: '10px 12px' }}>{pg.mode === 'bidirectional' ? 'Bidirectionnelle' : 'Unidirectionnelle'}</td>
+                  <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>{pg.multicast_address ? `${pg.multicast_address}:${pg.multicast_port || ''}` : '—'}</td>
+                  <td style={{ padding: '10px 12px' }}>{pg.paging_members.length}</td>
+                  <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={e => { e.stopPropagation(); removeGroup(pg.id) }}>✕</button></td>
+                </tr>
+                {expanded === pg.id && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Membres</div>
+                      {pg.paging_members.map(m => (
+                        <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ minWidth: 100, fontFamily: 'monospace' }}>{m.extension_username}</span>
+                          <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input type="checkbox" defaultChecked={m.can_send} onChange={e => updateMember(m.id, 'can_send', e.target.checked)} /> Émission
+                          </label>
+                          <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input type="checkbox" defaultChecked={m.can_receive} onChange={e => updateMember(m.id, 'can_receive', e.target.checked)} /> Réception
+                          </label>
+                          <button className="inv-del-btn" onClick={() => removeMember(m.id)}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <input placeholder="Numéro de poste" value={newMemberExt} onChange={e => setNewMemberExt(e.target.value)} style={{ fontSize: 12, width: 100 }} />
+                        <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => addMember(pg.id)}>+ Ajouter un membre</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

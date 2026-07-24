@@ -757,3 +757,30 @@ Fait :
 Testé en direct : `pickup_group` posé sur un poste réel (t1001-100) via le proxy,
 vérifié via `GET /sip-extensions`, remis à `null`. Aucune donnée résiduelle.
 Fichiers : backend/app/api/v1/endpoints/companies.py, frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-023.24 [~] Groupe de paging — 3e section (bidirectionnel/unidirectionnel)
+Dernière des 3 sections séparées demandées (ring group ✓ TASK-023.21, pickup ✓
+TASK-023.22, paging maintenant). Backend neuf côté SIPV (TASK-S023.23).
+
+Fait :
+- `sipv_client.py` : 7 fonctions proxy (miroir exact du pattern ring group).
+- `companies.py` : `GET/POST /{id}/paging-groups`, `PUT/DELETE /{id}/paging-groups/
+  {pg_id}`, `POST /.../members`, `PUT/DELETE /.../members/{member_id}`.
+- `CompanyDetail.jsx` : `PagingGroupsSection`, même structure que `RingGroupsSection`
+  (création inline, ligne dépliable pour les membres) avec en plus mode uni/
+  bidirectionnel, adresse/port multicast, et par membre : émission/réception
+  séparées. Avertissement affiché sur le mode unidirectionnel (pas encore un vrai
+  one-way audio, voir TASKSIPV S023.23) pour ne pas laisser croire à une fonction
+  plus aboutie qu'elle ne l'est.
+
+Testé en direct de bout en bout via l'API (compagnie réelle "Simple IP inc.") :
+groupe créé (mode unidirectional, adresse multicast de test), membre ajouté (poste
+réel t1001-101), membre supprimé, groupe supprimé. SIPV confirmé propre après (0
+lignes `paging_groups`), les 3 postes de test restent `Registered`.
+
+Les 3 sections de groupes demandées par l'utilisateur sont maintenant toutes
+construites et testées : ring group (023.21), pickup (023.22), paging (023.24).
+⚠️ Backend ERPCRM rechargé manuellement (toujours en attente du `sudo systemctl
+restart`, voir TASK-023.5).
+Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/companies.py,
+frontend/src/pages/CompanyDetail.jsx.

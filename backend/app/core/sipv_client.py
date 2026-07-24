@@ -260,3 +260,75 @@ async def remove_ring_group_member(member_id: str) -> None:
             headers=_headers(),
         )
         resp.raise_for_status()
+
+
+async def list_paging_groups(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/tenant/{tenant_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_paging_group(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/tenant/{tenant_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_paging_group(pg_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/{pg_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_paging_group(pg_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/{pg_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+
+
+async def add_paging_group_member(pg_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/{pg_id}/members",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_paging_group_member(member_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/members/{member_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def remove_paging_group_member(member_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/paging-groups/members/{member_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()

@@ -634,3 +634,91 @@ async def update_extension_pickup_group(company_id: uuid.UUID, extension_id: uui
         return await sipv_client.update_extension(str(extension_id), **payload.model_dump(exclude_unset=True))
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Groupe de paging — TASK-023.24, 3e section separee (ring group / pickup / paging) ─
+class PagingGroupPayload(BaseModel):
+    name: str
+    extension: str
+    mode: str = "unidirectional"
+    multicast_address: str | None = None
+    multicast_port: int | None = None
+
+class PagingGroupUpdatePayload(BaseModel):
+    name: str | None = None
+    extension: str | None = None
+    mode: str | None = None
+    multicast_address: str | None = None
+    multicast_port: int | None = None
+    is_active: bool | None = None
+
+class PagingGroupMemberPayload(BaseModel):
+    extension_id: uuid.UUID
+    can_send: bool = True
+    can_receive: bool = True
+
+class PagingGroupMemberUpdatePayload(BaseModel):
+    can_send: bool | None = None
+    can_receive: bool | None = None
+
+
+@router.get("/{company_id}/paging-groups")
+async def list_company_paging_groups(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return []
+    try:
+        return await sipv_client.list_paging_groups(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        return []
+
+
+@router.post("/{company_id}/paging-groups", status_code=status.HTTP_201_CREATED)
+async def create_company_paging_group(company_id: uuid.UUID, payload: PagingGroupPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id(company_id, db)
+    try:
+        return await sipv_client.create_paging_group(tenant_id, **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.put("/{company_id}/paging-groups/{pg_id}")
+async def update_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, payload: PagingGroupUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_paging_group(str(pg_id), **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{company_id}/paging-groups/{pg_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_paging_group(str(pg_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.post("/{company_id}/paging-groups/{pg_id}/members", status_code=status.HTTP_201_CREATED)
+async def add_company_paging_group_member(company_id: uuid.UUID, pg_id: uuid.UUID, payload: PagingGroupMemberPayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.add_paging_group_member(str(pg_id), **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.put("/{company_id}/paging-groups/members/{member_id}")
+async def update_company_paging_group_member(company_id: uuid.UUID, member_id: uuid.UUID, payload: PagingGroupMemberUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_paging_group_member(str(member_id), **payload.model_dump(exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{company_id}/paging-groups/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_company_paging_group_member(company_id: uuid.UUID, member_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.remove_paging_group_member(str(member_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
