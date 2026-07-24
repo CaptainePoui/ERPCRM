@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
@@ -987,6 +987,8 @@ function TelephonyTab({ companyId }) {
   const [loading, setLoading] = useState(true)
   const [showNewDid, setShowNewDid] = useState(false)
   const [showNewExt, setShowNewExt] = useState(false)
+  const [ringGroups, setRingGroups] = useState([])
+  const [ringGroupsLoading, setRingGroupsLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
@@ -994,6 +996,7 @@ function TelephonyTab({ companyId }) {
       api.get(`/v1/telephony/company/${companyId}/extensions`),
     ]).then(([d, e]) => { setDids(d.data); setExts(e.data) }).finally(() => setLoading(false))
     loadSipExtensions()
+    loadRingGroups()
   }, [companyId])
 
   function loadSipExtensions() {
@@ -1001,6 +1004,13 @@ function TelephonyTab({ companyId }) {
     api.get(`/v1/companies/${companyId}/sip-extensions`)
       .then(r => setSipExts(r.data))
       .finally(() => setSipExtsLoading(false))
+  }
+
+  function loadRingGroups() {
+    setRingGroupsLoading(true)
+    api.get(`/v1/companies/${companyId}/ring-groups`)
+      .then(r => setRingGroups(r.data))
+      .finally(() => setRingGroupsLoading(false))
   }
 
   async function removeDid(id) { if (!confirm('Supprimer ce DID ?')) return; await api.delete(`/v1/telephony/dids/${id}`); setDids(p => p.filter(d => d.id !== id)) }
@@ -1127,6 +1137,9 @@ function TelephonyTab({ companyId }) {
         )}
       </div>
 
+      <RingGroupsSection companyId={companyId} ringGroups={ringGroups} ringGroupsLoading={ringGroupsLoading}
+        sipExts={sipExts} onRefresh={loadRingGroups} />
+
       {showNewDid && (
         <NewDIDModal companyId={companyId} onClose={() => setShowNewDid(false)}
           onCreated={d => { setDids(p => [...p, d]); setShowNewDid(false) }} />
@@ -1134,6 +1147,133 @@ function TelephonyTab({ companyId }) {
       {showNewExt && (
         <NewExtModal companyId={companyId} dids={dids} onClose={() => setShowNewExt(false)}
           onCreated={e => { setExts(p => [...p, e]); setShowNewExt(false) }} />
+      )}
+    </div>
+  )
+}
+
+// ── Groupes d'appel (ring groups) — TASK-023.21, section separee du pickup/paging ──
+function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, onRefresh }) {
+  const [showNew, setShowNew] = useState(false)
+  const [form, setForm] = useState({ name: '', extension: '', ring_strategy: 'simultaneous', ring_time: 20 })
+  const [expanded, setExpanded] = useState(null)
+  const [newMemberExt, setNewMemberExt] = useState('')
+
+  async function createGroup() {
+    if (!form.name.trim() || !form.extension.trim()) return
+    await api.post(`/v1/companies/${companyId}/ring-groups`, form)
+    setForm({ name: '', extension: '', ring_strategy: 'simultaneous', ring_time: 20 })
+    setShowNew(false)
+    onRefresh()
+  }
+
+  async function updateGroup(rgId, field, value) {
+    await api.put(`/v1/companies/${companyId}/ring-groups/${rgId}`, { [field]: value })
+    onRefresh()
+  }
+
+  async function removeGroup(rgId) {
+    if (!confirm('Supprimer ce groupe d\'appel ?')) return
+    await api.delete(`/v1/companies/${companyId}/ring-groups/${rgId}`)
+    onRefresh()
+  }
+
+  async function addMember(rgId) {
+    const ext = sipExts.find(e => e.extension === newMemberExt)
+    if (!ext) return
+    await api.post(`/v1/companies/${companyId}/ring-groups/${rgId}/members`, { extension_id: ext.id })
+    setNewMemberExt('')
+    onRefresh()
+  }
+
+  async function updateMember(memberId, field, value) {
+    await api.put(`/v1/companies/${companyId}/ring-groups/members/${memberId}`, { [field]: value })
+    onRefresh()
+  }
+
+  async function removeMember(memberId) {
+    await api.delete(`/v1/companies/${companyId}/ring-groups/members/${memberId}`)
+    onRefresh()
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Groupes d'appel ({ringGroups.length})
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
+      </div>
+      {showNew && (
+        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="form-group"><label>Nom</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
+          <div className="form-group"><label>Extension</label><input value={form.extension} onChange={e => setForm(p => ({ ...p, extension: e.target.value }))} style={{ width: 80 }} /></div>
+          <div className="form-group">
+            <label>Stratégie</label>
+            <select value={form.ring_strategy} onChange={e => setForm(p => ({ ...p, ring_strategy: e.target.value }))}>
+              <option value="simultaneous">Simultanée</option>
+              <option value="hunt">Séquentielle</option>
+            </select>
+          </div>
+          <div className="form-group"><label>Temps (s)</label><input type="number" value={form.ring_time} onChange={e => setForm(p => ({ ...p, ring_time: parseInt(e.target.value, 10) }))} style={{ width: 60 }} /></div>
+          <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createGroup}>Créer</button>
+        </div>
+      )}
+      {ringGroupsLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : ringGroups.length === 0 ? (
+        <div className="empty-tab">Aucun groupe d'appel.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: '#F9FAFB' }}>
+              {['Nom', 'Ext.', 'Stratégie', 'Temps', 'Confirmer', 'Membres', ''].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {ringGroups.map(rg => (
+              <Fragment key={rg.id}>
+                <tr key={rg.id} style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === rg.id ? null : rg.id)}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{rg.name}</td>
+                  <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{rg.extension}</td>
+                  <td style={{ padding: '10px 12px' }}>{rg.ring_strategy === 'hunt' ? 'Séquentielle' : 'Simultanée'}</td>
+                  <td style={{ padding: '10px 12px' }}>{rg.ring_time}s</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <input type="checkbox" checked={rg.confirm_before_answer} onClick={e => e.stopPropagation()}
+                      onChange={e => updateGroup(rg.id, 'confirm_before_answer', e.target.checked)} />
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>{rg.ring_members.length}</td>
+                  <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={e => { e.stopPropagation(); removeGroup(rg.id) }}>✕</button></td>
+                </tr>
+                {expanded === rg.id && (
+                  <tr key={`${rg.id}-detail`}>
+                    <td colSpan={7} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Membres</div>
+                      {rg.ring_members.map(m => (
+                        <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
+                          <span style={{ minWidth: 100, fontFamily: 'monospace' }}>{m.extension_username}</span>
+                          <span style={{ fontSize: 11, color: '#6B7280' }}>Priorité</span>
+                          <input type="number" defaultValue={m.priority} onBlur={e => updateMember(m.id, 'priority', parseInt(e.target.value, 10))} style={{ width: 50, fontSize: 12 }} />
+                          <span style={{ fontSize: 11, color: '#6B7280' }}>Ordre</span>
+                          <input type="number" defaultValue={m.ring_order} onBlur={e => updateMember(m.id, 'ring_order', parseInt(e.target.value, 10))} style={{ width: 50, fontSize: 12 }} />
+                          <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <input type="checkbox" defaultChecked={m.temporarily_excluded} onChange={e => updateMember(m.id, 'temporarily_excluded', e.target.checked)} />
+                            Exclu temporairement
+                          </label>
+                          <button className="inv-del-btn" onClick={() => removeMember(m.id)}>✕</button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <input placeholder="Numéro de poste" value={newMemberExt} onChange={e => setNewMemberExt(e.target.value)} style={{ fontSize: 12, width: 100 }} />
+                        <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => addMember(rg.id)}>+ Ajouter un membre</button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )

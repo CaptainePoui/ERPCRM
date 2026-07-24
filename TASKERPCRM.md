@@ -708,3 +708,35 @@ Testé en direct : upload avec et sans légende, fichier statique servi correcte
 en description), suppression retire le fichier ET la ligne DB. Backend redémarré et
 vérifié fonctionnel (login + upload + liste + suppression). Frontend rechargé via HMR
 sans erreur (vérifié dans les logs du service `erpcrm-frontend`).
+
+### TASK-023.21 [x] Groupes d'appel (ring groups) — section dans compagnie/téléphonie
+Demande de l'utilisateur : 3 sections séparées pour groupe d'appel / paging / pickup
+dans compagnie/téléphonie. Backend déjà complet côté SIPV (TASK-S023.9), juste l'UI
+ERPCRM manquait.
+
+Fait :
+- `sipv_client.py` : 7 fonctions proxy (list/create/update/delete groupe + add/
+  update/remove membre).
+- `companies.py` : `GET/POST /{id}/ring-groups`, `PUT/DELETE /{id}/ring-groups/{rg_id}`,
+  `POST /.../members`, `PUT/DELETE /.../members/{member_id}` -- résout le
+  `sipv_tenant_id` de la compagnie une seule fois (`_company_tenant_id()`).
+- `CompanyDetail.jsx` : nouveau composant `RingGroupsSection` dans l'onglet
+  Téléphonie (après Extensions) -- liste des groupes, création inline, ligne
+  cliquable pour déplier la gestion des membres (priorité/ordre/exclusion
+  temporaire), ajout de membre par numéro de poste.
+
+⚠️ Piège trouvé en testant (pas laissé tel quel) : `payload.model_dump()` (sans
+`mode="json"`) sur un champ `schedule_id: UUID | None` renvoie un objet UUID Python
+brut, pas une chaîne -- httpx ne sait pas le sérialiser en JSON, ce qui aurait fait
+planter la création/mise à jour dès qu'un schedule serait utilisé. Corrigé en
+utilisant `model_dump(mode="json")` partout où un payload contient un UUID.
+
+Testé en direct de bout en bout via l'API (compagnie réelle "Simple IP inc.") :
+groupe créé, membre ajouté (poste réel t1001-100), membre modifié (exclusion
+temporaire), membre supprimé, groupe supprimé. SIPV confirmé : 0 lignes
+`ring_groups`/`ring_group_members` après nettoyage, les 3 postes de test restent
+`Registered`.
+⚠️ Backend ERPCRM rechargé manuellement (toujours en attente du `sudo systemctl
+restart`, voir TASK-023.5).
+Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/companies.py,
+frontend/src/pages/CompanyDetail.jsx.

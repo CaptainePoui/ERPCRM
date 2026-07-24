@@ -512,3 +512,109 @@ async def delete_photo(company_id: uuid.UUID, photo_id: uuid.UUID, db: AsyncSess
     await db.delete(p)
     _log(db, company_id, current_user, "photo_removed", description="Photo d'installation retirée")
     await db.commit()
+
+
+# ── Groupes d'appel (ring groups) — TASK-023.21 ────────────────────────────────
+# Section separee dans l'onglet Telephonie de la fiche compagnie, demande explicite
+# de l'utilisateur (2026-07-24) : "groupes d'appel, paging et pickup, 3 sections
+# separees".
+
+class RingGroupPayload(BaseModel):
+    name: str
+    extension: str
+    ring_strategy: str = "simultaneous"
+    ring_time: int = 20
+    no_answer_destination: str | None = None
+    confirm_before_answer: bool = False
+    schedule_id: uuid.UUID | None = None
+
+class RingGroupUpdatePayload(BaseModel):
+    name: str | None = None
+    ring_strategy: str | None = None
+    ring_time: int | None = None
+    no_answer_destination: str | None = None
+    is_active: bool | None = None
+    confirm_before_answer: bool | None = None
+    schedule_id: uuid.UUID | None = None
+
+class RingGroupMemberPayload(BaseModel):
+    extension_id: uuid.UUID
+    priority: int = 0
+    ring_order: int = 0
+    temporarily_excluded: bool = False
+
+class RingGroupMemberUpdatePayload(BaseModel):
+    priority: int | None = None
+    ring_order: int | None = None
+    temporarily_excluded: bool | None = None
+
+
+async def _company_tenant_id(company_id: uuid.UUID, db: AsyncSession) -> str:
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        raise HTTPException(status_code=400, detail="Cette compagnie n'a pas de tenant SIPV actif")
+    return str(company.sipv_tenant_id)
+
+
+@router.get("/{company_id}/ring-groups")
+async def list_company_ring_groups(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return []
+    try:
+        return await sipv_client.list_ring_groups(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        return []
+
+
+@router.post("/{company_id}/ring-groups", status_code=status.HTTP_201_CREATED)
+async def create_company_ring_group(company_id: uuid.UUID, payload: RingGroupPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id(company_id, db)
+    try:
+        return await sipv_client.create_ring_group(tenant_id, members=[], **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.put("/{company_id}/ring-groups/{rg_id}")
+async def update_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, payload: RingGroupUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_ring_group(str(rg_id), **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{company_id}/ring-groups/{rg_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_ring_group(str(rg_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.post("/{company_id}/ring-groups/{rg_id}/members", status_code=status.HTTP_201_CREATED)
+async def add_company_ring_group_member(company_id: uuid.UUID, rg_id: uuid.UUID, payload: RingGroupMemberPayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.add_ring_group_member(str(rg_id), **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.put("/{company_id}/ring-groups/members/{member_id}")
+async def update_company_ring_group_member(company_id: uuid.UUID, member_id: uuid.UUID, payload: RingGroupMemberUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_ring_group_member(str(member_id), **payload.model_dump(exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{company_id}/ring-groups/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_company_ring_group_member(company_id: uuid.UUID, member_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.remove_ring_group_member(str(member_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")

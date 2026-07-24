@@ -188,3 +188,75 @@ async def delete_phone_button(button_id: str) -> None:
             headers=_headers(),
         )
         resp.raise_for_status()
+
+
+async def list_ring_groups(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/tenant/{tenant_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_ring_group(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/tenant/{tenant_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_ring_group(rg_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/{rg_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_ring_group(rg_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/{rg_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+
+
+async def add_ring_group_member(rg_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/{rg_id}/members",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_ring_group_member(member_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/members/{member_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def remove_ring_group_member(member_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/members/{member_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
