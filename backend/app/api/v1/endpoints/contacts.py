@@ -167,6 +167,8 @@ async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = De
     """
     Poste SIP lie a ce contact (via SIPV, proxy — jamais d'appel direct SIPV depuis
     le frontend). Retourne null si pas de poste lie ou si SIPV est injoignable.
+    Statut en direct (registered/call_state) fusionne (TASK-023.8) -- meme pattern
+    que GET /companies/{id}/sip-extensions, absent ici avant cette tache.
     """
     contact = await db.get(Contact, contact_id)
     if not contact:
@@ -177,7 +179,19 @@ async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = De
         extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
     except httpx.HTTPError:
         return None
-    return extensions[0] if extensions else None
+    if not extensions:
+        return None
+    ext = extensions[0]
+    try:
+        regs = await sipv_client.tenant_registrations(str(ext["tenant_id"]))
+        reg = next((r for r in regs if r["username"] == ext["username"]), None)
+    except httpx.HTTPError:
+        reg = None
+    ext["registered"] = reg["registered"] if reg else False
+    ext["public_ip"] = reg["public_ip"] if reg else None
+    ext["private_ip"] = reg["private_ip"] if reg else None
+    ext["call_state"] = reg["call_state"] if reg else "idle"
+    return ext
 
 
 @router.get("/{contact_id}/sip-extension/connection-info")

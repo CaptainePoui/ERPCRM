@@ -525,6 +525,37 @@ champs de type seront silencieusement ignores par Pydantic (pas d'erreur, juste 
 sauvegardes) tant que ce restart n'est pas fait. Frontend deja live (Vite HMR).
 Fichiers : backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/ContactDetail.jsx.
 
+### TASK-023.8 [~] Statut d'appel en direct (en ligne/sonne) + renvoi/DND visibles
+Demande de l'utilisateur (2026-07-24) : icone combiné rouge = poste en ligne (en
+appel), icone cloche jaune = poste qui sonne, sur fiche compagnie ET contact. Puis
+suite immediate : voir aussi si un poste est en renvoi ou en DND dans l'onglet
+Téléphonie de la compagnie, et une case DND directement dans les options du poste
+sur la fiche contact.
+
+Fait :
+- `companies.py` GET `/{id}/sip-extensions` : fusionne maintenant aussi `call_state`
+  (deja fusionnait registered/public_ip/private_ip) depuis TASKSIPV S023.7.
+- `contacts.py` GET `/{id}/sip-extension` : n'avait JAMAIS de statut en direct avant
+  cette tache (juste les champs bruts SIPV) -- ajoute la meme fusion registered/
+  public_ip/private_ip/call_state via `sipv_client.tenant_registrations()`.
+- `CompanyDetail.jsx` : pastille verte/rouge existante (TASK-023.1) gagne 📞 rouge
+  (en ligne) / 🔔 jaune (sonne) a cote quand `call_state` correspond. Nouvelle
+  colonne "Renvoi/DND" (badges) -- donnees deja presentes sur chaque extension
+  (forward_*_enabled/dnd_enabled), aucun nouvel appel SIPV necessaire pour ca.
+- `ContactDetail.jsx` : nouveau champ "Statut en direct" (pastille + icones, absent
+  avant) dans la grille d'infos du poste ; case "Ne pas déranger (DND)" ajoutee
+  (edite `dnd_enabled`, deja existant cote SIPV depuis S018.3, jamais expose ici).
+
+⚠️ [~] : callstate `ACTIVE`/`HELD` (poste "en ligne") sont des valeurs FreeSWITCH
+documentees mais pas observees avec un vrai appel repondu dans cette session (voir
+TASKSIPV S023.7) -- seul `RINGING` a ete confirme par un test reel. `📞`/en ligne
+devrait fonctionner des qu'un appel est reellement repondu mais n'a pas ete
+verifie avec un cas reel.
+⚠️ Backend ERPCRM pas encore recharge par le process manuel en cours (meme situation
+que TASK-023.5/023.6 -- en attente du `sudo systemctl restart`). Frontend deja live.
+Fichiers : backend/app/api/v1/endpoints/companies.py, contacts.py,
+frontend/src/pages/CompanyDetail.jsx, ContactDetail.jsx.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le

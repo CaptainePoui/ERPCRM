@@ -1075,7 +1075,7 @@ function TelephonyTab({ companyId }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: '#F9FAFB' }}>
-                {['','Ext.','Nom','DID associé','Messagerie','Actif','IP publique','IP privée',''].map(h => (
+                {['','Ext.','Nom','DID associé','Messagerie','Actif','Renvoi/DND','IP publique','IP privée',''].map(h => (
                   <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
                 ))}
               </tr>
@@ -1087,10 +1087,14 @@ function TelephonyTab({ companyId }) {
                   <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
                     <td style={{ padding: '10px 12px' }}>
                       {sip ? (
-                        <span title={sip.registered ? 'En ligne' : 'Hors ligne'} style={{
-                          display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
-                          background: sip.registered ? '#22C55E' : '#EF4444',
-                        }} />
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          <span title={sip.registered ? 'En ligne (enregistré)' : 'Hors ligne'} style={{
+                            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                            background: sip.registered ? '#22C55E' : '#EF4444',
+                          }} />
+                          {sip.call_state === 'active' && <span title="En ligne (appel en cours)" style={{ color: '#DC2626' }}>📞</span>}
+                          {sip.call_state === 'ringing' && <span title="Sonne" style={{ color: '#D97706' }}>🔔</span>}
+                        </span>
                       ) : (
                         <span title="Pas de poste SIPV" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#D1D5DB' }} />
                       )}
@@ -1100,6 +1104,13 @@ function TelephonyTab({ companyId }) {
                     <td style={{ padding: '10px 12px', color: '#6B7280', fontFamily: 'monospace', fontSize: 12 }}>{e.did_number || '—'}</td>
                     <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{e.voicemail_email || '—'}</td>
                     <td style={{ padding: '10px 12px' }}>{e.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Oui</span> : <span style={{ color: '#9CA3AF' }}>Non</span>}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 11 }}>
+                      {sip?.dnd_enabled && <span style={{ background: '#FEE2E2', color: '#B91C1C', borderRadius: 4, padding: '2px 6px', fontWeight: 600, marginRight: 4 }}>DND</span>}
+                      {sip && ['forward_immediate_enabled', 'forward_busy_enabled', 'forward_no_answer_enabled', 'forward_offline_enabled'].some(k => sip[k]) && (
+                        <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>Renvoi</span>
+                      )}
+                      {!sip?.dnd_enabled && !(sip && ['forward_immediate_enabled', 'forward_busy_enabled', 'forward_no_answer_enabled', 'forward_offline_enabled'].some(k => sip[k])) && '—'}
+                    </td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>{sip?.public_ip || '—'}</td>
                     <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>
                       {sip?.private_ip || '—'}

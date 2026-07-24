@@ -320,8 +320,30 @@ export default function ContactDetail({ isNew }) {
                       <div className="ifield"><div className="ifield-label">Nom SIP</div><div className="ifield-value">{sipExt.name}</div></div>
                       <div className="ifield"><div className="ifield-label">Username SIP</div><div className="ifield-value"><code>{sipExt.username}</code></div></div>
                       <div className="ifield"><div className="ifield-label">Actif</div><div className="ifield-value">{sipExt.is_active ? 'Oui' : 'Non'}</div></div>
+                      <div className="ifield">
+                        <div className="ifield-label">Statut en direct</div>
+                        <div className="ifield-value" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span title={sipExt.registered ? 'En ligne (enregistré)' : 'Hors ligne'} style={{
+                            display: 'inline-block', width: 10, height: 10, borderRadius: '50%',
+                            background: sipExt.registered ? '#22C55E' : '#EF4444',
+                          }} />
+                          {sipExt.registered ? 'Enregistré' : 'Hors ligne'}
+                          {sipExt.call_state === 'active' && <span title="Appel en cours" style={{ color: '#DC2626' }}>📞</span>}
+                          {sipExt.call_state === 'ringing' && <span title="Sonne" style={{ color: '#D97706' }}>🔔</span>}
+                        </div>
+                      </div>
                       <div className="ifield"><div className="ifield-label">Messagerie vocale</div><div className="ifield-value">{sipExt.voicemail_enabled ? 'Activée' : 'Désactivée'}</div></div>
                       <div className="ifield"><div className="ifield-label">Synchronisé FreeSWITCH</div><div className="ifield-value">{sipExt.freeswitch_synced ? 'Oui' : 'En attente'}</div></div>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
+                      <input
+                        type="checkbox"
+                        id="dnd_enabled"
+                        checked={sipExt.dnd_enabled || false}
+                        onChange={e => saveSipExtField('dnd_enabled', e.target.checked)}
+                        style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                      />
+                      <label htmlFor="dnd_enabled" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Ne pas déranger (DND)</label>
                     </div>
                     <div style={{ marginTop: 10 }}>
                       <button className="btn-secondary" onClick={toggleConnInfo} disabled={connInfoLoading} style={{ fontSize: 11, padding: '3px 8px' }}>
