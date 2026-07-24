@@ -1140,6 +1140,8 @@ function TelephonyTab({ companyId }) {
       <RingGroupsSection companyId={companyId} ringGroups={ringGroups} ringGroupsLoading={ringGroupsLoading}
         sipExts={sipExts} onRefresh={loadRingGroups} />
 
+      <PickupGroupSection companyId={companyId} sipExts={sipExts} onRefresh={loadSipExtensions} />
+
       {showNewDid && (
         <NewDIDModal companyId={companyId} onClose={() => setShowNewDid(false)}
           onCreated={d => { setDids(p => [...p, d]); setShowNewDid(false) }} />
@@ -1275,6 +1277,62 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
           </tbody>
         </table>
       )}
+    </div>
+  )
+}
+
+// ── Groupe de pickup (interception) — TASK-023.22, section separee du ring group ──
+function PickupGroupSection({ companyId, sipExts, onRefresh }) {
+  async function save(extId, field, value) {
+    await api.put(`/v1/companies/${companyId}/extensions/${extId}/pickup-group`, { [field]: value })
+    onRefresh()
+  }
+
+  const groups = {}
+  for (const e of sipExts) {
+    if (e.pickup_group) (groups[e.pickup_group] ||= []).push(e)
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+        Groupe de pickup (interception)
+      </div>
+      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+        Composer <code>*8</code> depuis un poste décroche l'appel qui sonne dans le même groupe. Assigner un nom de groupe à chaque poste ci-dessous.
+      </div>
+      {Object.keys(groups).length > 0 && (
+        <div style={{ marginBottom: 10, fontSize: 12, color: '#374151' }}>
+          {Object.entries(groups).map(([name, members]) => (
+            <div key={name} style={{ marginBottom: 2 }}>
+              <strong>{name}</strong> : {members.map(m => m.extension).join(', ')}
+            </div>
+          ))}
+        </div>
+      )}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr style={{ background: '#F9FAFB' }}>
+            {['Poste', 'Nom', 'Groupe de pickup', 'Peut intercepter', ''].map(h => (
+              <th key={h} style={{ textAlign: 'left', padding: '6px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 11, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sipExts.map(e => (
+            <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+              <td style={{ padding: '6px 12px', fontFamily: 'monospace' }}>{e.extension}</td>
+              <td style={{ padding: '6px 12px' }}>{e.name}</td>
+              <td style={{ padding: '6px 12px' }}>
+                <input defaultValue={e.pickup_group || ''} onBlur={ev => save(e.id, 'pickup_group', ev.target.value || null)} placeholder="—" style={{ fontSize: 12, width: 100 }} />
+              </td>
+              <td style={{ padding: '6px 12px', textAlign: 'center' }}>
+                <input type="checkbox" defaultChecked={e.can_intercept_calls} onChange={ev => save(e.id, 'can_intercept_calls', ev.target.checked)} />
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

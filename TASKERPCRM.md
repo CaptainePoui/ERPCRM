@@ -740,3 +740,20 @@ temporaire), membre supprimé, groupe supprimé. SIPV confirmé : 0 lignes
 restart`, voir TASK-023.5).
 Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/companies.py,
 frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-023.22 [x] Groupe de pickup (interception) — section dans compagnie/téléphonie
+Réutilise `pickup_group`/`can_intercept_calls`, déjà existants sur SIPExtension
+(S007.2) et le préfixe `*8` déjà câblé côté dialplan (TASKSIPV S023.15) -- aucun
+nouveau modèle nécessaire, juste l'UI de gestion manquait.
+
+Fait :
+- `companies.py` : `PUT /{id}/extensions/{extension_id}/pickup-group` (proxy
+  générique vers `sipv_client.update_extension`).
+- `CompanyDetail.jsx` : `PickupGroupSection`, table de tous les postes du tenant
+  (réutilise `sipExts` déjà chargé pour Extensions -- pas de nouvel appel réseau)
+  avec champ groupe éditable + case "peut intercepter", résumé des groupes par nom
+  en haut.
+
+Testé en direct : `pickup_group` posé sur un poste réel (t1001-100) via le proxy,
+vérifié via `GET /sip-extensions`, remis à `null`. Aucune donnée résiduelle.
+Fichiers : backend/app/api/v1/endpoints/companies.py, frontend/src/pages/CompanyDetail.jsx.

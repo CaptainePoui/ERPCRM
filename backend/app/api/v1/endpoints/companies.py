@@ -618,3 +618,19 @@ async def remove_company_ring_group_member(company_id: uuid.UUID, member_id: uui
         await sipv_client.remove_ring_group_member(str(member_id))
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Pickup group (interception) — TASK-023.22, section separee ────────────────
+class PickupGroupUpdatePayload(BaseModel):
+    pickup_group: str | None = None
+    can_intercept_calls: bool | None = None
+
+
+@router.put("/{company_id}/extensions/{extension_id}/pickup-group")
+async def update_extension_pickup_group(company_id: uuid.UUID, extension_id: uuid.UUID, payload: PickupGroupUpdatePayload, _: User = Depends(get_current_user)):
+    """Assigne/retire un poste d'un groupe d'interception (pickup_group, deja
+    existant sur SIPExtension depuis S007.2 -- pas de nouveau modele necessaire)."""
+    try:
+        return await sipv_client.update_extension(str(extension_id), **payload.model_dump(exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
