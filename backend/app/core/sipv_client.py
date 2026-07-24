@@ -332,3 +332,43 @@ async def remove_paging_group_member(member_id: str) -> None:
             headers=_headers(),
         )
         resp.raise_for_status()
+
+
+async def list_button_templates(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/tenant/{tenant_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_button_template(template_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/{template_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+
+
+async def save_phone_as_template(phone_id: str, name: str) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/{phone_id}/save-as-template",
+            json={"name": name},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def apply_button_template(template_id: str, phone_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/{template_id}/apply/{phone_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()

@@ -233,6 +233,13 @@ export default function ContactDetail({ isNew }) {
     setButtons(prev => prev.filter(b => b.id !== buttonId))
   }
 
+  async function saveAsTemplate() {
+    const name = prompt('Nom du template (réutilisable sur d\'autres postes depuis compagnie/téléphonie) :')
+    if (!name || !name.trim()) return
+    await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/save-as-template`, { name: name.trim() })
+    alert(`Template « ${name.trim()} » créé — gérable dans l'onglet Téléphonie de la compagnie.`)
+  }
+
   async function toggleConnInfo() {
     if (connInfo) { setConnInfo(null); return }
     setConnInfoLoading(true)
@@ -681,6 +688,7 @@ export default function ContactDetail({ isNew }) {
                       </table>
                     )}
                     <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8 }} onClick={addButton}>+ Ajouter un bouton</button>
+                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8, marginLeft: 8 }} onClick={saveAsTemplate}>Sauvegarder comme template</button>
                   </>
                 )}
               </div>

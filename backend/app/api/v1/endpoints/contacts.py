@@ -391,6 +391,20 @@ async def delete_contact_phone_button(contact_id: uuid.UUID, button_id: uuid.UUI
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 
 
+class SaveAsTemplatePayload(BaseModel):
+    name: str
+
+
+@router.post("/{contact_id}/sip-extension/phone/{phone_id}/save-as-template")
+async def save_contact_phone_as_template(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: SaveAsTemplatePayload, _: User = Depends(get_current_user)):
+    """Sauvegarde la config de boutons actuelle de ce poste comme template
+    reutilisable (TASK-023.26) -- geree/listee ensuite dans compagnie/telephonie."""
+    try:
+        return await sipv_client.save_phone_as_template(str(phone_id), payload.name)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
 @router.put("/{contact_id}", response_model=ContactOut)
 async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), user: User | None = Depends(get_current_user_or_service)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))

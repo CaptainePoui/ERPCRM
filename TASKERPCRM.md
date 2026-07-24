@@ -784,3 +784,36 @@ construites et testées : ring group (023.21), pickup (023.22), paging (023.24).
 restart`, voir TASK-023.5).
 Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/companies.py,
 frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-023.26 [x] Templates de boutons — dernière pièce de la demande boutons
+Dernier morceau de TASK-023.19/S023.25 : sauvegarder une config comme template et
+l'appliquer à un autre poste. Templates gérés "en bas des postes" dans compagnie/
+téléphonie, exactement comme demandé.
+
+Fait :
+- `sipv_client.py` : 4 fonctions proxy (list/delete/save-as-template/apply).
+- `contacts.py` : `POST /{id}/sip-extension/phone/{phone_id}/save-as-template`
+  (depuis la fiche contact, où vit l'éditeur de boutons).
+- `companies.py` : `GET/DELETE /{id}/button-templates[/{template_id}]`,
+  `POST /.../apply/{phone_id}`, + `GET /{id}/extensions/{extension_id}/phone`
+  (résout un numéro de poste vers son appareil avant d'appliquer un template).
+- `ContactDetail.jsx` : bouton "Sauvegarder comme template" dans l'éditeur de
+  boutons existant (TASK-023.19).
+- `CompanyDetail.jsx` : `ButtonTemplatesSection`, sous les Extensions (comme
+  demandé) -- liste des templates, nombre de boutons, champ "numéro de poste" +
+  bouton Appliquer (résout le poste vers son appareil côté client avant d'appeler
+  l'API), suppression.
+
+Testé en direct de bout en bout via l'API (poste réel t1001-101, contact "Test
+Deux") : appareil attribué, bouton ajouté, sauvegardé comme template via le proxy
+contact, template listé via le proxy compagnie, appliqué au même appareil via le
+proxy compagnie (bouton recréé avec le même contenu -- sémantique "remplacer"
+confirmée), template supprimé, appareil désactivé. SIPV confirmé, les 3 postes de
+test restent `Registered`.
+
+Les 3 demandes de ce "mega prompt" (boutons, groupes -3 sections-, catalogue
+Grandstream) sont maintenant toutes faites et testées.
+⚠️ Backend ERPCRM rechargé manuellement (toujours en attente du `sudo systemctl
+restart`, voir TASK-023.5).
+Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/contacts.py,
+api/v1/endpoints/companies.py, frontend/src/pages/ContactDetail.jsx, CompanyDetail.jsx.

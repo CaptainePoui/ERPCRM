@@ -991,6 +991,8 @@ function TelephonyTab({ companyId }) {
   const [ringGroupsLoading, setRingGroupsLoading] = useState(true)
   const [pagingGroups, setPagingGroups] = useState([])
   const [pagingGroupsLoading, setPagingGroupsLoading] = useState(true)
+  const [buttonTemplates, setButtonTemplates] = useState([])
+  const [buttonTemplatesLoading, setButtonTemplatesLoading] = useState(true)
 
   useEffect(() => {
     Promise.all([
@@ -1000,6 +1002,7 @@ function TelephonyTab({ companyId }) {
     loadSipExtensions()
     loadRingGroups()
     loadPagingGroups()
+    loadButtonTemplates()
   }, [companyId])
 
   function loadPagingGroups() {
@@ -1007,6 +1010,13 @@ function TelephonyTab({ companyId }) {
     api.get(`/v1/companies/${companyId}/paging-groups`)
       .then(r => setPagingGroups(r.data))
       .finally(() => setPagingGroupsLoading(false))
+  }
+
+  function loadButtonTemplates() {
+    setButtonTemplatesLoading(true)
+    api.get(`/v1/companies/${companyId}/button-templates`)
+      .then(r => setButtonTemplates(r.data))
+      .finally(() => setButtonTemplatesLoading(false))
   }
 
   function loadSipExtensions() {
@@ -1146,6 +1156,9 @@ function TelephonyTab({ companyId }) {
           </table>
         )}
       </div>
+
+      <ButtonTemplatesSection companyId={companyId} templates={buttonTemplates} templatesLoading={buttonTemplatesLoading}
+        sipExts={sipExts} onRefresh={loadButtonTemplates} />
 
       <RingGroupsSection companyId={companyId} ringGroups={ringGroups} ringGroupsLoading={ringGroupsLoading}
         sipExts={sipExts} onRefresh={loadRingGroups} />
@@ -1471,6 +1484,64 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
                   </tr>
                 )}
               </Fragment>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+// ── Templates de boutons — TASK-023.26, en bas des postes (demande explicite) ──
+function ButtonTemplatesSection({ companyId, templates, templatesLoading, sipExts, onRefresh }) {
+  const [applyExt, setApplyExt] = useState({})
+
+  async function removeTemplate(templateId) {
+    if (!confirm('Supprimer ce template ?')) return
+    await api.delete(`/v1/companies/${companyId}/button-templates/${templateId}`)
+    onRefresh()
+  }
+
+  async function applyTemplate(templateId) {
+    const extNum = applyExt[templateId]
+    const ext = sipExts.find(e => e.extension === extNum)
+    if (!ext) { alert('Poste introuvable.'); return }
+    const phoneResp = await api.get(`/v1/companies/${companyId}/extensions/${ext.id}/phone`)
+    if (!phoneResp.data) { alert('Ce poste n\'a pas d\'appareil attribué.'); return }
+    await api.post(`/v1/companies/${companyId}/button-templates/${templateId}/apply/${phoneResp.data.id}`)
+    alert(`Template appliqué au poste ${extNum}.`)
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+        Templates de boutons ({templates.length})
+      </div>
+      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+        Créés depuis la fiche contact d'un poste ("Sauvegarder comme template"), applicables ici à n'importe quel autre poste ayant un appareil attribué.
+      </div>
+      {templatesLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : templates.length === 0 ? (
+        <div className="empty-tab">Aucun template.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: '#F9FAFB' }}>
+              {['Nom', 'Boutons', 'Appliquer à', ''].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {templates.map(t => (
+              <tr key={t.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.name}</td>
+                <td style={{ padding: '10px 12px' }}>{t.items.length}</td>
+                <td style={{ padding: '10px 12px' }}>
+                  <input placeholder="Numéro de poste" value={applyExt[t.id] || ''} onChange={e => setApplyExt(p => ({ ...p, [t.id]: e.target.value }))} style={{ fontSize: 12, width: 100, marginRight: 6 }} />
+                  <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => applyTemplate(t.id)}>Appliquer</button>
+                </td>
+                <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button></td>
+              </tr>
             ))}
           </tbody>
         </table>

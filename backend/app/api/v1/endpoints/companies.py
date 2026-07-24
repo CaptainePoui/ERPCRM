@@ -722,3 +722,43 @@ async def remove_company_paging_group_member(company_id: uuid.UUID, member_id: u
         await sipv_client.remove_paging_group_member(str(member_id))
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Templates de boutons — TASK-023.26, liste dans compagnie/telephonie ────────
+@router.get("/{company_id}/button-templates")
+async def list_company_button_templates(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return []
+    try:
+        return await sipv_client.list_button_templates(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        return []
+
+
+@router.delete("/{company_id}/button-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_button_template(company_id: uuid.UUID, template_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_button_template(str(template_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.post("/{company_id}/button-templates/{template_id}/apply/{phone_id}")
+async def apply_company_button_template(company_id: uuid.UUID, template_id: uuid.UUID, phone_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.apply_button_template(str(template_id), str(phone_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/{company_id}/extensions/{extension_id}/phone")
+async def get_extension_phone(company_id: uuid.UUID, extension_id: uuid.UUID, _: User = Depends(get_current_user)):
+    """Telephone physique attribue a ce poste -- utilise pour resoudre un numero de
+    poste vers un phone_id avant d'appliquer un template (TASK-023.26)."""
+    try:
+        return await sipv_client.get_phone_by_extension(str(extension_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
