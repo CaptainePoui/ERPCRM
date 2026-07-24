@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     # Network — change these when migrating servers
     ERPCRM_HOST: str = "192.168.1.9"
-    SIPV_API_URL: str = "http://192.168.1.55:8020"
+    SIPV_API_URL: str = "https://192.168.1.55:8022"
     SIPV_API_KEY: str = ""  # cle que SIPV doit presenter en X-Api-Key pour appeler ERPCRM
     ERPCRM_API_KEY: str = ""  # cle que ERPCRM doit presenter en X-Api-Key pour appeler SIPV
     # Email SMTP (optional — if SMTP_HOST is empty, sending is silently skipped)

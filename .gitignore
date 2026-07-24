@@ -15,6 +15,10 @@ backend/.venv/
 
 # Secrets — do NOT commit
 backend/.env
+backend/certs/
+
+# Fichiers .backup_* residuels (avant la regle "pas de backup manuel")
+*.backup_*
 
 # Alembic
 backend/alembic/versions/__pycache__/

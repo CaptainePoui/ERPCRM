@@ -4,6 +4,7 @@ import api from '../services/api'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
+import JournalFeed from '../components/JournalFeed'
 import './CompanyDetail.css'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
@@ -143,8 +144,11 @@ export default function ContactDetail({ isNew }) {
   const [showTicket, setShowTicket] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
+  const [showJournal, setShowJournal] = useState(false)
   const [sipExt, setSipExt] = useState(null)
   const [sipExtLoading, setSipExtLoading] = useState(false)
+  const [connInfo, setConnInfo] = useState(null)
+  const [connInfoLoading, setConnInfoLoading] = useState(false)
 
   useEffect(() => {
     api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
@@ -169,9 +173,36 @@ export default function ContactDetail({ isNew }) {
     }
   }
 
+  async function toggleConnInfo() {
+    if (connInfo) { setConnInfo(null); return }
+    setConnInfoLoading(true)
+    try {
+      const r = await api.get(`/v1/contacts/${id}/sip-extension/connection-info`)
+      setConnInfo(r.data)
+    } finally {
+      setConnInfoLoading(false)
+    }
+  }
+
+  async function saveSipExtField(field, value) {
+    await api.put(`/v1/contacts/${id}/sip-extension`, { [field]: value })
+    setSipExt(prev => ({ ...prev, [field]: value }))
+  }
+
   async function saveField(field, value) {
     await api.put(`/v1/contacts/${id}`, { [field]: value })
     setContact(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function savePhone(value) {
+    const officeCompany = contact.companies?.find(x => x.is_primary) || contact.companies?.[0]
+    if (officeCompany) {
+      if (!confirm(`Attention, vous allez changer le téléphone bureau de « ${officeCompany.company_name} ». Êtes-vous sûr ?`)) return
+      await api.put(`/v1/contacts/${id}/office-phone`, { value })
+      await load()
+    } else {
+      await saveField('phone', value)
+    }
   }
 
   if (loading) return <div className="detail-loading">Chargement...</div>
@@ -193,6 +224,7 @@ export default function ContactDetail({ isNew }) {
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
             <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
+            <button className="btn-secondary" onClick={() => setShowJournal(v => !v)}>Journal</button>
           </div>
         )}
       </div>
@@ -238,7 +270,7 @@ export default function ContactDetail({ isNew }) {
             <div className="ifields-grid">
               <InlineField label="Prénom" value={c.first_name} onSave={v => saveField('first_name', v)} />
               <InlineField label="Nom" value={c.last_name} onSave={v => saveField('last_name', v)} />
-              <InlineField label="Téléphone bureau" value={c.phone} onSave={v => saveField('phone', v)} />
+              <InlineField label="Téléphone bureau" value={c.phone} onSave={v => savePhone(v)} />
               <InlineField label="Poste SIP" value={c.extension} onSave={v => saveField('extension', v)} />
               <InlineField label="Cellulaire" value={c.mobile} onSave={v => saveField('mobile', v)} />
               <InlineField label="Autre numéro" value={c.phone_other} onSave={v => saveField('phone_other', v)} />
@@ -282,14 +314,171 @@ export default function ContactDetail({ isNew }) {
                   </div>
                 )}
                 {!sipExtLoading && sipExt && (
-                  <div className="ifields-grid">
-                    <div className="ifield"><div className="ifield-label">Poste</div><div className="ifield-value">{sipExt.extension}</div></div>
-                    <div className="ifield"><div className="ifield-label">Nom SIP</div><div className="ifield-value">{sipExt.name}</div></div>
-                    <div className="ifield"><div className="ifield-label">Username SIP</div><div className="ifield-value"><code>{sipExt.username}</code></div></div>
-                    <div className="ifield"><div className="ifield-label">Actif</div><div className="ifield-value">{sipExt.is_active ? 'Oui' : 'Non'}</div></div>
-                    <div className="ifield"><div className="ifield-label">Messagerie vocale</div><div className="ifield-value">{sipExt.voicemail_enabled ? 'Activée' : 'Désactivée'}</div></div>
-                    <div className="ifield"><div className="ifield-label">Synchronisé FreeSWITCH</div><div className="ifield-value">{sipExt.freeswitch_synced ? 'Oui' : 'En attente'}</div></div>
-                  </div>
+                  <>
+                    <div className="ifields-grid">
+                      <div className="ifield"><div className="ifield-label">Poste</div><div className="ifield-value">{sipExt.extension}</div></div>
+                      <div className="ifield"><div className="ifield-label">Nom SIP</div><div className="ifield-value">{sipExt.name}</div></div>
+                      <div className="ifield"><div className="ifield-label">Username SIP</div><div className="ifield-value"><code>{sipExt.username}</code></div></div>
+                      <div className="ifield"><div className="ifield-label">Actif</div><div className="ifield-value">{sipExt.is_active ? 'Oui' : 'Non'}</div></div>
+                      <div className="ifield"><div className="ifield-label">Messagerie vocale</div><div className="ifield-value">{sipExt.voicemail_enabled ? 'Activée' : 'Désactivée'}</div></div>
+                      <div className="ifield"><div className="ifield-label">Synchronisé FreeSWITCH</div><div className="ifield-value">{sipExt.freeswitch_synced ? 'Oui' : 'En attente'}</div></div>
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <button className="btn-secondary" onClick={toggleConnInfo} disabled={connInfoLoading} style={{ fontSize: 11, padding: '3px 8px' }}>
+                        {connInfoLoading ? 'Chargement...' : connInfo ? 'Masquer les infos de connexion' : 'Afficher les infos de connexion'}
+                      </button>
+                      {connInfo && (
+                        <div className="ifields-grid">
+                          <div className="ifield"><div className="ifield-label">Serveur</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.outbound_proxy}</code></div></div>
+                          <div className="ifield"><div className="ifield-label">Port</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.port}</code></div></div>
+                          <div className="ifield"><div className="ifield-label">Transport</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.transport.toUpperCase()}</code></div></div>
+                          <div className="ifield"><div className="ifield-label">User / Auth ID</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.username}</code></div></div>
+                          <div className="ifield"><div className="ifield-label">Mot de passe</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.password}</code></div></div>
+                          <div className="ifield"><div className="ifield-label">Domaine (si champ séparé requis)</div><div className="ifield-value"><code style={{ userSelect: 'all' }}>{connInfo.sip_server}</code></div></div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Enregistrement des appels</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                        <input
+                          type="checkbox"
+                          id="record_all"
+                          checked={['record_internal_incoming', 'record_internal_outgoing', 'record_external_incoming', 'record_external_outgoing'].every(k => sipExt[k])}
+                          onChange={async e => {
+                            const val = e.target.checked
+                            for (const k of ['record_internal_incoming', 'record_internal_outgoing', 'record_external_incoming', 'record_external_outgoing']) {
+                              await saveSipExtField(k, val)
+                            }
+                          }}
+                          style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="record_all" style={{ fontSize: 13, color: '#374151', cursor: 'pointer', fontWeight: 600 }}>Tout</label>
+                      </div>
+                      {[
+                        { key: 'record_internal_incoming', label: 'Interne entrant' },
+                        { key: 'record_internal_outgoing', label: 'Interne sortant' },
+                        { key: 'record_external_incoming', label: 'Externe entrant' },
+                        { key: 'record_external_outgoing', label: 'Externe sortant' },
+                      ].map(({ key, label }) => (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, marginLeft: 20 }}>
+                          <input
+                            type="checkbox"
+                            id={key}
+                            checked={sipExt[key] || false}
+                            onChange={e => saveSipExtField(key, e.target.checked)}
+                            style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                          />
+                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>{label}</label>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                        <input
+                          type="checkbox"
+                          id="record_calls"
+                          checked={sipExt.record_calls || false}
+                          onChange={e => saveSipExtField('record_calls', e.target.checked)}
+                          style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="record_calls" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                          Manuel (déclenché par l'agent — pas encore actif, en attente de configuration du bouton sur le téléphone)
+                        </label>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Renvois</div>
+                      {[
+                        { key: 'forward_immediate', label: 'Renvoi immédiat' },
+                        { key: 'forward_busy', label: 'Renvoi si occupé' },
+                        { key: 'forward_no_answer', label: 'Renvoi si non répondu' },
+                        { key: 'forward_offline', label: 'Renvoi si hors ligne' },
+                      ].map(({ key, label }) => (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                          <input
+                            type="checkbox"
+                            id={key}
+                            checked={sipExt[`${key}_enabled`] || false}
+                            onChange={e => saveSipExtField(`${key}_enabled`, e.target.checked)}
+                            style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                          />
+                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>{label}</label>
+                          {sipExt[`${key}_enabled`] && (
+                            <input
+                              type="text"
+                              placeholder="Destination (ex: poste ou numéro)"
+                              defaultValue={sipExt[`${key}_destination`] || ''}
+                              onBlur={e => saveSipExtField(`${key}_destination`, e.target.value)}
+                              style={{ fontSize: 12, padding: '3px 6px', width: 160 }}
+                            />
+                          )}
+                          {key === 'forward_no_answer' && sipExt.forward_no_answer_enabled && (
+                            <input
+                              type="number"
+                              defaultValue={sipExt.forward_no_answer_delay_seconds ?? 20}
+                              onBlur={e => saveSipExtField('forward_no_answer_delay_seconds', parseInt(e.target.value, 10))}
+                              style={{ fontSize: 12, padding: '3px 6px', width: 60 }}
+                              title="Délai en secondes"
+                            />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Caller ID</div>
+                      <div className="ifields-grid">
+                        <InlineField label="Nom (interne)" value={sipExt.caller_id_internal_name} onSave={v => saveSipExtField('caller_id_internal_name', v)} />
+                        <InlineField label="Numéro (interne)" value={sipExt.caller_id_internal_number} onSave={v => saveSipExtField('caller_id_internal_number', v)} />
+                        <InlineField label="Nom (externe)" value={sipExt.caller_id_external_name} onSave={v => saveSipExtField('caller_id_external_name', v)} />
+                        <InlineField label="Numéro (externe)" value={sipExt.caller_id_external_number} onSave={v => saveSipExtField('caller_id_external_number', v)} />
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+                        <input
+                          type="checkbox"
+                          id="hide_caller_id"
+                          checked={sipExt.hide_caller_id || false}
+                          onChange={e => saveSipExtField('hide_caller_id', e.target.checked)}
+                          style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="hide_caller_id" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                          Masquer le Caller ID (appels externes seulement)
+                        </label>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
+                      {[
+                        { key: 'allow_canada', label: 'Canada' },
+                        { key: 'allow_us', label: 'États-Unis' },
+                        { key: 'allow_international', label: 'International' },
+                        { key: 'allow_premium', label: 'Numéros payants (900)' },
+                      ].map(({ key, label }) => (
+                        <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                          <input
+                            type="checkbox"
+                            id={key}
+                            checked={!!sipExt[key]}
+                            ref={el => { if (el) el.indeterminate = sipExt[key] === null || sipExt[key] === undefined }}
+                            onChange={e => saveSipExtField(key, e.target.checked)}
+                            style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
+                          />
+                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>{label}</label>
+                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+                            {(sipExt[key] === null || sipExt[key] === undefined) ? '(hérite du défaut compagnie)' : ''}
+                          </span>
+                        </div>
+                      ))}
+                      <div className="ifields-grid" style={{ marginTop: 6 }}>
+                        <InlineField label="Pays bloqués (indicatifs, séparés par virgule)" value={sipExt.blocked_countries} onSave={v => saveSipExtField('blocked_countries', v)} />
+                        <InlineField label="Préfixes bloqués (séparés par virgule)" value={sipExt.blocked_prefixes} onSave={v => saveSipExtField('blocked_prefixes', v)} />
+                        <InlineField label="Limite mensuelle ($)" value={sipExt.ld_monthly_limit ?? ''} onSave={v => saveSipExtField('ld_monthly_limit', v === '' ? null : parseFloat(v))} />
+                        <InlineField label={`NIP d'autorisation *80<NIP><numéro> — laisser vide pour ne pas changer${sipExt.has_ld_pin ? ' (déjà configuré)' : ''}`} value="" onSave={v => saveSipExtField('ld_pin', v)} />
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
             )}
@@ -313,6 +502,13 @@ export default function ContactDetail({ isNew }) {
             </div>
 
             <ContactTachesSection contactId={id} onNewTask={() => setShowTask(true)} />
+
+            {showJournal && (
+              <>
+                <div className="ifield-section-title" style={{ marginTop: 24 }}>Journal</div>
+                <JournalFeed entityId={id} />
+              </>
+            )}
           </div>
         )}
       </div>

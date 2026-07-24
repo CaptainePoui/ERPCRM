@@ -5,9 +5,10 @@ import Autocomplete from '../components/Autocomplete'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
+import JournalFeed from '../components/JournalFeed'
 import './CompanyDetail.css'
 
-const TABS = ['Général', 'Contacts', 'Maintenance', 'Inventaire', 'Téléphonie', 'Tâches', 'Journal']
+const TABS = ['Général', 'Contacts', 'Maintenance', 'Inventaire', 'Téléphonie', 'Tâches', 'Photos', 'Journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -410,6 +411,7 @@ export default function CompanyDetail({ isNew }) {
                   </div>
                   <InlineField label="Nom de compagnie" value={c.name} onSave={v => saveField('name', v)} />
                   <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
+                  <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
                   <div className="ifield">
                     <div className="ifield-label">Tenant téléphonique SIPV</div>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
@@ -464,7 +466,8 @@ export default function CompanyDetail({ isNew }) {
             {tab === 3 && <InventaireTab companyId={id} />}
             {tab === 4 && <TelephonyTab companyId={id} />}
             {tab === 5 && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
-            {tab === 6 && <JournalTab entityId={id} />}
+            {tab === 6 && <PhotosTab companyId={id} />}
+            {tab === 7 && <JournalFeed entityId={id} />}
           </>
         )}
       </div>
@@ -546,6 +549,17 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
     } finally { setSaving(false) }
   }
 
+  async function remove(commId) {
+    if (!confirm('Retirer cette coordonnée ?')) return
+    await api.delete(`/v1/companies/${entityId}/communications/${commId}`)
+    await onRefresh()
+  }
+
+  async function setOfficePhone(commId) {
+    await api.post(`/v1/companies/${entityId}/communications/${commId}/set-office-phone`)
+    await onRefresh()
+  }
+
   return (
     <div>
       {comms.length === 0 && !adding && <div className="empty-tab">Aucune coordonnée enregistrée.</div>}
@@ -555,6 +569,20 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
           <span className="comm-value">{c.value}</span>
           {c.label && <span className="comm-label">{c.label}</span>}
           {c.is_primary && <span className="primary-badge">Principal</span>}
+          {c.channel_type === 'phone' && !c.is_primary && (
+            <button
+              onClick={() => setOfficePhone(c.id)}
+              style={{ fontSize: 11, color: '#184FA0', background: 'none', border: '1px solid #CBD5E1', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
+            >
+              Définir comme principal
+            </button>
+          )}
+          <button
+            onClick={() => remove(c.id)}
+            style={{ fontSize: 11, color: '#DC2626', background: 'none', border: '1px solid #FCA5A5', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
+          >
+            Retirer
+          </button>
         </div>
       ))}
       {!adding && <button className="btn-secondary" onClick={() => setAdding(true)}>+ Ajouter</button>}
@@ -709,52 +737,6 @@ function ContactsTab({ companyId, contacts, functions, onRefresh }) {
           </div>
         </div>
       )}
-    </div>
-  )
-}
-
-// ── Journal ───────────────────────────────────────────────────────────────────
-function JournalTab({ entityId }) {
-  const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    setLoading(true)
-    api.get(`/v1/entities/${entityId}/logs`)
-      .then(r => setLogs(r.data))
-      .finally(() => setLoading(false))
-  }, [entityId])
-
-  if (loading) return <div className="empty-tab">Chargement...</div>
-  if (!logs.length) return <div className="empty-tab">Aucune entrée dans le journal.</div>
-
-  return (
-    <div className="journal-feed">
-      {logs.map(l => (
-        <div key={l.id} className="journal-entry">
-          <div className="journal-dot" />
-          <div className="journal-body">
-            <div className="journal-meta">
-              <span className="journal-user">{l.user_name}</span>
-              <span className="journal-time">{new Date(l.created_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' })}</span>
-            </div>
-            <div className="journal-action">
-              <span className="journal-action-label">{l.action_label}</span>
-              {l.field_label && <span className="journal-field"> — {l.field_label}</span>}
-            </div>
-            {l.old_value !== null && l.new_value !== null && (
-              <div className="journal-change">
-                <span className="journal-old">{l.old_value || '—'}</span>
-                <span className="journal-arrow">→</span>
-                <span className="journal-new">{l.new_value || '—'}</span>
-              </div>
-            )}
-            {l.description && !l.field_label && (
-              <div className="journal-desc">{l.description}</div>
-            )}
-          </div>
-        </div>
-      ))}
     </div>
   )
 }
@@ -1226,6 +1208,71 @@ const PRIORITY_COLORS = { basse: '#6B7280', normale: '#2563EB', haute: '#D97706'
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const STATUS_LABELS_T = { en_cours: 'En cours', attente_info_client: 'Attente client', attente_info_sip: 'Attente SIP', complete: 'Complété', annule: 'Annulé' }
 const STATUS_COLORS_T = { en_cours: '#2563EB', attente_info_client: '#D97706', attente_info_sip: '#7C3AED', complete: '#16A34A', annule: '#9CA3AF' }
+
+// ── Photos d'installation (TASK-024) ────────────────────────────────────────────
+function PhotosTab({ companyId }) {
+  const [photos, setPhotos] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileInput = useRef(null)
+
+  const load = () => api.get(`/v1/companies/${companyId}/photos`).then(r => { setPhotos(r.data); setLoading(false) })
+  useEffect(() => { load() }, [companyId])
+
+  async function upload(file) {
+    const caption = prompt('Légende (optionnel) :') || ''
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      if (caption) fd.append('caption', caption)
+      await api.post(`/v1/companies/${companyId}/photos`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      await load()
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function remove(photoId) {
+    if (!confirm('Retirer cette photo ?')) return
+    await api.delete(`/v1/companies/${companyId}/photos/${photoId}`)
+    load()
+  }
+
+  if (loading) return <div className="empty-tab">Chargement...</div>
+
+  return (
+    <div>
+      <div style={{ marginBottom: 16 }}>
+        <input ref={fileInput} type="file" accept="image/*" style={{ display: 'none' }}
+          onChange={e => e.target.files[0] && upload(e.target.files[0])} />
+        <button className="btn-secondary" disabled={uploading} onClick={() => fileInput.current.click()}>
+          {uploading ? 'Envoi...' : '+ Ajouter une photo'}
+        </button>
+      </div>
+      {photos.length === 0 && <div className="empty-tab">Aucune photo d'installation.</div>}
+      {photos.length > 0 && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
+          {photos.map(p => (
+            <div key={p.id} style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+              <a href={`${api.defaults.baseURL}${p.url}`} target="_blank" rel="noreferrer">
+                <img src={`${api.defaults.baseURL}${p.url}`} alt={p.caption || 'Photo installation'}
+                  style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
+              </a>
+              <div style={{ padding: '8px 10px' }}>
+                <div style={{ fontSize: 13, color: '#374151' }}>{p.caption || <span style={{ color: '#9CA3AF' }}>Sans légende</span>}</div>
+                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>{p.uploaded_by || '—'} · {new Date(p.created_at).toLocaleDateString('fr-CA')}</span>
+                  <button onClick={() => remove(p.id)} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Retirer</button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function TachesTab({ companyId, companyName, onShowTask }) {
   const [tasks, setTasks] = useState([])

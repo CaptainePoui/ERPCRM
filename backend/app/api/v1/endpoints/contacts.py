@@ -9,10 +9,13 @@ from app.core import sipv_client
 from app.api.v1.endpoints.auth import get_current_user, get_current_user_or_service
 from app.models.entity import Entity, EntityType
 from app.models.contact import Contact
+from app.models.company import Company
 from app.models.status import Status, EntityStatus
 from app.models.contact_company import ContactCompany, ContactCompanyFunction
+from app.models.entity_log import EntityLog
 from app.models.user import User
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut, ContactListItem, CompanyInContactOut
+from pydantic import BaseModel
 
 router = APIRouter()
 
@@ -25,6 +28,17 @@ def _load_opts():
     ]
 
 
+def _office_company(contact: Contact) -> Company | None:
+    """
+    Compagnie dont le "Telephone bureau" du contact est le reflet : la compagnie
+    principale du contact (is_primary sur le lien), sinon la premiere compagnie
+    liee active, sinon aucune (contact sans compagnie garde son propre champ).
+    """
+    active = [cc for cc in contact.contact_companies if cc.is_active]
+    chosen = next((cc for cc in active if cc.is_primary), None) or (active[0] if active else None)
+    return chosen.company if chosen else None
+
+
 def _build_contact_out(contact: Contact) -> ContactOut:
     companies_out = [CompanyInContactOut(
         contact_company_id=cc.id,
@@ -35,13 +49,14 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         is_active=cc.is_active,
         functions=[f.function.name for f in cc.functions],
     ) for cc in contact.contact_companies]
+    office_company = _office_company(contact)
     return ContactOut(
         id=contact.id,
         entity_id=contact.entity.id,
         first_name=contact.first_name,
         last_name=contact.last_name,
         email=contact.email,
-        phone=contact.phone,
+        phone=office_company.office_phone if office_company else contact.phone,
         mobile=contact.mobile,
         extension=contact.extension,
         phone_other=contact.phone_other,
@@ -133,7 +148,7 @@ async def list_contacts(
             functions=[f.function.name for f in cc.functions],
         ) for cc in c.contact_companies],
         email=_email_for(c, company_id),
-        phone=c.phone,
+        phone=(_office_company(c).office_phone if _office_company(c) else c.phone),
         mobile=c.mobile,
     ) for c in contacts]
 
@@ -165,15 +180,123 @@ async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = De
     return extensions[0] if extensions else None
 
 
+@router.get("/{contact_id}/sip-extension/connection-info")
+async def get_contact_sip_connection_info(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    Infos de connexion completes (avec mot de passe) du poste SIP lie a ce contact —
+    pour configuration manuelle d'un telephone quand le provisioning automatique
+    echoue. Appel serveur a serveur chiffre en TLS (voir sipv_client._CA_PATH).
+    """
+    contact = await db.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if not contact.sipv_sync:
+        raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+        if not extensions:
+            raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+        return await sipv_client.get_connection_info(extensions[0]["id"])
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+class SipExtensionUpdate(BaseModel):
+    record_calls: bool | None = None
+    record_mode: str | None = None
+    record_internal_incoming: bool | None = None
+    record_internal_outgoing: bool | None = None
+    record_external_incoming: bool | None = None
+    record_external_outgoing: bool | None = None
+    forward_immediate_enabled: bool | None = None
+    forward_immediate_destination: str | None = None
+    forward_busy_enabled: bool | None = None
+    forward_busy_destination: str | None = None
+    forward_no_answer_enabled: bool | None = None
+    forward_no_answer_destination: str | None = None
+    forward_no_answer_delay_seconds: int | None = None
+    forward_offline_enabled: bool | None = None
+    forward_offline_destination: str | None = None
+    # --- TASK-023.5 : plan d'appel (TASKSIPV S018.5) + caller ID interne/externe (S018.6) ---
+    allow_canada: bool | None = None
+    allow_us: bool | None = None
+    allow_international: bool | None = None
+    allow_premium: bool | None = None
+    blocked_countries: str | None = None
+    blocked_prefixes: str | None = None
+    ld_pin: str | None = None
+    ld_monthly_limit: float | None = None
+    caller_id_internal_name: str | None = None
+    caller_id_internal_number: str | None = None
+    caller_id_external_name: str | None = None
+    caller_id_external_number: str | None = None
+    hide_caller_id: bool | None = None
+
+
+@router.put("/{contact_id}/sip-extension")
+async def update_contact_sip_extension(contact_id: uuid.UUID, payload: SipExtensionUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    Met a jour l'enregistrement d'appel / les renvois du poste SIP lie a ce contact,
+    directement depuis la fiche contact ERPCRM (config utilisee frequemment,
+    contrairement aux reglages plus techniques geres uniquement dans SIPV).
+    """
+    contact = await db.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if not contact.sipv_sync:
+        raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+        if not extensions:
+            raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+        return await sipv_client.update_extension(extensions[0]["id"], **payload.model_dump(exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
 @router.put("/{contact_id}", response_model=ContactOut)
-async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), _: User | None = Depends(get_current_user_or_service)):
+async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), user: User | None = Depends(get_current_user_or_service)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
     contact = result.scalar_one_or_none()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact introuvable")
     for field, value in payload.model_dump(exclude_unset=True).items():
+        old_value = getattr(contact, field, None)
+        if str(old_value) != str(value):
+            db.add(EntityLog(entity_id=contact_id, user_id=user.id if user else None, action="field_change",
+                              field_name=field,
+                              old_value=str(old_value) if old_value is not None else None,
+                              new_value=str(value) if value is not None else None))
         setattr(contact, field, value)
     await db.commit()
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    return _build_contact_out(result.scalar_one())
+
+
+class OfficePhoneUpdate(BaseModel):
+    value: str | None = None
+
+
+@router.put("/{contact_id}/office-phone", response_model=ContactOut)
+async def update_office_phone(contact_id: uuid.UUID, payload: OfficePhoneUpdate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    company = _office_company(contact)
+    if not company:
+        raise HTTPException(status_code=400, detail="Ce contact n'est lié à aucune compagnie")
+
+    old_value = company.office_phone
+    new_value = payload.value or None
+    if str(old_value) != str(new_value):
+        db.add(EntityLog(entity_id=company.id, contact_id=contact_id, user_id=current_user.id, action="field_change",
+                          field_name="office_phone",
+                          old_value=old_value,
+                          new_value=new_value))
+    company.office_phone = new_value
+    await db.commit()
+
     result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
     return _build_contact_out(result.scalar_one())
 

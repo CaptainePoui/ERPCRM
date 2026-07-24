@@ -1,7 +1,10 @@
 import uuid
+import shutil
 import httpx
+from pathlib import Path
+from datetime import datetime
 from pydantic import BaseModel
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -17,6 +20,7 @@ from app.models.contact import Contact
 from app.models.contact_company import ContactCompany, ContactCompanyFunction
 from app.models.function import Function
 from app.models.entity_log import EntityLog
+from app.models.installation_photo import InstallationPhoto
 from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut, CompanyListItem, ContactInCompanyOut, VendorRef
 from app.schemas.contact import ContactCompanyLink, ContactCompanyUpdate
@@ -57,6 +61,7 @@ def _build_company_out(company: Company) -> CompanyOut:
         entity_id=entity.id,
         name=company.name,
         account_number=company.account_number,
+        office_phone=company.office_phone,
         legal_name=company.legal_name,
         website=company.website,
         industry=company.industry,
@@ -98,6 +103,7 @@ async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_
         id=entity.id,
         name=payload.name,
         account_number=payload.account_number,
+        office_phone=payload.office_phone,
         legal_name=payload.legal_name,
         website=payload.website,
         industry=payload.industry,
@@ -320,6 +326,52 @@ async def add_communication(company_id: uuid.UUID, payload: dict, db: AsyncSessi
     return {"ok": True}
 
 
+@router.delete("/{company_id}/communications/{comm_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_communication(company_id: uuid.UUID, comm_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(CommunicationChannel).where(
+        CommunicationChannel.id == comm_id, CommunicationChannel.entity_id == company_id
+    ))
+    comm = result.scalar_one_or_none()
+    if not comm:
+        raise HTTPException(status_code=404, detail="Coordonnée introuvable")
+    channel_type, value = comm.channel_type, comm.value
+    await db.delete(comm)
+    _log(db, company_id, current_user, "communication_removed",
+         description=f"Coordonnée {channel_type} « {value} » retirée")
+    await db.commit()
+
+
+@router.post("/{company_id}/communications/{comm_id}/set-office-phone", response_model=CompanyOut)
+async def set_office_phone(company_id: uuid.UUID, comm_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    company = result.scalar_one_or_none()
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+
+    comms = await db.execute(select(CommunicationChannel).where(
+        CommunicationChannel.entity_id == company_id, CommunicationChannel.channel_type == "phone"
+    ))
+    channels = comms.scalars().all()
+    target = next((ch for ch in channels if ch.id == comm_id), None)
+    if not target:
+        raise HTTPException(status_code=404, detail="Numéro introuvable")
+
+    for ch in channels:
+        ch.is_primary = (ch.id == comm_id)
+
+    old_value = company.office_phone
+    if str(old_value) != str(target.value):
+        _log(db, company_id, current_user, "field_change",
+             field_name="office_phone",
+             old_value=old_value,
+             new_value=target.value)
+    company.office_phone = target.value
+    await db.commit()
+
+    result = await db.execute(select(Company).where(Company.id == company_id).options(*_load_opts()))
+    return _build_company_out(result.scalar_one())
+
+
 @router.post("/{company_id}/contacts", status_code=status.HTTP_201_CREATED)
 async def link_contact(company_id: uuid.UUID, payload: ContactCompanyLink, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Company).where(Company.id == company_id))
@@ -388,3 +440,74 @@ async def unlink_contact(company_id: uuid.UUID, contact_id: uuid.UUID, db: Async
         _log(db, company_id, current_user, "contact_unlinked",
              description=f"Contact « {contact_name} » retiré")
         await db.commit()
+
+
+# ── Photos d'installation (TASK-024) ────────────────────────────────────────────
+
+PHOTO_UPLOAD_DIR = Path("/home/simpleip/erpcrm/backend/uploads/installation_photos")
+PHOTO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+PHOTO_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic')
+
+
+class PhotoOut(BaseModel):
+    id: uuid.UUID
+    url: str
+    caption: str | None
+    uploaded_by: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+def _photo_out(p: InstallationPhoto) -> PhotoOut:
+    return PhotoOut(
+        id=p.id, url=f"/uploads/installation_photos/{p.filename}", caption=p.caption,
+        uploaded_by=p.uploaded_by.full_name if p.uploaded_by else None, created_at=p.created_at,
+    )
+
+
+@router.get("/{company_id}/photos", response_model=list[PhotoOut])
+async def list_photos(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(InstallationPhoto).options(selectinload(InstallationPhoto.uploaded_by))
+        .where(InstallationPhoto.company_id == company_id).order_by(InstallationPhoto.created_at.desc())
+    )
+    return [_photo_out(p) for p in result.scalars().all()]
+
+
+@router.post("/{company_id}/photos", response_model=PhotoOut, status_code=status.HTTP_201_CREATED)
+async def upload_photo(
+    company_id: uuid.UUID, file: UploadFile = File(...), caption: str | None = Form(None),
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(select(Company).where(Company.id == company_id))
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in PHOTO_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Format non supporté")
+    photo_id = uuid.uuid4()
+    filename = f"{photo_id}{ext}"
+    dest = PHOTO_UPLOAD_DIR / filename
+    with dest.open("wb") as f:
+        shutil.copyfileobj(file.file, f)
+    p = InstallationPhoto(id=photo_id, company_id=company_id, filename=filename, caption=caption, uploaded_by_id=current_user.id)
+    db.add(p)
+    _log(db, company_id, current_user, "photo_added", description=caption or "Photo d'installation ajoutée")
+    await db.commit()
+    result = await db.execute(select(InstallationPhoto).options(selectinload(InstallationPhoto.uploaded_by)).where(InstallationPhoto.id == photo_id))
+    return _photo_out(result.scalar_one())
+
+
+@router.delete("/{company_id}/photos/{photo_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_photo(company_id: uuid.UUID, photo_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    result = await db.execute(select(InstallationPhoto).where(InstallationPhoto.id == photo_id, InstallationPhoto.company_id == company_id))
+    p = result.scalar_one_or_none()
+    if not p:
+        raise HTTPException(status_code=404, detail="Photo introuvable")
+    path = PHOTO_UPLOAD_DIR / p.filename
+    if path.exists():
+        path.unlink()
+    await db.delete(p)
+    _log(db, company_id, current_user, "photo_removed", description="Photo d'installation retirée")
+    await db.commit()

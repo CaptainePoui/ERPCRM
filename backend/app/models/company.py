@@ -11,6 +11,7 @@ class Company(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     account_number: Mapped[str | None] = mapped_column(String(50))
+    office_phone: Mapped[str | None] = mapped_column(String(50))
     # Tenant telephonique SIPV
     sipv_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     sipv_tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

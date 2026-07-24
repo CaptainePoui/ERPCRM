@@ -48,6 +48,7 @@
 | TASK-001   | auth login      | Auth — Login JWT, get_current_user, sessions                                   |
 | TASK-002   | companies       | Compagnies — liste, fiche, onglets, boutons + Ticket / + Facture / + Tâche    |
 | TASK-003   | contacts        | Contacts — liste, fiche, multi-compagnies, + Ticket / + Facture / + Tâche     |
+| TASK-003.1 | contacts/compagnies | Téléphone bureau contact = champ partagé compagnie (office_phone) + journal filtré/recherche/revert |
 | TASK-004   | catalogue       | Catalogue — items, types, linked_to_hourly_rate                                |
 | TASK-005   | invoices        | Factures — création, lignes, paiements, modal mise à jour prix                 |
 | TASK-006   | tickets         | Tickets — statuts, entrées temps, email résumé, + Tâche                        |
@@ -77,6 +78,8 @@
 |------------|-----------------|--------------------------------------------------------------------------------|
 | TASK-015.3 | tasks agenda    | Tâches — notifications popup temps réel (WebSocket ou polling)                 |
 | TASK-015.4 | tasks agenda    | Tâches — envoi courriel de rappel (connecter email.py)                         |
+| TASK-024   | companies       | Onglet Photos d'installation sur la fiche compagnie (galerie upload) ✓         |
+| TASK-003.2 | contacts        | UI — bouton Journal à droite de Tâches (au lieu de section pleine largeur) ✓   |
 
 ### TASK-015.6 [x] Sous-tâches dans les tâches
 Fichiers touchés :
@@ -347,3 +350,244 @@ Fait :
 Fichiers : sipv/backend/app/api/v1/endpoints/esl.py,
 erpcrm/backend/app/api/v1/endpoints/companies.py,
 erpcrm/frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-023.2 [x] Infos de connexion SIP (mot de passe inclus) sur la fiche contact
+Demande de l'utilisateur : besoin du mot de passe SIP en clair pour configurer un
+téléphone manuellement quand le provisioning automatique échoue (réseau qui le
+bloque). `ExtOut` (SIPV) n'exposait jamais le mot de passe par design — condition
+posée par l'utilisateur pour l'exposer : le chiffrer au repos.
+Fait côté SIPV (voir TASKSIPV.md TASK-S039 pour le détail complet) :
+- `app/core/crypto.py` (nouveau, partagé) : chiffrement Fernet (même clé dérivée de
+  SECRET_KEY que le pattern déjà en place pour admin_password des téléphones).
+- `SIPExtension.password` chiffré au repos (migration `0026_encrypt_extension_
+  passwords` — chiffre les 3 mots de passe existants en place). `xml_curl.py`
+  déchiffre à la volée pour l'auth digest FreeSWITCH (aucun impact sur les postes
+  déjà enregistrés, testé en direct).
+- `GET /extensions/{id}/connection-info` (X-Api-Key, appelé par ERPCRM en proxy) :
+  retourne username, mot de passe déchiffré, serveur, port (5060/5061 selon
+  transport), domaine. Pas de log d'audit sur cette lecture — même choix que
+  reveal-admin-password (provisioning.py), déjà établi comme précédent.
+Fait côté ERPCRM :
+- `sipv_client.get_connection_info()`, `GET /v1/contacts/{id}/sip-extension/
+  connection-info` (proxy, JWT utilisateur requis).
+- ContactDetail.jsx : bouton "Afficher les infos de connexion" (même pattern
+  Révéler/Masquer que CompanyDetail.jsx pour ClientAccess) sous la section poste SIP
+  existante (TASK-023) — affiche serveur/port/transport/domaine/username/mot de
+  passe en `<code>` sélectionnable.
+TLS inter-serveurs ERPCRM↔SIPV ajouté dans la foulée (demande explicite de
+l'utilisateur après avoir noté que l'appel HTTP existant transportait maintenant un
+mot de passe en clair sur le réseau) — voir TASKSIPV.md TASK-S039 pour le détail
+complet (CA privée, nouveaux ports TLS dédiés 8011/8022, pare-feu).
+Fichiers : sipv/backend/app/core/crypto.py (nouveau),
+sipv/backend/app/api/v1/endpoints/extensions.py,
+sipv/backend/app/api/v1/endpoints/xml_curl.py,
+sipv/backend/alembic/versions/0026_encrypt_extension_passwords.py,
+erpcrm/backend/app/core/sipv_client.py, erpcrm/backend/app/api/v1/endpoints/contacts.py,
+erpcrm/frontend/src/pages/ContactDetail.jsx.
+
+### TASK-023.3 [x] Correction terminologie + IP publique dans les infos de connexion
+Demande de l'utilisateur après avoir configuré un vrai GXP2135 et galéré à cause
+d'un malentendu sur les champs "SIP Server" vs "Outbound Proxy" (voir TASKSIPV.md
+TASK-S039.3 pour le détail de la confusion) : les infos de connexion affichées sur
+la fiche contact doivent utiliser exactement les MÊMES noms de champs que ceux
+affichés sur un vrai téléphone (pas "Serveur"/"Domaine", qui prêtait à confusion),
+et l'adresse réseau doit être l'IP PUBLIQUE (pas l'IP LAN) — l'utilisateur a des
+règles internes sur son pare-feu WatchGuard (hairpin NAT) qui gèrent correctement
+l'IP publique même utilisée depuis l'intérieur du réseau, donc une seule adresse
+fonctionne partout (local et distant) sans avoir à changer la config du téléphone
+selon l'endroit.
+Fait côté SIPV :
+- `config.py` : nouveau `SIPV_PUBLIC_IP` (`.env`, pas codé en dur).
+- `GET /extensions/{id}/connection-info` : champs renommés `domain`→`sip_server`,
+  `server`→`outbound_proxy` (valeur = `SIPV_PUBLIC_IP` au lieu de `SIPV_HOST`).
+Fait côté ERPCRM :
+- ContactDetail.jsx : labels alignés sur la terminologie exacte du téléphone
+  ("SIP Server", "Outbound Proxy", "SIP User ID / Auth ID", "SIP Authentication
+  Password").
+Piège rencontré pendant le déploiement : `sipv-backend` (port 8020) et
+`sipv-backend-tls` (port 8022, TASK-S039.1) sont deux process uvicorn SÉPARÉS
+chargeant le même code — redémarrer l'un ne recharge PAS le code de l'autre.
+Oublié au premier redémarrage, résultat = anciens noms de champs encore retournés
+via le port TLS alors que le fichier sur disque était déjà à jour. À retenir pour
+tout futur déploiement touchant `extensions.py` : redémarrer LES DEUX services.
+Fichiers : sipv/backend/app/core/config.py,
+sipv/backend/app/api/v1/endpoints/extensions.py, sipv/backend/.env (SIPV_PUBLIC_IP),
+erpcrm/frontend/src/pages/ContactDetail.jsx.
+
+### TASK-023.4 [x] Enregistrement d'appel + renvois éditables depuis la fiche contact
+Demande de l'utilisateur (2026-07-24) : préciser la répartition ERPCRM/SIPV — SIPV
+expose TOUT ce que FreeSWITCH permet (usage technique occasionnel), ERPCRM n'expose
+que le sous-ensemble manipulé souvent au quotidien (postes/tenants/IVR/files
+d'attente/groupes d'appel + ce qui est déjà là). L'utilisateur a demandé d'ajouter
+l'enregistrement d'appel et les renvois/divert à ce sous-ensemble fréquent — pas
+juste en lecture (comme le reste de la section Téléphonie), en édition directe.
+Le portail client en libre-service (TASK-019/020 TASKERPCRM.md, TASK-S028
+TASKSIPV.md, "Mon poste"/Portal.jsx) couvre des champs similaires mais c'est un
+produit différent (accès client final), pas la fiche admin — les deux existent en
+parallèle, pas de doublon à corriger.
+Fait côté SIPV :
+- `PUT /extensions/{id}` : dépendance changée de `get_current_user` (JWT strict) à
+  `get_current_user_or_service` (accepte aussi X-Api-Key, même pattern que les
+  autres endpoints proxy ERPCRM) — nécessaire puisqu'ERPCRM appelle ce endpoint
+  sans compte utilisateur SIPV. `user.email` remplacé par un fallback
+  `"erpcrm-proxy"` dans `PendingChange.created_by` et `log_audit()` (`core/audit.py`,
+  paramètre `user` maintenant `User | None`) pour ne pas planter sur un appel
+  authentifié par clé plutôt que par JWT.
+Fait côté ERPCRM (première version) :
+- `sipv_client.update_extension()`, `PUT /v1/contacts/{id}/sip-extension` (proxy,
+  JWT utilisateur ERPCRM requis).
+- ContactDetail.jsx : 4 renvois avec case + destination (immédiat, occupé, non
+  répondu + délai, hors ligne — `forward_offline_enabled` ajouté par symétrie avec
+  les 3 autres, migration `0027_fwd_offline_enabled`).
+Fichiers : sipv/backend/app/api/v1/endpoints/extensions.py,
+sipv/backend/app/core/audit.py, erpcrm/backend/app/core/sipv_client.py,
+erpcrm/backend/app/api/v1/endpoints/contacts.py,
+erpcrm/frontend/src/pages/ContactDetail.jsx.
+
+**Révision de l'enregistrement (même session, précision demandée)** : le choix
+simple "Manuel"/"Tous les appels" (`record_mode`) remplacé par 5 cases
+indépendantes — 4 catégories automatiques (interne entrant/sortant, externe
+entrant/sortant) + Manuel séparé, avec une case "Tout" qui coche/décoche les 4
+automatiques ensemble sans jamais toucher à Manuel. Manuel (`record_calls`) reste
+un simple interrupteur visuel pour l'instant — pas câblé (attend un P-code
+Grandstream pour le déclenchement en cours d'appel, voir TASK-S011.4).
+Migration `0028_record_categories` : 4 nouveaux booléens sur `SIPExtension`
+(`record_internal_incoming/outgoing`, `record_external_incoming/outgoing`).
+
+**Câblage réel dans le dialplan** (`xml_curl.py`, pas juste des champs stockés) :
+- `_ext_dialplan_entries()` (appel interne poste→poste) : enregistre si le poste
+  APPELANT a `record_internal_outgoing` OU si le poste APPELÉ a
+  `record_internal_incoming` (l'un ou l'autre suffit).
+- `_outbound_dialplan_entries()` (appel vers un trunk PSTN) : enregistre si le
+  poste appelant a `record_external_outgoing`.
+- `_inbound_actions()` (appel entrant d'un trunk vers un poste) : enregistre si le
+  poste DESTINATAIRE a `record_external_incoming` (pas de poste "appelant" ici,
+  l'appelant est externe).
+- Nommage des fichiers (demande explicite) : `{caller_id_number}-{destination_
+  number}-{date}-{heure}.wav` dans `/usr/local/freeswitch/recordings/`, via
+  `record_session` + `${strftime(%Y%m%d-%H%M%S)}`.
+- `_dialplan_internal()` récupère maintenant TOUJOURS le poste appelant
+  (`caller_ext`, via `variable_sip_from_user`) — avant, seulement récupéré pour la
+  résolution de tenant en connexion "conventionnelle" (TASK-S039.4) ; maintenant
+  aussi nécessaire pour savoir si CET appel doit être enregistré.
+Testé en direct avec un vrai appel simulé (pas juste supposé) : `record_
+internal_outgoing=true` sur un poste de test → fichier `.wav` réel généré
+(196 Ko, PCM 8kHz mono valide, nom conforme au format demandé) ; valeur de test
+retirée et fichier supprimé après validation.
+Fichiers additionnels : sipv/backend/app/models/sip.py,
+sipv/backend/alembic/versions/0027_fwd_offline_enabled.py,
+sipv/backend/alembic/versions/0028_record_categories.py.
+
+### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
+Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
+que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
+modifie partout où il est lié. Toujours loggé dans le journal de la compagnie. Ajout
+d'un journal dans la fiche contact, filtré sur ce qui appartient à ce contact
+(un seul journal, vue filtrée). Recherche dans le journal (compagnie et contact),
+côté backend vu le volume attendu. Bouton "Revert" sur les entrées de modification
+pour remettre l'ancienne valeur en un clic.
+
+Décisions prises :
+- Nouveau champ dédié `Company.office_phone` (pas de collapse de la liste
+  `communication_channels` existante — celle-ci reste, avec ajout d'un DELETE et
+  d'un bouton "Définir comme principal" par numéro de type phone qui copie sa valeur
+  dans `office_phone`).
+- Compagnie de référence pour un contact multi-compagnies = compagnie principale
+  (`is_primary` sur le lien), sinon la première compagnie liée active, sinon aucune
+  (contact sans compagnie garde sa propre colonne `contact.phone`, comportement
+  inchangé). Logique dans `_office_company()` (contacts.py), réutilisée partout
+  (fiche contact, liste contacts, recherche globale).
+- Édition depuis la fiche contact (`PUT /contacts/{id}/office-phone`) : confirm()
+  d'avertissement côté frontend, écrit `company.office_phone`, log taggé avec
+  `contact_id` (nouvelle colonne nullable sur `entity_logs`) pour savoir depuis quelle
+  fiche contact le changement a été fait.
+- Journal : `GET /entities/{entity_id}/logs` retourne maintenant
+  `entity_id == entity_id OR contact_id == entity_id` — fonctionne pour compagnie
+  (tous ses logs) et pour contact (ses propres changements, pas loggés avant ce
+  correctif, + les entrées compagnie qui lui sont taguées) sans logique de détection
+  de type d'entité.
+- Recherche `?search=` sur ce même endpoint : ilike + `unaccent` (comme search.py)
+  sur description/field_name/old_value/new_value/nom d'utilisateur, plus un mapping
+  FIELD_LABELS/ACTION_LABELS normalisé pour matcher le libellé humain (ex: chercher
+  "telephone" trouve les entrées `office_phone`).
+- Revert (`POST /entities/logs/{log_id}/revert`) : uniquement sur les entrées
+  `field_change`. Détermine Company vs Contact via `entity.entity_type`, cast la
+  valeur stockée (str) vers le bon type Python via introspection SQLAlchemy
+  (bool/int/float/UUID/str), écrit une nouvelle entrée de log pour tracer le revert.
+  Portée : uniquement ce journal ERPCRM, ne touche pas SIPV.
+- Recherche globale (`/v1/search`) : un contact rattaché à une compagnie est
+  maintenant aussi trouvable par le numéro de bureau partagé (jointure
+  contact_companies → companies, en plus des colonnes propres au contact).
+
+Fichiers touchés :
+- `backend/app/models/company.py` — `office_phone: str | None`
+- `backend/app/models/entity_log.py` — `contact_id: uuid.UUID | None` (FK contacts, SET NULL)
+- `backend/app/schemas/company.py` — `office_phone` dans Create/Update/Out
+- `backend/app/api/v1/endpoints/companies.py` — `office_phone` dans `_build_company_out`
+  + `create_company` ; `DELETE /{id}/communications/{comm_id}` ;
+  `POST /{id}/communications/{comm_id}/set-office-phone`
+- `backend/app/api/v1/endpoints/contacts.py` — `_office_company()`, `phone` calculé
+  dans `_build_contact_out` et `list_contacts`, logging field_change ajouté dans
+  `update_contact` (absent avant), nouvel endpoint `PUT /{id}/office-phone`
+- `backend/app/api/v1/endpoints/logs.py` — union entity_id/contact_id, `?search=`,
+  `can_revert`, `POST /logs/{log_id}/revert`, labels `office_phone`/champs contact
+- `backend/app/api/v1/endpoints/search.py` — jointure compagnie pour matcher
+  `office_phone` sur les contacts
+- `frontend/src/components/JournalFeed.jsx` — nouveau composant partagé (extrait de
+  l'ancien `JournalTab` de CompanyDetail.jsx), avec champ recherche + bouton Revert
+- `frontend/src/pages/CompanyDetail.jsx` — champ `office_phone` (Identification),
+  bouton Retirer + Définir comme principal (Coordonnées), utilise `JournalFeed`
+- `frontend/src/pages/ContactDetail.jsx` — édition "Téléphone bureau" route vers
+  `office-phone` avec confirm() si compagnie liée, sinon comportement inchangé ;
+  nouvelle section Journal en bas de fiche
+
+Migration : `l3m4n5o6p7q8_company_office_phone.py` (down_revision `k2l3m4n5o6p7`).
+
+Testé manuellement en direct (API, avec Simple IP inc. / contacts Test Un / Test Deux /
+Test Trois) : édition depuis un contact propage à la compagnie et à tous les autres
+contacts liés ; journal compagnie et journal contact filtré corrects ; recherche
+(avec et sans accents) ; revert restaure la valeur et crée une nouvelle entrée ;
+suppression + "Définir comme principal" sur les coordonnées ; recherche globale
+retrouve un contact par le numéro de bureau partagé. Données de test remises à
+l'état initial (office_phone = null, aucune coordonnée ajoutée) après le test.
+
+Écart vs plan initial : aucun — le design discuté (option A pour la recherche, champ
+unique visible par la compagnie et tous ses contacts) a été implémenté tel quel.
+Reste à faire : rien.
+
+### TASK-024 [x] Onglet Photos d'installation sur la fiche compagnie
+Nouvel onglet "Photos" dans CompanyDetail.jsx (entre Tâches et Journal), galerie avec
+upload/légende/suppression.
+
+Fichiers touchés :
+- `backend/app/models/installation_photo.py` (nouveau) — InstallationPhoto
+  (company_id, filename, caption, uploaded_by_id)
+- `backend/app/models/__init__.py` — import ajouté
+- `backend/app/api/v1/endpoints/companies.py` — GET/POST/DELETE
+  `/companies/{id}/photos`, stockage sur disque (même pattern que
+  `backend/uploads/catalogue`, nouveau répertoire `uploads/installation_photos`,
+  servi par le mount statique `/uploads` déjà en place dans main.py, rien à ajouter
+  côté mount)
+- `backend/app/api/v1/endpoints/logs.py` — actions `photo_added`/`photo_removed`
+  ajoutées à ACTION_LABELS (pas réutilisé `communication_added` à tort — un ajout de
+  photo n'est pas une coordonnée)
+- `backend/alembic/versions/m4n5o6p7q8r9_installation_photos.py` (migration)
+- `frontend/src/pages/CompanyDetail.jsx` — nouvel onglet, composant `PhotosTab`
+  (galerie en grille, upload avec légende optionnelle via `prompt()`, clic sur photo
+  = ouvre en plein écran dans un nouvel onglet, suppression avec confirmation)
+
+⚠️ Bug trouvé et corrigé en cours de route : le paramètre `caption` de l'endpoint
+d'upload était déclaré comme paramètre simple (`caption: str | None = None`) au lieu
+de `Form(None)` — FastAPI le traitait comme un paramètre de query, jamais rempli par
+un champ multipart. Découvert en testant l'upload avec légende (revenait toujours
+`null`), corrigé avant de considérer la tâche terminée.
+
+Pas d'édition de légende après upload (seulement à la création) — pas demandé
+explicitement, aurait nécessité soit un endpoint PATCH dédié soit retirer/re-uploader ;
+je n'ai pas inventé ce endpoint supplémentaire.
+
+Testé en direct : upload avec et sans légende, fichier statique servi correctement
+(200 sur l'URL retournée), entrée de journal correcte (`photo_added` avec la légende
+en description), suppression retire le fichier ET la ligne DB. Backend redémarré et
+vérifié fonctionnel (login + upload + liste + suppression). Frontend rechargé via HMR
+sans erreur (vérifié dans les logs du service `erpcrm-frontend`).
