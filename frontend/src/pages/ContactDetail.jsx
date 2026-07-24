@@ -5,6 +5,7 @@ import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
 import JournalFeed from '../components/JournalFeed'
+import Autocomplete from '../components/Autocomplete'
 import './CompanyDetail.css'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
@@ -149,6 +150,13 @@ export default function ContactDetail({ isNew }) {
   const [sipExtLoading, setSipExtLoading] = useState(false)
   const [connInfo, setConnInfo] = useState(null)
   const [connInfoLoading, setConnInfoLoading] = useState(false)
+  const [phone, setPhone] = useState(null)
+  const [phoneModels, setPhoneModels] = useState([])
+  const [showAttribute, setShowAttribute] = useState(false)
+  const [attributeForm, setAttributeForm] = useState({ brand: null, model: null, mac_address: '', serial_number: '' })
+  const [showButtons, setShowButtons] = useState(false)
+  const [buttons, setButtons] = useState([])
+  const [buttonsLoading, setButtonsLoading] = useState(false)
 
   useEffect(() => {
     api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
@@ -168,9 +176,61 @@ export default function ContactDetail({ isNew }) {
     try {
       const r = await api.get(`/v1/contacts/${id}/sip-extension`)
       setSipExt(r.data)
+      if (r.data) loadPhone()
     } finally {
       setSipExtLoading(false)
     }
+  }
+
+  async function loadPhone() {
+    const r = await api.get(`/v1/contacts/${id}/sip-extension/phone`)
+    setPhone(r.data)
+  }
+
+  async function loadPhoneModels() {
+    if (phoneModels.length) return
+    const r = await api.get('/v1/ref/phone-models')
+    setPhoneModels(r.data)
+  }
+
+  async function attributePhone() {
+    if (!attributeForm.model || !attributeForm.mac_address.trim()) return
+    const r = await api.post(`/v1/contacts/${id}/sip-extension/phone`, {
+      phone_model_id: attributeForm.model.id,
+      mac_address: attributeForm.mac_address.trim(),
+      serial_number: attributeForm.serial_number.trim() || null,
+    })
+    setPhone(r.data)
+    setShowAttribute(false)
+  }
+
+  async function loadButtons() {
+    if (!phone) return
+    setButtonsLoading(true)
+    try {
+      const r = await api.get(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/buttons`)
+      setButtons(r.data)
+    } finally {
+      setButtonsLoading(false)
+    }
+  }
+
+  async function addButton() {
+    const position = (buttons.reduce((max, b) => Math.max(max, b.position), 0) || 0) + 1
+    const r = await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/buttons`, {
+      position, button_type: 'line',
+    })
+    setButtons(prev => [...prev, r.data])
+  }
+
+  async function saveButton(buttonId, field, value) {
+    const r = await api.put(`/v1/contacts/${id}/sip-extension/phone/buttons/${buttonId}`, { [field]: value })
+    setButtons(prev => prev.map(b => b.id === buttonId ? r.data : b))
+  }
+
+  async function removeButton(buttonId) {
+    await api.delete(`/v1/contacts/${id}/sip-extension/phone/buttons/${buttonId}`)
+    setButtons(prev => prev.filter(b => b.id !== buttonId))
   }
 
   async function toggleConnInfo() {
@@ -302,6 +362,22 @@ export default function ContactDetail({ isNew }) {
                 <span style={{ fontSize: 11, background: '#EFF6FF', color: '#1D4ED8', borderRadius: 4, padding: '2px 8px', fontWeight: 600 }}>
                   SIP actif
                 </span>
+              )}
+              {c.sipv_sync && (
+                <button
+                  className="btn-secondary"
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  onClick={async () => {
+                    const next = !showButtons
+                    setShowButtons(next)
+                    if (next) {
+                      if (!phone) { await loadPhoneModels(); setShowAttribute(true) }
+                      else loadButtons()
+                    }
+                  }}
+                >
+                  Bouton
+                </button>
               )}
             </div>
 
@@ -521,6 +597,90 @@ export default function ContactDetail({ isNew }) {
                         <InlineField label={`NIP d'autorisation *80<NIP><numéro> — laisser vide pour ne pas changer${sipExt.has_ld_pin ? ' (déjà configuré)' : ''}`} value="" onSave={v => saveSipExtField('ld_pin', v)} />
                       </div>
                     </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {c.sipv_sync && showButtons && (
+              <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+                {!phone && (
+                  <>
+                    <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 8 }}>Attribuer un appareil</div>
+                    <div className="ifields-grid">
+                      <Autocomplete
+                        label="Marque"
+                        items={[...new Set(phoneModels.map(m => m.brand))].map(b => ({ id: b, label: b }))}
+                        value={attributeForm.brand ? { id: attributeForm.brand, label: attributeForm.brand } : null}
+                        onSelect={item => setAttributeForm(p => ({ ...p, brand: item?.id || null, model: null }))}
+                        openOnFocus
+                      />
+                      <Autocomplete
+                        label="Modèle"
+                        items={phoneModels.filter(m => !attributeForm.brand || m.brand === attributeForm.brand).map(m => ({ id: m.id, label: m.model, sub: m.device_type }))}
+                        value={attributeForm.model ? { id: attributeForm.model.id, label: attributeForm.model.model } : null}
+                        onSelect={item => {
+                          const m = phoneModels.find(x => x.id === item?.id) || null
+                          setAttributeForm(p => ({ ...p, model: m, brand: m ? m.brand : p.brand }))
+                        }}
+                        openOnFocus
+                      />
+                      <div className="form-group">
+                        <label>Adresse MAC</label>
+                        <input value={attributeForm.mac_address} onChange={e => setAttributeForm(p => ({ ...p, mac_address: e.target.value }))} placeholder="AA:BB:CC:DD:EE:FF" />
+                      </div>
+                      <div className="form-group">
+                        <label>Numéro de série</label>
+                        <input value={attributeForm.serial_number} onChange={e => setAttributeForm(p => ({ ...p, serial_number: e.target.value }))} />
+                      </div>
+                    </div>
+                    <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8 }} onClick={attributePhone}>Attribuer</button>
+                  </>
+                )}
+
+                {phone && (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>
+                        Appareil : {phone.mac_address} {phoneModels.length > 0 && phoneModels.find(m => m.id === phone.phone_model_id) && `(${phoneModels.find(m => m.id === phone.phone_model_id).brand} ${phoneModels.find(m => m.id === phone.phone_model_id).model})`}
+                      </div>
+                      <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={loadButtons}>↻ Boutons</button>
+                    </div>
+                    {buttonsLoading && <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>}
+                    {!buttonsLoading && (
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                        <thead>
+                          <tr style={{ background: '#F3F4F6' }}>
+                            {['Pos.', 'Page', 'Type', 'Libellé', 'Valeur', 'Destination', 'Compte', 'Client', 'Verrouillé', ''].map(h => (
+                              <th key={h} style={{ textAlign: 'left', padding: '4px 6px', fontSize: 11, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {buttons.map(b => (
+                            <tr key={b.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.position} onBlur={e => saveButton(b.id, 'position', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.page} onBlur={e => saveButton(b.id, 'page', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px' }}>
+                                <select defaultValue={b.button_type} onChange={e => saveButton(b.id, 'button_type', e.target.value)} style={{ fontSize: 12 }}>
+                                  {['line', 'blf', 'speed_dial', 'park', 'park_retrieve', 'voicemail', 'transfer', 'intercom', 'paging', 'dnd', 'forward', 'queue', 'agent_login', 'agent_logout', 'agent_pause', 'pickup_group', 'feature_code', 'door', 'directory'].map(t => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                                </select>
+                              </td>
+                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.label || ''} onBlur={e => saveButton(b.id, 'label', e.target.value)} style={{ width: 90, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.value || ''} onBlur={e => saveButton(b.id, 'value', e.target.value)} style={{ width: 70, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.destination || ''} onBlur={e => saveButton(b.id, 'destination', e.target.value)} style={{ width: 80, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.sip_account_index} onBlur={e => saveButton(b.id, 'sip_account_index', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
+                              <td style={{ padding: '3px 6px', textAlign: 'center' }}><input type="checkbox" defaultChecked={b.client_editable} onChange={e => saveButton(b.id, 'client_editable', e.target.checked)} /></td>
+                              <td style={{ padding: '3px 6px', textAlign: 'center' }}><input type="checkbox" defaultChecked={b.locked_by_simpleip} onChange={e => saveButton(b.id, 'locked_by_simpleip', e.target.checked)} /></td>
+                              <td style={{ padding: '3px 6px' }}><button className="inv-del-btn" onClick={() => removeButton(b.id)}>✕</button></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8 }} onClick={addButton}>+ Ajouter un bouton</button>
                   </>
                 )}
               </div>

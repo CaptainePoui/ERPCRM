@@ -556,6 +556,45 @@ que TASK-023.5/023.6 -- en attente du `sudo systemctl restart`). Frontend deja l
 Fichiers : backend/app/api/v1/endpoints/companies.py, contacts.py,
 frontend/src/pages/CompanyDetail.jsx, ContactDetail.jsx.
 
+### TASK-023.19 [x] Attribution d'appareil + éditeur de boutons sur la fiche contact
+Demande de l'utilisateur (2026-07-24) : dans compagnie/téléphonie, cliquer sur un
+poste ouvre le contact ; à droite de "Synchroniser avec SIPV"/"SIP actif", un
+bouton "Bouton" permet de créer une config de touches programmables pour ce poste.
+Attribution d'appareil : marque et modèle en recherche/scroll, MAC et numéro de
+série saisis à la main.
+
+Fait côté SIPV (préparation, voir TASKSIPV S023.19) : endpoints provisioning
+basculés vers l'auth combinée JWT/clé API, nouvel endpoint `by-extension/{id}`.
+
+Fait côté ERPCRM :
+- `sipv_client.py` : 8 nouvelles fonctions proxy (modèles, téléphone par poste,
+  création/màj téléphone, CRUD boutons).
+- `ref_data.py` : `GET /v1/ref/phone-models` (catalogue, pour les dropdowns).
+- `contacts.py` : `GET/POST /{id}/sip-extension/phone`, `PUT .../phone/{phone_id}`,
+  `GET/POST /.../phone/{phone_id}/buttons`, `PUT/DELETE .../buttons/{button_id}`.
+- `ContactDetail.jsx` : bouton "Bouton" à côté de "SIP actif" (exactement
+  l'emplacement demandé) ; si aucun appareil attribué, formulaire d'attribution
+  (`Autocomplete` réutilisé pour marque/modèle -- composant déjà existant, pas
+  réinventé) ; si appareil attribué, tableau éditable des boutons (position/page/
+  type/libellé/valeur/destination/compte SIP/client éditable/verrouillé) avec
+  ajout/suppression en ligne.
+
+⚠️ Bug trouvé et corrigé en testant (pas laissé tel quel) : `PhoneUpdatePayload`
+oubliait le champ `is_active` -- la désactivation d'un appareil de test semblait
+réussir (200 OK) mais ne changeait rien réellement (Pydantic ignore silencieusement
+les champs non déclarés). Ajouté, retesté, confirmé (`is_active: false` appliqué).
+
+Testé en direct de bout en bout via l'API (contact "Test Deux", lié à t1001-101) :
+catalogue de 65 modèles récupéré via le proxy ; téléphone attribué (modèle GXP2130
+family, MAC de test) ; bouton BLF créé et listé ; bouton supprimé ; téléphone
+désactivé après correction du bug. SIPV confirmé : les 3 postes de test restent
+`Registered`, aucune donnée de test résiduelle active.
+⚠️ Backend ERPCRM rechargé manuellement pour cette tâche (toujours en attente du
+`sudo systemctl restart` de l'utilisateur, voir TASK-023.5) -- code testé et
+fonctionnel sur les process manuels actuels.
+Fichiers : backend/app/core/sipv_client.py, api/v1/endpoints/contacts.py,
+api/v1/endpoints/ref_data.py, frontend/src/pages/ContactDetail.jsx.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le

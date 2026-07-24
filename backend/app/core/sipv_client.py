@@ -102,3 +102,89 @@ async def tenant_registrations(tenant_id: str) -> list[dict]:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+async def list_phone_models() -> list[dict]:
+    """Catalogue des modeles de telephones (TASK-023.19), pour les dropdowns marque/modele."""
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/models",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_phone_by_extension(extension_id: str) -> dict | None:
+    """Telephone physique attribue a ce poste, ou None si aucun."""
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/by-extension/{extension_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_provisioned_phone(tenant_id: str, **fields) -> dict:
+    """Attribue un nouvel appareil physique a un poste (marque/modele/MAC/serie)."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/tenant/{tenant_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_provisioned_phone(phone_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/{phone_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_phone_buttons(phone_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/{phone_id}/buttons",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_phone_button(phone_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/{phone_id}/buttons",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_phone_button(button_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/buttons/{button_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_phone_button(button_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/provisioning/buttons/{button_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()

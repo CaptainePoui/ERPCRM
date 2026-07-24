@@ -27,3 +27,14 @@ async def list_functions(db: AsyncSession = Depends(get_db), _: User = Depends(g
 async def list_managers(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     result = await db.execute(select(User).where(User.is_active == True).order_by(User.full_name))
     return result.scalars().all()
+
+
+@router.get("/phone-models")
+async def list_phone_models(_: User = Depends(get_current_user)):
+    """Catalogue des modeles de telephones SIPV (TASK-023.19), pour les dropdowns marque/modele."""
+    import httpx
+    from app.core import sipv_client
+    try:
+        return await sipv_client.list_phone_models()
+    except httpx.HTTPError:
+        return []

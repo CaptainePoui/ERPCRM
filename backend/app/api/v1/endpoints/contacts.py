@@ -272,6 +272,125 @@ async def update_contact_sip_extension(contact_id: uuid.UUID, payload: SipExtens
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 
 
+# ── Appareil physique + boutons programmables (TASK-023.19) ────────────────────
+# Section a cote de "Synchroniser avec SIPV / SIP actif" sur la fiche contact,
+# demande explicite de l'utilisateur (2026-07-24).
+
+async def _get_own_extension(contact_id: uuid.UUID, db: AsyncSession) -> dict:
+    contact = await db.get(Contact, contact_id)
+    if not contact or not contact.sipv_sync:
+        raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+    extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+    if not extensions:
+        raise HTTPException(status_code=404, detail="Ce contact n'a pas de poste SIP lie")
+    return extensions[0]
+
+
+@router.get("/{contact_id}/sip-extension/phone")
+async def get_contact_phone(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        return await sipv_client.get_phone_by_extension(ext["id"])
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+class PhoneAttribute(BaseModel):
+    phone_model_id: uuid.UUID
+    mac_address: str
+    serial_number: str | None = None
+    display_name: str | None = None
+    location: str | None = None
+
+
+@router.post("/{contact_id}/sip-extension/phone")
+async def create_contact_phone(contact_id: uuid.UUID, payload: PhoneAttribute, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        return await sipv_client.create_provisioned_phone(
+            ext["tenant_id"], extension_id=ext["id"], **payload.model_dump(exclude_none=True, exclude={"phone_model_id"}),
+            phone_model_id=str(payload.phone_model_id),
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+class PhoneUpdatePayload(BaseModel):
+    phone_model_id: uuid.UUID | None = None
+    mac_address: str | None = None
+    serial_number: str | None = None
+    display_name: str | None = None
+    location: str | None = None
+    is_active: bool | None = None
+
+
+@router.put("/{contact_id}/sip-extension/phone/{phone_id}")
+async def update_contact_phone(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: PhoneUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        data = payload.model_dump(exclude_unset=True)
+        if "phone_model_id" in data and data["phone_model_id"]:
+            data["phone_model_id"] = str(data["phone_model_id"])
+        return await sipv_client.update_provisioned_phone(str(phone_id), **data)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+class PhoneButtonPayload(BaseModel):
+    position: int
+    page: int = 0
+    button_type: str
+    label: str | None = None
+    value: str | None = None
+    destination: str | None = None
+    sip_account_index: int = 1
+    client_editable: bool = False
+    locked_by_simpleip: bool = True
+
+
+class PhoneButtonPayloadUpdate(BaseModel):
+    position: int | None = None
+    page: int | None = None
+    button_type: str | None = None
+    label: str | None = None
+    value: str | None = None
+    destination: str | None = None
+    sip_account_index: int | None = None
+    client_editable: bool | None = None
+    locked_by_simpleip: bool | None = None
+
+
+@router.get("/{contact_id}/sip-extension/phone/{phone_id}/buttons")
+async def list_contact_phone_buttons(contact_id: uuid.UUID, phone_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.list_phone_buttons(str(phone_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.post("/{contact_id}/sip-extension/phone/{phone_id}/buttons")
+async def create_contact_phone_button(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: PhoneButtonPayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.create_phone_button(str(phone_id), **payload.model_dump())
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.put("/{contact_id}/sip-extension/phone/buttons/{button_id}")
+async def update_contact_phone_button(contact_id: uuid.UUID, button_id: uuid.UUID, payload: PhoneButtonPayloadUpdate, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_phone_button(str(button_id), **payload.model_dump(exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{contact_id}/sip-extension/phone/buttons/{button_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact_phone_button(contact_id: uuid.UUID, button_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_phone_button(str(button_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
 @router.put("/{contact_id}", response_model=ContactOut)
 async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: AsyncSession = Depends(get_db), user: User | None = Depends(get_current_user_or_service)):
     result = await db.execute(select(Contact).where(Contact.id == contact_id))
