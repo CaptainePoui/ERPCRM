@@ -210,13 +210,17 @@ class SipExtensionUpdate(BaseModel):
     record_external_outgoing: bool | None = None
     forward_immediate_enabled: bool | None = None
     forward_immediate_destination: str | None = None
+    forward_immediate_destination_type: str | None = None
     forward_busy_enabled: bool | None = None
     forward_busy_destination: str | None = None
+    forward_busy_destination_type: str | None = None
     forward_no_answer_enabled: bool | None = None
     forward_no_answer_destination: str | None = None
+    forward_no_answer_destination_type: str | None = None
     forward_no_answer_delay_seconds: int | None = None
     forward_offline_enabled: bool | None = None
     forward_offline_destination: str | None = None
+    forward_offline_destination_type: str | None = None
     # --- TASK-023.5 : plan d'appel (TASKSIPV S018.5) + caller ID interne/externe (S018.6) ---
     allow_canada: bool | None = None
     allow_us: bool | None = None

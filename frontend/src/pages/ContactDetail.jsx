@@ -390,11 +390,11 @@ export default function ContactDetail({ isNew }) {
                     <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
                       <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Renvois</div>
                       {[
-                        { key: 'forward_immediate', label: 'Renvoi immédiat' },
-                        { key: 'forward_busy', label: 'Renvoi si occupé' },
-                        { key: 'forward_no_answer', label: 'Renvoi si non répondu' },
-                        { key: 'forward_offline', label: 'Renvoi si hors ligne' },
-                      ].map(({ key, label }) => (
+                        { key: 'forward_immediate', label: 'Renvoi immédiat', live: true },
+                        { key: 'forward_busy', label: 'Renvoi si occupé', live: false },
+                        { key: 'forward_no_answer', label: 'Renvoi si non répondu', live: false },
+                        { key: 'forward_offline', label: 'Renvoi si hors ligne', live: false },
+                      ].map(({ key, label, live }) => (
                         <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
                           <input
                             type="checkbox"
@@ -403,15 +403,33 @@ export default function ContactDetail({ isNew }) {
                             onChange={e => saveSipExtField(`${key}_enabled`, e.target.checked)}
                             style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
                           />
-                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>{label}</label>
+                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>
+                            {label}{!live && sipExt[`${key}_enabled`] ? ' ⚠' : ''}
+                          </label>
                           {sipExt[`${key}_enabled`] && (
-                            <input
-                              type="text"
-                              placeholder="Destination (ex: poste ou numéro)"
-                              defaultValue={sipExt[`${key}_destination`] || ''}
-                              onBlur={e => saveSipExtField(`${key}_destination`, e.target.value)}
-                              style={{ fontSize: 12, padding: '3px 6px', width: 160 }}
-                            />
+                            <>
+                              <select
+                                defaultValue={sipExt[`${key}_destination_type`] || 'extension'}
+                                onBlur={e => saveSipExtField(`${key}_destination_type`, e.target.value)}
+                                onChange={e => saveSipExtField(`${key}_destination_type`, e.target.value)}
+                                style={{ fontSize: 12, padding: '3px 6px' }}
+                              >
+                                <option value="extension">Poste</option>
+                                <option value="voicemail">Boîte vocale</option>
+                                <option value="external">Numéro externe</option>
+                                <option value="ring_group">Groupe d'appel</option>
+                                <option value="queue">File d'attente</option>
+                                <option value="ivr">IVR</option>
+                                <option value="message">Message enregistré</option>
+                              </select>
+                              <input
+                                type="text"
+                                placeholder="Destination (ex: poste ou numéro)"
+                                defaultValue={sipExt[`${key}_destination`] || ''}
+                                onBlur={e => saveSipExtField(`${key}_destination`, e.target.value)}
+                                style={{ fontSize: 12, padding: '3px 6px', width: 140 }}
+                              />
+                            </>
                           )}
                           {key === 'forward_no_answer' && sipExt.forward_no_answer_enabled && (
                             <input
@@ -424,6 +442,9 @@ export default function ContactDetail({ isNew }) {
                           )}
                         </div>
                       ))}
+                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                        ⚠ = configuré mais pas encore appliqué par le serveur (renvoi si occupé / non répondu / hors ligne — voir TASKSIPV S023.6). Seul le renvoi immédiat (poste/boîte vocale/groupe d'appel) agit réellement sur les appels pour l'instant.
+                      </div>
                     </div>
 
                     <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>

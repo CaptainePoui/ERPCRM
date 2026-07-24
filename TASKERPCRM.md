@@ -510,6 +510,21 @@ reproduit : configurer un sudoers NOPASSWD scopé à `systemctl restart erpcrm-b
 pour cet utilisateur, ou toujours demander avant un restart sur ce serveur.
 Fichiers : backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/ContactDetail.jsx.
 
+### TASK-023.6 [~] Type de destination des renvois sur la fiche contact
+Suite de TASKSIPV TASK-S023.6 (typage poste/BV/externe/groupe d'appel/file/IVR/
+message des 4 renvois). `SipExtensionUpdate` etendu avec les 4 champs
+`forward_*_destination_type` (passthrough generique, comme TASK-023.5). Selecteur
+ajoute a cote de chaque champ destination dans ContactDetail.jsx, avec un ⚠ sur le
+libelle quand le renvoi est actif mais pas encore reellement applique (occupe/non
+repondu/hors ligne -- seul le renvoi immediat agit reellement, voir TASKSIPV
+S023.6) pour ne pas laisser croire que c'est deja fonctionnel.
+⚠️ Ce changement backend (contacts.py) est dans les fichiers modifies mais PAS ENCORE
+charge par le process en cours (voir incident TASK-023.5 ci-dessus -- process relance
+manuellement en attendant le `sudo systemctl restart` de l'utilisateur). Les nouveaux
+champs de type seront silencieusement ignores par Pydantic (pas d'erreur, juste pas
+sauvegardes) tant que ce restart n'est pas fait. Frontend deja live (Vite HMR).
+Fichiers : backend/app/api/v1/endpoints/contacts.py, frontend/src/pages/ContactDetail.jsx.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
