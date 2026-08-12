@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import { contrastText } from '../utils/color'
 import './Companies.css'
 
 export default function Contacts() {
@@ -61,7 +62,7 @@ export default function Contacts() {
                   <td>
                     <div className="status-chips">
                       {c.statuses.map(s => (
-                        <span key={s.id} className="status-chip" style={{ background: s.color, color: '#fff', borderColor: s.color }}>{s.name}</span>
+                        <span key={s.id} className="status-chip" style={{ background: s.color, color: contrastText(s.color), borderColor: s.color }}>{s.name}</span>
                       ))}
                     </div>
                   </td>

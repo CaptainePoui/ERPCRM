@@ -1,4 +1,5 @@
 import uuid
+import httpx
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -8,10 +9,12 @@ from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
+from app.core import sipv_client
 from app.models.portal import PortalUser
 from app.models.invoice import Invoice
 from app.models.ticket import Ticket
 from app.models.equipment import Equipment
+from app.models.contact import Contact
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 
@@ -35,7 +38,7 @@ class PortalTokenResponse(BaseModel):
 
 TELEPHONY_PERM_FIELDS = [
     "can_view_own_extension", "can_edit_extension_name", "can_edit_call_forward",
-    "can_edit_dnd", "can_edit_voicemail", "can_view_own_cdr", "can_view_voicemail_messages",
+    "can_edit_dnd", "can_edit_voicemail", "can_edit_call_plan", "can_view_own_cdr", "can_view_voicemail_messages",
     "can_receive_alerts", "can_manage_telephony", "can_manage_ivr", "can_manage_groups",
     "can_manage_audio_prompts", "can_view_company_cdr",
 ]
@@ -57,6 +60,7 @@ class PortalUserOut(BaseModel):
     can_edit_call_forward: bool
     can_edit_dnd: bool
     can_edit_voicemail: bool
+    can_edit_call_plan: bool
     can_view_own_cdr: bool
     can_view_voicemail_messages: bool
     can_receive_alerts: bool
@@ -84,6 +88,7 @@ class PortalUserCreate(BaseModel):
     can_edit_call_forward: bool = False
     can_edit_dnd: bool = False
     can_edit_voicemail: bool = False
+    can_edit_call_plan: bool = False
     can_view_own_cdr: bool = False
     can_view_voicemail_messages: bool = False
     can_receive_alerts: bool = False
@@ -108,6 +113,7 @@ class PortalUserUpdate(BaseModel):
     can_edit_call_forward: bool | None = None
     can_edit_dnd: bool | None = None
     can_edit_voicemail: bool | None = None
+    can_edit_call_plan: bool | None = None
     can_view_own_cdr: bool | None = None
     can_view_voicemail_messages: bool | None = None
     can_receive_alerts: bool | None = None
@@ -229,13 +235,127 @@ async def portal_equipment(u: PortalUser = Depends(get_portal_user), db: AsyncSe
             for e in eqs]
 
 
+# ── Portal "Mon poste" (TASK-019/S028) ──────────────────────────────────────
+# Champs exposés en édition = uniquement ceux réellement câblés dans le dialplan
+# SIPV (voir TASKSIPV.md TASK-S018.3/023.6/023.30/S023.31/S052) -- ne jamais
+# exposer un champ décoratif comme éditable ici, ce serait la même "fausse
+# sécurité"/faux fonctionnel que le projet évite explicitement partout ailleurs.
+
+FORWARD_FIELDS = {
+    "forward_immediate_enabled", "forward_immediate_destination_type", "forward_immediate_destination",
+    "forward_busy_enabled", "forward_busy_destination_type", "forward_busy_destination",
+    "forward_no_answer_enabled", "forward_no_answer_destination_type", "forward_no_answer_destination",
+    "forward_no_answer_delay_seconds",
+    "forward_offline_enabled", "forward_offline_destination_type", "forward_offline_destination",
+}
+NAME_FIELDS = {"name"}
+DND_FIELDS = {"dnd_enabled"}
+VOICEMAIL_FIELDS = {"voicemail_enabled", "voicemail_email"}
+# TASK-S056 : plan d'appel -- tri-état (True/False/None=hérite du défaut compagnie),
+# RÉELLEMENT appliqué via _call_permission_gate_entries() côté SIPV (contrairement
+# au menu Local/National/International retiré ce matin même, TASK-S052). Ne pas
+# réintroduire ce menu simple ici -- seuls ces 4 champs granulaires sont branchés.
+CALL_PLAN_FIELDS = {"allow_canada", "allow_us", "allow_international", "allow_premium"}
+
+
+class PortalExtensionUpdate(BaseModel):
+    name: str | None = None
+    forward_immediate_enabled: bool | None = None
+    forward_immediate_destination_type: str | None = None
+    forward_immediate_destination: str | None = None
+    forward_busy_enabled: bool | None = None
+    forward_busy_destination_type: str | None = None
+    forward_busy_destination: str | None = None
+    forward_no_answer_enabled: bool | None = None
+    forward_no_answer_destination_type: str | None = None
+    forward_no_answer_destination: str | None = None
+    forward_no_answer_delay_seconds: int | None = None
+    forward_offline_enabled: bool | None = None
+    forward_offline_destination_type: str | None = None
+    forward_offline_destination: str | None = None
+    dnd_enabled: bool | None = None
+    voicemail_enabled: bool | None = None
+    voicemail_email: str | None = None
+    allow_canada: bool | None = None
+    allow_us: bool | None = None
+    allow_international: bool | None = None
+    allow_premium: bool | None = None
+
+
+async def _portal_own_extension(u: PortalUser, db: AsyncSession) -> dict:
+    if not u.can_view_own_extension:
+        raise HTTPException(status_code=403, detail="Accès à votre poste non autorisé")
+    if not u.contact_id:
+        raise HTTPException(status_code=404, detail="Aucun contact lié à ce compte portail")
+    try:
+        exts = await sipv_client.get_extensions_by_contact(str(u.contact_id))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if not exts:
+        raise HTTPException(status_code=404, detail="Aucun poste SIP lié à votre compte")
+    # TASK-S055 : courriel de messagerie vocale -- si le poste en a déjà un,
+    # inchangé. Sinon, `contact_email` sert au frontend à pré-remplir le champ
+    # avec le courriel du contact (lié) plutôt que de forcer une saisie
+    # manuelle -- reste éditable si l'utilisateur veut un courriel différent.
+    contact = await db.get(Contact, u.contact_id)
+    exts[0]["contact_email"] = contact.email if contact else None
+    return exts[0]
+
+
+@router.get("/extension")
+async def portal_extension(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    return await _portal_own_extension(u, db)
+
+
+@router.patch("/extension")
+async def update_portal_extension(payload: PortalExtensionUpdate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    ext = await _portal_own_extension(u, db)
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        return ext
+
+    allowed: set[str] = set()
+    if u.can_edit_extension_name:
+        allowed |= NAME_FIELDS
+    if u.can_edit_call_forward:
+        allowed |= FORWARD_FIELDS
+    if u.can_edit_dnd:
+        allowed |= DND_FIELDS
+    if u.can_edit_voicemail:
+        allowed |= VOICEMAIL_FIELDS
+    if u.can_edit_call_plan:
+        allowed |= CALL_PLAN_FIELDS
+
+    forbidden = set(data.keys()) - allowed
+    if forbidden:
+        raise HTTPException(status_code=403, detail=f"Non autorisé à modifier : {', '.join(sorted(forbidden))}")
+
+    try:
+        return await sipv_client.update_extension(ext["id"], **data)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.get("/cdr")
+async def portal_cdr(page: int = 1, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_view_own_cdr:
+        raise HTTPException(status_code=403, detail="Accès à votre historique d'appels non autorisé")
+    ext = await _portal_own_extension(u, db)
+    try:
+        return await sipv_client.list_cdr_for_extension(ext["tenant_id"], ext["extension"], page=page)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
 # ── Admin: Portal Users Management ───────────────────────────────────────────
 
 @router.get("/users", response_model=list[PortalUserOut])
-async def list_portal_users(company_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def list_portal_users(company_id: uuid.UUID | None = None, contact_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     q = select(PortalUser).order_by(PortalUser.full_name)
     if company_id:
         q = q.where(PortalUser.company_id == company_id)
+    if contact_id:
+        q = q.where(PortalUser.contact_id == contact_id)
     result = await db.execute(q)
     return [_out(u) for u in result.scalars().all()]
 

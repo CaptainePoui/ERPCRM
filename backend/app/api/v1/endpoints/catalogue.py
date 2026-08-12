@@ -1,11 +1,13 @@
 import uuid
 import shutil
 from pathlib import Path
+from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
+from app.api.v1.endpoints.settings import get_setting
 from app.models.catalogue import CatalogueItem
 from app.models.user import User
 from pydantic import BaseModel
@@ -13,6 +15,8 @@ from pydantic import BaseModel
 router = APIRouter()
 UPLOAD_DIR = Path("/home/simpleip/erpcrm/backend/uploads/catalogue")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+CatalogueType = Literal["service", "materiel", "connaissance"]
 
 
 class CatalogueOut(BaseModel):
@@ -25,25 +29,28 @@ class CatalogueOut(BaseModel):
     image_url: str | None
     description: str | None
     notes: str | None
-    linked_to_hourly_rate: bool
+    sipv_service_type: str | None
+    rate_multiplier: float | None
     model_config = {"from_attributes": True}
 
 
 class CatalogueCreate(BaseModel):
     name: str
-    type: str
+    type: CatalogueType
     price: float = 0
     currency: str = "CAD"
+    sipv_service_type: str | None = None
 
 
 class CatalogueUpdate(BaseModel):
     name: str | None = None
-    type: str | None = None
+    type: CatalogueType | None = None
     price: float | None = None
     is_active: bool | None = None
     description: str | None = None
     notes: str | None = None
-    linked_to_hourly_rate: bool | None = None
+    sipv_service_type: str | None = None
+    rate_multiplier: float | None = None
 
 
 @router.get("", response_model=list[CatalogueOut])
@@ -76,8 +83,15 @@ async def update_item(item_id: uuid.UUID, payload: CatalogueUpdate, db: AsyncSes
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Item introuvable")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changed = payload.model_dump(exclude_unset=True)
+    for field, value in changed.items():
         setattr(item, field, value)
+    # Prix des articles "connaissance" = taux horaire global x multiplicateur --
+    # recalcule immediatement si on vient de classer l'item ou de changer son
+    # multiplicateur, sans attendre le prochain changement de taux (Réglages).
+    if item.type == "connaissance" and ("type" in changed or "rate_multiplier" in changed):
+        hourly_rate = float(await get_setting(db, "hourly_rate"))
+        item.price = hourly_rate * (item.rate_multiplier or 1)
     await db.commit()
     await db.refresh(item)
     return item

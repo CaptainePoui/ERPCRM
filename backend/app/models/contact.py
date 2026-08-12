@@ -12,6 +12,7 @@ class Contact(Base):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255))
+    email_other: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50))
     mobile: Mapped[str | None] = mapped_column(String(50))
     extension: Mapped[str | None] = mapped_column(String(20))

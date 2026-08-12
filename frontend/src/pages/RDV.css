@@ -1,0 +1,45 @@
+.rdv-page { min-height: 100vh; background: #F9FAFB; }
+.rdv-topbar { background: var(--brand); color: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+.rdv-brand { font-size: 18px; font-weight: 800; }
+.rdv-back-btn { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
+.rdv-back-btn:hover { background: rgba(255,255,255,.25); }
+
+.rdv-body { max-width: 640px; margin: 0 auto; padding: 32px 24px; }
+.rdv-loading, .rdv-empty { text-align: center; color: #6B7280; padding: 40px 0; }
+
+.rdv-step-title { font-size: 20px; font-weight: 700; color: #111827; margin: 0 0 20px; text-align: center; }
+
+.rdv-type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 560px) { .rdv-type-cards { grid-template-columns: 1fr; } }
+.rdv-type-card { background: #fff; border: 2px solid #E5E7EB; border-radius: 12px; padding: 24px 20px; cursor: pointer; text-align: center; transition: border-color .15s; }
+.rdv-type-card:hover { border-color: var(--brand); }
+.rdv-type-icon { font-size: 36px; margin-bottom: 10px; }
+.rdv-type-name { font-weight: 700; font-size: 16px; color: #111827; margin-bottom: 8px; }
+.rdv-type-desc { font-size: 13px; color: #6B7280; line-height: 1.5; }
+
+.rdv-duration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+.rdv-duration-btn { background: #fff; border: 2px solid #E5E7EB; border-radius: 8px; padding: 12px 8px; cursor: pointer; font-weight: 600; color: #374151; }
+.rdv-duration-btn:hover { border-color: var(--brand); }
+.rdv-duration-btn.selected { border-color: var(--brand); background: var(--brand-bg); color: var(--brand); }
+
+.rdv-day-scroller { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px; }
+.rdv-day-chip { flex: 0 0 auto; background: #fff; border: 2px solid #E5E7EB; border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: #374151; white-space: nowrap; }
+.rdv-day-chip:hover { border-color: var(--brand); }
+.rdv-day-chip.selected { border-color: var(--brand); background: var(--brand); color: #fff; }
+
+.rdv-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
+.rdv-slot-btn { background: #fff; border: 2px solid #E5E7EB; border-radius: 6px; padding: 10px 6px; cursor: pointer; font-weight: 600; color: #374151; font-size: 14px; }
+.rdv-slot-btn:hover { border-color: var(--brand); background: var(--brand-bg); color: var(--brand); }
+
+.rdv-form-step .rdv-recap { background: var(--brand-bg); border: 1px solid var(--brand-border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; color: var(--brand); text-align: center; }
+.rdv-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+@media (max-width: 560px) { .rdv-form-grid { grid-template-columns: 1fr; } }
+.rdv-error { background: #FEF2F2; color: #DC2626; border: 1px solid #FECACA; border-radius: 6px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
+.rdv-submit-btn { display: block; width: 100%; padding: 14px; background: var(--brand); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+.rdv-submit-btn:hover:not(:disabled) { background: var(--brand-hover); }
+.rdv-submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+.rdv-confirm { text-align: center; max-width: 480px; margin: 48px auto; }
+.rdv-confirm-icon { width: 64px; height: 64px; background: #D1FAE5; color: #059669; border-radius: 50%; font-size: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+.rdv-confirm h2 { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: #111827; }
+.rdv-confirm p { color: #4B5563; font-size: 15px; line-height: 1.6; }

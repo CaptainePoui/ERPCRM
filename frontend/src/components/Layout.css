@@ -5,7 +5,7 @@
 }
 
 .layout-header {
-  background: #184FA0;
+  background: var(--brand);
   color: #fff;
   padding: 0 24px;
   height: 56px;
@@ -16,6 +16,19 @@
   position: sticky;
   top: 0;
   z-index: 100;
+  gap: 12px;
+}
+
+.hamburger-btn {
+  display: none;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 4px 8px;
+  line-height: 1;
+  flex-shrink: 0;
 }
 
 .layout-brand {
@@ -101,6 +114,11 @@
   border-right: 1px solid #E5E7EB;
   padding: 16px 0;
   flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.sidebar-overlay {
+  display: none;
 }
 
 .sidebar-link {
@@ -118,19 +136,22 @@
 
 .sidebar-link:hover {
   background: #F3F4F6;
-  color: #184FA0;
+  color: var(--brand);
 }
 
 .sidebar-link.active {
-  background: #EFF6FF;
-  color: #184FA0;
-  border-left-color: #184FA0;
+  background: var(--brand-bg);
+  color: var(--brand);
+  border-left-color: var(--brand);
 }
 
 .sidebar-icon {
-  font-size: 16px;
   width: 20px;
-  text-align: center;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 
 .layout-main {
@@ -147,8 +168,59 @@
 .global-search:focus { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.6); }
 .search-dropdown { position: absolute; top: calc(100% + 6px); left: 0; right: 0; background: #fff; border: 1px solid #E5E7EB; border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); z-index: 200; overflow: hidden; }
 .search-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; cursor: pointer; transition: background 0.1s; }
-.search-item:hover, .search-item-active { background: #EFF6FF; }
+.search-item:hover, .search-item-active { background: var(--brand-bg); }
 .search-item-type { font-size: 14px; flex-shrink: 0; }
 .search-item-label { font-size: 14px; font-weight: 600; color: #111827; flex: 1; }
 .search-item-sub { font-size: 12px; color: #9CA3AF; }
 .search-empty { padding: 12px 14px; font-size: 14px; color: #9CA3AF; }
+
+/* ── Responsive : tablette (icones seules dans le menu) ── */
+@media (max-width: 1024px) {
+  .sidebar-label { display: none; }
+  .sidebar { width: 60px; }
+  .sidebar-link { justify-content: center; padding: 12px 0; }
+  .sidebar-icon { width: 22px; height: 22px; }
+  .layout-main { padding: 20px; }
+  .brand-name { display: none; }
+  .search-wrap { margin: 0 16px; }
+}
+
+/* ── Responsive : cellulaire (menu en tiroir) ── */
+@media (max-width: 768px) {
+  .hamburger-btn { display: block; }
+
+  .search-wrap { display: none; }
+
+  .user-name, .user-role { display: none; }
+
+  .layout-header { padding: 0 12px; }
+
+  .layout-main { padding: 14px; }
+
+  .sidebar {
+    position: fixed;
+    top: 56px;
+    left: 0;
+    bottom: 0;
+    width: 220px;
+    z-index: 150;
+    transform: translateX(-100%);
+    box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+  }
+
+  .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-label { display: inline; }
+  .sidebar-link { justify-content: flex-start; padding: 10px 20px; }
+  .sidebar-icon { width: 20px; height: 20px; }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 56px 0 0 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 140;
+  }
+}

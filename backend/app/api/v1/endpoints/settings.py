@@ -75,10 +75,10 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
 async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     if payload.hourly_rate is not None:
         await set_setting(db, "hourly_rate", str(payload.hourly_rate))
-        # Sync all catalogue items linked to hourly rate
-        r = await db.execute(select(CatalogueItem).where(CatalogueItem.linked_to_hourly_rate == True, CatalogueItem.is_active == True))
+        # Sync all catalogue items of the "connaissance" family (prix = taux horaire)
+        r = await db.execute(select(CatalogueItem).where(CatalogueItem.type == "connaissance", CatalogueItem.is_active == True))
         for item in r.scalars().all():
-            item.price = payload.hourly_rate
+            item.price = payload.hourly_rate * (item.rate_multiplier or 1)
         await db.commit()
     if payload.labour_round_minutes is not None:
         await set_setting(db, "labour_round_minutes", str(payload.labour_round_minutes))
@@ -96,10 +96,10 @@ class InflationResult(BaseModel):
 
 @router.post("/apply-inflation", response_model=InflationResult)
 async def apply_inflation(payload: InflationPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Apply inflation % to all catalogue items NOT linked to hourly rate."""
+    """Apply inflation % to all catalogue items NOT in the "connaissance" family (exclues -- leur prix suit le taux horaire, pas l'inflation)."""
     r = await db.execute(
         select(CatalogueItem).where(
-            CatalogueItem.linked_to_hourly_rate == False,
+            CatalogueItem.type != "connaissance",
             CatalogueItem.is_active == True,
             CatalogueItem.price > 0,
         )

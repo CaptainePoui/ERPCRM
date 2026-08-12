@@ -6,7 +6,7 @@ import './Invoices.css'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
-  envoyee:    { label: 'Envoyée',    color: '#2563EB' },
+  envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
@@ -62,6 +62,12 @@ export default function Invoices() {
     return new Date(d + 'T00:00:00').toLocaleDateString('fr-CA')
   }
 
+  function fmtOpened(iso) {
+    if (!iso) return null
+    const d = new Date(iso)
+    return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -95,6 +101,7 @@ export default function Invoices() {
                 <th>Date</th>
                 <th>Échéance</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
+                <th>Vu</th>
                 <th></th>
               </tr>
             </thead>
@@ -104,17 +111,20 @@ export default function Invoices() {
                 return (
                   <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
                     <td className="inv-number">{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
-                    <td>{inv.company_name}</td>
+                    <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.site_label_snapshot}</div>}</td>
                     <td><span className="inv-badge" style={{ background: s.color }}>{s.label}</span></td>
                     <td>{fmtDate(inv.issue_date)}</td>
                     <td className={inv.status === 'en_retard' ? 'overdue' : ''}>{fmtDate(inv.due_date)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(inv.total)}</td>
+                    <td style={{ fontSize: 12, color: '#6B7280' }} title={inv.open_count > 1 ? `Ouvert ${inv.open_count} fois` : ''}>
+                      {inv.last_opened_at ? `👁 ${fmtOpened(inv.last_opened_at)}` : '—'}
+                    </td>
                     <td className="inv-arrow">›</td>
                   </tr>
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucune facture</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucune facture</td></tr>
               )}
             </tbody>
           </table>

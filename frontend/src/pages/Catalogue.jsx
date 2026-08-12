@@ -11,6 +11,7 @@ export default function Catalogue() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [editing, setEditing] = useState(null)
+  const [classifying, setClassifying] = useState(false)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -35,13 +36,16 @@ export default function Catalogue() {
           <h1 className="page-title">Catalogue</h1>
           <p className="page-sub">{items.length} items</p>
         </div>
-        <button className="btn-primary" onClick={() => setEditing('new')}>+ Ajouter</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={() => setClassifying(true)}>Classer les articles</button>
+          <button className="btn-primary" onClick={() => setEditing('new')}>+ Ajouter</button>
+        </div>
       </div>
 
       <div className="page-toolbar" style={{ gap: 10 }}>
         <input className="search-input" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
         <div className="filter-tabs">
-          {[['all','Tous'],['service','Services'],['materiel','Matériel']].map(([val, label]) => (
+          {[['all','Tous'],['service','Services'],['materiel','Matériel'],['connaissance','Connaissance']].map(([val, label]) => (
             <button key={val} className={`filter-tab${filter === val ? ' active' : ''}`} onClick={() => setFilter(val)}>{label}</button>
           ))}
         </div>
@@ -57,6 +61,7 @@ export default function Catalogue() {
       )}
 
       {editing === 'new' && <NewItemModal onClose={() => setEditing(null)} onCreated={item => { setItems(p => [...p, item]); setEditing(null) }} />}
+      {classifying && <ClassifyModal items={items} onSave={saveEdit} onClose={() => setClassifying(false)} />}
     </div>
   )
 }
@@ -139,6 +144,7 @@ function NewItemModal({ onClose, onCreated }) {
           <select value={form.type} onChange={e => f('type', e.target.value)}>
             <option value="service">Service</option>
             <option value="materiel">Matériel</option>
+            <option value="connaissance">Connaissance</option>
           </select>
         </div>
         <div className="form-group">
@@ -149,6 +155,81 @@ function NewItemModal({ onClose, onCreated }) {
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
           <button className="btn-primary" onClick={save} disabled={saving || !form.name.trim()}>{saving ? '...' : 'Créer'}</button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+const CLASSIFY_TYPES = [['materiel', 'Matériel'], ['service', 'Service'], ['connaissance', 'Connaissance']]
+
+function ClassifyModal({ items, onSave, onClose }) {
+  const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box classify-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Classer les articles</h3>
+        <div className="classify-list">
+          <div className="classify-header">
+            <span>Article</span>
+            <span>Matériel</span>
+            <span>Service</span>
+            <span>Connaissance</span>
+            <span>Urgence x2</span>
+            <span>Cours x3</span>
+          </div>
+          {sorted.map(item => (
+            <ClassifyRow key={item.id} item={item} onSave={onSave} />
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button className="btn-primary" onClick={onClose}>Fermer</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function ClassifyRow({ item, onSave }) {
+  const [showTip, setShowTip] = useState(false)
+  const timerRef = useRef(null)
+
+  function onEnter() {
+    timerRef.current = setTimeout(() => setShowTip(true), 3000)
+  }
+  function onLeave() {
+    clearTimeout(timerRef.current)
+    setShowTip(false)
+  }
+
+  return (
+    <div className="classify-row">
+      <div className="classify-name" onMouseEnter={onEnter} onMouseLeave={onLeave}>
+        {item.name}
+        {showTip && item.description && <div className="classify-tooltip">{item.description}</div>}
+      </div>
+      {CLASSIFY_TYPES.map(([val]) => (
+        <div key={val} className="classify-cell">
+          <input
+            type="checkbox"
+            checked={item.type === val}
+            onChange={() => onSave(item.id, 'type', val)}
+          />
+        </div>
+      ))}
+      <div className="classify-cell">
+        <input
+          type="checkbox"
+          checked={item.rate_multiplier === 2}
+          onChange={() => onSave(item.id, 'rate_multiplier', item.rate_multiplier === 2 ? null : 2)}
+        />
+      </div>
+      <div className="classify-cell">
+        <input
+          type="checkbox"
+          checked={item.rate_multiplier === 3}
+          onChange={() => onSave(item.id, 'rate_multiplier', item.rate_multiplier === 3 ? null : 3)}
+        />
       </div>
     </div>
   )

@@ -28,6 +28,7 @@ class PortalUser(Base):
     can_edit_call_forward: Mapped[bool] = mapped_column(Boolean, default=False)
     can_edit_dnd: Mapped[bool] = mapped_column(Boolean, default=False)
     can_edit_voicemail: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_edit_call_plan: Mapped[bool] = mapped_column(Boolean, default=False)
     can_view_own_cdr: Mapped[bool] = mapped_column(Boolean, default=False)
     can_view_voicemail_messages: Mapped[bool] = mapped_column(Boolean, default=False)
     can_receive_alerts: Mapped[bool] = mapped_column(Boolean, default=False)

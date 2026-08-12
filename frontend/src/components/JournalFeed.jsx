@@ -49,7 +49,7 @@ export default function JournalFeed({ entityId }) {
                   {l.can_revert && (
                     <button
                       onClick={() => revert(l)}
-                      style={{ fontSize: 11, color: '#184FA0', background: 'none', border: '1px solid #CBD5E1', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', marginLeft: 8 }}
+                      style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: '1px solid #CBD5E1', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', marginLeft: 8 }}
                     >
                       Revert
                     </button>

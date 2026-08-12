@@ -34,6 +34,7 @@ export default function NewTaskModal({
   prefillTicket = null,
   prefillInvoice = null,
   prefillParentTask = null,
+  prefillDueDate = '',
   templateId = null,
 }) {
   const [companies, setCompanies] = useState([])
@@ -50,7 +51,7 @@ export default function NewTaskModal({
   const [form, setForm] = useState({
     title: '',
     description: '',
-    due_date: '',
+    due_date: prefillDueDate,
     due_time: '',
     priority: 'normale',
     status: 'en_cours',
@@ -249,9 +250,17 @@ export default function NewTaskModal({
           )}
         </div>
 
-        <div className="form-group">
-          <label>Description</label>
-          <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} />
+        <div style={{ marginBottom: 4 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+            <input type="checkbox" checked={form.is_template} onChange={e => set('is_template', e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
+            Sauvegarder comme template réutilisable
+          </label>
+          {form.is_template && (
+            <div className="form-group">
+              <label>Nom du template</label>
+              <input value={form.template_name} onChange={e => set('template_name', e.target.value)} placeholder="Ex: Procédure nouveau client" />
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -265,7 +274,39 @@ export default function NewTaskModal({
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+        <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} placeholder="Rechercher une compagnie..." />
+        <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+        {prefillTicket && (
+          <div className="form-group">
+            <label>Ticket</label>
+            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+              {prefillTicket.label}
+            </div>
+          </div>
+        )}
+        {prefillInvoice && (
+          <div className="form-group">
+            <label>Facture</label>
+            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+              {prefillInvoice.label}
+            </div>
+          </div>
+        )}
+        {prefillParentTask && (
+          <div className="form-group">
+            <label>Sous-tâche de</label>
+            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+              {prefillParentTask.label}
+            </div>
+          </div>
+        )}
+
+        <div className="form-group">
+          <label>Description</label>
+          <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div className="form-group" style={{ margin: 0 }}>
             <label>Priorité</label>
             <select value={form.priority} onChange={e => set('priority', e.target.value)}>
@@ -289,40 +330,10 @@ export default function NewTaskModal({
         </div>
 
         <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Liens</div>
-          <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} placeholder="Rechercher une compagnie..." />
-          <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
-          {prefillTicket && (
-            <div className="form-group">
-              <label>Ticket</label>
-              <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
-                {prefillTicket.label}
-              </div>
-            </div>
-          )}
-          {prefillInvoice && (
-            <div className="form-group">
-              <label>Facture</label>
-              <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
-                {prefillInvoice.label}
-              </div>
-            </div>
-          )}
-          {prefillParentTask && (
-            <div className="form-group">
-              <label>Sous-tâche de</label>
-              <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
-                {prefillParentTask.label}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Checklist</div>
           {checklist.map((item, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <input type="checkbox" checked={item.completed} onChange={e => setChecklist(prev => prev.map((c, idx) => idx === i ? { ...c, completed: e.target.checked } : c))} style={{ width: 15, height: 15, accentColor: '#184FA0' }} />
+              <input type="checkbox" checked={item.completed} onChange={e => setChecklist(prev => prev.map((c, idx) => idx === i ? { ...c, completed: e.target.checked } : c))} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
               <span style={{ flex: 1, fontSize: 13, color: item.completed ? '#9CA3AF' : '#374151', textDecoration: item.completed ? 'line-through' : 'none' }}>{item.label}</span>
               <button onClick={() => removeCheckItem(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
             </div>
@@ -355,19 +366,6 @@ export default function NewTaskModal({
               <button onClick={() => removeReminder(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 18 }}>×</button>
             </div>
           ))}
-        </div>
-
-        <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 14, marginTop: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151', marginBottom: 12 }}>
-            <input type="checkbox" checked={form.is_template} onChange={e => set('is_template', e.target.checked)} style={{ width: 15, height: 15, accentColor: '#184FA0' }} />
-            Sauvegarder comme template réutilisable
-          </label>
-          {form.is_template && (
-            <div className="form-group">
-              <label>Nom du template</label>
-              <input value={form.template_name} onChange={e => set('template_name', e.target.value)} placeholder="Ex: Procédure nouveau client" />
-            </div>
-          )}
         </div>
 
         <div className="modal-actions">

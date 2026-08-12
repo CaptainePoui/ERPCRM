@@ -16,14 +16,15 @@ from app.models.contact_company import ContactCompany
 from app.models.user import User
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.catalogue import CatalogueItem
-from app.core.email import send_ticket_entry_email, send_ticket_close_email, send_ticket_open_email
+from app.core.email import send_ticket_close_email, send_ticket_open_email
 from app.core.config import settings
+from app.core.tracking import get_open_stats
 from app.api.v1.endpoints.settings import get_setting
 
 router = APIRouter()
 
 PRIORITIES = ["faible", "normal", "urgent", "critique"]
-STATUSES   = ["ouvert", "en_cours", "en_attente", "fermer_a_facturer", "facture", "ferme", "annule"]
+STATUSES   = ["ouvert", "en_cours", "en_attente", "en_attente_client", "facture", "ferme"]
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -38,6 +39,7 @@ class EntryOut(BaseModel):
     duration_minutes: int
     worked_at: date
     is_billable: bool
+    invoiced: bool
 
 class TicketOut(BaseModel):
     id: uuid.UUID
@@ -58,6 +60,8 @@ class TicketOut(BaseModel):
     closed_at: datetime | None
     entries: list[EntryOut]
     total_minutes: int
+    last_opened_at: datetime | None = None
+    open_count: int = 0
 
 class TicketListItem(BaseModel):
     id: uuid.UUID
@@ -71,6 +75,8 @@ class TicketListItem(BaseModel):
     is_billable: bool
     created_at: datetime
     total_minutes: int
+    last_opened_at: datetime | None = None
+    open_count: int = 0
 
 class TicketCreate(BaseModel):
     company_id: uuid.UUID
@@ -98,6 +104,7 @@ class EntryCreate(BaseModel):
 
 class SendSummaryPayload(BaseModel):
     close: bool = False
+    wait_for_client: bool = False
 
 class CreateInvoicePayload(BaseModel):
     catalogue_item_id: uuid.UUID | None = None
@@ -137,11 +144,13 @@ def _build_entry(e: TicketEntry) -> EntryOut:
         user_name=e.user.full_name if e.user else None,
         catalogue_item_id=e.catalogue_item_id,
         description=e.description, duration_minutes=e.duration_minutes,
-        worked_at=e.worked_at, is_billable=e.is_billable,
+        worked_at=e.worked_at, is_billable=e.is_billable, invoiced=e.invoiced,
     )
 
-def _build_out(t: Ticket) -> TicketOut:
+async def _build_out(t: Ticket, db: AsyncSession) -> TicketOut:
     total = sum(e.duration_minutes for e in t.entries)
+    stats = await get_open_stats(db, "ticket", [t.id])
+    last_opened_at, open_count = stats.get(t.id, (None, 0))
     return TicketOut(
         id=t.id, company_id=t.company_id, company_name=t.company.name,
         contact_id=t.contact_id,
@@ -155,6 +164,7 @@ def _build_out(t: Ticket) -> TicketOut:
         created_at=t.created_at, closed_at=t.closed_at,
         entries=[_build_entry(e) for e in t.entries],
         total_minutes=total,
+        last_opened_at=last_opened_at, open_count=open_count,
     )
 
 
@@ -181,6 +191,7 @@ async def list_tickets(
         q = q.where(Ticket.priority == priority)
     result = await db.execute(q)
     tickets = result.scalars().all()
+    open_stats = await get_open_stats(db, "ticket", [t.id for t in tickets])
     return [TicketListItem(
         id=t.id, company_id=t.company_id, company_name=t.company.name,
         contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
@@ -189,6 +200,8 @@ async def list_tickets(
         is_billable=t.is_billable,
         created_at=t.created_at,
         total_minutes=sum(e.duration_minutes for e in t.entries),
+        last_opened_at=open_stats.get(t.id, (None, 0))[0],
+        open_count=open_stats.get(t.id, (None, 0))[1],
     ) for t in tickets]
 
 
@@ -203,7 +216,7 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
     db.add(t)
     await db.commit()
     t = await _get_ticket(t.id, db)
-    out = _build_out(t)
+    out = await _build_out(t, db)
     contact_email = _contact_email(t)
     if contact_email:
         portal_url = f"http://{settings.ERPCRM_HOST}:3010/portal"
@@ -222,23 +235,34 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
 
 @router.get("/{ticket_id}", response_model=TicketOut)
 async def get_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    return _build_out(await _get_ticket(ticket_id, db))
+    return await _build_out(await _get_ticket(ticket_id, db), db)
 
 
 @router.put("/{ticket_id}", response_model=TicketOut)
 async def update_ticket(ticket_id: uuid.UUID, payload: TicketUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    ⚠️ Fermer un ticket facturable facture automatiquement (TASK auto-facturation) :
+    passer status="ferme" declenche _generate_invoice() ; s'il y a du nouveau temps
+    facturable, le statut final devient "facture" (le helper le fixe lui-meme),
+    sinon le ticket reste "ferme" tel quel -- jamais bloquant.
+    """
     t = await _get_ticket(ticket_id, db)
     updates = payload.model_dump(exclude_unset=True)
+    closing = updates.get("status") == "ferme"
     for field, value in updates.items():
         setattr(t, field, value)
     t.updated_at = datetime.now(timezone.utc)
-    if updates.get("status") in ("ferme", "annule") and not t.closed_at:
-        t.closed_at = datetime.now(timezone.utc)
-    elif updates.get("status") not in ("ferme", "annule", None):
+
+    if closing:
+        await _generate_invoice(t, db)
+        if not t.closed_at:
+            t.closed_at = datetime.now(timezone.utc)
+    elif updates.get("status") not in ("ferme", "facture", None):
         t.closed_at = None
+
     await db.commit()
     t = await _get_ticket(ticket_id, db)
-    return _build_out(t)
+    return await _build_out(t, db)
 
 
 @router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -266,25 +290,11 @@ async def add_entry(ticket_id: uuid.UUID, payload: EntryCreate, current_user: Us
     t.updated_at = datetime.now(timezone.utc)
     await db.commit()
     t = await _get_ticket(ticket_id, db)
-    out = _build_out(t)
+    out = await _build_out(t, db)
 
-    # Fire-and-forget email to contact
-    contact_email = _contact_email(t)
-    if contact_email:
-        asyncio.create_task(send_ticket_entry_email(
-            to_email=contact_email,
-            ticket_id=str(t.id),
-            ticket_title=t.title,
-            company_name=t.company.name,
-            contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
-            status=t.status,
-            priority=t.priority,
-            tech_name=current_user.full_name,
-            description=payload.description,
-            duration_minutes=payload.duration_minutes,
-            is_billable=payload.is_billable,
-            total_minutes=out.total_minutes,
-        ))
+    # Plus d'email automatique a chaque entree (demande explicite) -- le courriel
+    # ne part que via /send-summary (bouton "Envoyer resume"), une seule fois pour
+    # toutes les entrees accumulees.
 
     return out
 
@@ -299,7 +309,37 @@ async def delete_entry(ticket_id: uuid.UUID, entry_id: uuid.UUID, db: AsyncSessi
     t.updated_at = datetime.now(timezone.utc)
     await db.commit()
     t = await _get_ticket(ticket_id, db)
-    return _build_out(t)
+    return await _build_out(t, db)
+
+
+@router.post("/{ticket_id}/entries/{entry_id}/split-to-new-ticket", response_model=TicketOut)
+async def split_entry_to_new_ticket(ticket_id: uuid.UUID, entry_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """
+    Deplace une reponse client (reouverture automatique via IMAP -- TASK reouverture
+    par courriel) vers un NOUVEAU ticket quand ce n'est pas le meme dossier -- demande
+    explicite de l'utilisateur. Referme le ticket original apres le deplacement.
+    """
+    t = await _get_ticket(ticket_id, db)
+    entry = next((e for e in t.entries if e.id == entry_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entrée introuvable")
+
+    new_ticket = Ticket(
+        company_id=t.company_id,
+        contact_id=t.contact_id,
+        title=(entry.description[:255] or f"Suite de {t.title}"),
+        description=entry.description,
+        priority="normal",
+        status="ouvert",
+    )
+    db.add(new_ticket)
+    await db.delete(entry)
+    t.status = "ferme"
+    t.closed_at = datetime.now(timezone.utc)
+    t.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    t = await _get_ticket(ticket_id, db)
+    return await _build_out(t, db)
 
 
 # ── Send summary / close ──────────────────────────────────────────────────────
@@ -338,14 +378,21 @@ async def send_summary(
         entries=entries_data,
     )
 
-    if payload.close and t.status not in ("ferme", "annule"):
+    if payload.close and t.status != "ferme":
         t.status = "ferme"
-        t.closed_at = datetime.now(timezone.utc)
+        await _generate_invoice(t, db)  # bascule a "facture" si du temps etait a facturer
+        if not t.closed_at:
+            t.closed_at = datetime.now(timezone.utc)
+        t.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        t = await _get_ticket(ticket_id, db)
+    elif payload.wait_for_client:
+        t.status = "en_attente_client"
         t.updated_at = datetime.now(timezone.utc)
         await db.commit()
         t = await _get_ticket(ticket_id, db)
 
-    return _build_out(t)
+    return await _build_out(t, db)
 
 
 # ── Ticket → Invoice ──────────────────────────────────────────────────────────
@@ -356,35 +403,91 @@ class InvoiceRef(BaseModel):
     ticket: TicketOut
 
 
-@router.post("/{ticket_id}/create-invoice", response_model=InvoiceRef, status_code=status.HTTP_201_CREATED)
-async def create_invoice_from_ticket(
-    ticket_id: uuid.UUID,
-    payload: CreateInvoicePayload,
-    db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
-):
-    t = await _get_ticket(ticket_id, db)
+def _round_billable_minutes(total_minutes: int, block_minutes: int) -> int:
+    """
+    Arrondi "a l'avantage" par bloc de temps (TASK facturation par categorie) :
+    seuil = la moitie du bloc arrondie vers le bas (7 pour un bloc de 15 min,
+    confirme explicitement par l'utilisateur ; 2 pour un bloc de 5 min, meme
+    logique appliquee par symetrie -- signale a l'utilisateur, pas confirme
+    chiffre par chiffre). Au-dessus du seuil -> arrondit vers le haut, au seuil ou
+    en-dessous -> vers le bas.
+    """
+    if total_minutes <= 0:
+        return 0
+    threshold = block_minutes // 2
+    base = (total_minutes // block_minutes) * block_minutes
+    remainder = total_minutes % block_minutes
+    return base + block_minutes if remainder > threshold else base
 
-    if t.invoice_id:
-        raise HTTPException(status_code=400, detail="Ce ticket est déjà lié à une facture")
 
-    # Load company for tax settings
+async def _generate_invoice(t: Ticket, db: AsyncSession, catalogue_item_id: uuid.UUID | None = None) -> Invoice | None:
+    """
+    Cree une facture pour ce ticket a partir de son temps NON DEJA FACTURE, groupe
+    par article/categorie (TASK facturation par categorie). Retourne None si rien a
+    facturer (pas d'erreur -- laisse l'appelant decider quoi faire, ex: fermeture
+    automatique silencieuse d'un ticket sans temps facturable).
+
+    ⚠️ Plus de blocage "deja facture" : un ticket rouvert qui accumule du NOUVEAU
+    temps facturable peut generer une 2e facture distincte -- confirme explicitement
+    par l'utilisateur ("ca cree une autre facture"). Seules les entrees NON
+    `invoiced` sont considerees ; chaque entree incluse est marquee `invoiced=True`
+    pour ne jamais etre refacturee. Le ticket pointe toujours vers la facture la
+    PLUS RECENTE -- les factures precedentes restent intactes et consultables
+    depuis Factures.
+    """
     comp = await db.get(Company, t.company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
 
-    # Read dynamic settings
     hourly_rate = float(await get_setting(db, "hourly_rate"))
     round_to_min = int(await get_setting(db, "labour_round_minutes"))
 
-    # Ticket au complet est facturable ou non — le temps facturé est le total du ticket
-    total_mins = sum(e.duration_minutes for e in t.entries)
-    work_mins = max(0, total_mins) if t.is_billable else 0
+    new_entries = [e for e in t.entries if not e.invoiced] if t.is_billable else []
 
-    # Round up to nearest X min
-    rounded_mins = math.ceil(work_mins / round_to_min) * round_to_min if work_mins > 0 else 0
-    hours = rounded_mins / 60.0
-    labour_total = round(hours * hourly_rate, 2)
+    # Regrouper par article de catalogue -- chaque article avec un bloc d'arrondi
+    # (time_rounding_minutes) devient sa propre ligne (Investigation, Configuration
+    # ..., Travaux d'interconnexions) ; sans article ou article non temporel ->
+    # panier commun "Main d'œuvre" au taux horaire global (comportement historique).
+    groups: dict[uuid.UUID | None, list[TicketEntry]] = {}
+    for e in new_entries:
+        groups.setdefault(e.catalogue_item_id, []).append(e)
+
+    cat_ids = [cid for cid in groups.keys() if cid is not None]
+    cat_items: dict[uuid.UUID, CatalogueItem] = {}
+    if cat_ids:
+        result = await db.execute(select(CatalogueItem).where(CatalogueItem.id.in_(cat_ids)))
+        for c in result.scalars().all():
+            cat_items[c.id] = c
+
+    category_lines = []
+    generic_entries = []
+
+    for cid, group_entries in groups.items():
+        item = cat_items.get(cid) if cid else None
+        if item and item.time_rounding_minutes:
+            total = sum(e.duration_minutes for e in group_entries)
+            rounded = _round_billable_minutes(total, item.time_rounding_minutes)
+            if rounded <= 0:
+                continue
+            hours = rounded / 60.0
+            h_int = int(hours)
+            m_int = int(round((hours - h_int) * 60))
+            category_lines.append({
+                "description": f"{item.name} — {h_int}h{m_int:02d}min à {item.price:.0f}$/h",
+                "qty": hours, "unit_price": float(item.price or 0),
+                "line_total": round(hours * float(item.price or 0), 2),
+                "entries": group_entries,
+            })
+        else:
+            generic_entries.extend(group_entries)
+
+    generic_total = sum(e.duration_minutes for e in generic_entries)
+    generic_rounded = math.ceil(generic_total / round_to_min) * round_to_min if generic_total > 0 else 0
+    generic_hours = generic_rounded / 60.0
+    generic_total_amount = round(generic_hours * hourly_rate, 2)
+
+    if not category_lines and generic_rounded <= 0 and not catalogue_item_id:
+        return None
 
     # Next invoice number
     year = date.today().year
@@ -409,39 +512,45 @@ async def create_invoice_from_ticket(
 
     sort = 0
 
-    # Line 1: Catalogue service item (if provided)
-    if payload.catalogue_item_id:
-        cat = await db.get(CatalogueItem, payload.catalogue_item_id)
+    # Ligne optionnelle : article ajouté manuellement au moment de facturer (flat, qty=1)
+    if catalogue_item_id:
+        cat = await db.get(CatalogueItem, catalogue_item_id)
         if cat:
-            line1 = InvoiceLine(
-                invoice_id=inv.id,
-                catalogue_item_id=cat.id,
-                description=cat.name,
-                qty=1.0,
-                unit_price=float(cat.price or 0),
-                line_total=float(cat.price or 0),
+            db.add(InvoiceLine(
+                invoice_id=inv.id, catalogue_item_id=cat.id, description=cat.name,
+                qty=1.0, unit_price=float(cat.price or 0), line_total=float(cat.price or 0),
                 sort_order=sort,
-            )
-            db.add(line1)
+            ))
             sort += 1
 
-    # Line 2: Labour (only if time was worked)
-    if rounded_mins > 0:
-        h_int = int(hours)
-        m_int = int((hours - h_int) * 60)
-        time_desc = f"Main d'œuvre — {h_int}h{m_int:02d}min à {hourly_rate:.0f}$/h"
-        line2 = InvoiceLine(
-            invoice_id=inv.id,
-            catalogue_item_id=None,
-            description=time_desc,
-            qty=hours,
-            unit_price=hourly_rate,
-            line_total=labour_total,
+    all_invoiced_entries = []
+
+    # Lignes par catégorie (Investigation / Configuration.../ Interconnexion...)
+    for line in category_lines:
+        db.add(InvoiceLine(
+            invoice_id=inv.id, catalogue_item_id=None, description=line["description"],
+            qty=line["qty"], unit_price=line["unit_price"], line_total=line["line_total"],
             sort_order=sort,
-        )
-        db.add(line2)
+        ))
+        sort += 1
+        all_invoiced_entries.extend(line["entries"])
+
+    # Ligne générique "Main d'œuvre" (temps sans catégorie de facturation dédiée)
+    if generic_rounded > 0:
+        h_int = int(generic_hours)
+        m_int = int(round((generic_hours - h_int) * 60))
+        db.add(InvoiceLine(
+            invoice_id=inv.id, catalogue_item_id=None,
+            description=f"Main d'œuvre — {h_int}h{m_int:02d}min à {hourly_rate:.0f}$/h",
+            qty=generic_hours, unit_price=hourly_rate, line_total=generic_total_amount,
+            sort_order=sort,
+        ))
+        all_invoiced_entries.extend(generic_entries)
 
     await db.flush()
+
+    for e in all_invoiced_entries:
+        e.invoiced = True
 
     # Recalc totals
     await db.refresh(inv, ['lines'])
@@ -450,13 +559,28 @@ async def create_invoice_from_ticket(
     inv.tvq_amount = round(inv.subtotal * 9.975 / 100, 2) if inv.apply_tvq else 0.0
     inv.total = round(inv.subtotal + inv.tps_amount + inv.tvq_amount, 2)
 
-    # Link ticket to invoice and set status
+    # Le ticket pointe vers la facture la PLUS RECENTE -- voir docstring ci-dessus.
     t.invoice_id = inv.id
     t.status = "facture"
     t.closed_at = datetime.now(timezone.utc)
     t.updated_at = datetime.now(timezone.utc)
 
+    return inv
+
+
+@router.post("/{ticket_id}/create-invoice", response_model=InvoiceRef, status_code=status.HTTP_201_CREATED)
+async def create_invoice_from_ticket(
+    ticket_id: uuid.UUID,
+    payload: CreateInvoicePayload,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    t = await _get_ticket(ticket_id, db)
+    inv = await _generate_invoice(t, db, catalogue_item_id=payload.catalogue_item_id)
+    if not inv:
+        raise HTTPException(status_code=400, detail="Aucun nouveau temps facturable ni article à inclure")
+
     await db.commit()
     t = await _get_ticket(ticket_id, db)
 
-    return InvoiceRef(invoice_id=inv.id, invoice_number=inv_number, ticket=_build_out(t))
+    return InvoiceRef(invoice_id=inv.id, invoice_number=inv.number, ticket=await _build_out(t, db))

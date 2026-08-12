@@ -41,6 +41,188 @@ async def sync_company(account_number: str, company_name: str, erpcrm_company_id
         return resp.json()
 
 
+async def sync_site(tenant_id: str, erpcrm_site_id: str, label: str, civic_number: str, street_name: str,
+                     unit: str | None, city: str, province: str, postal_code: str, country: str, is_active: bool) -> dict:
+    """
+    Cree ou met a jour la copie SIPV (E911Address) d'une succursale ERPCRM.
+    ERPCRM est maitre pour company_sites -- comme sync_company, cet appel est
+    bloquant : si SIPV ne repond pas, rien n'est sauvegarde ni cote ERPCRM ni
+    cote SIPV (pas d'etat divergent possible entre les deux bases).
+    """
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/sync/site",
+            json={
+                "erpcrm_site_id": erpcrm_site_id, "tenant_id": tenant_id, "label": label,
+                "civic_number": civic_number, "street_name": street_name, "unit": unit,
+                "city": city, "province": province, "postal_code": postal_code,
+                "country": country, "is_active": is_active,
+            },
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def sync_did(tenant_id: str, erpcrm_did_id: str, number: str, label: str | None,
+                    destination_type: str | None, destination: str | None, is_active: bool,
+                    schedule_id: str | None = None,
+                    after_message_destination_type: str | None = None,
+                    after_message_destination: str | None = None) -> dict:
+    """
+    Cree ou met a jour la copie SIPV (TenantDID) d'un DID ERPCRM. ERPCRM est
+    maitre (numero/destination/succursale/horaire), SIPV reste la source reelle
+    du routage d'appel. Bloquant comme sync_company/sync_site.
+    `after_message_destination_type/destination` (TASK-023.32) : action apres la
+    lecture d'une phrase quand destination_type == "message" ("Ajouter une
+    destination" cote UI) -- ignore par SIPV pour tout autre type.
+    """
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/sync/did",
+            json={
+                "erpcrm_did_id": erpcrm_did_id, "tenant_id": tenant_id, "number": number,
+                "label": label, "destination_type": destination_type, "destination": destination,
+                "is_active": is_active, "schedule_id": schedule_id,
+                "after_message_destination_type": after_message_destination_type,
+                "after_message_destination": after_message_destination,
+            },
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ── Horaires (Schedule/ScheduleRule/Holiday, TASK-S016/S010.7) -- simple proxy,
+# pas de copie maitre cote ERPCRM : le routage d'appel n'a besoin d'exister que
+# dans SIPV, contrairement aux succursales (aussi utilisees pour la facturation).
+async def list_prompts(tenant_id: str) -> list[dict]:
+    """TASK-023.32 : phrases/annonces disponibles pour ce tenant (bibliotheque
+    AudioPrompt, TASKSIPV TASK-S046) -- alimente le selecteur de destination
+    "Message enregistre" cote CompanyDetail.jsx."""
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/prompts/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def upload_prompt(tenant_id: str, name: str, filename: str, content: bytes, content_type: str) -> dict:
+    """TASK-029 : cree une phrase (upload direct OU audio genere par Voicebox)."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/prompts/tenant/{tenant_id}",
+            data={"name": name},
+            files={"file": (filename, content, content_type or "application/octet-stream")},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def rename_prompt(prompt_id: str, name: str) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/prompts/{prompt_id}", json={"name": name}, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_prompt(prompt_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/prompts/{prompt_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def download_prompt(prompt_id: str) -> tuple[bytes, str]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/prompts/{prompt_id}/file", headers=_headers())
+        resp.raise_for_status()
+        filename = "phrase.wav"
+        cd = resp.headers.get("content-disposition", "")
+        if "filename=" in cd:
+            filename = cd.split("filename=", 1)[1].strip('"; ')
+        return resp.content, filename
+
+
+async def call_prompt(prompt_id: str, extension_id: str) -> dict:
+    """TASK-S055 : appelle un poste et joue cette phrase des que ca decroche."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/prompts/{prompt_id}/call",
+            json={"extension_id": extension_id},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def call_moh(moh_id: str, extension_id: str) -> dict:
+    """Meme principe que call_prompt : appelle un poste et joue ce fichier MOH
+    des que ca decroche, pour l'ecouter au telephone."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/moh/{moh_id}/call",
+            json={"extension_id": extension_id},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_schedules(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/schedules/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_schedule(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/schedules/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_schedule(sched_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/schedules/{sched_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_schedule(sched_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/schedules/{sched_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def add_schedule_rule(sched_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/schedules/{sched_id}/rules", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_schedule_rule(rule_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/schedules/rules/{rule_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_schedule_rule(rule_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/schedules/rules/{rule_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def delete_tenant_did(tenant_did_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/dids/{tenant_did_id}", headers=_headers())
+        if resp.status_code == 404:
+            return
+        resp.raise_for_status()
+
+
 async def get_extensions_by_contact(erpcrm_contact_id: str) -> list[dict]:
     """
     Retourne les postes SIP lies a ce contact (normalement 0 ou 1, mais SIPV ne
@@ -49,6 +231,19 @@ async def get_extensions_by_contact(erpcrm_contact_id: str) -> list[dict]:
     async with _client() as client:
         resp = await client.get(
             f"{settings.SIPV_API_URL}/api/v1/extensions/by-contact/{erpcrm_contact_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_extension(tenant_id: str, **fields) -> dict:
+    """TASK-033 : cree un vrai poste SIP dans SIPV depuis ERPCRM (n'existait
+    pas avant -- la creation ne se faisait que directement dans SIPV)."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/extensions/tenant/{tenant_id}",
+            json=fields,
             headers=_headers(),
         )
         resp.raise_for_status()
@@ -93,6 +288,65 @@ async def update_extension(extension_id: str, **fields) -> dict:
         return resp.json()
 
 
+async def delete_extension(extension_id: str) -> None:
+    """TASK-033 : supprime reellement un poste SIP dans SIPV -- SIPV gere lui-meme
+    la notification de retrait pour le prorata de facturation (extension_removed)."""
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/extensions/{extension_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+# ── Groupes de pickup (interception *8, TASK-023.15.1) ─────────────────────────
+async def list_pickup_groups(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/extensions/pickup-groups/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_pickup_group(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/extensions/pickup-groups/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_pickup_group(group_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/extensions/pickup-groups/{group_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_pickup_group(group_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/extensions/pickup-groups/{group_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def get_tenant(tenant_id: str) -> dict:
+    """Fiche complete du tenant SIPV (TASK-S011.5 -- lecture des options telephonie compagnie)."""
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/tenants/{tenant_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_tenant(tenant_id: str, **fields) -> dict:
+    """Met a jour le tenant SIPV (TASK-S011.5 -- ecriture des options telephonie compagnie)."""
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/tenants/{tenant_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def tenant_registrations(tenant_id: str) -> list[dict]:
     """Statut d'enregistrement en direct (via ESL) de chaque poste d'un tenant."""
     async with _client() as client:
@@ -102,6 +356,22 @@ async def tenant_registrations(tenant_id: str) -> list[dict]:
         )
         resp.raise_for_status()
         return resp.json()
+
+
+async def get_esl_status() -> dict:
+    """
+    Connexion SIPV<->FreeSWITCH (ESL), un fait GLOBAL au serveur, pas par poste
+    (TASK-023.32) -- distinct du statut d'enregistrement d'un poste precis
+    (tenant_registrations). Retourne {"connected": False} plutot que de lever si
+    SIPV est injoignable -- c'est justement l'info qu'on veut afficher.
+    """
+    try:
+        async with _client() as client:
+            resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/esl/status", headers=_headers())
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError:
+        return {"connected": False, "sofia_status": None, "error": "SIPV injoignable"}
 
 
 async def list_phone_models() -> list[dict]:
@@ -190,6 +460,32 @@ async def delete_phone_button(button_id: str) -> None:
         resp.raise_for_status()
 
 
+async def list_cdr_for_extension(tenant_id: str, extension: str, page: int = 1, page_size: int = 50) -> dict:
+    """TASK-S055 : historique d'appels personnel, portail Mon poste."""
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/cdr/tenant/{tenant_id}",
+            params={"extension": extension, "page": page, "page_size": page_size},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_ivrs(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/ivr/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_queues(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/ivr/queues/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def list_ring_groups(tenant_id: str) -> list[dict]:
     async with _client() as client:
         resp = await client.get(
@@ -257,6 +553,38 @@ async def remove_ring_group_member(member_id: str) -> None:
     async with _client() as client:
         resp = await client.delete(
             f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/members/{member_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+
+
+async def add_ring_group_failover_step(rg_id: str, **fields) -> dict:
+    """TASK-S051 : etape de la chaine de destinations de secours (illimitee)."""
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/{rg_id}/failover-steps",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_ring_group_failover_step(step_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/failover-steps/{step_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def remove_ring_group_failover_step(step_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/ring-groups/failover-steps/{step_id}",
             headers=_headers(),
         )
         resp.raise_for_status()
@@ -370,5 +698,302 @@ async def apply_button_template(template_id: str, phone_id: str) -> list[dict]:
             f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/{template_id}/apply/{phone_id}",
             headers=_headers(),
         )
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ── Tenant/Tenant-Model/Global Templates -- chaine d'heritage (TASK-S044) ──────
+async def list_servers() -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/servers", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_server(server_id: str, **fields) -> dict:
+    """TASK-S054 : édition des champs serveur (dont sip_inbound_ip/sip_outbound_ip)."""
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/servers/{server_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_global_templates(server_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/servers/{server_id}/global-templates", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_global_template(**fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/servers/global-templates", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_global_template(template_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/servers/global-templates/{template_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_global_template(template_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/servers/global-templates/{template_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def list_tenant_templates(server_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/servers/{server_id}/tenant-templates", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_tenant_template(**fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/servers/tenant-templates", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_tenant_template(template_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/servers/tenant-templates/{template_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_tenant_template(template_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/servers/tenant-templates/{template_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def list_tenant_model_templates(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/provisioning/tenant-model-templates/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_tenant_model_template(**fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/provisioning/tenant-model-templates", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_tenant_model_template(template_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/provisioning/tenant-model-templates/{template_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_tenant_model_template(template_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/provisioning/tenant-model-templates/{template_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+# ── E911 -- adresses (succursales) + assignation par poste (TASK-S010/S010.2) ──
+async def list_e911_addresses(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/e911/addresses/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_e911_address(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/e911/addresses/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_e911_address(addr_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/e911/addresses/{addr_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_e911_address(addr_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/e911/addresses/{addr_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def get_extension_e911_assignment(extension_id: str) -> dict | None:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/e911/extension-assignments/by-extension/{extension_id}", headers=_headers())
+        if resp.status_code == 404:
+            return None
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_extension_e911_assignment(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/e911/extension-assignments/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_extension_e911_assignment(assign_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/e911/extension-assignments/{assign_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_extension_e911_assignment(assign_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/e911/extension-assignments/{assign_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+# ── Boite vocale (VoicemailBox) ─────────────────────────────────────────────────
+async def list_voicemails(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/voicemail/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_voicemail(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/voicemail/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_voicemail(vm_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/voicemail/{vm_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_voicemail(vm_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/voicemail/{vm_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def upload_voicemail_greeting(vm_id: str, greeting_type: str, filename: str, content: bytes, content_type: str) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/voicemail/{vm_id}/greetings/{greeting_type}",
+            files={"file": (filename, content, content_type or "application/octet-stream")},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def download_voicemail_greeting(vm_id: str, greeting_type: str) -> tuple[bytes, str]:
+    """Retourne (contenu, filename) -- laisse l'appelant decider du Content-Type."""
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/voicemail/{vm_id}/greetings/{greeting_type}", headers=_headers())
+        resp.raise_for_status()
+        filename = "greeting.wav"
+        cd = resp.headers.get("content-disposition", "")
+        if "filename=" in cd:
+            filename = cd.split("filename=", 1)[1].strip('"; ')
+        return resp.content, filename
+
+
+async def delete_voicemail_greeting(vm_id: str, greeting_type: str) -> dict:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/voicemail/{vm_id}/greetings/{greeting_type}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_voicemail_global_settings() -> dict:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/voicemail/global-settings", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_voicemail_global_settings(**fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/voicemail/global-settings", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+# ── MOH (TASK-S033) ─────────────────────────────────────────────────────────
+
+async def list_all_moh() -> list[dict]:
+    """Toutes les MOH (globales + dediees), pour la page Serveur."""
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/moh", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_available_moh(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/moh/available/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def upload_moh(name: str, filename: str, content: bytes, content_type: str, tenant_id: str | None = None) -> dict:
+    async with _client() as client:
+        data = {"name": name}
+        if tenant_id:
+            data["tenant_id"] = tenant_id
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/moh",
+            data=data,
+            files={"file": (filename, content, content_type or "application/octet-stream")},
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_moh(moh_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/moh/{moh_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_moh(moh_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/moh/{moh_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def download_moh(moh_id: str) -> tuple[bytes, str]:
+    """Retourne (contenu, filename) -- laisse l'appelant decider du Content-Type."""
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/moh/{moh_id}/file", headers=_headers())
+        resp.raise_for_status()
+        filename = "moh.wav"
+        cd = resp.headers.get("content-disposition", "")
+        if "filename=" in cd:
+            filename = cd.split("filename=", 1)[1].strip('"; ')
+        return resp.content, filename
+
+
+async def get_moh_selection(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/moh/selection/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def set_moh_selection(tenant_id: str, items: list[dict]) -> list[dict]:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/moh/selection/tenant/{tenant_id}", json=items, headers=_headers())
         resp.raise_for_status()
         return resp.json()

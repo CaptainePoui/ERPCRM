@@ -22,7 +22,7 @@
 }
 
 .btn-primary {
-  background: #184FA0;
+  background: var(--brand);
   color: #fff;
   border: none;
   padding: 9px 18px;
@@ -35,7 +35,7 @@
 }
 
 .btn-primary:hover {
-  background: #124898;
+  background: var(--brand-hover);
 }
 
 .page-toolbar {
@@ -53,8 +53,8 @@
 }
 
 .search-input:focus {
-  border-color: #184FA0;
-  box-shadow: 0 0 0 3px rgba(24,79,160,0.1);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(31,90,166,0.1);
 }
 
 .table-wrap {
@@ -62,6 +62,15 @@
   border-radius: 10px;
   border: 1px solid #E5E7EB;
   overflow: hidden;
+}
+
+@media (max-width: 768px) {
+  .table-wrap {
+    overflow-x: auto;
+  }
+  .data-table {
+    min-width: 640px;
+  }
 }
 
 .data-table {
@@ -88,6 +97,20 @@
   vertical-align: middle;
 }
 
+.data-table tbody tr {
+  transition: background 0.1s;
+}
+
+.data-table tbody tr:hover {
+  background: var(--brand-bg);
+}
+
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .clickable-row {
   cursor: pointer;
   transition: background 0.1s;
@@ -103,7 +126,7 @@
 
 .company-name {
   font-weight: 600;
-  color: #184FA0;
+  color: var(--brand);
 }
 
 .company-legal {

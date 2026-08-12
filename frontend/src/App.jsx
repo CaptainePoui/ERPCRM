@@ -9,7 +9,10 @@ import ContactDetail from './pages/ContactDetail'
 import Catalogue from './pages/Catalogue'
 import CatalogueDetail from './pages/CatalogueDetail'
 import Invoices from './pages/Invoices'
+import Recurrence from './pages/Recurrence'
 import InvoiceDetail from './pages/InvoiceDetail'
+import Devis from './pages/Devis'
+import DevisDetail from './pages/DevisDetail'
 import Tickets from './pages/Tickets'
 import TicketDetail from './pages/TicketDetail'
 import PurchaseOrders from './pages/PurchaseOrders'
@@ -17,10 +20,13 @@ import PurchaseOrderDetail from './pages/PurchaseOrderDetail'
 import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import Shop from './pages/Shop'
+import RDV from './pages/RDV'
+import Privacy from './pages/Privacy'
 import { EcomOrderList, EcomOrderDetail } from './pages/EcomOrders'
 import Settings from './pages/Settings'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
+import Server from './pages/Server'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -54,7 +60,10 @@ function InternalApp() {
         <Route path="/catalogue" element={<Catalogue />} />
         <Route path="/catalogue/:id" element={<CatalogueDetail />} />
         <Route path="/invoices" element={<Invoices />} />
+        <Route path="/recurrence" element={<Recurrence />} />
         <Route path="/invoices/:id" element={<InvoiceDetail />} />
+        <Route path="/devis" element={<Devis />} />
+        <Route path="/devis/:id" element={<DevisDetail />} />
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/purchase-orders" element={<PurchaseOrders />} />
@@ -66,6 +75,7 @@ function InternalApp() {
         <Route path="/employees" element={<Employees />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/agenda" element={<Tasks defaultView="month" />} />
+        <Route path="/server" element={<Server />} />
       </Routes>
     </Layout>
   )
@@ -77,6 +87,8 @@ export default function App() {
       <Routes>
         <Route path="/portal/*" element={<Portal />} />
         <Route path="/shop/*" element={<Shop />} />
+        <Route path="/rdv" element={<RDV />} />
+        <Route path="/confidentialite" element={<Privacy />} />
         <Route path="/*" element={<InternalApp />} />
       </Routes>
     </BrowserRouter>

@@ -126,29 +126,16 @@ export default function CatalogueDetail() {
             <div className="catd-section-title">Informations</div>
             <InlineField label="Nom" value={item.name} onSave={v => save('name', v)} />
             <InlineField label="Type" value={item.type} onSave={v => save('type', v)}
-              options={[{ value: 'service', label: 'Service' }, { value: 'materiel', label: 'Matériel' }]} />
+              options={[{ value: 'service', label: 'Service' }, { value: 'materiel', label: 'Matériel' }, { value: 'connaissance', label: 'Connaissance' }]} />
             <InlineField label="Prix (CAD)" value={String(item.price)} onSave={v => save('price', parseFloat(v) || 0)} type="number" />
-            {item.type === 'service' && (
-              <div className="ifield" style={{ cursor: 'default' }}>
-                <div className="ifield-label">Catégorie</div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={!!item.linked_to_hourly_rate}
-                    onChange={async e => {
-                      const r = await api.put(`/v1/catalogue/${id}`, { linked_to_hourly_rate: e.target.checked })
-                      setItem(r.data)
-                    }}
-                    style={{ width: 16, height: 16, accentColor: '#184FA0', cursor: 'pointer' }}
-                  />
-                  <span style={{ fontSize: 14, color: '#374151' }}>
-                    Connaissance Simple IP <span style={{ fontSize: 12, color: '#6B7280' }}>(lié au taux horaire)</span>
-                  </span>
-                </label>
-                {!item.linked_to_hourly_rate && (
-                  <div style={{ fontSize: 12, color: '#6B7280', paddingLeft: 26 }}>Service serveur — lié à l'inflation</div>
-                )}
-              </div>
+            {item.type === 'connaissance' && (
+              <>
+                <InlineField label="Multiplicateur taux horaire" value={item.rate_multiplier != null ? String(item.rate_multiplier) : ''}
+                  onSave={v => save('rate_multiplier', v === '' ? null : parseFloat(v))} type="number" />
+                <div style={{ fontSize: 12, color: '#6B7280', padding: '4px 0 8px' }}>
+                  Prix synchronisé automatiquement sur le taux horaire (Réglages){item.rate_multiplier ? ` × ${item.rate_multiplier}` : ''}
+                </div>
+              </>
             )}
           </div>
         </div>

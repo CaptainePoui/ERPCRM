@@ -80,6 +80,8 @@ class CompanyListItem(BaseModel):
     statuses: list[StatusOut]
     internal_manager: UserRefOut | None
     city: str | None
+    sipv_enabled: bool
+    sipv_tenant_id: uuid.UUID | None
 
     model_config = {"from_attributes": True}
 

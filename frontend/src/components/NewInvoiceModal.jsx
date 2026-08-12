@@ -11,8 +11,16 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
   const [quickCompany, setQuickCompany] = useState(null)
   const [form, setForm] = useState({ apply_tps: true, apply_tvq: true, is_recurring: false, recurrence_frequency: '' })
   const [saving, setSaving] = useState(false)
+  const [sites, setSites] = useState([])
+  const [siteId, setSiteId] = useState('')
 
   useEffect(() => { api.get('/v1/companies').then(r => setCompanies(r.data)) }, [])
+
+  useEffect(() => {
+    setSiteId('')
+    if (!selectedCompany) { setSites([]); return }
+    api.get(`/v1/companies/${selectedCompany.id}/sites`).then(r => setSites(r.data.filter(s => s.is_active)))
+  }, [selectedCompany?.id])
 
   const companyItems = companies.map(c => ({ id: c.id, label: c.name }))
 
@@ -28,6 +36,7 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
     try {
       const r = await api.post('/v1/invoices', {
         company_id: selectedCompany.id,
+        site_id: siteId || null,
         apply_tps: form.apply_tps,
         apply_tvq: form.apply_tvq,
         is_recurring: form.is_recurring,
@@ -51,6 +60,15 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
             placeholder="Rechercher une compagnie..."
             autoFocus={!prefillCompany}
           />
+          {sites.length > 0 && (
+            <div className="form-group">
+              <label>Succursale</label>
+              <select value={siteId} onChange={e => setSiteId(e.target.value)}>
+                <option value="">— Compagnie entière (pas de succursale) —</option>
+                {sites.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </select>
+            </div>
+          )}
           <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
             <label className="tax-check">
               <input type="checkbox" checked={form.apply_tps} onChange={e => setForm(p => ({ ...p, apply_tps: e.target.checked }))} />

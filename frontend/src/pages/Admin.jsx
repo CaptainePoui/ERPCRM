@@ -1,17 +1,57 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import './Admin.css'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
-const ROLE_COLORS = { admin: '#DC2626', manager: '#7C3AED', tech: '#2563EB', billing: '#059669', readonly: '#6B7280' }
+const ROLE_COLORS = { admin: '#DC2626', manager: '#7C3AED', tech: 'var(--brand)', billing: '#059669', readonly: '#6B7280' }
 
 const fmtDate = s => s ? new Date(s).toLocaleDateString('fr-CA', { year:'numeric', month:'short', day:'numeric' }) : '—'
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement']
+// Arbre de privilèges (TASK-S053) : cocher le "maître" d'une branche coche/décoche
+// aussi tous ses sous-items en un clic (cascade), révèle/cache la branche
+// (progressive disclosure — "un scroll down avec l'arbre d'option"), et chaque
+// sous-item reste éditable individuellement après coup sans affecter les autres.
+function PermissionBranch({ masterKey, masterLabel, items, form, onChange, headerBg, headerColor }) {
+  const [expanded, setExpanded] = useState(!!form[masterKey])
+  useEffect(() => { if (form[masterKey]) setExpanded(true) }, [form[masterKey]])
+  const checkedCount = items.filter(([k]) => form[k]).length
+
+  function toggleMaster(checked) {
+    onChange(masterKey, checked)
+    items.forEach(([k]) => onChange(k, checked))
+    setExpanded(checked)
+  }
+
+  return (
+    <div style={{ background: headerBg || '#F9FAFB', border: `1px solid ${headerColor ? headerColor + '55' : '#E5E7EB'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: headerColor || '#374151', cursor: 'pointer' }}>
+        <input type="checkbox" checked={!!form[masterKey]} onChange={e => toggleMaster(e.target.checked)} />
+        <span style={{ flex: 1 }} onClick={e => { e.preventDefault(); setExpanded(v => !v) }}>{masterLabel}</span>
+        <span style={{ fontSize: 11, fontWeight: 400, color: '#9CA3AF' }}>
+          {checkedCount}/{items.length} · {expanded ? '▾' : '▸'}
+        </span>
+      </label>
+      {expanded && (
+        <div style={{ marginLeft: 26, marginTop: 8 }}>
+          {items.map(([key, label]) => (
+            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!form[key]} onChange={e => onChange(key, e.target.checked)} />
+              {label}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations']
 
 export default function Admin() {
-  const [tab, setTab] = useState(0)
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('google_calendar') ? 3 : 0)
 
   return (
     <div className="adm-page">
@@ -27,7 +67,95 @@ export default function Admin() {
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
         {tab === 2 && <PaymentMethodsPanel />}
+        {tab === 3 && <IntegrationsPanel />}
       </div>
+    </div>
+  )
+}
+
+// ── Intégrations ──────────────────────────────────────────────────────────────
+
+const GOOGLE_CALLBACK_MESSAGES = {
+  connected: { text: '✓ Google Calendar connecté avec succès.', color: '#059669' },
+  error: { text: "La connexion Google a été refusée ou annulée.", color: '#DC2626' },
+  csrf: { text: "Échec de vérification de sécurité, veuillez réessayer.", color: '#DC2626' },
+  no_refresh_token: { text: "Google n'a pas retourné de jeton — réessayez (déconnectez d'abord l'accès existant dans les paramètres de votre compte Google si le problème persiste).", color: '#DC2626' },
+}
+
+function IntegrationsPanel() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [status, setStatus] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [disconnecting, setDisconnecting] = useState(false)
+
+  const callbackMsg = GOOGLE_CALLBACK_MESSAGES[searchParams.get('google_calendar')]
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await api.get('/v1/google-calendar/status')
+      setStatus(r.data)
+    } finally { setLoading(false) }
+  }
+
+  function connect() {
+    window.location.href = '/api/v1/google-calendar/connect'
+  }
+
+  async function disconnect() {
+    if (!confirm('Déconnecter Google Calendar ? Le module RDV continuera de fonctionner avec seulement les rendez-vous locaux comme contrainte.')) return
+    setDisconnecting(true)
+    try {
+      await api.post('/v1/google-calendar/disconnect')
+      await load()
+    } finally { setDisconnecting(false) }
+  }
+
+  function dismissMsg() {
+    searchParams.delete('google_calendar')
+    setSearchParams(searchParams)
+  }
+
+  return (
+    <div>
+      <div className="adm-panel-header">
+        <span className="adm-count">Synchronisation Google Calendar</span>
+      </div>
+      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+        Synchronise le module de prise de RDV en ligne avec un agenda Google : lecture des plages occupées, écriture des rendez-vous réservés.
+      </p>
+
+      {callbackMsg && (
+        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{callbackMsg.text}</span>
+          <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      {loading ? <div className="loading">Chargement...</div> : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <span style={{
+            fontSize: 13, fontWeight: 700, padding: '5px 12px', borderRadius: 20,
+            background: status.connected ? '#D1FAE5' : '#FEF2F2',
+            color: status.connected ? '#059669' : '#DC2626',
+          }}>
+            {status.connected ? '✓ Connecté' : 'Non connecté'}
+          </span>
+          {!status.client_configured && (
+            <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+              GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET pas encore configurés sur le serveur.
+            </span>
+          )}
+          {status.client_configured && !status.connected && (
+            <button className="btn-primary" onClick={connect}>Connecter Google Calendar</button>
+          )}
+          {status.connected && (
+            <button className="btn-secondary" onClick={disconnect} disabled={disconnecting}>{disconnecting ? '...' : 'Déconnecter'}</button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -257,8 +385,11 @@ function PortalUserModal({ onClose, onSaved }) {
   const [form, setForm] = useState({
     company_id: '', full_name: '', email: '', password: '',
     can_view_invoices: true, can_view_tickets: true, can_create_tickets: false, can_view_equipment: false,
-    can_view_own_extension: false, can_edit_extension_name: false, can_edit_call_forward: false,
-    can_edit_dnd: false, can_edit_voicemail: false, can_view_own_cdr: false,
+    // Défauts TASK-S055 (demande explicite 2026-08-07) : les options utiles au
+    // quotidien activées d'emblée, le reste (nom du poste, DND, écoute des
+    // messages, alertes) désactivé — l'admin les active au cas par cas.
+    can_view_own_extension: true, can_edit_extension_name: false, can_edit_call_forward: true,
+    can_edit_dnd: false, can_edit_voicemail: true, can_edit_call_plan: false, can_view_own_cdr: true,
     can_view_voicemail_messages: false, can_receive_alerts: false,
     can_manage_telephony: false, can_manage_ivr: false, can_manage_groups: false,
     can_manage_audio_prompts: false, can_view_company_cdr: false,
@@ -312,39 +443,32 @@ function PortalUserModal({ onClose, onSaved }) {
             </label>
           ))}
         </div>
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>TÉLÉPHONIE — MON POSTE</div>
-          {[
-            ['can_view_own_extension', 'Voir son propre poste (statut, extension)'],
+        <PermissionBranch
+          masterKey="can_view_own_extension" masterLabel="TÉLÉPHONIE — MON POSTE"
+          form={form} onChange={f} headerColor="#374151"
+          items={[
             ['can_edit_extension_name', 'Modifier le nom affiché de son poste'],
             ['can_edit_call_forward', 'Gérer ses renvois d\'appel'],
             ['can_edit_dnd', 'Activer/désactiver Ne pas déranger'],
             ['can_edit_voicemail', 'Gérer ses options de messagerie vocale'],
+            ['can_edit_call_plan', 'Gérer son plan d\'appel (Canada/US/international/payants)'],
             ['can_view_own_cdr', 'Voir son historique d\'appels personnel'],
             ['can_view_voicemail_messages', 'Écouter ses messages vocaux'],
             ['can_receive_alerts', 'Recevoir les alertes (poste hors ligne, etc.)'],
-          ].map(([key, label]) => (
-            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />
-              {label}
-            </label>
-          ))}
-        </div>
-        <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#92400E', marginBottom: 8 }}>TÉLÉPHONIE — GESTIONNAIRE (toute la compagnie)</div>
-          {[
-            ['can_manage_telephony', 'Gérer les postes de la compagnie (nom, voicemail, renvois)'],
+          ]}
+        />
+        <PermissionBranch
+          masterKey="can_manage_telephony" masterLabel="TÉLÉPHONIE — GESTIONNAIRE (toute la compagnie)"
+          form={form} onChange={f} headerBg="#FFFBEB" headerColor="#92400E"
+          items={[
             ['can_manage_ivr', 'Gérer les menus IVR'],
             ['can_manage_groups', 'Gérer les groupes d\'appel / ring groups'],
             ['can_manage_audio_prompts', 'Gérer les messages audio / musique d\'attente'],
             ['can_view_company_cdr', 'Voir l\'historique d\'appels de toute la compagnie'],
-          ].map(([key, label]) => (
-            <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />
-              {label}
-            </label>
-          ))}
-          <div style={{ fontSize: 12, color: '#92400E', marginTop: 4 }}>
+          ]}
+        />
+        <div style={{ marginTop: -6, marginBottom: 12 }}>
+          <div style={{ fontSize: 12, color: '#92400E' }}>
             Jamais exposé au client, peu importe ces permissions : trunks, routes sortantes, DIDs principaux, 911, sécurité.
           </div>
         </div>

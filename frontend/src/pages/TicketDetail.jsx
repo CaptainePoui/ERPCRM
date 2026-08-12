@@ -6,29 +6,25 @@ import './Tickets.css'
 
 const PRIORITY_LABELS = {
   faible:   { label: 'Faible',    color: '#6B7280' },
-  normal:   { label: 'Normal',    color: '#2563EB' },
+  normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
 }
 
 const STATUS_LABELS = {
-  ouvert:              { label: 'Ouvert',              color: '#184FA0' },
-  en_cours:            { label: 'En cours',            color: '#059669' },
-  en_attente:          { label: 'En attente',          color: '#D97706' },
-  fermer_a_facturer:   { label: 'À facturer',          color: '#7C3AED' },
-  facture:             { label: 'Facturé',             color: '#0891B2' },
-  ferme:               { label: 'Fermé',               color: '#6B7280' },
-  annule:              { label: 'Annulé',              color: '#9CA3AF' },
+  ouvert:              { label: 'Ouvert',                   color: 'var(--brand)' },
+  en_cours:            { label: 'En cours',                 color: '#059669' },
+  en_attente:          { label: 'En attente',                color: '#D97706' },
+  en_attente_client:   { label: "En attente d'une réponse",  color: '#7C3AED' },
+  facture:             { label: 'Facturé',                  color: '#0891B2' },
+  ferme:               { label: 'Fermé',                    color: '#6B7280' },
 }
 
-const STATUS_TRANSITIONS = {
-  ouvert:            ['en_cours', 'en_attente', 'fermer_a_facturer', 'ferme', 'annule'],
-  en_cours:          ['en_attente', 'fermer_a_facturer', 'ferme', 'annule'],
-  en_attente:        ['en_cours', 'fermer_a_facturer', 'ferme', 'annule'],
-  fermer_a_facturer: ['en_cours', 'ferme', 'annule'],
-  facture:           ['ferme'],
-  ferme:             ['ouvert'],
-  annule:            [],
+// Transitions rapides -- le bouton Fermer/Ouvrir (bascule) et "En attente d'une
+// réponse" (envoie courriel + pause chrono) sont geres separement, pas ici.
+const QUICK_TRANSITIONS = {
+  ouvert:            ['en_cours'],
+  en_attente_client: ['en_cours'],
 }
 
 function fmtMins(min) {
@@ -36,6 +32,12 @@ function fmtMins(min) {
   if (min < 0) return `-${fmtMins(-min)}`
   const h = Math.floor(min / 60), m = min % 60
   return h > 0 ? `${h}h${m > 0 ? m + 'm' : ''}` : `${m}m`
+}
+
+function fmtOpened(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function fmtSecs(s) {
@@ -56,6 +58,10 @@ export default function TicketDetail() {
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [showInvoiceModal, setShowInvoiceModal] = useState(false)
   const [taskRefreshKey, setTaskRefreshKey] = useState(0)
+  const [editingContactEmail, setEditingContactEmail] = useState(false)
+  const [contactEmailDraft, setContactEmailDraft] = useState('')
+  const [savingContactEmail, setSavingContactEmail] = useState(false)
+  const [showMissingEmailModal, setShowMissingEmailModal] = useState(false)
 
   // ── Timer permanent ──
   const timerIntervalRef = useRef(null)
@@ -73,6 +79,9 @@ export default function TicketDetail() {
 
   // ── Donner du temps ──
   const [showDonner, setShowDonner] = useState(false)
+  const [showOpens, setShowOpens] = useState(false)
+  const [opens, setOpens] = useState([])
+  const [opensLoading, setOpensLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -181,10 +190,29 @@ export default function TicketDetail() {
     setTicket(r.data)
   }
 
+  async function splitToNewTicket(eid) {
+    if (!confirm("Déplacer cette réponse vers un nouveau ticket ? Ce ticket sera refermé.")) return
+    const r = await api.post(`/v1/tickets/${id}/entries/${eid}/split-to-new-ticket`)
+    setTicket(r.data)
+  }
+
   async function deleteTicket() {
     if (!confirm('Supprimer ce ticket ?')) return
     await api.delete(`/v1/tickets/${id}`)
     navigate('/tickets')
+  }
+
+  async function saveContactEmail() {
+    if (!contactEmailDraft.trim()) return
+    setSavingContactEmail(true)
+    try {
+      await api.patch(`/v1/companies/${ticket.company_id}/contacts/${ticket.contact_id}`, { email: contactEmailDraft.trim() })
+      const r = await api.get(`/v1/tickets/${id}`)
+      setTicket(r.data)
+      setEditingContactEmail(false)
+    } finally {
+      setSavingContactEmail(false)
+    }
   }
 
   async function sendSummary(close) {
@@ -202,14 +230,71 @@ export default function TicketDetail() {
     }
   }
 
+  // Bouton "En attente d'une réponse" -- envoie le résumé + pause le chrono
+  // (TASK boutons de statut). Si le contact n'a pas de courriel, ouvre le popup
+  // de saisie plutôt que d'échouer silencieusement.
+  async function waitForClientResponse() {
+    if (!ticket.contact_email) {
+      setContactEmailDraft('')
+      setShowMissingEmailModal(true)
+      return
+    }
+    setSendingSum(true)
+    setSumMsg('')
+    try {
+      const r = await api.post(`/v1/tickets/${id}/send-summary`, { wait_for_client: true })
+      setTicket(r.data)
+      pauseTimer()
+      setSumMsg("Résumé envoyé, en attente d'une réponse ✓")
+    } catch (e) {
+      setSumMsg(e.response?.data?.detail || 'Erreur envoi courriel')
+    } finally {
+      setSendingSum(false)
+      setTimeout(() => setSumMsg(''), 4000)
+    }
+  }
+
+  // Depuis le popup "Pas de courriel" : enregistre le courriel puis envoie tout de suite
+  async function saveContactEmailAndSend() {
+    if (!contactEmailDraft.trim()) return
+    setSavingContactEmail(true)
+    try {
+      await api.patch(`/v1/companies/${ticket.company_id}/contacts/${ticket.contact_id}`, { email: contactEmailDraft.trim() })
+      setShowMissingEmailModal(false)
+      setSendingSum(true)
+      setSumMsg('')
+      const r = await api.post(`/v1/tickets/${id}/send-summary`, { wait_for_client: true })
+      setTicket(r.data)
+      pauseTimer()
+      setSumMsg("Résumé envoyé, en attente d'une réponse ✓")
+    } catch (e) {
+      setSumMsg(e.response?.data?.detail || 'Erreur envoi courriel')
+    } finally {
+      setSavingContactEmail(false)
+      setSendingSum(false)
+      setTimeout(() => setSumMsg(''), 4000)
+    }
+  }
+
+  async function toggleOpens() {
+    if (showOpens) { setShowOpens(false); return }
+    setShowOpens(true)
+    setOpensLoading(true)
+    try {
+      const r = await api.get(`/v1/track/ticket/${id}/opens`)
+      setOpens(r.data)
+    } finally {
+      setOpensLoading(false)
+    }
+  }
+
   if (loading) return <div className="page"><div className="loading">Chargement...</div></div>
   if (!ticket) return null
 
   const p = PRIORITY_LABELS[ticket.priority] || PRIORITY_LABELS.normal
   const s = STATUS_LABELS[ticket.status] || STATUS_LABELS.ouvert
-  const transitions = STATUS_TRANSITIONS[ticket.status] || []
-  const closed = ['ferme', 'annule', 'facture'].includes(ticket.status)
-  const canInvoice = ticket.status === 'fermer_a_facturer' && !ticket.invoice_id
+  const quickTransitions = QUICK_TRANSITIONS[ticket.status] || []
+  const closed = ['ferme', 'facture'].includes(ticket.status)
   const hasContactEmail = !!ticket.contact_email
   const deltaSecs = timerSecs - lastNoteSecsRef.current
   const deltaMins = Math.ceil(deltaSecs / 60)
@@ -217,6 +302,7 @@ export default function TicketDetail() {
 
   return (
     <div className="page">
+      <div className="tkt-sticky-header">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn-secondary" onClick={() => navigate('/tickets')} style={{ padding: '6px 12px' }}>← Retour</button>
@@ -228,19 +314,27 @@ export default function TicketDetail() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <span className="tkt-badge" style={{ background: p.color }}>{p.label}</span>
           <span className="tkt-badge" style={{ background: s.color }}>{s.label}</span>
-          {transitions.map(t => (
+          {!closed && quickTransitions.map(t => (
             <button key={t} className="btn-secondary" onClick={() => changeStatus(t)} style={{ fontSize: 12 }}>
               → {STATUS_LABELS[t]?.label}
             </button>
           ))}
-          {canInvoice && (
-            <button className="btn-primary" onClick={() => setShowInvoiceModal(true)} style={{ fontSize: 12, background: '#7C3AED' }}>
-              🧾 Créer facture
+          {!closed && (
+            <button className="btn-secondary" onClick={waitForClientResponse} disabled={sendingSum} style={{ fontSize: 12 }}>
+              📧 En attente d'une réponse
             </button>
           )}
+          {closed
+            ? <button className="btn-secondary" onClick={() => changeStatus('ouvert')} style={{ fontSize: 12 }}>↩ Ouvrir</button>
+            : <button className="btn-primary" onClick={() => changeStatus('ferme')} style={{ fontSize: 12 }}>✓ Fermer</button>
+          }
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           {!closed && <button className="btn-danger" onClick={deleteTicket}>Supprimer</button>}
         </div>
+      </div>
+      {sumMsg && (
+        <div style={{ padding: '0 0 8px', fontSize: 13, color: sumMsg.includes('✓') ? '#059669' : '#DC2626' }}>{sumMsg}</div>
+      )}
       </div>
 
       {/* ── Barre de timer permanente ── */}
@@ -302,7 +396,7 @@ export default function TicketDetail() {
           <div className="tkt-info-row">
             <span>Facturable</span>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-              <input type="checkbox" checked={ticket.is_billable} onChange={e => toggleBillable(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+              <input type="checkbox" checked={ticket.is_billable} onChange={e => toggleBillable(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
             </label>
           </div>
           {ticket.invoice_id && (
@@ -311,36 +405,53 @@ export default function TicketDetail() {
               <a href={`/invoices/${ticket.invoice_id}`} style={{ color: '#0891B2', fontWeight: 600, fontSize: 13 }}>Voir la facture →</a>
             </div>
           )}
-
-          {hasContactEmail && (
-            <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #E5E7EB' }}>
-              {sumMsg && (
-                <div style={{ marginBottom: 8, fontSize: 13, color: sumMsg.includes('✓') ? '#059669' : '#DC2626' }}>{sumMsg}</div>
+          <div className="tkt-info-row">
+            <span>Résumé ouvert</span>
+            {ticket.last_opened_at ? (
+              <span
+                style={{ fontSize: 13, cursor: 'pointer', color: '#374151' }}
+                onClick={toggleOpens}
+                title="Cliquer pour voir l'historique complet"
+              >
+                👁 {fmtOpened(ticket.last_opened_at)}{ticket.open_count > 1 ? ` (×${ticket.open_count})` : ''}
+              </span>
+            ) : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Jamais</span>}
+          </div>
+          {showOpens && (
+            <div style={{ marginTop: 4, marginBottom: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+              {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
+                </ul>
               )}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn-secondary"
-                  onClick={() => sendSummary(false)}
-                  disabled={sendingSum}
-                  style={{ fontSize: 12 }}
-                >
-                  📧 Envoyer résumé
-                </button>
-                {!closed && (
-                  <button
-                    className="btn-primary"
-                    onClick={() => sendSummary(true)}
-                    disabled={sendingSum}
-                    style={{ fontSize: 12, background: '#059669' }}
-                  >
-                    ✅ Envoyer résumé + Fermer ticket
-                  </button>
-                )}
-              </div>
             </div>
           )}
+
           {!hasContactEmail && ticket.contact_name && (
-            <div style={{ marginTop: 12, fontSize: 12, color: '#9CA3AF' }}>Contact sans courriel — notifications désactivées</div>
+            <div style={{ marginTop: 12, fontSize: 12 }}>
+              {editingContactEmail ? (
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                  <input
+                    type="email"
+                    autoFocus
+                    value={contactEmailDraft}
+                    onChange={e => setContactEmailDraft(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') saveContactEmail(); if (e.key === 'Escape') setEditingContactEmail(false) }}
+                    placeholder="courriel@exemple.com"
+                    style={{ fontSize: 12, padding: '4px 8px', flex: 1 }}
+                  />
+                  <button className="ifield-ok" onClick={saveContactEmail} disabled={savingContactEmail}>✓</button>
+                  <button className="ifield-x" onClick={() => setEditingContactEmail(false)}>✕</button>
+                </div>
+              ) : (
+                <span
+                  style={{ color: '#9CA3AF', cursor: 'pointer' }}
+                  onClick={() => { setContactEmailDraft(''); setEditingContactEmail(true) }}
+                >
+                  Contact sans courriel — notifications désactivées (cliquer pour ajouter)
+                </span>
+              )}
+            </div>
           )}
         </div>
 
@@ -378,7 +489,7 @@ export default function TicketDetail() {
                 </select>
               )}
               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer', userSelect: 'none' }}>
-                <input type="checkbox" checked={noteBillable} onChange={e => setNoteBillable(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+                <input type="checkbox" checked={noteBillable} onChange={e => setNoteBillable(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
                 Facturable
               </label>
               <button
@@ -406,23 +517,38 @@ export default function TicketDetail() {
               <th>Service</th>
               <th style={{ textAlign: 'right' }}>Durée</th>
               <th style={{ width: 80 }}>Facturable</th>
-              {!closed && <th style={{ width: 40 }}></th>}
+              <th style={{ width: 90 }}></th>
             </tr>
           </thead>
           <tbody>
-            {ticket.entries.map(e => (
-              <tr key={e.id}>
-                <td>{new Date(e.worked_at + 'T00:00:00').toLocaleDateString('fr-CA')}</td>
-                <td>{e.description}</td>
-                <td style={{ color: '#6B7280' }}>{e.user_name || '—'}</td>
-                <td style={{ color: '#6B7280', fontSize: 12 }}>{catalogue.find(c => c.id === e.catalogue_item_id)?.name || '—'}</td>
-                <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMins(e.duration_minutes)}</td>
-                <td>{e.is_billable ? <span className="tkt-billable">Fact.</span> : '—'}</td>
-                {!closed && <td><button className="inv-del-btn" onClick={() => deleteEntry(e.id)}>✕</button></td>}
-              </tr>
-            ))}
+            {ticket.entries.map(e => {
+              const isClientReply = e.description.startsWith('[Réponse client]')
+              return (
+                <tr key={e.id}>
+                  <td>{new Date(e.worked_at + 'T00:00:00').toLocaleDateString('fr-CA')}</td>
+                  <td>{e.description}</td>
+                  <td style={{ color: '#6B7280' }}>{e.user_name || '—'}</td>
+                  <td style={{ color: '#6B7280', fontSize: 12 }}>{catalogue.find(c => c.id === e.catalogue_item_id)?.name || '—'}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMins(e.duration_minutes)}</td>
+                  <td>{e.is_billable ? <span className="tkt-billable">Fact.</span> : '—'}</td>
+                  <td style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                    {isClientReply && (
+                      <button
+                        className="btn-secondary"
+                        style={{ fontSize: 11, padding: '2px 6px' }}
+                        title="Déplacer vers un nouveau ticket (dossier différent)"
+                        onClick={() => splitToNewTicket(e.id)}
+                      >
+                        ↗ Nouveau ticket
+                      </button>
+                    )}
+                    {!closed && <button className="inv-del-btn" onClick={() => deleteEntry(e.id)}>✕</button>}
+                  </td>
+                </tr>
+              )
+            })}
             {ticket.entries.length === 0 && (
-              <tr><td colSpan={closed ? 6 : 7} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune saisie</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune saisie</td></tr>
             )}
           </tbody>
         </table>
@@ -462,6 +588,34 @@ export default function TicketDetail() {
           onClose={() => setShowTaskModal(false)}
           onCreated={() => { setShowTaskModal(false); setTaskRefreshKey(k => k + 1) }}
         />
+      )}
+
+      {showMissingEmailModal && (
+        <div className="modal-overlay" onClick={() => setShowMissingEmailModal(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Pas de courriel</h3>
+            <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>
+              Ce contact n'a pas de courriel enregistré — impossible d'envoyer le résumé.
+            </p>
+            <div className="form-group">
+              <label>Courriel du contact</label>
+              <input
+                type="email"
+                autoFocus
+                value={contactEmailDraft}
+                onChange={e => setContactEmailDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') saveContactEmailAndSend() }}
+                placeholder="courriel@exemple.com"
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowMissingEmailModal(false)}>Me le rappeler plus tard</button>
+              <button className="btn-primary" onClick={saveContactEmailAndSend} disabled={savingContactEmail || !contactEmailDraft.trim()}>
+                {savingContactEmail ? '...' : 'Enregistrer et envoyer'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -610,7 +764,7 @@ function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
         Tâches liées
         {tasks.length > 0 && (
           <label style={{ fontSize: 12, fontWeight: 400, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: '#184FA0' }} />
+            <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
             Voir complétées
           </label>
         )}
@@ -623,7 +777,7 @@ function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
         const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
         return (
           <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'center' }}>
-            <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: '#184FA0', cursor: 'pointer', flexShrink: 0 }} />
+            <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0 }} />
             <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
             {t.subtasks?.length > 0 && (
               <span style={{ fontSize: 11, color: '#9CA3AF' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>

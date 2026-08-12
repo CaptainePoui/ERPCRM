@@ -1,18 +1,22 @@
 import uuid
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from datetime import date
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core import sipv_client
+from app.core.site_defaults import ensure_primary_site
 from app.api.v1.endpoints.auth import get_current_user, get_current_user_or_service
 from app.models.entity import Entity, EntityType
 from app.models.contact import Contact
 from app.models.company import Company
+from app.models.company_site import CompanySite
 from app.models.status import Status, EntityStatus
 from app.models.contact_company import ContactCompany, ContactCompanyFunction
 from app.models.entity_log import EntityLog
+from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine
 from app.models.user import User
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut, ContactListItem, CompanyInContactOut
 from pydantic import BaseModel
@@ -56,6 +60,7 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         first_name=contact.first_name,
         last_name=contact.last_name,
         email=contact.email,
+        email_other=contact.email_other,
         phone=office_company.office_phone if office_company else contact.phone,
         mobile=contact.mobile,
         extension=contact.extension,
@@ -81,6 +86,7 @@ async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_
         first_name=payload.first_name,
         last_name=payload.last_name,
         email=payload.email,
+        email_other=payload.email_other,
         phone=payload.phone,
         mobile=payload.mobile,
         extension=payload.extension,
@@ -162,6 +168,214 @@ async def get_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db),
     return _build_contact_out(contact)
 
 
+class ContactSipvDeactivateOut(BaseModel):
+    contact: ContactOut
+    prorata_credit: float | None = None
+    prorata_description: str | None = None
+
+
+@router.put("/{contact_id}/sip-extension/deactivate", response_model=ContactSipvDeactivateOut)
+async def deactivate_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-033 : decocher "Synchroniser avec SIPV" desactive le vrai poste
+    (jamais supprime ici -- reversible, meme principe que le tenant SIPV
+    d'une compagnie). La suppression reelle du poste ne se fait qu'au
+    moment de supprimer le contact (voir delete_contact ci-dessous).
+    Cote SIPV, ce changement d'is_active declenche automatiquement le
+    retrait de la ligne de facturation recurrente avec credit de prorata
+    (extensions.py::update_extension, TASK-033) -- on relit ici la ligne de
+    credit generee pour l'afficher a l'utilisateur."""
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    primary = _office_company(contact)
+    ext_id = None
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+        if extensions:
+            ext_id = extensions[0]["id"]
+            await sipv_client.update_extension(ext_id, is_active=False)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    contact.sipv_sync = False
+    await db.commit()
+
+    prorata_credit = None
+    prorata_description = None
+    if ext_id:
+        # La ligne de credit generee par le webhook n'a PAS de service_ref
+        # (seulement service_type, voir recurring_billing.py::sipv_billing_event
+        # branche "_removed") -- on prend la plus recente pour ce type de
+        # service sur la recurrence de CETTE compagnie.
+        if primary:
+            rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == primary.id))
+            rb = rb_result.scalar_one_or_none()
+            if rb:
+                credit_result = await db.execute(
+                    select(RecurringBillingLine).where(
+                        RecurringBillingLine.recurring_billing_id == rb.id,
+                        RecurringBillingLine.is_prorata_credit == True,
+                        RecurringBillingLine.service_type == "extension",
+                    ).order_by(RecurringBillingLine.created_at.desc()).limit(1)
+                )
+                credit_line = credit_result.scalar_one_or_none()
+                if credit_line:
+                    prorata_credit = credit_line.unit_price
+                    prorata_description = credit_line.description
+
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    return ContactSipvDeactivateOut(
+        contact=_build_contact_out(result.scalar_one()),
+        prorata_credit=prorata_credit,
+        prorata_description=prorata_description,
+    )
+
+
+@router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    contact = await db.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    # TASK-033 : ne se fie plus au seul booleen sipv_sync (imprecis -- reste
+    # a False meme si un poste desactive existe encore) -- interroge SIPV
+    # directement. Poste encore ACTIF -> bloque (desactiver d'abord). Poste
+    # INACTIF -> supprime reellement le poste dans SIPV (prorata/notification
+    # deja geres par SIPV lui-meme, voir extensions.py::delete_extension)
+    # puis le contact. Aucun poste -> rien de plus a faire.
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable — impossible de vérifier l'état du poste avant suppression")
+    if extensions:
+        ext = extensions[0]
+        if ext.get("is_active"):
+            raise HTTPException(status_code=400, detail="Ce contact a un poste SIP encore actif dans SIPV — désactivez-le d'abord (décocher « Synchroniser avec SIPV »)")
+        try:
+            await sipv_client.delete_extension(ext["id"])
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="SIPV injoignable — impossible de supprimer le poste")
+    # Supprime l'Entity (pas juste le Contact) -- Contact.id EST entities.id
+    # (cle partagee), le cascade sur entities nettoie aussi statuses/
+    # communication_channels/addresses de ce contact (voir app/models/entity.py).
+    # DELETE brut (pas db.delete(entity)) -- SQLAlchemy essaie sinon de gerer
+    # la cascade lui-meme au niveau ORM (mettre contacts.id a NULL avant de
+    # supprimer), ce qui plante puisque contacts.id est une cle primaire, pas
+    # juste une FK nullable ("tried to blank-out primary key column"). Un
+    # DELETE brut laisse Postgres gerer le ON DELETE CASCADE directement.
+    await db.execute(sa_delete(Entity).where(Entity.id == contact_id))
+    await db.commit()
+
+
+class ContactSipvActivate(BaseModel):
+    # TASK-033 : reutilisable comme date de portabilite (un numero porte depuis
+    # un autre fournisseur a une date de portabilite precise -- le poste peut
+    # etre cree avant, mais la facturation doit demarrer a cette date-la, pas
+    # "aujourd'hui"). Meme convention que SipvTenantToggle.billing_start_date.
+    billing_start_date: date | None = None
+    billing_frequency: str = "mensuel"
+    extension_number: str | None = None  # auto-assignee au prochain disponible si omis
+
+
+class ContactSipvActivateOut(BaseModel):
+    contact: ContactOut
+    period_start: date | None = None
+    period_end: date | None = None
+    days_billed: int | None = None
+
+
+@router.post("/{contact_id}/sip-extension", response_model=ContactSipvActivateOut, status_code=status.HTTP_201_CREATED)
+async def create_contact_sip_extension(
+    contact_id: uuid.UUID, payload: ContactSipvActivate,
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user),
+):
+    """
+    TASK-033 : cree reellement un poste SIP pour ce contact (au lieu de
+    simplement flipper sipv_sync -- design d'origine TASK-016, jamais un vrai
+    provisionnement). Parite avec le "Tenant telephonique SIPV" de la
+    compagnie (meme popup de confirmation, meme moteur de facturation
+    recurrente en dessous) :
+    1. Si la compagnie du contact n'a pas encore de tenant SIPV actif, on
+       l'active d'abord (reutilise toggle_sipv_tenant tel quel -- meme
+       logique, pas de duplication).
+    2. Cree le poste dans SIPV, lie directement a ce contact (pas de
+       recherche floue par nom).
+    3. SIPV notifie automatiquement ERPCRM (webhook /billing/sipv-event,
+       deja cable depuis TASK-021) qui ajoute la ligne de facturation --
+       rien a faire de plus ici pour la partie facturation.
+    """
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    contact = result.scalar_one_or_none()
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if contact.sipv_sync:
+        raise HTTPException(status_code=400, detail="Ce contact a déjà un poste SIP synchronisé")
+    company = _office_company(contact)
+    if not company:
+        raise HTTPException(status_code=400, detail="Ce contact n'est lié à aucune compagnie")
+
+    if not company.sipv_enabled:
+        from app.api.v1.endpoints.companies import toggle_sipv_tenant, SipvTenantToggle
+        await toggle_sipv_tenant(
+            company.id,
+            SipvTenantToggle(enabled=True, billing_start_date=payload.billing_start_date, billing_frequency=payload.billing_frequency),
+            db, current_user,
+        )
+        await db.refresh(company)
+    if not company.sipv_tenant_id:
+        raise HTTPException(status_code=502, detail="Tenant SIPV introuvable après activation — réessayez")
+    tenant_id = str(company.sipv_tenant_id)
+
+    extension_number = payload.extension_number
+    if not extension_number:
+        try:
+            existing = await sipv_client.list_extensions(tenant_id)
+        except httpx.HTTPError:
+            raise HTTPException(status_code=502, detail="SIPV injoignable (liste des postes)")
+        used_numbers = [int(e["extension"]) for e in existing if str(e.get("extension", "")).isdigit()]
+        extension_number = str(max(used_numbers) + 1) if used_numbers else "100"
+
+    try:
+        await sipv_client.create_extension(
+            tenant_id,
+            extension=extension_number,
+            name=f"{contact.first_name} {contact.last_name}".strip(),
+            erpcrm_contact_id=str(contact.id),
+            billing_effective_date=payload.billing_start_date.isoformat() if payload.billing_start_date else None,
+        )
+    except httpx.HTTPStatusError as e:
+        detail = "Échec de la création du poste"
+        try:
+            detail = e.response.json().get("detail", detail)
+        except Exception:
+            pass
+        raise HTTPException(status_code=e.response.status_code if e.response.status_code < 500 else 502, detail=detail)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+    contact.sipv_sync = True
+    contact.extension = extension_number
+    await db.commit()
+
+    # TASK-033 : previsualise la periode facturee du cycle courant pour ce
+    # nouveau poste (transparence -- l'utilisateur demande a voir les jours
+    # facturables, pas juste un succes silencieux). Meme calcul que celui
+    # utilise par SIPV/le webhook pour le prorata reel.
+    period_start = period_end = days_billed = None
+    rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == company.id))
+    rb = rb_result.scalar_one_or_none()
+    if rb:
+        from app.api.v1.endpoints.recurring_billing import _cycle_bounds
+        effective = payload.billing_start_date or date.today()
+        period_start, period_end = _cycle_bounds(rb.start_date, rb.frequency, effective)
+        days_billed = (period_end - effective).days
+
+    result = await db.execute(select(Contact).where(Contact.id == contact_id).options(*_load_opts()))
+    return ContactSipvActivateOut(
+        contact=_build_contact_out(result.scalar_one()),
+        period_start=period_start, period_end=period_end, days_billed=days_billed,
+    )
+
+
 @router.get("/{contact_id}/sip-extension")
 async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """
@@ -191,6 +405,11 @@ async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = De
     ext["public_ip"] = reg["public_ip"] if reg else None
     ext["private_ip"] = reg["private_ip"] if reg else None
     ext["call_state"] = reg["call_state"] if reg else "idle"
+    # Fait GLOBAL au serveur (connexion SIPV<->FreeSWITCH), pas specifique a ce poste
+    # (TASK-023.32) -- demande explicite : distinct du statut d'enregistrement du
+    # poste, deja couvert par "registered" ci-dessus.
+    esl = await sipv_client.get_esl_status()
+    ext["freeswitch_esl_connected"] = esl.get("connected", False)
     return ext
 
 
@@ -249,6 +468,7 @@ class SipExtensionUpdate(BaseModel):
     caller_id_external_name: str | None = None
     caller_id_external_number: str | None = None
     hide_caller_id: bool | None = None
+    voicemail_enabled: bool | None = None
 
 
 @router.put("/{contact_id}/sip-extension")
@@ -295,6 +515,214 @@ async def get_contact_phone(contact_id: uuid.UUID, db: AsyncSession = Depends(ge
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 
 
+@router.get("/{contact_id}/sip-extension/phone/tenant-model-templates")
+async def list_contact_phone_tenant_model_templates(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Templates par modele disponibles pour l'appareil de ce poste (TASK-S044.1,
+    crees dans Compagnie/Téléphonie -- ici juste filtres au modele de CE poste)."""
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        phone = await sipv_client.get_phone_by_extension(ext["id"])
+        if not phone or not phone.get("phone_model_id"):
+            return []
+        templates = await sipv_client.list_tenant_model_templates(str(ext["tenant_id"]))
+        return [t for t in templates if t.get("phone_model_id") == phone["phone_model_id"]]
+    except httpx.HTTPError:
+        return []
+
+
+# ── 911 -- localisation d'urgence du poste (TASK-S010.2, S010.4) ────────────────
+# Les succursales (company_sites) sont maitres cote ERPCRM depuis TASK-S010.4 --
+# le picker et les payloads utilisent l'id ERPCRM (site_id, expose sous le nom
+# de champ historique e911_address_id pour ne pas casser le frontend), traduit
+# vers CompanySite.sipv_e911_address_id juste avant chaque appel SIPV.
+async def _contact_company_id(contact_id: uuid.UUID, db: AsyncSession) -> uuid.UUID | None:
+    result = await db.execute(
+        select(ContactCompany).where(ContactCompany.contact_id == contact_id).order_by(ContactCompany.is_primary.desc())
+    )
+    cc = result.scalars().first()
+    return cc.company_id if cc else None
+
+
+def _site_dict(s: CompanySite) -> dict:
+    return {
+        "id": str(s.id), "label": s.label, "civic_number": s.civic_number, "street_name": s.street_name,
+        "unit": s.unit, "city": s.city, "province": s.province, "postal_code": s.postal_code,
+        "country": s.country, "is_active": s.is_active, "is_primary": s.is_primary,
+    }
+
+
+@router.get("/{contact_id}/sip-extension/911/addresses")
+async def list_contact_911_addresses(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Succursales (company_sites, ERPCRM) de la compagnie de ce contact --
+    remplit le picker cote Contact."""
+    company_id = await _contact_company_id(contact_id, db)
+    if not company_id:
+        return []
+    await ensure_primary_site(company_id, db)
+    result = await db.execute(
+        select(CompanySite).where(CompanySite.company_id == company_id, CompanySite.is_active == True).order_by(CompanySite.label)
+    )
+    return [_site_dict(s) for s in result.scalars().all()]
+
+
+@router.get("/{contact_id}/sip-extension/911")
+async def get_contact_911_assignment(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        assignment = await sipv_client.get_extension_e911_assignment(ext["id"])
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    if not assignment:
+        return None
+    result = await db.execute(select(CompanySite).where(CompanySite.sipv_e911_address_id == uuid.UUID(assignment["e911_address_id"])))
+    site = result.scalar_one_or_none()
+    assignment["e911_address_id"] = str(site.id) if site else None
+    return assignment
+
+
+class E911AssignmentPayload(BaseModel):
+    e911_address_id: uuid.UUID  # id de CompanySite (ERPCRM), pas de E911Address (SIPV)
+    emergency_location: str | None = None
+    floor: str | None = None
+    office: str | None = None
+    alert_email: str | None = None
+
+
+@router.put("/{contact_id}/sip-extension/911")
+async def upsert_contact_911_assignment(contact_id: uuid.UUID, payload: E911AssignmentPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Cree ou met a jour l'assignation 911 de CE poste (une seule active par
+    poste, contrainte cote SIPV) -- le frontend n'a pas a savoir si ca existe deja."""
+    site = await db.get(CompanySite, payload.e911_address_id)
+    if not site or not site.sipv_e911_address_id:
+        raise HTTPException(status_code=400, detail="Succursale invalide ou pas encore synchronisee avec SIPV")
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        existing = await sipv_client.get_extension_e911_assignment(ext["id"])
+        data = payload.model_dump()
+        data["e911_address_id"] = str(site.sipv_e911_address_id)
+        if existing:
+            result = await sipv_client.update_extension_e911_assignment(existing["id"], extension_id=ext["id"], **data)
+        else:
+            result = await sipv_client.create_extension_e911_assignment(ext["tenant_id"], extension_id=ext["id"], **data)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    result["e911_address_id"] = str(site.id)
+    return result
+
+
+@router.delete("/{contact_id}/sip-extension/911", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact_911_assignment(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        existing = await sipv_client.get_extension_e911_assignment(ext["id"])
+        if existing:
+            await sipv_client.delete_extension_e911_assignment(existing["id"])
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+
+
+# ── Boîte vocale (VoicemailBox) -- checkbox "activée" + options si activée ─────
+@router.get("/{contact_id}/sip-extension/voicemail")
+async def get_contact_voicemail(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        boxes = await sipv_client.list_voicemails(ext["tenant_id"])
+        return next((b for b in boxes if b.get("extension_id") == ext["id"]), None)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+class VoicemailPayload(BaseModel):
+    email: str | None = None
+    email_on_new: bool = True
+    attach_message: bool = True
+    skip_instructions: bool = False
+    password: str | None = None
+
+
+@router.put("/{contact_id}/sip-extension/voicemail")
+async def upsert_contact_voicemail(contact_id: uuid.UUID, payload: VoicemailPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Cree ou met a jour la boite vocale de CE poste -- le frontend n'a pas a
+    savoir si elle existe deja. `password` seulement envoye a SIPV si fourni
+    (jamais ecrase par du vide -- write-only, jamais relu)."""
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        contact = await db.get(Contact, contact_id)
+        boxes = await sipv_client.list_voicemails(ext["tenant_id"])
+        existing = next((b for b in boxes if b.get("extension_id") == ext["id"]), None)
+        data = payload.model_dump()
+        if not data.get("password"):
+            data.pop("password", None)
+        if existing:
+            return await sipv_client.update_voicemail(existing["id"], **data)
+        return await sipv_client.create_voicemail(
+            ext["tenant_id"], extension_id=ext["id"], mailbox=ext["extension"],
+            fullname=f"{contact.first_name} {contact.last_name}", **data,
+        )
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.delete("/{contact_id}/sip-extension/voicemail", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_contact_voicemail(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Desactive (is_active=false) plutot que supprimer -- reversible."""
+    try:
+        ext = await _get_own_extension(contact_id, db)
+        boxes = await sipv_client.list_voicemails(ext["tenant_id"])
+        existing = next((b for b in boxes if b.get("extension_id") == ext["id"]), None)
+        if existing:
+            await sipv_client.update_voicemail(existing["id"], is_active=False)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Accueil (greeting) de la boite vocale -- demande de Philippe (2026-08-04) :
+# pouvoir telecharger/uploader le message joue quand la BV repond (defaut :
+# "unavailable", joue quand personne ne repond -- le cas exact qu'il testait).
+async def _get_own_voicemail_box(contact_id: uuid.UUID, db: AsyncSession) -> dict:
+    ext = await _get_own_extension(contact_id, db)
+    boxes = await sipv_client.list_voicemails(ext["tenant_id"])
+    box = next((b for b in boxes if b.get("extension_id") == ext["id"]), None)
+    if not box:
+        raise HTTPException(status_code=404, detail="Aucune boîte vocale pour ce poste -- activer la boîte vocale d'abord")
+    return box
+
+
+@router.post("/{contact_id}/sip-extension/voicemail/greeting")
+async def upload_contact_voicemail_greeting(contact_id: uuid.UUID, file: UploadFile = File(...), greeting_type: str = "unavailable", db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        box = await _get_own_voicemail_box(contact_id, db)
+        content = await file.read()
+        return await sipv_client.upload_voicemail_greeting(box["id"], greeting_type, file.filename or "greeting", content, file.content_type)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.get("/{contact_id}/sip-extension/voicemail/greeting")
+async def download_contact_voicemail_greeting(contact_id: uuid.UUID, greeting_type: str = "unavailable", db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        box = await _get_own_voicemail_box(contact_id, db)
+        content, filename = await sipv_client.download_voicemail_greeting(box["id"], greeting_type)
+        return Response(content=content, media_type="audio/wav", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Aucun accueil uploadé")
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/{contact_id}/sip-extension/voicemail/greeting")
+async def delete_contact_voicemail_greeting(contact_id: uuid.UUID, greeting_type: str = "unavailable", db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    try:
+        box = await _get_own_voicemail_box(contact_id, db)
+        return await sipv_client.delete_voicemail_greeting(box["id"], greeting_type)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
 class PhoneAttribute(BaseModel):
     phone_model_id: uuid.UUID
     mac_address: str
@@ -322,6 +750,9 @@ class PhoneUpdatePayload(BaseModel):
     display_name: str | None = None
     location: str | None = None
     is_active: bool | None = None
+    provisioning_protocol: str | None = None
+    extra_config: dict | None = None  # TASK-S011.5 -- options personnalisees du poste
+    selected_tenant_model_template_ids: list[uuid.UUID] | None = None  # TASK-S044.2
 
 
 @router.put("/{contact_id}/sip-extension/phone/{phone_id}")
@@ -330,6 +761,8 @@ async def update_contact_phone(contact_id: uuid.UUID, phone_id: uuid.UUID, paylo
         data = payload.model_dump(exclude_unset=True)
         if "phone_model_id" in data and data["phone_model_id"]:
             data["phone_model_id"] = str(data["phone_model_id"])
+        if "selected_tenant_model_template_ids" in data and data["selected_tenant_model_template_ids"] is not None:
+            data["selected_tenant_model_template_ids"] = [str(x) for x in data["selected_tenant_model_template_ids"]]
         return await sipv_client.update_provisioned_phone(str(phone_id), **data)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")

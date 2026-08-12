@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
-TICKET_STATUSES = ["ouvert", "en_cours", "en_attente", "fermer_a_facturer", "facture", "ferme", "annule"]
+TICKET_STATUSES = ["ouvert", "en_cours", "en_attente", "en_attente_client", "facture", "ferme"]
 
 
 class Ticket(Base):
@@ -20,7 +20,7 @@ class Ticket(Base):
     description: Mapped[str | None] = mapped_column(Text)
 
     priority: Mapped[str] = mapped_column(String(20), default="normal")  # faible normal urgent critique
-    status: Mapped[str] = mapped_column(String(20), default="ouvert")    # ouvert en_cours en_attente ferme annule
+    status: Mapped[str] = mapped_column(String(20), default="ouvert")    # ouvert en_cours en_attente en_attente_client facture ferme
 
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -32,7 +32,12 @@ class Ticket(Base):
     company: Mapped["Company"] = relationship("Company")
     contact: Mapped["Contact | None"] = relationship("Contact")
     assigned_to: Mapped["User | None"] = relationship("User")
-    entries: Mapped[list["TicketEntry"]] = relationship("TicketEntry", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketEntry.worked_at.desc()")
+    # ⚠️ Bug corrige : trie uniquement par worked_at (un DATE, pas datetime) laissait
+    # l'ordre indefini entre plusieurs entrees de la MEME journee -- une note tout
+    # juste enregistree pouvait se retrouver enfouie plutot qu'en haut/bas de facon
+    # previsible ("elle n'apparait pas de suite"). created_at (timestamp complet,
+    # toujours croissant a l'insertion) sert de departage.
+    entries: Mapped[list["TicketEntry"]] = relationship("TicketEntry", back_populates="ticket", cascade="all, delete-orphan", order_by="(TicketEntry.worked_at.desc(), TicketEntry.created_at.desc())")
 
 
 class TicketEntry(Base):
@@ -47,6 +52,10 @@ class TicketEntry(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
     worked_at: Mapped[date] = mapped_column(Date, nullable=False)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Marque une fois incluse dans une facture -- permet de rouvrir un ticket deja
+    # facture et de facturer SEULEMENT le nouveau temps accumule depuis (une 2e
+    # facture distincte), sans jamais refacturer les memes minutes deux fois.
+    invoiced: Mapped[bool] = mapped_column(Boolean, default=False)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

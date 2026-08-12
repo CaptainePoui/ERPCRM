@@ -6,7 +6,7 @@ import './Invoices.css'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
-  envoyee:    { label: 'Envoyée',    color: '#2563EB' },
+  envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
@@ -28,6 +28,12 @@ function fmt(val) {
   return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(val)
 }
 
+function fmtOpened(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+}
+
 export default function InvoiceDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -42,6 +48,10 @@ export default function InvoiceDetail() {
   const [showAddPayment, setShowAddPayment] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [pricePrompt, setPricePrompt] = useState(null)
+  const [showSendModal, setShowSendModal] = useState(false)
+  const [showOpens, setShowOpens] = useState(false)
+  const [opens, setOpens] = useState([])
+  const [opensLoading, setOpensLoading] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -93,6 +103,18 @@ export default function InvoiceDetail() {
     navigate('/invoices')
   }
 
+  async function toggleOpens() {
+    if (showOpens) { setShowOpens(false); return }
+    setShowOpens(true)
+    setOpensLoading(true)
+    try {
+      const r = await api.get(`/v1/track/invoice/${id}/opens`)
+      setOpens(r.data)
+    } finally {
+      setOpensLoading(false)
+    }
+  }
+
   async function createCredit() {
     if (!confirm('Créer un avoir (note de crédit) pour cette facture ?')) return
     setActioning(true)
@@ -130,7 +152,8 @@ export default function InvoiceDetail() {
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
             </h1>
-            <p className="page-sub">{inv.company_name}</p>
+            <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
+            {inv.site_address_snapshot && <p className="page-sub" style={{ fontSize: 12, color: '#9CA3AF', marginTop: 0 }}>{inv.site_address_snapshot}</p>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -142,6 +165,7 @@ export default function InvoiceDetail() {
           ))}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
+          <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           {editable && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
         </div>
@@ -155,7 +179,28 @@ export default function InvoiceDetail() {
           {inv.credit_of_id && (
             <div className="inv-info-row">
               <span>Avoir pour</span>
-              <strong style={{ color: '#184FA0', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.credit_of_id}`)}>Voir facture originale</strong>
+              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.credit_of_id}`)}>Voir facture originale</strong>
+            </div>
+          )}
+          <div className="inv-info-row">
+            <span>Courriel ouvert</span>
+            {inv.last_opened_at ? (
+              <span
+                style={{ fontSize: 13, cursor: 'pointer' }}
+                onClick={toggleOpens}
+                title="Cliquer pour voir l'historique complet"
+              >
+                👁 {fmtOpened(inv.last_opened_at)}{inv.open_count > 1 ? ` (×${inv.open_count})` : ''}
+              </span>
+            ) : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Jamais</span>}
+          </div>
+          {showOpens && (
+            <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+              {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
+                <ul style={{ margin: 0, paddingLeft: 16 }}>
+                  {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
+                </ul>
+              )}
             </div>
           )}
           <div className="inv-info-row">
@@ -353,6 +398,65 @@ export default function InvoiceDetail() {
           onCreated={() => setShowTaskModal(false)}
         />
       )}
+      {showSendModal && (
+        <SendInvoiceModal
+          invoiceId={inv.id}
+          companyId={inv.company_id}
+          onClose={() => setShowSendModal(false)}
+          onSent={data => { setInv(data); setShowSendModal(false) }}
+        />
+      )}
+    </div>
+  )
+}
+
+function SendInvoiceModal({ invoiceId, companyId, onClose, onSent }) {
+  const [email, setEmail] = useState('')
+  const [loadingEmail, setLoadingEmail] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    api.get(`/v1/companies/${companyId}`).then(r => {
+      const contacts = r.data.contacts || []
+      const primary = contacts.find(c => c.is_primary && c.email) || contacts.find(c => c.email)
+      if (primary) setEmail(primary.email)
+    }).finally(() => setLoadingEmail(false))
+  }, [companyId])
+
+  async function send() {
+    if (!email.trim()) return
+    setSending(true)
+    setError('')
+    try {
+      const r = await api.post(`/v1/invoices/${invoiceId}/send`, { to_email: email.trim() })
+      onSent(r.data)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Erreur envoi courriel')
+      setSending(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Envoyer la facture</h3>
+        {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
+        <div className="form-group">
+          <label>Courriel du destinataire</label>
+          <input
+            type="email"
+            autoFocus
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            placeholder={loadingEmail ? 'Chargement...' : 'courriel@exemple.com'}
+          />
+        </div>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={send} disabled={sending || !email.trim()}>{sending ? '...' : 'Envoyer'}</button>
+        </div>
+      </div>
     </div>
   )
 }

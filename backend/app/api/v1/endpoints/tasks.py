@@ -9,6 +9,8 @@ from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.task import Task, TaskReminder, TaskChecklistItem, TASK_STATUSES, TASK_PRIORITIES
 from app.models.user import User
+from app.core.tracking import get_open_stats
+from app.core.email import send_task_email
 
 router = APIRouter()
 
@@ -95,6 +97,7 @@ class TaskOut(BaseModel):
     company_name: str | None
     contact_id: uuid.UUID | None
     contact_name: str | None
+    contact_email: str | None
     ticket_id: uuid.UUID | None
     ticket_title: str | None
     invoice_id: uuid.UUID | None
@@ -115,9 +118,14 @@ class TaskOut(BaseModel):
     reminders: list[ReminderOut]
     checklist_items: list[ChecklistItemOut]
     subtasks: list[SubTaskOut]
+    last_opened_at: datetime | None = None
+    open_count: int = 0
 
 class ChecklistToggle(BaseModel):
     completed: bool
+
+class SendTaskPayload(BaseModel):
+    to_email: str
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -135,7 +143,9 @@ def _load_opts():
         selectinload(Task.subtasks).selectinload(Task.checklist_items),
     )
 
-def _serialize(t: Task) -> TaskOut:
+async def _serialize(t: Task, db: AsyncSession) -> TaskOut:
+    stats = await get_open_stats(db, "task", [t.id])
+    last_opened_at, open_count = stats.get(t.id, (None, 0))
     subtasks_out = [
         SubTaskOut(
             id=st.id,
@@ -159,6 +169,7 @@ def _serialize(t: Task) -> TaskOut:
         company_name=t.company.name if t.company else None,
         contact_id=t.contact_id,
         contact_name=f"{t.contact.first_name} {t.contact.last_name}".strip() if t.contact else None,
+        contact_email=t.contact.email if t.contact else None,
         ticket_id=t.ticket_id,
         ticket_title=t.ticket.title if t.ticket else None,
         invoice_id=t.invoice_id,
@@ -179,6 +190,7 @@ def _serialize(t: Task) -> TaskOut:
         reminders=[ReminderOut(id=r.id, reminder_type=r.reminder_type, minutes_before=r.minutes_before, custom_minutes=r.custom_minutes, sent=r.sent) for r in t.reminders],
         checklist_items=[ChecklistItemOut(id=c.id, label=c.label, completed=c.completed, sort_order=c.sort_order) for c in t.checklist_items],
         subtasks=subtasks_out,
+        last_opened_at=last_opened_at, open_count=open_count,
     )
 
 async def _get_task(task_id: uuid.UUID, db: AsyncSession) -> Task:
@@ -254,7 +266,7 @@ async def list_tasks(
         q = q.where(Task.due_date <= dt_date.fromisoformat(due_to))
     q = q.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc())
     result = await db.execute(q)
-    return [_serialize(t) for t in result.scalars().all()]
+    return [await _serialize(t, db) for t in result.scalars().all()]
 
 
 @router.post("", response_model=TaskOut)
@@ -287,7 +299,7 @@ async def create_task(
     for i, c in enumerate(body.checklist_items):
         db.add(TaskChecklistItem(task_id=task.id, label=c.label, completed=c.completed, sort_order=c.sort_order or i))
     await db.commit()
-    return _serialize(await _get_task(task.id, db))
+    return await _serialize(await _get_task(task.id, db), db)
 
 
 @router.get("/templates", response_model=list[TaskOut])
@@ -298,7 +310,7 @@ async def list_templates(
     result = await db.execute(
         select(Task).where(Task.is_template == True).options(*_load_opts()).order_by(Task.template_name)
     )
-    return [_serialize(t) for t in result.scalars().all()]
+    return [await _serialize(t, db) for t in result.scalars().all()]
 
 
 @router.post("/from-template/{template_id}", response_model=TaskOut)
@@ -331,7 +343,7 @@ async def create_from_template(
     for c in tpl.checklist_items:
         db.add(TaskChecklistItem(task_id=task.id, label=c.label, completed=False, sort_order=c.sort_order))
     await db.commit()
-    return _serialize(await _get_task(task.id, db))
+    return await _serialize(await _get_task(task.id, db), db)
 
 
 @router.get("/{task_id}", response_model=TaskOut)
@@ -340,7 +352,27 @@ async def get_task(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    return _serialize(await _get_task(task_id, db))
+    return await _serialize(await _get_task(task_id, db), db)
+
+
+@router.post("/{task_id}/send", response_model=TaskOut)
+async def send_task(
+    task_id: uuid.UUID,
+    payload: SendTaskPayload,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    task = await _get_task(task_id, db)
+    await send_task_email(
+        to_email=payload.to_email,
+        task_id=str(task.id),
+        title=task.title,
+        company_name=task.company.name if task.company else None,
+        due_date=task.due_date.isoformat() if task.due_date else None,
+        due_time=task.due_time,
+        description=task.description,
+    )
+    return await _serialize(task, db)
 
 
 @router.put("/{task_id}", response_model=TaskOut)
@@ -383,7 +415,7 @@ async def update_task(
             db.add(TaskChecklistItem(task_id=task.id, label=c.label, completed=c.completed, sort_order=c.sort_order or i))
     task.updated_at = datetime.now(timezone.utc)
     await db.commit()
-    return _serialize(await _get_task(task.id, db))
+    return await _serialize(await _get_task(task.id, db), db)
 
 
 @router.post("/{task_id}/complete", response_model=TaskOut)
@@ -398,7 +430,7 @@ async def complete_task(
     task.status = "complete"
     task.updated_at = datetime.now(timezone.utc)
     await db.commit()
-    return _serialize(await _get_task(task.id, db))
+    return await _serialize(await _get_task(task.id, db), db)
 
 
 @router.patch("/{task_id}/checklist/{item_id}", response_model=TaskOut)
@@ -415,7 +447,7 @@ async def toggle_checklist_item(
         raise HTTPException(status_code=404, detail="Item introuvable")
     item.completed = body.completed
     await db.commit()
-    return _serialize(await _get_task(task_id, db))
+    return await _serialize(await _get_task(task_id, db), db)
 
 
 @router.delete("/{task_id}")

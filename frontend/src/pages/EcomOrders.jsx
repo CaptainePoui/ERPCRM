@@ -4,7 +4,7 @@ import api from '../services/api'
 import './EcomOrders.css'
 
 const STATUS_STYLES = {
-  nouveau:        { color: '#2563EB', bg: '#EFF6FF', label: 'Nouveau' },
+  nouveau:        { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Nouveau' },
   en_traitement:  { color: '#D97706', bg: '#FFFBEB', label: 'En traitement' },
   confirme:       { color: '#059669', bg: '#F0FDF4', label: 'Confirmé' },
   expedie:        { color: '#7C3AED', bg: '#F5F3FF', label: 'Expédié' },
@@ -41,7 +41,7 @@ export function EcomOrderList() {
               const st = STATUS_STYLES[o.status] || STATUS_STYLES.nouveau
               return (
                 <tr key={o.id} className="ecom-row" onClick={() => navigate(`/ecom-orders/${o.id}`)}>
-                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#2563EB' }}>{o.order_number}</td>
+                  <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--brand)' }}>{o.order_number}</td>
                   <td style={{ fontWeight: 600 }}>{o.customer_name}</td>
                   <td style={{ color: '#6B7280', fontSize: 13 }}>{o.customer_email}</td>
                   <td><span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '3px 8px' }}>{st.label}</span></td>
@@ -153,7 +153,7 @@ export function EcomOrderDetail() {
           <tfoot>
             <tr>
               <td colSpan={3} style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 700, fontSize: 15 }}>Total</td>
-              <td style={{ textAlign: 'right', padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: '#1E3A5F' }}>{fmt(order.total)}</td>
+              <td style={{ textAlign: 'right', padding: '12px 14px', fontFamily: 'monospace', fontWeight: 700, fontSize: 15, color: 'var(--brand)' }}>{fmt(order.total)}</td>
             </tr>
           </tfoot>
         </table>

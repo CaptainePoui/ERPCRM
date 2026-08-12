@@ -5,7 +5,7 @@ import './PurchaseOrders.css'
 
 const STATUS_STYLES = {
   brouillon:           { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
-  envoye:              { color: '#2563EB', bg: '#EFF6FF', label: 'Envoyé' },
+  envoye:              { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Envoyé' },
   partiellement_recu:  { color: '#D97706', bg: '#FFFBEB', label: 'Partiel' },
   recu:                { color: '#059669', bg: '#F0FDF4', label: 'Reçu' },
   annule:              { color: '#DC2626', bg: '#FEF2F2', label: 'Annulé' },

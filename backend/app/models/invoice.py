@@ -40,9 +40,17 @@ class Invoice(Base):
     # Crédit (avoir)
     credit_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
 
+    # Succursale (facturation independante par site, TASK-S010.4) -- snapshot
+    # fige a la creation pour qu'une facture existante reste inchangee meme si
+    # la succursale est renommee/desactivee apres coup.
+    site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("company_sites.id", ondelete="SET NULL"), nullable=True)
+    site_label_snapshot: Mapped[str | None] = mapped_column(String(100))
+    site_address_snapshot: Mapped[str | None] = mapped_column(Text)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     company: Mapped["Company"] = relationship("Company")
+    site: Mapped["CompanySite"] = relationship("CompanySite")
     lines: Mapped[list["InvoiceLine"]] = relationship("InvoiceLine", back_populates="invoice", order_by="InvoiceLine.sort_order", cascade="all, delete-orphan")
 
 

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,8 +10,11 @@ from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.company import Company
+from app.models.company_site import CompanySite
 from app.models.catalogue import CatalogueItem
 from app.models.user import User
+from app.core.tracking import get_open_stats
+from app.core.email import send_invoice_email
 
 router = APIRouter()
 
@@ -50,7 +53,12 @@ class InvoiceOut(BaseModel):
     recurrence_frequency: str | None
     recurrence_next_date: date | None
     credit_of_id: uuid.UUID | None
+    site_id: uuid.UUID | None
+    site_label_snapshot: str | None
+    site_address_snapshot: str | None
     lines: list[LineOut]
+    last_opened_at: datetime | None = None
+    open_count: int = 0
 
 
 class InvoiceListItem(BaseModel):
@@ -64,10 +72,14 @@ class InvoiceListItem(BaseModel):
     total: float
     is_recurring: bool
     credit_of_id: uuid.UUID | None
+    site_label_snapshot: str | None = None
+    last_opened_at: datetime | None = None
+    open_count: int = 0
 
 
 class InvoiceCreate(BaseModel):
     company_id: uuid.UUID
+    site_id: uuid.UUID | None = None
     issue_date: date | None = None
     due_date: date | None = None
     notes: str | None = None
@@ -87,6 +99,8 @@ class InvoiceUpdate(BaseModel):
     is_recurring: bool | None = None
     recurrence_frequency: str | None = None
     recurrence_next_date: date | None = None
+    site_id: uuid.UUID | None = None
+    clear_site: bool = False  # distingue "site_id absent du payload" de "retirer la succursale"
 
 
 class LineCreate(BaseModel):
@@ -122,7 +136,9 @@ def _recalc(inv: Invoice) -> None:
     inv.total = round(inv.subtotal + inv.tps_amount + inv.tvq_amount, 2)
 
 
-def _build_out(inv: Invoice) -> InvoiceOut:
+async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
+    stats = await get_open_stats(db, "invoice", [inv.id])
+    last_opened_at, open_count = stats.get(inv.id, (None, 0))
     return InvoiceOut(
         id=inv.id,
         number=inv.number,
@@ -144,8 +160,17 @@ def _build_out(inv: Invoice) -> InvoiceOut:
         recurrence_frequency=inv.recurrence_frequency,
         recurrence_next_date=inv.recurrence_next_date,
         credit_of_id=inv.credit_of_id,
+        site_id=inv.site_id,
+        site_label_snapshot=inv.site_label_snapshot,
+        site_address_snapshot=inv.site_address_snapshot,
         lines=[LineOut.model_validate(l) for l in inv.lines],
+        last_opened_at=last_opened_at, open_count=open_count,
     )
+
+
+def _site_address_text(site: CompanySite) -> str:
+    line1 = f"{site.civic_number} {site.street_name}" + (f", {site.unit}" if site.unit else "")
+    return f"{line1}, {site.city} {site.province} {site.postal_code}"
 
 
 async def _get_inv(invoice_id: uuid.UUID, db: AsyncSession) -> Invoice:
@@ -176,12 +201,16 @@ async def list_invoices(
         q = q.where(Invoice.status == status)
     result = await db.execute(q)
     invs = result.scalars().all()
+    open_stats = await get_open_stats(db, "invoice", [i.id for i in invs])
     return [InvoiceListItem(
         id=i.id, number=i.number, company_id=i.company_id,
         company_name=i.company.name, status=i.status,
         issue_date=i.issue_date, due_date=i.due_date,
         total=i.total, is_recurring=i.is_recurring,
         credit_of_id=i.credit_of_id,
+        site_label_snapshot=i.site_label_snapshot,
+        last_opened_at=open_stats.get(i.id, (None, 0))[0],
+        open_count=open_stats.get(i.id, (None, 0))[1],
     ) for i in invs]
 
 
@@ -190,10 +219,23 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
     comp = await db.get(Company, payload.company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
+
+    site_label_snapshot = None
+    site_address_snapshot = None
+    if payload.site_id:
+        site = await db.get(CompanySite, payload.site_id)
+        if not site or site.company_id != payload.company_id:
+            raise HTTPException(status_code=400, detail="Succursale invalide pour cette compagnie")
+        site_label_snapshot = site.label
+        site_address_snapshot = _site_address_text(site)
+
     today = date.today()
     inv = Invoice(
         number=await _next_number(db),
         company_id=payload.company_id,
+        site_id=payload.site_id,
+        site_label_snapshot=site_label_snapshot,
+        site_address_snapshot=site_address_snapshot,
         issue_date=payload.issue_date or today,
         due_date=payload.due_date or (today + timedelta(days=30)),
         notes=payload.notes,
@@ -211,23 +253,61 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
     await db.commit()
     await db.refresh(inv)
     inv = await _get_inv(inv.id, db)
-    return _build_out(inv)
+    return await _build_out(inv, db)
 
 
 @router.get("/{invoice_id}", response_model=InvoiceOut)
 async def get_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    return _build_out(await _get_inv(invoice_id, db))
+    return await _build_out(await _get_inv(invoice_id, db), db)
+
+
+class SendInvoicePayload(BaseModel):
+    to_email: str
+
+
+@router.post("/{invoice_id}/send", response_model=InvoiceOut)
+async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Envoie la facture par courriel (pixel de suivi integre -- TASK envoi facture)."""
+    inv = await _get_inv(invoice_id, db)
+    await send_invoice_email(
+        to_email=payload.to_email,
+        invoice_id=str(inv.id),
+        invoice_number=inv.number,
+        company_name=inv.company.name,
+        due_date=inv.due_date.strftime('%Y-%m-%d'),
+        lines=[{"description": l.description, "qty": l.qty, "unit_price": l.unit_price, "line_total": l.line_total} for l in inv.lines],
+        total=inv.total,
+    )
+    if inv.status == "brouillon":
+        inv.status = "envoyee"
+        await db.commit()
+        inv = await _get_inv(invoice_id, db)
+    return await _build_out(inv, db)
 
 
 @router.put("/{invoice_id}", response_model=InvoiceOut)
 async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    updates = payload.model_dump(exclude_unset=True)
+    clear_site = updates.pop("clear_site", False)
+    site_id = updates.pop("site_id", None)
+    if clear_site:
+        inv.site_id = None
+        inv.site_label_snapshot = None
+        inv.site_address_snapshot = None
+    elif site_id:
+        site = await db.get(CompanySite, site_id)
+        if not site or site.company_id != inv.company_id:
+            raise HTTPException(status_code=400, detail="Succursale invalide pour cette compagnie")
+        inv.site_id = site.id
+        inv.site_label_snapshot = site.label
+        inv.site_address_snapshot = _site_address_text(site)
+    for field, value in updates.items():
         setattr(inv, field, value)
     _recalc(inv)
     await db.commit()
     inv = await _get_inv(invoice_id, db)
-    return _build_out(inv)
+    return await _build_out(inv, db)
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -259,7 +339,7 @@ async def add_line(invoice_id: uuid.UUID, payload: LineCreate, db: AsyncSession 
     _recalc(inv)
     await db.commit()
     inv = await _get_inv(invoice_id, db)
-    return _build_out(inv)
+    return await _build_out(inv, db)
 
 
 @router.put("/{invoice_id}/lines/{line_id}", response_model=InvoiceOut)
@@ -274,7 +354,7 @@ async def update_line(invoice_id: uuid.UUID, line_id: uuid.UUID, payload: LineUp
     _recalc(inv)
     await db.commit()
     inv = await _get_inv(invoice_id, db)
-    return _build_out(inv)
+    return await _build_out(inv, db)
 
 
 @router.delete("/{invoice_id}/lines/{line_id}", response_model=InvoiceOut)
@@ -289,7 +369,7 @@ async def delete_line(invoice_id: uuid.UUID, line_id: uuid.UUID, db: AsyncSessio
     _recalc(inv)
     await db.commit()
     inv = await _get_inv(invoice_id, db)
-    return _build_out(inv)
+    return await _build_out(inv, db)
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
@@ -344,7 +424,7 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     _recalc(credit)
     await db.commit()
     credit = await _get_inv(credit.id, db)
-    return _build_out(credit)
+    return await _build_out(credit, db)
 
 
 @router.post("/{invoice_id}/generate-next", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
@@ -352,7 +432,7 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     original = await _get_inv(invoice_id, db)
     if not original.is_recurring or not original.recurrence_frequency:
         raise HTTPException(status_code=400, detail="Facture non récurrente")
-    freq_map = {"mensuel": relativedelta(months=1), "trimestriel": relativedelta(months=3), "annuel": relativedelta(years=1)}
+    freq_map = {"mensuel": relativedelta(months=1), "bimestriel": relativedelta(months=2), "trimestriel": relativedelta(months=3), "biannuel": relativedelta(months=6), "annuel": relativedelta(years=1)}
     delta = freq_map.get(original.recurrence_frequency)
     if not delta:
         raise HTTPException(status_code=400, detail="Fréquence inconnue")
@@ -391,4 +471,4 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     _recalc(next_inv)
     await db.commit()
     next_inv = await _get_inv(next_inv.id, db)
-    return _build_out(next_inv)
+    return await _build_out(next_inv, db)

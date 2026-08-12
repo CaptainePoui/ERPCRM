@@ -1,88 +1,39 @@
 # Plan ERPCRM — Fonctionnalités & État
 
+> Dernière vérification de l'état réel : 2026-08-12
+> Ce PLAN est une carte actuelle du projet, pas une preuve runtime.
+> Si une information technique doit servir à une décision ou un debug,
+> la vérifier dans le code/config/runtime.
+
 ## Modules complétés
+Compagnies, Contacts, Catalogue (+ famille "Connaissance"), Factures, Devis (TASK-025),
+Tickets, Tâches & Agenda (+ fusion Google Calendar bidirectionnelle), Employés,
+Commandes fournisseurs, Web orders, Templates Global/Tenant/Modèle (héritage,
+TASK-027.1/.2), Musique d'attente — bibliothèque + upload + sélection par compagnie
+(TASK-028.x), Voicebox — génération TTS de phrases IVR, Kokoro/Siwis, testé bout en
+bout (TASK-029.x), Boîte vocale UI complète.
 
-### Compagnies (`/companies`)
-- Liste, fiche détail avec onglets
-- Champ Vendeur (contact référant, FK vendor_id → contacts)
-- Boutons : + Ticket, + Facture, + Tâche
+### Téléphonie (fiche compagnie/contact) — construit
+DID (refonte, glisser-déposer, horaires par plage), Extensions, Ring groups, Pickup
+groups, Paging (bidirectionnel/unidirectionnel), Templates de boutons, Succursales
+(911 multi-site), Options téléphonie (style UCM).
 
-### Contacts (`/contacts`)
-- Liste, fiche détail
-- Liens vers compagnies multiples
-- Boutons : + Ticket, + Facture, + Tâche
+## Backlog
+- TASK-019 `[~]` Portail "Mon poste" + arbre de privilèges
+- TASK-020 `[ ]` Portail "Gestion téléphonique" — pas commencé
+- TASK-027 `[ ]` Architecture 3 couches — 1 item fait (Templates, TASK-027.1), reste :
+  Trunks/Routes en sections propres, tableau de bord registre 911
+- TASK-030 `[ ]` Assistant IA intégré ("petit Claude Code" Simple IP) — idée notée, pas commencé
+- TASK-031 `[ ]` Audit config centralisée — IPs/chemins codés en dur restants
+- TASK-032 `[ ]` CDR dans fiche compagnie + par poste
+- TASK-033 `[ ]` Poste SIP depuis un contact + parité facturation
 
-### Catalogue (`/catalogue`)
-- Items type : service | produit | abonnement
-- Checkbox `linked_to_hourly_rate` si type=service (Connaissance Simple IP vs inflation)
+## Connexion ERPCRM ↔ SIPV
+- `account_number` (ERPCRM) = domain FreeSWITCH = tenant SIPV
+- Push ERPCRM→SIPV : `/api/v1/sync/company` (clé API)
+- Webhook SIPV→ERPCRM : `/v1/contacts` (auth clé API, TASK-018)
+- Billing events SIPV → facturation récurrente automatique (TASK-021)
+- Voir `PLAN_SIPV.md` pour l'état de l'infrastructure téléphonique elle-même
 
-### Factures (`/invoices`)
-- Création, lignes, paiements
-- Modal prompt quand le prix change : juste ce client | mettre à jour le catalogue
-- Bouton : + Tâche
-
-### Tickets (`/tickets`)
-- Statuts : ouvert → en_cours → en_attente → fermer_a_facturer → facturé → fermé | annulé
-- Entrées de temps (billable/non-billable)
-- Envoi résumé par email
-- Bouton : + Tâche
-
-### Tâches & Agenda (`/tasks`) ← NOUVEAU 2026-07
-- Liste + vues Mois / Semaine / Jour
-- Liées à compagnie, contact, ticket, facture
-- Checklist par tâche
-- Templates réutilisables
-- Rappels (structure créée : local actif, email/popup/sms à connecter plus tard)
-- Filtres : statut, priorité, complétées
-
-### Employés (`/employees`)
-- Ajout depuis contacts existants
-- Paiements de salaire (À payer / Historique) avec confirmation Interac
-
-### Commandes fournisseurs (`/purchase-orders`)
-- PO avec lignes
-
-### Web orders (`/ecom-orders`)
-- Commandes boutique en ligne
-
-### Autres
-- Catalogue équipements
-- Maintenance / Accès clients
-- Téléphonie (DIDs, extensions)
-- Paramètres
-- Admin (gestion utilisateurs)
-
----
-
-## Fonctionnalités à faire (backlog)
-
-### Tâches — phase 2
-- [ ] Notifications popup en temps réel (WebSocket ou polling)
-- [ ] Envoi courriel de rappel (connecter `email.py`)
-- [ ] Rappel texto (quand SMS disponible)
-- [ ] Sync Google Agenda / Outlook (structure prête, pas de code)
-- [ ] Vue "Mes tâches" vs "Équipe"
-- [ ] Permissions granulaires par rôle
-
-### SIPV (voir PLAN_SIPV.md)
-- Portail client maison React + FastAPI
-- Multi-tenant (account_number = tenant SIPV)
-
----
-
-## Tables DB liées au module Tâches
-- `tasks` — tâches et templates
-- `task_reminders` — rappels par tâche
-- `task_checklist_items` — checklist par tâche
-
-## Endpoints tâches
-- `GET /v1/tasks` — liste (filtrable)
-- `POST /v1/tasks` — créer
-- `GET /v1/tasks/templates` — templates seulement
-- `POST /v1/tasks/from-template/{id}` — créer depuis template
-- `GET /v1/tasks/assignees` — utilisateurs actifs
-- `GET /v1/tasks/{id}` — détail
-- `PUT /v1/tasks/{id}` — modifier
-- `POST /v1/tasks/{id}/complete` — compléter
-- `PATCH /v1/tasks/{id}/checklist/{item_id}` — cocher item
-- `DELETE /v1/tasks/{id}` — supprimer
+## Tables/endpoints clés
+Voir `CLAUDE.md` pour l'arborescence backend/frontend complète (modèles, endpoints, pages).

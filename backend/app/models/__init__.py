@@ -1,6 +1,7 @@
 from app.models.entity import Entity, EntityType
 from app.models.user import User, UserRole
 from app.models.company import Company
+from app.models.company_site import CompanySite
 from app.models.contact import Contact
 from app.models.status import Status, EntityStatus
 from app.models.function import Function
@@ -20,3 +21,7 @@ from app.models.portal import PortalUser
 from app.models.ecom import EcomOrder, EcomOrderLine
 from app.models.task import Task, TaskReminder, TaskChecklistItem
 from app.models.installation_photo import InstallationPhoto
+from app.models.email_open import EmailOpen
+from app.models.devis import Devis, DevisLine
+from app.models.appointment import Appointment
+from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine

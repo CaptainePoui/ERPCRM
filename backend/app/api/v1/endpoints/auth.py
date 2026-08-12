@@ -55,6 +55,32 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     return user
 
 
+async def get_current_user_media(
+    token_header: str | None = Depends(oauth2_scheme_optional),
+    token: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Comme get_current_user, mais accepte aussi le token en query param
+    (?token=...) -- necessaire pour les balises <audio src="..."> natives,
+    qui ne peuvent pas envoyer d'en-tete Authorization. Utilise UNIQUEMENT
+    pour servir des fichiers audio en lecture (jamais pour muter des
+    donnees)."""
+    real_token = token_header or token
+    if not real_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Non authentifié")
+    try:
+        payload = decode_token(real_token)
+        user_id = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+    return user
+
+
 async def get_current_user_or_service(
     token: str | None = Depends(oauth2_scheme_optional),
     x_api_key: str | None = Header(default=None),

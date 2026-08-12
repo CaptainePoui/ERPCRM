@@ -10,7 +10,7 @@
 
 .ecom-detail-page { padding: 24px; max-width: 900px; margin: 0 auto; }
 .ecom-back { color: #6B7280; text-decoration: none; font-size: 13px; display: block; margin-bottom: 12px; }
-.ecom-back:hover { color: #2563EB; }
+.ecom-back:hover { color: var(--brand); }
 .ecom-detail-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
 .ecom-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
 .ecom-info-card { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 16px; }

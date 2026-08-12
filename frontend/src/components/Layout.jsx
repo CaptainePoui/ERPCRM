@@ -1,20 +1,27 @@
 import { useState, useEffect, useRef } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import {
+  IconBuilding, IconUser, IconPackage, IconReceipt, IconTicket, IconFileText,
+  IconClipboard, IconCart, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh,
+} from './Icons'
 import './Layout.css'
 
 const NAV = [
-  { to: '/companies', label: 'Compagnies', icon: '🏢' },
-  { to: '/contacts',  label: 'Contacts',   icon: '👤' },
-  { to: '/catalogue', label: 'Catalogue',  icon: '📦' },
-  { to: '/invoices',  label: 'Factures',   icon: '🧾' },
-  { to: '/tickets',          label: 'Tickets',    icon: '🎫' },
-  { to: '/purchase-orders',  label: 'Commandes',  icon: '📋' },
-  { to: '/ecom-orders',      label: 'Web orders', icon: '🛒' },
-  { to: '/employees',        label: 'Employés',   icon: '👷' },
-  { to: '/tasks',            label: 'Tâches',     icon: '✓' },
-  { to: '/agenda',           label: 'Agenda',     icon: '📅' },
-  { to: '/admin',            label: 'Admin',      icon: '⚙️' },
+  { to: '/companies', label: 'Compagnies', Icon: IconBuilding },
+  { to: '/contacts',  label: 'Contacts',   Icon: IconUser },
+  { to: '/catalogue', label: 'Catalogue',  Icon: IconPackage },
+  { to: '/tickets',          label: 'Tickets',    Icon: IconTicket },
+  { to: '/devis',            label: 'Devis',      Icon: IconFileText },
+  { to: '/invoices',  label: 'Factures',   Icon: IconReceipt },
+  { to: '/recurrence',       label: 'Récurrence', Icon: IconRefresh },
+  { to: '/purchase-orders',  label: 'Commandes',  Icon: IconClipboard },
+  { to: '/ecom-orders',      label: 'Web orders', Icon: IconCart },
+  { to: '/employees',        label: 'Employés',   Icon: IconUsers },
+  { to: '/tasks',            label: 'Tâches',     Icon: IconCheck },
+  { to: '/agenda',           label: 'Agenda',     Icon: IconCalendar },
+  { to: '/server',           label: 'Serveur',    Icon: IconServer },
+  { to: '/admin',            label: 'Admin',      Icon: IconSettings },
 ]
 
 function GlobalSearch() {
@@ -75,7 +82,7 @@ function GlobalSearch() {
         <div className="search-dropdown">
           {results.map((r, i) => (
             <div key={r.id} className={`search-item${i === active ? ' search-item-active' : ''}`} onMouseDown={() => go(r)}>
-              <span className="search-item-type">{r.type === 'company' ? '🏢' : '👤'}</span>
+              <span className="search-item-type">{r.type === 'company' ? <IconBuilding width={14} height={14} /> : <IconUser width={14} height={14} />}</span>
               <span className="search-item-label">{r.label}</span>
               {r.sub && <span className="search-item-sub">{r.sub}</span>}
             </div>
@@ -92,9 +99,12 @@ function GlobalSearch() {
 }
 
 export default function Layout({ user, onLogout, children }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+
   return (
     <div className="layout">
       <header className="layout-header">
+        <button className="hamburger-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Menu">☰</button>
         <div className="layout-brand">
           <div className="brand-icon">SI</div>
           <span className="brand-name">Simple IP ERP·CRM</span>
@@ -109,11 +119,12 @@ export default function Layout({ user, onLogout, children }) {
       </header>
 
       <div className="layout-body">
-        <nav className="sidebar">
-          {NAV.map(({ to, label, icon }) => (
-            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`}>
-              <span className="sidebar-icon">{icon}</span>
-              <span>{label}</span>
+        {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+        <nav className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
+          {NAV.map(({ to, label, Icon }) => (
+            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={() => setSidebarOpen(false)}>
+              <span className="sidebar-icon"><Icon /></span>
+              <span className="sidebar-label">{label}</span>
             </NavLink>
           ))}
         </nav>

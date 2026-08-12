@@ -24,7 +24,7 @@ export default function QuickNewContact({ initialName = '', onCreated, onClose }
 
   return (
     <div className="modal-overlay" onClick={onClose} style={{ zIndex: 300 }}>
-      <div className="modal-box" onClick={e => e.stopPropagation()}>
+      <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouveau contact</h3>
         {error && <div className="form-error">{error}</div>}
         <div style={{ display: 'flex', gap: 10 }}>

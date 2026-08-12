@@ -5,7 +5,7 @@ import './PurchaseOrderDetail.css'
 
 const STATUS_STYLES = {
   brouillon:          { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
-  envoye:             { color: '#2563EB', bg: '#EFF6FF', label: 'Envoyé' },
+  envoye:             { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Envoyé' },
   partiellement_recu: { color: '#D97706', bg: '#FFFBEB', label: 'Partiellement reçu' },
   recu:               { color: '#059669', bg: '#F0FDF4', label: 'Reçu' },
   annule:             { color: '#DC2626', bg: '#FEF2F2', label: 'Annulé' },
@@ -103,12 +103,12 @@ export default function PurchaseOrderDetail() {
           {po.supplier_phone && <div className="pod-info-row"><span className="pod-info-label">Téléphone</span>{po.supplier_phone}</div>}
           {po.invoice_id && (
             <div className="pod-info-row"><span className="pod-info-label">Facture</span>
-              <Link to={`/invoices/${po.invoice_id}`} style={{ color: '#2563EB' }}>Voir facture</Link>
+              <Link to={`/invoices/${po.invoice_id}`} style={{ color: 'var(--brand)' }}>Voir facture</Link>
             </div>
           )}
           {po.company_id && (
             <div className="pod-info-row"><span className="pod-info-label">Client</span>
-              <Link to={`/companies/${po.company_id}`} style={{ color: '#2563EB' }}>Voir client</Link>
+              <Link to={`/companies/${po.company_id}`} style={{ color: 'var(--brand)' }}>Voir client</Link>
             </div>
           )}
         </div>
@@ -174,7 +174,7 @@ export default function PurchaseOrderDetail() {
             <tfoot>
               <tr>
                 <td colSpan={po.status !== 'brouillon' ? 4 : 3} style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 700, fontSize: 15 }}>Total</td>
-                <td style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 700, fontFamily: 'monospace', fontSize: 15, color: '#1E3A5F' }}>{fmt(po.total)}</td>
+                <td style={{ textAlign: 'right', padding: '12px 14px', fontWeight: 700, fontFamily: 'monospace', fontSize: 15, color: 'var(--brand)' }}>{fmt(po.total)}</td>
                 {editable && <td></td>}
               </tr>
             </tfoot>

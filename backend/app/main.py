@@ -7,9 +7,11 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router
 from app.api.v1.endpoints import sipv_events
+from app.api.v1.endpoints import recurring_billing
 from app.services.imap_poller import run_poller
+from app.services.reminder_poller import run_reminder_poller
 
 
 @asynccontextmanager
@@ -17,14 +19,17 @@ async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await seed_defaults(db)
     poller_task = asyncio.create_task(run_poller())
+    reminder_task = asyncio.create_task(run_reminder_poller())
     try:
         yield
     finally:
         poller_task.cancel()
-        try:
-            await poller_task
-        except asyncio.CancelledError:
-            pass
+        reminder_task.cancel()
+        for t in (poller_task, reminder_task):
+            try:
+                await t
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(
@@ -52,6 +57,7 @@ app.include_router(logs.router, prefix="/api/v1/entities", tags=["logs"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(catalogue.router, prefix="/api/v1/catalogue", tags=["catalogue"])
 app.include_router(invoices.router, prefix="/api/v1/invoices", tags=["invoices"])
+app.include_router(recurring_billing.router, prefix="/api/v1", tags=["recurring-billing"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(tickets.router, prefix="/api/v1/tickets", tags=["tickets"])
 app.include_router(maintenance.router, prefix="/api/v1/maintenance", tags=["maintenance"])
@@ -65,6 +71,11 @@ app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["set
 app.include_router(employees.router, prefix="/api/v1/employees", tags=["employees"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(sipv_events.router, prefix="/api/v1/sipv", tags=["sipv"])
+app.include_router(tracking.router, prefix="/api/v1/track", tags=["tracking"])
+app.include_router(devis.router, prefix="/api/v1/devis", tags=["devis"])
+app.include_router(appointments.router, prefix="/api/v1/rdv", tags=["rdv"])
+app.include_router(google_oauth.router, prefix="/api/v1/google-calendar", tags=["google-calendar"])
+app.include_router(server_router.router, prefix="/api/v1/server", tags=["server"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 
 

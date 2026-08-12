@@ -20,6 +20,7 @@ class ContactCreate(BaseModel):
     first_name: str
     last_name: str = ""
     email: str | None = None
+    email_other: str | None = None
     phone: str | None = None
     mobile: str | None = None
     extension: str | None = None
@@ -33,6 +34,7 @@ class ContactUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     email: str | None = None
+    email_other: str | None = None
     phone: str | None = None
     mobile: str | None = None
     extension: str | None = None
@@ -64,6 +66,7 @@ class ContactOut(BaseModel):
     first_name: str
     last_name: str
     email: str | None
+    email_other: str | None
     phone: str | None
     mobile: str | None
     extension: str | None

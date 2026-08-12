@@ -6,6 +6,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3010,
+    allowedHosts: ['portail.simpleip.tel'],
     proxy: {
       '/api': 'http://localhost:8010',
     },

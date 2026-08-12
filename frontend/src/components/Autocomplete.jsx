@@ -51,8 +51,8 @@ export default function Autocomplete({ label, items, value, onSelect, onCreate, 
           ))}
           {showCreate && (
             <div onMouseDown={() => { setOpen(false); onCreate(query.trim()) }}
-              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, color: '#184FA0', fontWeight: 600 }}
-              onMouseEnter={e => e.currentTarget.style.background = '#EFF6FF'}
+              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, color: 'var(--brand)', fontWeight: 600 }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--brand-bg)'}
               onMouseLeave={e => e.currentTarget.style.background = ''}
             >
               + Créer « {query.trim()} »

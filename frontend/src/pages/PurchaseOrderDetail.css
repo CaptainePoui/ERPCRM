@@ -1,7 +1,7 @@
 .pod-page { padding: 24px; max-width: 1000px; margin: 0 auto; }
 .pod-breadcrumb { margin-bottom: 8px; }
 .pod-back { color: #6B7280; text-decoration: none; font-size: 13px; }
-.pod-back:hover { color: #2563EB; }
+.pod-back:hover { color: var(--brand); }
 .pod-title-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .pod-title { font-size: 22px; font-weight: 700; color: #111827; margin: 0; }
 .pod-badge { font-size: 12px; font-weight: 700; border-radius: 10px; padding: 4px 10px; }

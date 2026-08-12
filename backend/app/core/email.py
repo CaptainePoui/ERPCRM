@@ -1,4 +1,5 @@
 import aiosmtplib
+from datetime import datetime, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from jinja2 import Environment, BaseLoader
@@ -183,15 +184,281 @@ _TICKET_CLOSE_TMPL = """\
 """
 
 
-async def _send(to_email: str, subject: str, html_body: str) -> bool:
+_INVOICE_TMPL = """\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; background: #f5f7fa; }
+  .wrap { max-width: 620px; margin: 20px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #0001; }
+  .header { background: #1F5AA6; color: #fff; padding: 20px 28px; }
+  .header h2 { margin: 0; font-size: 18px; }
+  .header .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+  .body { padding: 24px 28px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: .05em; margin-bottom: 4px; }
+  .value { font-size: 15px; margin-bottom: 16px; }
+  .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .summary-table th { text-align: left; padding: 6px 10px; background: #f0f4f8; font-size: 12px; text-transform: uppercase; color: #555; }
+  .summary-table td { padding: 8px 10px; border-top: 1px solid #f0f4f8; font-size: 13px; vertical-align: top; }
+  .summary-table td.num { text-align: right; }
+  .total-box { background: #EFF6FF; border-radius: 6px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .total-box .lbl { font-size: 13px; color: #1F5AA6; }
+  .total-box .val { font-size: 20px; font-weight: bold; color: #1F5AA6; }
+  .footer { background: #f0f4f8; padding: 14px 28px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>Facture #{{ invoice_number }}</h2>
+    <div class="sub">{{ company_name }}</div>
+  </div>
+  <div class="body">
+    <div class="label">Échéance</div>
+    <div class="value">{{ due_date }}</div>
+
+    <table class="summary-table">
+      <thead><tr><th>Description</th><th>Qté</th><th>Prix</th><th>Total</th></tr></thead>
+      <tbody>
+        {% for l in lines %}
+        <tr>
+          <td>{{ l.description }}</td>
+          <td class="num">{{ l.qty }}</td>
+          <td class="num">{{ '%.2f'|format(l.unit_price) }} $</td>
+          <td class="num">{{ '%.2f'|format(l.line_total) }} $</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="total-box">
+      <div class="lbl">Total</div>
+      <div class="val">{{ '%.2f'|format(total) }} $</div>
+    </div>
+  </div>
+  <div class="footer">
+    Merci de nous avoir fait confiance · Simple IP · support@simpleip.tel
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+_DEVIS_TMPL = """\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; background: #f5f7fa; }
+  .wrap { max-width: 620px; margin: 20px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #0001; }
+  .header { background: #7C3AED; color: #fff; padding: 20px 28px; }
+  .header h2 { margin: 0; font-size: 18px; }
+  .header .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+  .body { padding: 24px 28px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: .05em; margin-bottom: 4px; }
+  .value { font-size: 15px; margin-bottom: 16px; }
+  .summary-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  .summary-table th { text-align: left; padding: 6px 10px; background: #f0f4f8; font-size: 12px; text-transform: uppercase; color: #555; }
+  .summary-table td { padding: 8px 10px; border-top: 1px solid #f0f4f8; font-size: 13px; vertical-align: top; }
+  .summary-table td.num { text-align: right; }
+  .total-box { background: #F5F3FF; border-radius: 6px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+  .total-box .lbl { font-size: 13px; color: #7C3AED; }
+  .total-box .val { font-size: 20px; font-weight: bold; color: #7C3AED; }
+  .footer { background: #f0f4f8; padding: 14px 28px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>Devis #{{ devis_number }}</h2>
+    <div class="sub">{{ company_name }}</div>
+  </div>
+  <div class="body">
+    <div class="label">Valide jusqu'au</div>
+    <div class="value">{{ valid_until }}</div>
+
+    <table class="summary-table">
+      <thead><tr><th>Description</th><th>Qté</th><th>Prix</th><th>Total</th></tr></thead>
+      <tbody>
+        {% for l in lines %}
+        <tr>
+          <td>{{ l.description }}</td>
+          <td class="num">{{ l.qty }}</td>
+          <td class="num">{{ '%.2f'|format(l.unit_price) }} $</td>
+          <td class="num">{{ '%.2f'|format(l.line_total) }} $</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <div class="total-box">
+      <div class="lbl">Total</div>
+      <div class="val">{{ '%.2f'|format(total) }} $</div>
+    </div>
+  </div>
+  <div class="footer">
+    Merci de votre intérêt · Simple IP · support@simpleip.tel
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+_TASK_TMPL = """\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; background: #f5f7fa; }
+  .wrap { max-width: 620px; margin: 20px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #0001; }
+  .header { background: #1F5AA6; color: #fff; padding: 20px 28px; }
+  .header h2 { margin: 0; font-size: 18px; }
+  .header .sub { font-size: 13px; opacity: .8; margin-top: 4px; }
+  .body { padding: 24px 28px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: .05em; margin-bottom: 4px; }
+  .value { font-size: 15px; margin-bottom: 16px; }
+  .desc-box { background: #f5f7fa; border-left: 4px solid #1F5AA6; padding: 12px 16px; border-radius: 0 4px 4px 0; font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
+  .footer { background: #f0f4f8; padding: 14px 28px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>Rendez-vous — {{ title }}</h2>
+    {% if company_name %}<div class="sub">{{ company_name }}</div>{% endif %}
+  </div>
+  <div class="body">
+    <div class="label">Date</div>
+    <div class="value">{{ due_date }}{% if due_time %} à {{ due_time }}{% endif %}</div>
+
+    {% if description %}
+    <div class="label">Détails</div>
+    <div class="desc-box">{{ description }}</div>
+    {% endif %}
+  </div>
+  <div class="footer">
+    Cet email a été envoyé automatiquement par Simple IP · support@simpleip.tel
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+_RDV_CONFIRM_TMPL = """\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; background: #f5f7fa; }
+  .wrap { max-width: 620px; margin: 20px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #0001; }
+  .header { background: #1F5AA6; color: #fff; padding: 20px 28px; }
+  .header h2 { margin: 0; font-size: 18px; }
+  .body { padding: 24px 28px; }
+  .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: .05em; margin-bottom: 4px; }
+  .value { font-size: 15px; margin-bottom: 16px; }
+  .footer { background: #f0f4f8; padding: 14px 28px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h2>Rendez-vous confirmé — {{ label }}</h2>
+  </div>
+  <div class="body">
+    <div class="label">Date et heure</div>
+    <div class="value">{{ date_label }} à {{ time }} ({{ duration_label }})</div>
+    {% if address %}
+    <div class="label">Adresse de la visite</div>
+    <div class="value">{{ address }}</div>
+    {% endif %}
+    <div class="label">Description</div>
+    <div class="value">{{ description }}</div>
+  </div>
+  <div class="footer">
+    Simple IP · support@simpleip.tel
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+def _tracking_pixel(entity_type: str, entity_id) -> str:
+    """Pixel invisible (suivi d'ouverture style Zoho) -- l'URL doit etre absolue et
+    joignable depuis Internet (PUBLIC_BASE_URL, Nginx+Let's Encrypt), pas juste le
+    LAN, sinon le client courriel du destinataire ne pourra jamais la charger."""
+    return f'<img src="{settings.PUBLIC_BASE_URL}/api/v1/track/{entity_type}/{entity_id}.png" width="1" height="1" style="display:none" alt="" />'
+
+
+def _ics_escape(text: str) -> str:
+    return (text or "").replace("\\", "\\\\").replace(",", "\\,").replace(";", "\\;").replace("\n", "\\n")
+
+
+def build_ics_invite(
+    uid: str,
+    start_utc: datetime,
+    end_utc: datetime,
+    summary: str,
+    description: str,
+    location: str | None,
+    attendee_email: str,
+    attendee_name: str,
+) -> str:
+    """Invitation calendrier standard (RFC 5545) -- comme Zoho/Google Calendar,
+    fonctionne avec n'importe quel client courriel (Gmail, Outlook, Apple Mail),
+    independamment de toute synchro Google Calendar cote serveur."""
+    def fmt(dt: datetime) -> str:
+        return dt.strftime("%Y%m%dT%H%M%SZ")
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Simple IP//RDV//FR",
+        "CALSCALE:GREGORIAN",
+        "METHOD:REQUEST",
+        "BEGIN:VEVENT",
+        f"UID:{uid}@simpleip.tel",
+        f"DTSTAMP:{fmt(datetime.now(timezone.utc))}",
+        f"DTSTART:{fmt(start_utc)}",
+        f"DTEND:{fmt(end_utc)}",
+        f"SUMMARY:{_ics_escape(summary)}",
+        f"DESCRIPTION:{_ics_escape(description)}",
+    ]
+    if location:
+        lines.append(f"LOCATION:{_ics_escape(location)}")
+    lines += [
+        f"ORGANIZER;CN=Simple IP:mailto:{settings.SMTP_FROM}",
+        f"ATTENDEE;CN={_ics_escape(attendee_name)};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{attendee_email}",
+        "STATUS:CONFIRMED",
+        "SEQUENCE:0",
+        "END:VEVENT",
+        "END:VCALENDAR",
+    ]
+    return "\r\n".join(lines) + "\r\n"
+
+
+async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None) -> bool:
     """Send email. Returns True on success, False if SMTP not configured or on error."""
     if not settings.SMTP_HOST:
         return False
-    msg = MIMEMultipart("alternative")
+    if tracking_entity_type and tracking_entity_id:
+        html_body = html_body + _tracking_pixel(tracking_entity_type, tracking_entity_id)
+    if ics_content:
+        msg = MIMEMultipart("mixed")
+        alt = MIMEMultipart("alternative")
+        alt.attach(MIMEText(html_body, "html", "utf-8"))
+        msg.attach(alt)
+        ics_part = MIMEText(ics_content, "calendar; method=REQUEST", "utf-8")
+        ics_part.add_header("Content-Disposition", "attachment", filename="invite.ics")
+        msg.attach(ics_part)
+    else:
+        msg = MIMEMultipart("alternative")
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
     msg["Subject"] = subject
     msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM}>"
     msg["To"] = to_email
-    msg.attach(MIMEText(html_body, "html", "utf-8"))
     try:
         use_tls = settings.SMTP_PORT == 465
         await aiosmtplib.send(
@@ -234,7 +501,7 @@ async def send_ticket_open_email(
     )
     html = _render(_TICKET_OPEN_TMPL, ctx)
     subject = f"[Ticket #{ticket_id[:8].upper()}] Ticket ouvert — {ticket_title}"
-    return await _send(to_email, subject, html)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
 
 
 async def send_ticket_entry_email(
@@ -270,7 +537,7 @@ async def send_ticket_entry_email(
     )
     html = _render(_TICKET_ENTRY_TMPL, ctx)
     subject = f"[Ticket #{ticket_id[:8].upper()}] Mise à jour — {ticket_title}"
-    return await _send(to_email, subject, html)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
 
 
 async def send_ticket_close_email(
@@ -297,5 +564,129 @@ async def send_ticket_close_email(
         } for e in entries],
     )
     html = _render(_TICKET_CLOSE_TMPL, ctx)
-    subject = f"[Ticket fermé #{ticket_id[:8].upper()}] {ticket_title} — Résumé"
-    return await _send(to_email, subject, html)
+    # ⚠️ Bug corrige : le tag devait rester EXACTEMENT "[Ticket #XXXXXXXX]" pour que
+    # imap_poller.py (regex \[Ticket #([A-F0-9]{8})\]) puisse reconnaitre une reponse
+    # du client -- "[Ticket fermé #...]" ne matchait jamais, brisant la reouverture
+    # automatique par reponse courriel sur un ticket ferme/facture.
+    subject = f"[Ticket #{ticket_id[:8].upper()}] {ticket_title} — Résumé"
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
+
+
+async def send_invoice_email(
+    to_email: str,
+    invoice_id: str,
+    invoice_number: str,
+    company_name: str,
+    due_date: str,
+    lines: list[dict],
+    total: float,
+) -> bool:
+    ctx = dict(
+        invoice_number=invoice_number,
+        company_name=company_name,
+        due_date=due_date,
+        lines=lines,
+        total=total,
+    )
+    html = _render(_INVOICE_TMPL, ctx)
+    subject = f"Facture #{invoice_number} — {company_name}"
+    return await _send(to_email, subject, html, tracking_entity_type="invoice", tracking_entity_id=invoice_id)
+
+
+async def send_devis_email(
+    to_email: str,
+    devis_id: str,
+    devis_number: str,
+    company_name: str,
+    valid_until: str,
+    lines: list[dict],
+    total: float,
+) -> bool:
+    ctx = dict(
+        devis_number=devis_number,
+        company_name=company_name,
+        valid_until=valid_until,
+        lines=lines,
+        total=total,
+    )
+    html = _render(_DEVIS_TMPL, ctx)
+    subject = f"Devis #{devis_number} — {company_name}"
+    return await _send(to_email, subject, html, tracking_entity_type="devis", tracking_entity_id=devis_id)
+
+
+async def send_task_email(
+    to_email: str,
+    task_id: str,
+    title: str,
+    company_name: str | None,
+    due_date: str | None,
+    due_time: str | None,
+    description: str | None,
+) -> bool:
+    ctx = dict(
+        title=title,
+        company_name=company_name,
+        due_date=due_date or "—",
+        due_time=due_time,
+        description=description,
+    )
+    html = _render(_TASK_TMPL, ctx)
+    subject = f"Rendez-vous — {title}"
+    return await _send(to_email, subject, html, tracking_entity_type="task", tracking_entity_id=task_id)
+
+
+async def send_task_reminder_email(
+    to_email: str,
+    task_id: str,
+    title: str,
+    company_name: str | None,
+    due_date: str | None,
+    due_time: str | None,
+    description: str | None,
+) -> bool:
+    ctx = dict(
+        title=title,
+        company_name=company_name,
+        due_date=due_date or "—",
+        due_time=due_time,
+        description=description,
+    )
+    html = _render(_TASK_TMPL, ctx)
+    subject = f"Rappel — {title}"
+    return await _send(to_email, subject, html, tracking_entity_type="task", tracking_entity_id=task_id)
+
+
+async def send_rdv_confirmation_email(
+    to_email: str,
+    appointment_id: str,
+    label: str,
+    date_label: str,
+    time: str,
+    duration_label: str,
+    address: str | None,
+    description: str,
+    attendee_name: str,
+    start_utc: datetime,
+    end_utc: datetime,
+) -> bool:
+    ctx = dict(
+        label=label,
+        date_label=date_label,
+        time=time,
+        duration_label=duration_label,
+        address=address,
+        description=description,
+    )
+    html = _render(_RDV_CONFIRM_TMPL, ctx)
+    subject = f"Rendez-vous confirmé — {label}"
+    ics = build_ics_invite(
+        uid=appointment_id,
+        start_utc=start_utc,
+        end_utc=end_utc,
+        summary=f"{label} — Simple IP",
+        description=description,
+        location=address,
+        attendee_email=to_email,
+        attendee_name=attendee_name,
+    )
+    return await _send(to_email, subject, html, tracking_entity_type="appointment", tracking_entity_id=appointment_id, ics_content=ics)

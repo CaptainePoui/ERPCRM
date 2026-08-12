@@ -116,6 +116,12 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
                 is_billable=False,
             )
             db.add(entry)
+            # Une reponse client sur un ticket ferme/facture le reouvre (demande
+            # explicite de l'utilisateur) -- le closed_at reste tel quel, seul le
+            # statut change ; l'ancienne facture (le cas echeant) n'est pas touchee.
+            if ticket.status in ("ferme", "facture"):
+                ticket.status = "ouvert"
+                log.info("Reopened ticket %s from client reply", ticket.id)
             await db.commit()
             log.info("Added email reply to ticket %s", ticket.id)
             return

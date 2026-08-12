@@ -1,85 +1,55 @@
 # Plan SIPV — Téléphonie IP
 
+> Dernière vérification de l'état réel : 2026-08-12
+> Ce PLAN est une carte actuelle du projet, pas une preuve runtime.
+> Si une information technique doit servir à une décision ou un debug,
+> la vérifier dans le code/config/runtime.
+
 ## Infrastructure (serveur 192.168.1.55)
+- Ubuntu 26.04, FreeSWITCH 1.10.12 (compilé sources), PostgreSQL 18
+- Kamailio 6.0.5 + rtpengine 13.5.1.4 (apt universe) — SBC en façade, ajouté TASK-S039
+- FusionPBX — ABANDONNÉ (DB `fusionpbx` présente mais inutilisée, ne pas réutiliser le schéma)
 
-### Installé / opérationnel
-- [x] Ubuntu 26.04 "Resolute"
-- [x] FreeSWITCH 1.10.12 (compilé depuis sources — `/usr/local/freeswitch/bin/freeswitch`)
-- [x] PostgreSQL 18 (DB `freeswitch`)
-- [x] Systemd service : `/etc/systemd/system/freeswitch.service`
-
-### FusionPBX — ABANDONNÉ
-- Trop contre-intuitif, config éparpillée sur trop de menus
-- La DB `fusionpbx` reste sur le serveur mais n'est pas utilisée
-- Ne pas réutiliser le schéma FusionPBX
-
-### Notes de compilation FreeSWITCH
-- GCC 15 trop strict — flags : `-std=gnu11 -Wno-error`
-- Modules désactivés : `mod_shout` (MP3), `mod_spandsp` (fax T.38)
-- sofia-sip 1.13.17 compilé depuis `/usr/src/sofia-sip-1.13.17`
-- PID file : `/usr/local/freeswitch/run/freeswitch.pid`
-
----
-
-## Architecture cible
-
-### Principe : portail custom inspiré Grandstream UCM
-- Tout ce qui touche une **extension** = sur une seule fiche (codec, voicemail, provisioning, horaires)
-- Tout ce qui touche un **DID** = sur une seule fiche (routage, horaires, destination)
-- Tout ce qui touche un **trunk** = sur une seule fiche (carrier, credentials, failover)
-- Aucun besoin d'aller à 3 endroits pour une config complète
-
-### Couches
+## Architecture EN PLACE (vérifiée 2026-08-12)
 ```
-[React Frontend]  ←→  [FastAPI Backend]  ←→  [FreeSWITCH via ESL]
-                              ↕
-                       [PostgreSQL — schéma custom]
+[Téléphone] ←TLS→ [Kamailio :5060/5061] ←loopback→ [FreeSWITCH :127.0.0.1]
+                          │                                │
+                    (signalisation)                   [ESL] → [FastAPI :8020] → [PostgreSQL]
+                          │
+                   média RTP : DIRECT téléphone↔FreeSWITCH
+                   (rtpengine installé, service actif, mais rtpengine_manage()
+                    commenté dans kamailio.cfg — PAS dans le chemin média actuellement)
 ```
+Kamailio gère : NAT (Path header RFC 3327), TLS end-to-end (jamais de terminaison en clair), relais transparent vers FreeSWITCH.
 
-- **ESL (Event Socket Library)** : le backend FastAPI commande FreeSWITCH en temps réel
-  - Créer/modifier/supprimer extensions
-  - Recharger dialplan à chaud
-  - Surveiller appels en cours (CDR live)
-  - Recevoir événements (appel entrant, raccroché, etc.)
-- **Schéma DB custom** : pas de dépendance aux tables FusionPBX
+Validé avec vrais téléphones (GXP2170/GXP2135, 102/103), 2026-08-11/12 : registration, appel interne bidirectionnel, Hold, MOH — tous fonctionnels après la session de bugs TASK-S058.
 
-### Multi-tenant
-- `account_number` dans ERPCRM companies = domain FreeSWITCH
-- Chaque client = un domain = un tenant isolé
+## Décisions architecturales
+- TLS bout en bout Kamailio→FreeSWITCH obligatoire (terminer en clair casse `sip_via_protocol` dans `xml_curl.py`, tous les postes TLS échoueraient silencieusement)
+- SRTP : `mandatory` à l'établissement, `optional` après réponse (`execute_on_answer`) — mécanisme permanent pour permettre le Hold sans exiger crypto sur le re-INVITE
+- `hold_music` via `file_string://`, jamais `local_stream://` (ne redémarre pas à zéro sinon)
+- Commentaires XML dans les réponses `xml_curl` : jamais de `--` (casse le XML, fait échouer TOUS les REGISTER)
+- Héritage via `resolve_setting()` (`core/settings_resolver.py`) : Poste → Compagnie → Global actuellement (voir usages dans `voicemail.py`, `xml_curl.py`) ; `ExtensionProfile` prévu comme niveau intermédiaire dans le docstring de la fonction, mais pas encore créé comme modèle — ne pas présumer qu'il existe
+- Fichiers serveur manuels (`kamailio.cfg`, `internal.xml`, `vars.xml`) — PAS dans ce dépôt git, backups `.bak-<date>` avant toute modif
 
----
+## Contraintes actuelles / à revalider avant changement
+- `rtpengine_manage()` reste désactivé — pas une décision définitive, c'est l'état post-incident S058.2 (activation silencieuse antérieure a causé un bug de silence audio, jamais validée avec un test complet). Ne pas réactiver sans un test audio complet dédié.
+- Provisioning transport SIP (TASK-S057) : pas automatisé, contournement manuel appareil par appareil en attendant.
 
-## Modules à construire (portail SIPV)
+## Backlog actif (statut réel TASKSIPV.md, 2026-08-12)
+| Tâche | Statut | Sujet |
+|---|---|---|
+| S018.3 | `[ ]` | Fiche extension — identification, plan d'appel, renvois, DND |
+| S023.9 | `[~]` | Ring groups — priorité/ordre/exclusion/horaire |
+| S011.3 | `[!]` | Config visuelle modèle téléphone — bug connu |
+| S011.4 | `[~]` | Auto-provisioning Grandstream zero-touch |
+| S014.2 | `[~]` | Sécurité — whitelist/blacklist + seuils F2B |
+| S020.2 | `[~]` | Monitoring poste temps réel |
+| S023.31 | `[~]` | Boîte vocale — bug critique corrigé, reste incomplet |
+| S042 | `[~]` | Fondation multi-serveur |
+| S043 | `[ ]` | Architecture 3 couches — 1/6 items fait (Templates, via S044/.1/.2), 5 restants non commencés |
+| S040 / S040.1 | `[ ]` | App SIP mobile + softphone desktop — pas commencé |
+| S057 | `[ ]` | Provisioning transport SIP — pas commencé, contournement manuel en place |
 
-### Backend FastAPI (`~/sipv/backend`, port 8020)
-> Inspecter `~/sipv/backend` existant avant de créer quoi que ce soit
-
-| Module          | Description                                                  |
-|-----------------|--------------------------------------------------------------|
-| Extensions      | Créer/modifier postes SIP — codec, voicemail, PIN, horaires  |
-| DIDs            | Numéros entrants — routage, horaires, destination            |
-| Trunks          | Carriers (Bell, ISP) — credentials, failover                 |
-| Provisioning    | Auto-config Grandstream / Yealink / Fanvil                   |
-| CDR             | Historique appels par tenant                                 |
-| Portail client  | Vue client — ses propres extensions/DIDs/CDR                 |
-
-### Frontend React
-- Vue admin (tous les tenants)
-- Vue par tenant (client voit seulement ses données)
-- Fiches unifiées (UX type UCM)
-
----
-
-## Connexion ERPCRM ↔ SIPV
-- `settings.SIPV_API_URL` (backend ERPCRM) — jamais d'IP en dur
-- SSH entre les deux serveurs : opérationnel
-- `account_number` dans ERPCRM companies = domain FreeSWITCH tenant
-
----
-
-## Prochaines étapes
-- [ ] Inspecter `~/sipv/backend` existant
-- [ ] Définir schéma DB custom (extensions, DIDs, trunks, tenants)
-- [ ] Connexion ESL depuis FastAPI (lib : `greenswitch` ou `esl`)
-- [ ] Premier endpoint : lister/créer extensions d'un tenant
-- [ ] Fiche extension unifiée (frontend)
+## Prochaine étape
+Non tranchée dans TASKSIPV.md — à confirmer avec Philippe.
