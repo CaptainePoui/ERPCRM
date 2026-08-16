@@ -1,7 +1,7 @@
 import uuid
 import httpx
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Response
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Response, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -529,3 +529,30 @@ async def delete_extension(ext_id: uuid.UUID, db: AsyncSession = Depends(get_db)
         raise HTTPException(status_code=404, detail="Extension introuvable")
     await db.delete(e)
     await db.commit()
+
+
+# ── CDR (TASK-032) ────────────────────────────────────────────────────────────
+
+@router.get("/company/{company_id}/cdr")
+async def list_company_cdr(
+    company_id: uuid.UUID,
+    page: int = 1,
+    page_size: int = 50,
+    extension: str | None = Query(None, description="Filtre optionnel sur un poste (numéro nu, ex: '103')"),
+    direction: str | None = Query(None),
+    disposition: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    tenant_id = await _company_tenant_id_for_did(company_id, db)
+    if not tenant_id:
+        return {"total": 0, "page": page, "page_size": page_size, "items": []}
+    try:
+        return await sipv_client.list_cdr(
+            tenant_id, page=page, page_size=page_size, extension=extension,
+            direction=direction, disposition=disposition, date_from=date_from, date_to=date_to,
+        )
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")

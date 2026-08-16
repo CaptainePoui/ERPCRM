@@ -222,6 +222,12 @@ export default function ContactDetail({ isNew }) {
   const [billingStartDate, setBillingStartDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [billingFrequency, setBillingFrequency] = useState('mensuel')
   const [extensionNumber, setExtensionNumber] = useState('')
+  // TASK-032 : historique d'appels de ce poste seulement, meme zone que record_*.
+  const [cdrItems, setCdrItems] = useState([])
+  const [cdrTotal, setCdrTotal] = useState(0)
+  const [cdrPage, setCdrPage] = useState(1)
+  const [cdrLoading, setCdrLoading] = useState(false)
+  const cdrPageSize = 10
 
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
 
@@ -238,6 +244,17 @@ export default function ContactDetail({ isNew }) {
     const timer = setInterval(() => loadSipExtension(true), 5000)
     return () => clearInterval(timer)
   }, [id, isNew, contact?.sipv_sync])
+
+  // TASK-032 : historique d'appels de ce poste -- ne recharge que si le numero de
+  // poste change reellement (pas a chaque poll de statut, qui renvoie un nouvel
+  // objet sipExt toutes les 5s).
+  useEffect(() => {
+    if (!sipExt?.extension) { setCdrItems([]); setCdrTotal(0); return }
+    setCdrLoading(true)
+    api.get(`/v1/contacts/${id}/sip-extension/cdr`, { params: { page: cdrPage, page_size: cdrPageSize } })
+      .then(r => { setCdrItems(r.data.items); setCdrTotal(r.data.total) })
+      .finally(() => setCdrLoading(false))
+  }, [id, sipExt?.extension, cdrPage])
 
   async function load() {
     setLoading(true)
@@ -1108,6 +1125,43 @@ export default function ContactDetail({ isNew }) {
                           Manuel (déclenché par l'agent — pas encore actif, en attente de configuration du bouton sur le téléphone)
                         </label>
                       </div>
+                    </div>
+
+                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 8 }}>Historique d'appels ({cdrTotal})</div>
+                      {!cdrLoading && cdrItems.length === 0 && (
+                        <div style={{ fontSize: 12, color: '#6B7280' }}>Aucun appel enregistré.</div>
+                      )}
+                      {cdrItems.length > 0 && (
+                        <>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                            <thead>
+                              <tr style={{ background: '#F9FAFB' }}>
+                                {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
+                                  <th key={h} style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #E5E7EB', fontSize: 11, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cdrItems.map(c => (
+                                <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                                  <td style={{ padding: '6px 8px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
+                                  <td style={{ padding: '6px 8px' }}>{c.src || ''}</td>
+                                  <td style={{ padding: '6px 8px' }}>{c.dst || ''}</td>
+                                  <td style={{ padding: '6px 8px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
+                                  <td style={{ padding: '6px 8px' }}>{c.billsec != null ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, '0')}` : ''}</td>
+                                  <td style={{ padding: '6px 8px' }}>{c.disposition || ''}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 8, alignItems: 'center' }}>
+                            <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} disabled={cdrPage <= 1} onClick={() => setCdrPage(p => p - 1)}>← Précédent</button>
+                            <span style={{ fontSize: 11, color: '#6B7280' }}>Page {cdrPage} / {Math.max(1, Math.ceil(cdrTotal / cdrPageSize))}</span>
+                            <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} disabled={cdrPage >= Math.max(1, Math.ceil(cdrTotal / cdrPageSize))} onClick={() => setCdrPage(p => p + 1)}>Suivant →</button>
+                          </div>
+                        </>
+                      )}
                     </div>
 
                     {phone && (

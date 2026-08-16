@@ -1701,6 +1701,8 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
       <TenantModelTemplatesSection companyId={companyId} templates={tenantModelTemplates} loading={tenantModelTemplatesLoading}
         phoneModels={phoneModels} onRefresh={loadTenantModelTemplates} />
 
+      <CdrSection companyId={companyId} sipExts={sipExts} />
+
       {showNewDid && (
         <NewDIDModal companyId={companyId} onClose={() => setShowNewDid(false)}
           onCreated={d => { setDids(p => [...p, d]); setShowNewDid(false) }} />
@@ -1713,6 +1715,79 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
         <NewScheduleModal companyId={companyId} mergedExtensions={mergedExtensions} ringGroups={ringGroups} ivrs={ivrs} queues={queues}
           onClose={() => setShowNewSchedule(false)}
           onCreated={s => { setSchedules(p => [...p, s]); setShowNewSchedule(false) }} />
+      )}
+    </div>
+  )
+}
+
+// ── CDR (TASK-032) -- historique d'appels de toute la compagnie, filtre optionnel par poste.
+function CdrSection({ companyId, sipExts }) {
+  const [items, setItems] = useState([])
+  const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
+  const [extFilter, setExtFilter] = useState('')
+  const [loading, setLoading] = useState(false)
+  const pageSize = 25
+
+  useEffect(() => { load() }, [companyId, page, extFilter])
+
+  function load() {
+    setLoading(true)
+    api.get(`/v1/telephony/company/${companyId}/cdr`, { params: { page, page_size: pageSize, extension: extFilter || undefined } })
+      .then(r => { setItems(r.data.items); setTotal(r.data.total) })
+      .finally(() => setLoading(false))
+  }
+
+  function fmtDuration(s) {
+    if (s === null || s === undefined) return ''
+    const m = Math.floor(s / 60), sec = s % 60
+    return `${m}:${String(sec).padStart(2, '0')}`
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Historique d'appels ({total})
+        </div>
+        <select value={extFilter} onChange={e => { setPage(1); setExtFilter(e.target.value) }} style={{ fontSize: 12, padding: '4px 8px' }}>
+          <option value="">Tous les postes</option>
+          {sipExts.map(e => <option key={e.id} value={e.extension}>{e.extension} — {e.name}</option>)}
+        </select>
+      </div>
+      {!loading && items.length === 0 ? (
+        <div className="empty-tab">Aucun appel enregistré.</div>
+      ) : (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#F9FAFB' }}>
+                {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {items.map(c => (
+                <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                  <td style={{ padding: '8px 12px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
+                  <td style={{ padding: '8px 12px' }}>{c.src || ''}</td>
+                  <td style={{ padding: '8px 12px' }}>{c.dst || ''}</td>
+                  <td style={{ padding: '8px 12px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
+                  <td style={{ padding: '8px 12px' }}>{fmtDuration(c.billsec)}</td>
+                  <td style={{ padding: '8px 12px' }}>{c.disposition || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10, alignItems: 'center' }}>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Précédent</button>
+            <span style={{ fontSize: 12, color: '#6B7280' }}>Page {page} / {totalPages}</span>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Suivant →</button>
+          </div>
+        </>
       )}
     </div>
   )

@@ -434,6 +434,28 @@ async def get_contact_sip_connection_info(contact_id: uuid.UUID, db: AsyncSessio
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 
 
+@router.get("/{contact_id}/sip-extension/cdr")
+async def get_contact_sip_extension_cdr(
+    contact_id: uuid.UUID, page: int = 1, page_size: int = 50,
+    db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
+):
+    """TASK-032 : historique d'appels de ce poste seulement, meme mecanique que
+    portal_cdr (portal.py) mais cote staff ERPCRM (fiche contact)."""
+    contact = await db.get(Contact, contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if not contact.sipv_sync:
+        return {"total": 0, "page": page, "page_size": page_size, "items": []}
+    try:
+        extensions = await sipv_client.get_extensions_by_contact(str(contact_id))
+        if not extensions:
+            return {"total": 0, "page": page, "page_size": page_size, "items": []}
+        ext = extensions[0]
+        return await sipv_client.list_cdr_for_extension(str(ext["tenant_id"]), ext["extension"], page=page, page_size=page_size)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
 class SipExtensionUpdate(BaseModel):
     record_calls: bool | None = None
     record_mode: str | None = None

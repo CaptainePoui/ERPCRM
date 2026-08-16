@@ -3088,7 +3088,7 @@ Fait le 2026-08-16 -- aucune IP codée en dur côté ERPCRM (déjà propre).
 Détail complet du travail côté SIPV (13 chemins centralisés, 6 fichiers) :
 TASKSIPV.md TASK-S056.
 
-### TASK-032 [ ] CDR dans la fiche compagnie + CDR par poste (filtré à ses appels)
+### TASK-032 [x] CDR dans la fiche compagnie + CDR par poste (filtré à ses appels)
 
 Demande de l'utilisateur (2026-08-11, en plein test MOH/enregistrement) :
 voir les CDR (historique d'appels) directement dans la fiche compagnie
@@ -3096,18 +3096,48 @@ ERPCRM (onglet Téléphonie ou nouvel onglet), ET une vue par poste filtrée
 aux appels de CE poste seulement (probablement dans ContactDetail.jsx,
 même zone que les cases d'enregistrement `record_*`, TASK-023.5).
 
-Backend déjà prêt côté SIPV : `GET /api/v1/cdr/tenant/{tenant_id}` (paginé)
-et `GET /api/v1/cdr/tenant/{tenant_id}/summary` existent déjà
-(`sipv/backend/app/api/v1/endpoints/cdr.py`) -- pas de travail neuf côté
-SIPV a priori pour la vue compagnie. Pour la vue par poste, vérifier si ces
-endpoints acceptent déjà un filtre par extension/username, sinon paramètre à
-ajouter.
-Reste à faire côté ERPCRM : endpoint proxy (`telephony.py`, pattern
-`sipv_client.list_prompts` etc.) + UI (tableau paginé, filtre par poste pour
-la vue compagnie complète).
+**Fait (2026-08-16, boucle autonome, GO global de Philippe)** :
+- `backend/app/core/sipv_client.py` -- nouvelle fonction `list_cdr(tenant_id,
+  page, page_size, extension=None, direction=None, disposition=None,
+  date_from=None, date_to=None)`, même endpoint SIPV que
+  `list_cdr_for_extension` (déjà existant depuis TASK-S055, portail Mon
+  poste) mais sans forcer le filtre poste -- réutilisée par les deux vues.
+- `backend/app/api/v1/endpoints/telephony.py` -- `GET
+  /v1/telephony/company/{company_id}/cdr` (vue compagnie complète, filtre
+  poste optionnel en query param), réutilise `_company_tenant_id_for_did`
+  (retourne une liste vide si pas de tenant SIPV actif, pas une erreur).
+- `backend/app/api/v1/endpoints/contacts.py` -- `GET
+  /v1/contacts/{contact_id}/sip-extension/cdr` (vue par poste, résout le
+  poste SIP du contact via `get_extensions_by_contact` déjà existant).
+- `frontend/src/pages/CompanyDetail.jsx` -- nouvelle section `CdrSection`
+  dans l'onglet Téléphonie (pas un nouvel onglet) : tableau paginé (25/page)
+  avec menu déroulant "Tous les postes" / poste spécifique (réutilise
+  `sipExts` déjà chargé pour cet onglet).
+- `frontend/src/pages/ContactDetail.jsx` -- section "Historique d'appels"
+  ajoutée juste après les cases `record_*` (même zone, comme demandé),
+  pagination 10/page, ne recharge que si le numéro de poste change (pas à
+  chaque poll de statut 5s).
 
-Pas commencé -- juste loggé pour ne pas perdre la demande (test MOH en
-cours au moment de la demande).
+**Bug trouvé et corrigé pendant le test réel (pas supposé)** : le filtre
+`extension` de l'endpoint SIPV (déjà en place depuis TASK-S055) ratait tous
+les appels SORTANTS d'un poste -- `CDR.src` est stocké avec le préfixe
+tenant (`t1001-103`), pas juste le numéro nu, contrairement à `dst`. Poste
+103 : 0 résultat retourné avant le fix alors que 17 appels existaient
+réellement en DB. Corrigé côté SIPV, voir TASKSIPV.md TASK-S055.5 pour le
+détail (affecte aussi le portail Mon poste, pas seulement cette tâche).
+
+Vérifié en conditions réelles (pas juste des imports) : appel direct de
+`sipv_client.list_cdr`/`list_cdr_for_extension` contre le tenant réel
+"Simple IP inc." -- 21 appels au total, 17 correctement retournés pour le
+poste 103 après le fix. `npm run build` + les 3 services redémarrés
+(`erpcrm-backend`, `erpcrm-backend-tls`, `erpcrm-frontend` via
+`systemctl --user`), tous vérifiés actifs.
+
+Fichiers ERPCRM : `backend/app/core/sipv_client.py`,
+`backend/app/api/v1/endpoints/telephony.py`,
+`backend/app/api/v1/endpoints/contacts.py`,
+`frontend/src/pages/CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
+Cross-ref : TASKSIPV.md TASK-S055.5.
 
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
