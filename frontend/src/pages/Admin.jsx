@@ -47,11 +47,11 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations']
+const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets']
 
 export default function Admin() {
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState(searchParams.get('google_calendar') ? 3 : 0)
+  const [tab, setTab] = useState(searchParams.get('google_calendar') ? 3 : searchParams.get('backup') ? 4 : 0)
 
   return (
     <div className="adm-page">
@@ -68,7 +68,54 @@ export default function Admin() {
         {tab === 1 && <PortalUsersPanel />}
         {tab === 2 && <PaymentMethodsPanel />}
         {tab === 3 && <IntegrationsPanel />}
+        {tab === 4 && <BackupPanel />}
+        {tab === 5 && <TicketsSettingsPanel />}
       </div>
+    </div>
+  )
+}
+
+// ── Tickets (TASK-015.12) ────────────────────────────────────────────────────
+
+function TicketsSettingsPanel() {
+  const [threshold, setThreshold] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    api.get('/v1/settings').then(r => {
+      setThreshold(String(r.data.ticket_time_confirm_threshold_minutes))
+      setLoading(false)
+    })
+  }, [])
+
+  async function save() {
+    setSaving(true)
+    setSaved(false)
+    try {
+      await api.put('/v1/settings', { ticket_time_confirm_threshold_minutes: parseInt(threshold) })
+      setSaved(true)
+    } finally { setSaving(false) }
+  }
+
+  if (loading) return <div className="loading">Chargement...</div>
+
+  return (
+    <div>
+      <div className="adm-panel-header">
+        <span className="adm-count">Chrono des tickets</span>
+      </div>
+      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+        Au-delà de ce seuil de temps écoulé depuis la dernière note, une confirmation (avec possibilité de corriger le temps) est demandée avant d'enregistrer — protège contre le chrono laissé tourner par erreur (ex. onglet oublié ouvert). En dessous du seuil, la note s'enregistre directement sans interruption.
+      </p>
+      <div className="form-group" style={{ maxWidth: 260 }}>
+        <label>Seuil de confirmation (minutes)</label>
+        <input type="number" min="1" value={threshold} onChange={e => { setThreshold(e.target.value); setSaved(false) }} />
+      </div>
+      <button className="btn-primary" onClick={save} disabled={saving || !threshold}>
+        {saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}
+      </button>
     </div>
   )
 }
@@ -159,6 +206,383 @@ function IntegrationsPanel() {
     </div>
   )
 }
+
+// ── Backup cloud (TASK-035) ──────────────────────────────────────────────────
+// Backup de notre propre infra ERPCRM (DB + uploads) vers Dropbox/Google Drive,
+// PAS le stockage cloud client pour enregistrements d'appel (TASK-034, séparé).
+
+const PROVIDER_LABELS = { dropbox: 'Dropbox', google_drive: 'Google Drive' }
+const FREQUENCY_LABELS = { daily: 'Journalier', weekly: 'Hebdomadaire', monthly: 'Mensuel', yearly: 'Annuel' }
+const WEEKDAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+const TIMEZONES = ['America/Toronto', 'America/Winnipeg', 'America/Edmonton', 'America/Vancouver', 'America/Halifax']
+const BACKUP_STATUS_SUFFIXES = ['_no_refresh_token', '_connected', '_error', '_csrf']
+
+function parseBackupCallback(value) {
+  if (!value) return null
+  for (const suffix of BACKUP_STATUS_SUFFIXES) {
+    if (value.endsWith(suffix)) {
+      const provider = value.slice(0, -suffix.length)
+      return { provider, status: suffix.slice(1) }
+    }
+  }
+  return null
+}
+
+const BACKUP_CALLBACK_MESSAGES = {
+  connected: { text: p => `✓ ${PROVIDER_LABELS[p] || p} connecté avec succès.`, color: '#059669' },
+  error: { text: p => `La connexion ${PROVIDER_LABELS[p] || p} a été refusée ou annulée.`, color: '#DC2626' },
+  csrf: { text: () => "Échec de vérification de sécurité, veuillez réessayer.", color: '#DC2626' },
+  no_refresh_token: { text: p => `${PROVIDER_LABELS[p] || p} n'a pas retourné de jeton — réessayez.`, color: '#DC2626' },
+}
+
+function BackupPanel() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [connections, setConnections] = useState([])
+  const [cycles, setCycles] = useState([])
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [runningNow, setRunningNow] = useState(false)
+  const [runMsg, setRunMsg] = useState('')
+  const [showCycleModal, setShowCycleModal] = useState(false)
+  const [editingCycle, setEditingCycle] = useState(null)
+
+  const callback = parseBackupCallback(searchParams.get('backup'))
+  const callbackMsg = callback && BACKUP_CALLBACK_MESSAGES[callback.status]
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [c, cy, lg] = await Promise.all([
+        api.get('/v1/backup/connections'),
+        api.get('/v1/backup/cycles'),
+        api.get('/v1/backup/logs'),
+      ])
+      setConnections(c.data)
+      setCycles(cy.data)
+      setLogs(lg.data)
+    } finally { setLoading(false) }
+  }
+
+  function dismissMsg() {
+    searchParams.delete('backup')
+    setSearchParams(searchParams)
+  }
+
+  function connect(provider) {
+    window.location.href = `/api/v1/backup/connections/${provider}/connect`
+  }
+
+  async function disconnect(provider) {
+    if (!confirm(`Déconnecter ${PROVIDER_LABELS[provider]} ? Le backup vers ce cloud sera suspendu.`)) return
+    await api.post(`/v1/backup/connections/${provider}/disconnect`)
+    await load()
+  }
+
+  async function updateConnection(provider, patch) {
+    await api.put(`/v1/backup/connections/${provider}`, patch)
+    setConnections(p => p.map(c => c.provider === provider ? { ...c, ...patch } : c))
+  }
+
+  async function deleteCycle(cycle) {
+    if (!confirm(`Supprimer le cycle ${FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
+    await api.delete(`/v1/backup/cycles/${cycle.id}`)
+    setCycles(p => p.filter(c => c.id !== cycle.id))
+  }
+
+  async function toggleCycle(cycle) {
+    const r = await api.put(`/v1/backup/cycles/${cycle.id}`, { enabled: !cycle.enabled })
+    setCycles(p => p.map(c => c.id === cycle.id ? r.data : c))
+  }
+
+  async function runNow() {
+    setRunningNow(true)
+    setRunMsg('')
+    try {
+      const r = await api.post('/v1/backup/run')
+      const ran = r.data.ran
+      if (!ran.length) {
+        setRunMsg('Aucune connexion/cycle actif — rien à envoyer.')
+      } else {
+        const okCount = ran.filter(x => x.success).length
+        const failCount = ran.length - okCount
+        setRunMsg(
+          failCount === 0 ? `✓ Backup envoyé (${okCount} copies).`
+          : okCount === 0 ? `✗ Échec des ${failCount} copies — voir l'historique ci-dessous pour le détail.`
+          : `⚠ ${okCount} copie(s) envoyée(s), ${failCount} échec(s) — voir l'historique ci-dessous.`
+        )
+      }
+      const lg = await api.get('/v1/backup/logs')
+      setLogs(lg.data)
+    } catch (e) {
+      setRunMsg(e.response?.data?.detail || 'Échec du backup')
+    } finally { setRunningNow(false) }
+  }
+
+  const cycleLabel = c => {
+    if (c.frequency_type === 'weekly') return `${FREQUENCY_LABELS[c.frequency_type]} — ${WEEKDAY_LABELS[c.day_of_week] ?? '?'}`
+    if (c.frequency_type === 'monthly') return `${FREQUENCY_LABELS[c.frequency_type]} — le ${c.day_of_month}`
+    if (c.frequency_type === 'yearly') return `${FREQUENCY_LABELS[c.frequency_type]} — ${c.day_of_month}/${c.month_of_year}`
+    return FREQUENCY_LABELS[c.frequency_type]
+  }
+
+  if (loading) return <div className="loading">Chargement...</div>
+
+  return (
+    <div>
+      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+        Backup automatique de notre propre infra ERPCRM (base de données + fichiers uploadés) vers Dropbox et/ou Google Drive. Distinct du stockage cloud offert aux clients pour leurs enregistrements d'appel.
+      </p>
+
+      {callbackMsg && (
+        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{callbackMsg.text(callback.provider)}</span>
+          <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      <div className="adm-panel-header">
+        <span className="adm-count">Connexions cloud</span>
+      </div>
+      <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+        {connections.map(c => (
+          <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid #E5E7EB', borderRadius: 8, padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <strong>{PROVIDER_LABELS[c.provider]}</strong>
+              <span style={{
+                fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                background: c.connected ? '#D1FAE5' : '#FEF2F2',
+                color: c.connected ? '#059669' : '#DC2626',
+              }}>
+                {c.connected ? '✓ Connecté' : 'Non connecté'}
+              </span>
+            </div>
+            {c.connected && c.account_label && (
+              <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 10 }}>{c.account_label}</div>
+            )}
+            {!c.connected ? (
+              <>
+                <CredentialsForm provider={c.provider} initialClientId={c.client_id} onSaved={load} />
+                <button className="btn-primary" onClick={() => connect(c.provider)} disabled={!c.has_credentials}>
+                  Connecter {PROVIDER_LABELS[c.provider]}
+                </button>
+                {!c.has_credentials && (
+                  <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
+                )}
+              </>
+            ) : (
+              <>
+                <div className="form-group">
+                  <label>Fuseau horaire</label>
+                  <select value={c.timezone} onChange={e => updateConnection(c.provider, { timezone: e.target.value })}>
+                    {TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Heure de déclenchement</label>
+                  <input type="time" value={c.backup_hour} onChange={e => updateConnection(c.provider, { backup_hour: e.target.value })} />
+                </div>
+                <div className="form-group">
+                  <label>Limite de bande passante (kbps, vide = illimité)</label>
+                  <input type="number" min="0" value={c.bandwidth_limit_kbps ?? ''}
+                    onChange={e => updateConnection(c.provider, { bandwidth_limit_kbps: e.target.value === '' ? null : parseInt(e.target.value) })} />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={c.enabled} onChange={e => updateConnection(c.provider, { enabled: e.target.checked })} />
+                  Actif (participe au backup)
+                </label>
+                <button className="btn-secondary" onClick={() => disconnect(c.provider)}>Déconnecter</button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="adm-panel-header">
+        <span className="adm-count">{cycles.length} cycle{cycles.length !== 1 ? 's' : ''} de rotation</span>
+        <button className="btn-primary" onClick={() => { setEditingCycle(null); setShowCycleModal(true) }}>+ Ajouter un cycle</button>
+      </div>
+      <table className="adm-table">
+        <thead><tr><th>Cycle</th><th>Générations gardées</th><th>Actif</th><th></th></tr></thead>
+        <tbody>
+          {cycles.map(c => (
+            <tr key={c.id} className={c.enabled ? '' : 'adm-row-inactive'}>
+              <td className="adm-name">{cycleLabel(c)}</td>
+              <td>{c.retention_enabled ? c.retention_count : '1 (toujours écrasé)'}</td>
+              <td>
+                <button className={`adm-toggle ${c.enabled ? 'active' : 'inactive'}`} onClick={() => toggleCycle(c)}>
+                  {c.enabled ? 'Actif' : 'Inactif'}
+                </button>
+              </td>
+              <td>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="adm-edit-btn" onClick={() => { setEditingCycle(c); setShowCycleModal(true) }}>Modifier</button>
+                  <button className="adm-del-btn" onClick={() => deleteCycle(c)}>✕</button>
+                </div>
+              </td>
+            </tr>
+          ))}
+          {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
+        </tbody>
+      </table>
+
+      <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button className="btn-primary" onClick={runNow} disabled={runningNow}>{runningNow ? '...' : 'Backup maintenant'}</button>
+        {runMsg && <span style={{ fontSize: 13, color: '#6B7280' }}>{runMsg}</span>}
+      </div>
+
+      {logs.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="adm-panel-header"><span className="adm-count">Historique récent</span></div>
+          <table className="adm-table">
+            <thead><tr><th>Date</th><th>Fournisseur</th><th>Fichier</th><th>Résultat</th></tr></thead>
+            <tbody>
+              {logs.map(l => (
+                <tr key={l.id}>
+                  <td style={{ fontSize: 12, color: '#9CA3AF' }}>{fmtDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
+                  <td>{PROVIDER_LABELS[l.provider] || l.provider}</td>
+                  <td style={{ fontSize: 12, color: '#6B7280' }}>{l.filename || '—'}</td>
+                  <td>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: l.success ? '#059669' : '#DC2626' }}>
+                      {l.success ? 'Succès' : (l.error_message || 'Échec')}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showCycleModal && (
+        <CycleModal cycle={editingCycle} onClose={() => setShowCycleModal(false)}
+          onSaved={c => {
+            setCycles(p => editingCycle ? p.map(x => x.id === c.id ? c : x) : [...p, c])
+            setShowCycleModal(false)
+          }} />
+      )}
+    </div>
+  )
+}
+
+function CredentialsForm({ provider, initialClientId, onSaved }) {
+  const [clientId, setClientId] = useState(initialClientId || '')
+  const [clientSecret, setClientSecret] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    if (!clientId.trim() || !clientSecret.trim()) return
+    setSaving(true)
+    try {
+      await api.put(`/v1/backup/connections/${provider}/credentials`, { client_id: clientId.trim(), client_secret: clientSecret.trim() })
+      setSaved(true)
+      setClientSecret('')
+      await onSaved()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>
+        IDENTIFIANTS API {provider === 'dropbox' ? '(App Key / App Secret Dropbox)' : '(Client ID / Client Secret Google)'}
+      </div>
+      <div className="form-group">
+        <label>{provider === 'dropbox' ? 'App Key' : 'Client ID'}</label>
+        <input value={clientId} onChange={e => { setClientId(e.target.value); setSaved(false) }} />
+      </div>
+      <div className="form-group">
+        <label>{provider === 'dropbox' ? 'App Secret' : 'Client Secret'}</label>
+        <input type="password" value={clientSecret} onChange={e => { setClientSecret(e.target.value); setSaved(false) }}
+          placeholder={initialClientId ? 'laisser vide pour ne pas changer' : ''} />
+      </div>
+      <button className="btn-secondary" onClick={save} disabled={saving || !clientId.trim() || !clientSecret.trim()}>
+        {saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer les identifiants'}
+      </button>
+    </div>
+  )
+}
+
+function CycleModal({ cycle, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    frequency_type: cycle?.frequency_type || 'daily',
+    day_of_week: cycle?.day_of_week ?? 6,
+    day_of_month: cycle?.day_of_month ?? 1,
+    month_of_year: cycle?.month_of_year ?? 1,
+    retention_enabled: cycle?.retention_enabled ?? true,
+    retention_count: cycle?.retention_count ?? 3,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  async function save() {
+    setSaving(true)
+    setError('')
+    try {
+      let r
+      if (cycle) {
+        r = await api.put(`/v1/backup/cycles/${cycle.id}`, form)
+      } else {
+        r = await api.post('/v1/backup/cycles', { ...form, enabled: true })
+      }
+      onSaved(r.data)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Erreur')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">{cycle ? 'Modifier le cycle' : 'Ajouter un cycle'}</h3>
+        {error && <div className="adm-form-error">{error}</div>}
+        <div className="form-group">
+          <label>Fréquence</label>
+          <select value={form.frequency_type} onChange={e => f('frequency_type', e.target.value)} disabled={!!cycle}>
+            {Object.entries(FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        {form.frequency_type === 'weekly' && (
+          <div className="form-group">
+            <label>Jour de la semaine</label>
+            <select value={form.day_of_week} onChange={e => f('day_of_week', parseInt(e.target.value))}>
+              {WEEKDAY_LABELS.map((label, i) => <option key={i} value={i}>{label}</option>)}
+            </select>
+          </div>
+        )}
+        {(form.frequency_type === 'monthly' || form.frequency_type === 'yearly') && (
+          <div className="form-group">
+            <label>Jour du mois</label>
+            <input type="number" min="1" max="31" value={form.day_of_month} onChange={e => f('day_of_month', parseInt(e.target.value))} />
+          </div>
+        )}
+        {form.frequency_type === 'yearly' && (
+          <div className="form-group">
+            <label>Mois</label>
+            <input type="number" min="1" max="12" value={form.month_of_year} onChange={e => f('month_of_year', parseInt(e.target.value))} />
+          </div>
+        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 10, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.retention_enabled} onChange={e => f('retention_enabled', e.target.checked)} />
+          Garder plusieurs générations (sinon un seul fichier toujours écrasé)
+        </label>
+        {form.retention_enabled && (
+          <div className="form-group">
+            <label>Combien de générations garder</label>
+            <input type="number" min="1" value={form.retention_count} onChange={e => f('retention_count', parseInt(e.target.value))} />
+          </div>
+        )}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Enregistrer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 
 // ── Users ─────────────────────────────────────────────────────────────────────
 

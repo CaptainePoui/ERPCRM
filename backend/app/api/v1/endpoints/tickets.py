@@ -62,6 +62,15 @@ class TicketOut(BaseModel):
     total_minutes: int
     last_opened_at: datetime | None = None
     open_count: int = 0
+    # Session chrono + brouillon (TASK-015.13) -- persistes cote serveur pour
+    # survivre a un refresh et rester synchronises entre plusieurs appareils.
+    timer_start_at: datetime | None
+    timer_base_seconds: int
+    timer_running: bool
+    last_note_marker_seconds: int
+    draft_note_desc: str | None
+    draft_note_billable: bool
+    draft_note_catalogue_item_id: uuid.UUID | None
 
 class TicketListItem(BaseModel):
     id: uuid.UUID
@@ -94,6 +103,12 @@ class TicketUpdate(BaseModel):
     priority: str | None = None
     status: str | None = None
     is_billable: bool | None = None
+    # Autosave du brouillon de note (TASK-015.13) -- PUT partiel a chaque
+    # frappe (debounce cote frontend), pas de nouvelle entree tant que non
+    # confirme via POST /entries.
+    draft_note_desc: str | None = None
+    draft_note_billable: bool | None = None
+    draft_note_catalogue_item_id: uuid.UUID | None = None
 
 class EntryCreate(BaseModel):
     description: str
@@ -101,6 +116,10 @@ class EntryCreate(BaseModel):
     worked_at: date | None = None
     is_billable: bool = False
     catalogue_item_id: uuid.UUID | None = None
+    # Avance le marqueur du chrono au moment ou CE device a clique "enregistrer"
+    # (independant de duration_minutes, qui peut avoir ete corrige manuellement --
+    # voir TASK-015.12). Optionnel pour compat -- si absent, marqueur inchange.
+    new_marker_seconds: int | None = None
 
 class SendSummaryPayload(BaseModel):
     close: bool = False
@@ -165,7 +184,18 @@ async def _build_out(t: Ticket, db: AsyncSession) -> TicketOut:
         entries=[_build_entry(e) for e in t.entries],
         total_minutes=total,
         last_opened_at=last_opened_at, open_count=open_count,
+        timer_start_at=t.timer_start_at, timer_base_seconds=t.timer_base_seconds,
+        timer_running=t.timer_start_at is not None,
+        last_note_marker_seconds=t.last_note_marker_seconds,
+        draft_note_desc=t.draft_note_desc, draft_note_billable=t.draft_note_billable,
+        draft_note_catalogue_item_id=t.draft_note_catalogue_item_id,
     )
+
+
+def _elapsed_seconds(t: Ticket) -> int:
+    if t.timer_start_at is not None:
+        return t.timer_base_seconds + int((datetime.now(timezone.utc) - t.timer_start_at).total_seconds())
+    return t.timer_base_seconds
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -265,6 +295,27 @@ async def update_ticket(ticket_id: uuid.UUID, payload: TicketUpdate, db: AsyncSe
     return await _build_out(t, db)
 
 
+@router.post("/{ticket_id}/timer/pause", response_model=TicketOut)
+async def pause_ticket_timer(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Anchors ecrites cote serveur UNIQUEMENT (jamais un timestamp du client)
+    pour rester coherent entre plusieurs appareils malgre une derive d'horloge."""
+    t = await _get_ticket(ticket_id, db)
+    t.timer_base_seconds = _elapsed_seconds(t)
+    t.timer_start_at = None
+    await db.commit()
+    t = await _get_ticket(ticket_id, db)
+    return await _build_out(t, db)
+
+
+@router.post("/{ticket_id}/timer/resume", response_model=TicketOut)
+async def resume_ticket_timer(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    t = await _get_ticket(ticket_id, db)
+    t.timer_start_at = datetime.now(timezone.utc)
+    await db.commit()
+    t = await _get_ticket(ticket_id, db)
+    return await _build_out(t, db)
+
+
 @router.delete("/{ticket_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     t = await _get_ticket(ticket_id, db)
@@ -288,6 +339,12 @@ async def add_entry(ticket_id: uuid.UUID, payload: EntryCreate, current_user: Us
     )
     db.add(entry)
     t.updated_at = datetime.now(timezone.utc)
+    if payload.new_marker_seconds is not None:
+        t.last_note_marker_seconds = payload.new_marker_seconds
+    # Note confirmee -> le brouillon correspondant est maintenant obsolete.
+    t.draft_note_desc = None
+    t.draft_note_billable = False
+    t.draft_note_catalogue_item_id = None
     await db.commit()
     t = await _get_ticket(ticket_id, db)
     out = await _build_out(t, db)

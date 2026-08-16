@@ -29,6 +29,21 @@ class Ticket(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # ── Session chrono + brouillon de note (TASK-015.13) -- persiste cote
+    # serveur pour survivre a un refresh/changement d'appareil, et pour que
+    # deux appareils voient/continuent la MEME session. Chrono en cours si
+    # timer_start_at n'est pas NULL (elapsed = timer_base_seconds + (now -
+    # timer_start_at)) ; en pause sinon (elapsed = timer_base_seconds seul).
+    # Anchors ecrites UNIQUEMENT par le serveur (jamais un timestamp fourni
+    # par le client) pour eviter tout probleme de derive d'horloge entre
+    # appareils -- voir /timer/pause et /timer/resume dans tickets.py.
+    timer_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    timer_base_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    last_note_marker_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    draft_note_desc: Mapped[str | None] = mapped_column(Text)
+    draft_note_billable: Mapped[bool] = mapped_column(Boolean, default=False)
+    draft_note_catalogue_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("catalogue_items.id", ondelete="SET NULL"))
+
     company: Mapped["Company"] = relationship("Company")
     contact: Mapped["Contact | None"] = relationship("Contact")
     assigned_to: Mapped["User | None"] = relationship("User")

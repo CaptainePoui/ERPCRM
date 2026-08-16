@@ -63,13 +63,17 @@ export default function TicketDetail() {
   const [savingContactEmail, setSavingContactEmail] = useState(false)
   const [showMissingEmailModal, setShowMissingEmailModal] = useState(false)
 
-  // ── Timer permanent ──
+  // ── Timer permanent + brouillon de note, persistes cote SERVEUR (TASK-015.13) --
+  // survit a un refresh, un onglet ferme, ET reste synchronise entre plusieurs
+  // appareils (chacun poll le ticket et adopte les anchors serveur -- jamais un
+  // timestamp calcule cote client, pour eviter toute derive d'horloge entre appareils).
   const timerIntervalRef = useRef(null)
-  const timerStartRef = useRef(Date.now())
+  const timerStartAtRef = useRef(null)   // ms epoch (Date.now()-comparable), null si en pause
   const timerBaseRef = useRef(0)
   const lastNoteSecsRef = useRef(0)   // valeur du chrono au moment de la dernière note enregistrée
   const [timerSecs, setTimerSecs] = useState(0)
-  const [timerRunning, setTimerRunning] = useState(true)
+  const [timerRunning, setTimerRunning] = useState(false)
+  const lastLocalEditRef = useRef(0)   // Date.now() de la dernière frappe locale dans la note -- evite qu'un poll ecrase une frappe en cours
 
   // ── Note inline ──
   const [noteDesc, setNoteDesc] = useState('')
@@ -77,32 +81,94 @@ export default function TicketDetail() {
   const [noteCatItem, setNoteCatItem] = useState('')
   const [savingNote, setSavingNote] = useState(false)
 
+  // ── Confirmation du temps (TASK-015.12) -- au-dela du seuil (Admin > Tickets),
+  // demande de confirmer/corriger le temps avant d'enregistrer la note.
+  const [timeConfirmThreshold, setTimeConfirmThreshold] = useState(30)
+  const [showTimeConfirm, setShowTimeConfirm] = useState(false)
+  const [confirmMins, setConfirmMins] = useState(0)
+  const pendingMarkerRef = useRef(0)
+
+  useEffect(() => {
+    api.get('/v1/settings').then(r => setTimeConfirmThreshold(r.data.ticket_time_confirm_threshold_minutes)).catch(() => {})
+  }, [])
+
   // ── Donner du temps ──
   const [showDonner, setShowDonner] = useState(false)
   const [showOpens, setShowOpens] = useState(false)
   const [opens, setOpens] = useState([])
   const [opensLoading, setOpensLoading] = useState(false)
 
+  // Applique un TicketOut recu du serveur (chargement initial, pause/resume,
+  // note enregistree, ou poll periodique) -- source de verite unique pour le
+  // chrono ET le brouillon, jamais de calcul base sur l'horloge du client.
+  function applyTicket(t) {
+    setTicket(t)
+    timerBaseRef.current = t.timer_base_seconds
+    timerStartAtRef.current = t.timer_start_at ? new Date(t.timer_start_at).getTime() : null
+    lastNoteSecsRef.current = t.last_note_marker_seconds
+    setTimerRunning(t.timer_running)
+    setTimerSecs(t.timer_running
+      ? t.timer_base_seconds + Math.floor((Date.now() - timerStartAtRef.current) / 1000)
+      : t.timer_base_seconds)
+    // Ne pas ecraser une frappe en cours sur CET appareil avec le brouillon
+    // d'un autre appareil (ou le meme brouillon deja applique) -- fenetre de
+    // 5s apres la derniere frappe locale.
+    if (Date.now() - lastLocalEditRef.current > 5000) {
+      setNoteDesc(t.draft_note_desc || '')
+      setNoteBillable(!!t.draft_note_billable)
+      setNoteCatItem(t.draft_note_catalogue_item_id || '')
+    }
+  }
+
   useEffect(() => {
+    setLoading(true)
     Promise.all([
       api.get(`/v1/tickets/${id}`),
       api.get('/v1/catalogue'),
     ]).then(([r, c]) => {
-      setTicket(r.data)
+      applyTicket(r.data)
       const services = c.data.filter(i => i.is_active && i.type === 'service')
       setCatalogue(services)
       setLoading(false)
     })
   }, [id])
 
-  // Timer — démarre automatiquement, utilise Date.now() pour précision même en arrière-plan
+  // Poll périodique -- récupère les changements faits depuis un autre appareil
+  // (pause/resume, brouillon, notes ajoutées) et les applique ici.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      api.get(`/v1/tickets/${id}`).then(r => applyTicket(r.data)).catch(() => {})
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [id])
+
+  // Autosave du brouillon de note vers le serveur (debounce 2s après la
+  // dernière frappe) -- récupérable depuis N'IMPORTE QUEL appareil tant que
+  // la note n'a pas été enregistrée.
+  const draftSaveTimeoutRef = useRef(null)
+  useEffect(() => {
+    if (loading) return
+    lastLocalEditRef.current = Date.now()
+    clearTimeout(draftSaveTimeoutRef.current)
+    draftSaveTimeoutRef.current = setTimeout(() => {
+      api.put(`/v1/tickets/${id}`, {
+        draft_note_desc: noteDesc,
+        draft_note_billable: noteBillable,
+        draft_note_catalogue_item_id: noteCatItem || null,
+      }).catch(() => {})
+    }, 2000)
+    return () => clearTimeout(draftSaveTimeoutRef.current)
+  }, [id, loading, noteDesc, noteBillable, noteCatItem])
+
+  // Timer — utilise Date.now() pour précision même en arrière-plan, ancré sur
+  // l'heure de départ fournie par le SERVEUR (timerStartAtRef).
   useEffect(() => {
     if (!timerRunning) {
       clearInterval(timerIntervalRef.current)
       return
     }
     timerIntervalRef.current = setInterval(() => {
-      setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartRef.current) / 1000))
+      setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartAtRef.current) / 1000))
     }, 1000)
     return () => clearInterval(timerIntervalRef.current)
   }, [timerRunning])
@@ -111,21 +177,21 @@ export default function TicketDetail() {
   useEffect(() => {
     const onVisible = () => {
       if (timerRunning) {
-        setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartRef.current) / 1000))
+        setTimerSecs(timerBaseRef.current + Math.floor((Date.now() - timerStartAtRef.current) / 1000))
       }
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [timerRunning])
 
-  function pauseTimer() {
-    timerBaseRef.current = timerSecs
-    setTimerRunning(false)
+  async function pauseTimer() {
+    const r = await api.post(`/v1/tickets/${id}/timer/pause`)
+    applyTicket(r.data)
   }
 
-  function resumeTimer() {
-    timerStartRef.current = Date.now()
-    setTimerRunning(true)
+  async function resumeTimer() {
+    const r = await api.post(`/v1/tickets/${id}/timer/resume`)
+    applyTicket(r.data)
   }
 
   // Un clic n'importe où sur la page relance le chrono s'il est en pause
@@ -140,11 +206,25 @@ export default function TicketDetail() {
     return () => document.removeEventListener('click', onAnyClick)
   }, [timerRunning])
 
-  async function saveNote() {
+  function saveNote() {
     const deltaSecs = timerSecs - lastNoteSecsRef.current
     if (!noteDesc.trim() || deltaSecs < 1) return
     const mins = Math.max(1, Math.ceil(deltaSecs / 60))
-    lastNoteSecsRef.current = timerSecs   // chrono continue, on avance juste le marqueur
+    if (mins >= timeConfirmThreshold) {
+      pendingMarkerRef.current = timerSecs
+      setConfirmMins(mins)
+      setShowTimeConfirm(true)
+      return
+    }
+    doSaveNote(mins, timerSecs)
+  }
+
+  function confirmTimeAndSave() {
+    setShowTimeConfirm(false)
+    doSaveNote(Math.max(1, parseInt(confirmMins) || 1), pendingMarkerRef.current)
+  }
+
+  async function doSaveNote(mins, markerSecs) {
     setSavingNote(true)
     try {
       const r = await api.post(`/v1/tickets/${id}/entries`, {
@@ -152,11 +232,9 @@ export default function TicketDetail() {
         duration_minutes: mins,
         is_billable: noteBillable,
         catalogue_item_id: noteCatItem || null,
+        new_marker_seconds: markerSecs,
       })
-      setTicket(r.data)
-      setNoteDesc('')
-      setNoteBillable(false)
-      setNoteCatItem('')
+      applyTicket(r.data)   // le serveur a deja vide le brouillon -- noteDesc etc reviennent a ''
     } finally { setSavingNote(false) }
   }
 
@@ -167,33 +245,33 @@ export default function TicketDetail() {
       is_billable: true,
       catalogue_item_id: null,
     })
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function changeStatus(s) {
     const r = await api.put(`/v1/tickets/${id}`, { status: s })
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function changePriority(p) {
     const r = await api.put(`/v1/tickets/${id}`, { priority: p })
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function toggleBillable(v) {
     const r = await api.put(`/v1/tickets/${id}`, { is_billable: v })
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function deleteEntry(eid) {
     const r = await api.delete(`/v1/tickets/${id}/entries/${eid}`)
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function splitToNewTicket(eid) {
     if (!confirm("Déplacer cette réponse vers un nouveau ticket ? Ce ticket sera refermé.")) return
     const r = await api.post(`/v1/tickets/${id}/entries/${eid}/split-to-new-ticket`)
-    setTicket(r.data)
+    applyTicket(r.data)
   }
 
   async function deleteTicket() {
@@ -208,7 +286,7 @@ export default function TicketDetail() {
     try {
       await api.patch(`/v1/companies/${ticket.company_id}/contacts/${ticket.contact_id}`, { email: contactEmailDraft.trim() })
       const r = await api.get(`/v1/tickets/${id}`)
-      setTicket(r.data)
+      applyTicket(r.data)
       setEditingContactEmail(false)
     } finally {
       setSavingContactEmail(false)
@@ -220,7 +298,7 @@ export default function TicketDetail() {
     setSumMsg('')
     try {
       const r = await api.post(`/v1/tickets/${id}/send-summary`, { close })
-      setTicket(r.data)
+      applyTicket(r.data)
       setSumMsg(close ? 'Résumé envoyé et ticket fermé ✓' : 'Résumé envoyé ✓')
     } catch (e) {
       setSumMsg(e.response?.data?.detail || 'Erreur envoi courriel')
@@ -243,7 +321,7 @@ export default function TicketDetail() {
     setSumMsg('')
     try {
       const r = await api.post(`/v1/tickets/${id}/send-summary`, { wait_for_client: true })
-      setTicket(r.data)
+      applyTicket(r.data)
       pauseTimer()
       setSumMsg("Résumé envoyé, en attente d'une réponse ✓")
     } catch (e) {
@@ -264,7 +342,7 @@ export default function TicketDetail() {
       setSendingSum(true)
       setSumMsg('')
       const r = await api.post(`/v1/tickets/${id}/send-summary`, { wait_for_client: true })
-      setTicket(r.data)
+      applyTicket(r.data)
       pauseTimer()
       setSumMsg("Résumé envoyé, en attente d'une réponse ✓")
     } catch (e) {
@@ -613,6 +691,30 @@ export default function TicketDetail() {
               <button className="btn-primary" onClick={saveContactEmailAndSend} disabled={savingContactEmail || !contactEmailDraft.trim()}>
                 {savingContactEmail ? '...' : 'Enregistrer et envoyer'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTimeConfirm && (
+        <div className="modal-overlay" onClick={() => setShowTimeConfirm(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Confirmer le temps</h3>
+            <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>
+              Temps écoulé depuis la dernière note : <strong>{fmtMins(confirmMins)}</strong>. Corrigez si nécessaire avant d'enregistrer.
+            </p>
+            <div className="form-group">
+              <label>Temps (minutes)</label>
+              <input
+                type="number" min="1" autoFocus
+                value={confirmMins}
+                onChange={e => setConfirmMins(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') confirmTimeAndSave() }}
+              />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setShowTimeConfirm(false)}>Annuler</button>
+              <button className="btn-primary" onClick={confirmTimeAndSave}>Confirmer et enregistrer</button>
             </div>
           </div>
         </div>

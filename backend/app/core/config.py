@@ -40,6 +40,11 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     ENCRYPTION_KEY: str = ""  # cle Fernet pour chiffrer le refresh token Google au repos
+    # Backup cloud infra (TASK-035) -- Dropbox App Key/Secret (dropbox.com/developers/apps).
+    # Google Drive reutilise GOOGLE_CLIENT_ID/SECRET ci-dessus (meme projet Google Cloud,
+    # scope supplementaire drive.file) -- pas de credentials separes necessaires.
+    DROPBOX_CLIENT_ID: str = ""
+    DROPBOX_CLIENT_SECRET: str = ""
     # Voicebox (TTS local, TASK-029) -- conteneur Docker sur ce meme serveur,
     # port 17600 sur l'hote -> 17493 dans le conteneur, lie a 127.0.0.1 uniquement.
     VOICEBOX_API_URL: str = "http://127.0.0.1:17600"

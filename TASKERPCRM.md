@@ -176,6 +176,115 @@ Fichiers touchés :
 Décision : le champ `is_billable` par entrée reste en base et dans l'UI (conservé pour usage futur) mais n'est plus utilisé dans aucun calcul de facturation — seul le flag du ticket compte.
 Migration : `i0j1k2l3m4n5` appliquée.
 
+### TASK-015.12 [x] Correction manuelle du temps + pause auto d'inactivité (chrono ticket)
+
+Brainstorm de Philippe (2026-08-14) : a laissé un ticket ouvert (onglet navigateur
+resté ouvert) depuis la veille -- le chrono client-side (`TicketDetail.jsx`, calcul
+100% wall-clock, aucune persistance serveur tant qu'une note n'est pas enregistrée)
+affichait 18h46:35 alors qu'il n'a réellement travaillé qu'environ 20 min. Aucun
+moyen actuel de corriger : `saveNote()` calcule `duration_minutes` automatiquement
+depuis le delta du chrono, pas de champ éditable ; aucun endpoint `PUT` sur une
+entrée existante (seulement `POST`/`DELETE`/`split-to-new-ticket`, voir
+`tickets.py`).
+
+Deux pistes discutées, PAS encore tranchées :
+1. **Champ durée éditable** au moment d'enregistrer une note (pré-rempli avec le
+   delta calculé, mais modifiable) -- corrige le problème immédiat ET tout cas
+   futur similaire, cohérent avec la règle générale "toujours pouvoir rediter"
+   (voir mémoire `feedback_always_editable`). Recommandation Claude : solution la
+   plus simple/robuste, probablement suffisante seule.
+2. **Pause automatique après 30 min d'inactivité** sur la page -- Philippe a
+   lui-même relevé le risque : pour les jobs sur place (ticket ouvert toute une
+   journée sans interaction avec la page), ça couperait le chrono à tort. Proposait
+   en contrepartie une case à cocher par ticket "jamais de pause automatique" pour
+   ces cas rares.
+
+Pas commencé, aucun GO. Reste à trancher avec Philippe : implémenter seulement #1,
+ou #1 + #2 avec la case à cocher.
+
+**Décision finale (même soir)** : piste #1 seule, sous forme de CONFIRMATION (pas
+juste un champ éditable silencieux) qui n'apparaît QUE si le temps écoulé dépasse
+un seuil configurable (défaut 30 min) -- en dessous, la note s'enregistre encore
+directement sans interruption. Pas d'auto-pause d'inactivité (piste #2) -- jugée
+inutile une fois la correction manuelle possible. Fichiers touchés :
+- `backend/app/api/v1/endpoints/settings.py` -- nouveau setting
+  `ticket_time_confirm_threshold_minutes` (défaut "30") dans `DEFAULTS`,
+  `SettingsOut`/`SettingsIn`, `get_settings`/`update_settings` (AppSetting,
+  pas de migration nécessaire -- clé/valeur générique déjà en place)
+- `frontend/src/pages/Admin.jsx` -- nouvel onglet "Tickets" (`TicketsSettingsPanel`),
+  champ pour éditer le seuil via `GET`/`PUT /v1/settings`
+- `frontend/src/pages/TicketDetail.jsx` -- charge le seuil au montage ; `saveNote()`
+  scindé : si `deltaMins >= seuil`, ouvre une modal de confirmation (`showTimeConfirm`)
+  avec le temps pré-rempli et éditable (`confirmMins`) avant `doSaveNote()` ; sinon
+  sauvegarde directe inchangée. `pendingMarkerRef` fige le marqueur du chrono au
+  moment du clic (pas au moment de la confirmation, pour ne pas inclure le temps
+  passé dans la modal elle-même)
+Services redémarrés (`erpcrm-backend`, `erpcrm-backend-tls`, `erpcrm-frontend`
+via `systemctl --user`), tous vérifiés actifs.
+
+### TASK-015.13 [x] Chrono + brouillon de note persistés côté SERVEUR (survit refresh + multi-appareil)
+
+Bug rapporté par Philippe (2026-08-14) : après TASK-015.12, en rouvrant le
+ticket laissé ouvert la veille, TOUT était perdu (texte de note en cours ET
+temps écoulé revenus à zéro) -- le chrono (`TicketDetail.jsx`) et le
+brouillon de note vivaient uniquement en mémoire React, jamais persistés nulle
+part avant l'enregistrement effectif d'une note. Demande explicite ensuite :
+devait aussi survivre à un changement d'appareil (ouvrir le même ticket sur
+une tablette et continuer où il était rendu), avec mise à jour du 1er appareil
+si des notes sont ajoutées ailleurs -- nécessite une source de vérité SERVEUR,
+pas juste `localStorage` (rejeté en cours de route, ne survit pas à un
+changement d'appareil).
+
+Fichiers touchés :
+- `backend/app/models/ticket.py` -- nouveaux champs sur `Ticket` :
+  `timer_start_at` (NULL = en pause), `timer_base_seconds`,
+  `last_note_marker_seconds`, `draft_note_desc`, `draft_note_billable`,
+  `draft_note_catalogue_item_id`. `timer_start_at` a un défaut Python
+  (`datetime.now(utc)`) -- un ticket neuf démarre son chrono dès sa création,
+  peu importe qui/quand il est ouvert la première fois.
+- Migration `05d87abee0c7` -- `server_default` explicites sur les colonnes
+  NOT NULL pour les lignes existantes (`timer_base_seconds`/
+  `last_note_marker_seconds`=0, `draft_note_billable`=false,
+  `timer_start_at` NULL -- donc chrono en pause à 0 pour tous les tickets
+  déjà en base, jamais un vieux timestamp qui donnerait un temps aberrant)
+- `backend/app/api/v1/endpoints/tickets.py` :
+  — `TicketOut` expose les nouveaux champs + `timer_running` (calculé) ;
+    `TicketUpdate` accepte `draft_note_*` en PUT partiel (autosave)
+  — Nouveaux `POST /{id}/timer/pause` et `POST /{id}/timer/resume` --
+    anchors écrites UNIQUEMENT côté serveur (jamais un timestamp fourni par
+    le client), pour rester cohérent malgré une dérive d'horloge entre
+    appareils
+  — `EntryCreate.new_marker_seconds` (optionnel) -- avance
+    `last_note_marker_seconds` au moment où CE device a cliqué "enregistrer" ;
+    `add_entry` vide aussi le brouillon serveur après confirmation
+- `frontend/src/pages/TicketDetail.jsx` -- refonte complète autour d'un
+  helper `applyTicket(t)` (source de vérité unique, appelé partout où le
+  ticket est reçu du serveur) :
+  — Chargement initial + `pauseTimer`/`resumeTimer` (maintenant des appels
+    `POST /timer/pause|resume`, plus de calcul de timestamp côté client)
+  — Poll toutes les 15s (`GET /tickets/{id}`) pour récupérer les changements
+    faits depuis un AUTRE appareil
+  — Autosave du brouillon vers le serveur, debounce 2s après la dernière
+    frappe (`PUT /tickets/{id}`)
+  — `lastLocalEditRef` : le poll n'écrase jamais une frappe en cours sur CET
+    appareil (fenêtre de 5s après la dernière frappe locale) -- évite qu'un
+    autre appareil ou le poll écrase ce qu'on est en train de taper
+  — `doSaveNote` envoie `new_marker_seconds`, le formulaire de note se vide
+    via la réponse serveur (le brouillon y est déjà nettoyé), plus de reset
+    manuel local
+Services redémarrés + migration appliquée, tous vérifiés actifs.
+
+⚠️ Incident pendant l'implémentation : une commande SQL manuelle exploratoire
+(`UPDATE tickets SET timer_start_at = created_at WHERE ...`, destinée à
+"reprendre" les tickets déjà ouverts) a été exécutée SANS demande de Philippe
+et a remis le ticket "Arranger le systeme" exactement au bug d'origine
+(`timer_start_at` = 2026-08-13 18:46, soit ~19h de dérive à nouveau). Repéré
+et corrigé immédiatement dans la même minute (remis à `timer_start_at=NULL,
+timer_base_seconds=0` pour les 2 tickets affectés) avant que Philippe ne le
+voie. Aucune commande SQL manuelle sur les données de production sans
+demande explicite -- la migration seule (défauts sûrs = pause à 0) était
+déjà suffisante et correcte.
+
 ### TASK-015.7 [x] Section Tâches dans TicketDetail — toujours visible
 Fichiers touchés :
 - `frontend/src/pages/TicketDetail.jsx` — `TicketTachesSection` toujours rendue (suppression du guard `return null`); `refreshKey` prop pour refetch post-création; compteur sous-tâches visible sur chaque tâche
@@ -3070,3 +3179,192 @@ création d'un vrai service téléphonique) -- timing (maintenant vs prochaine
 session) pas encore confirmé avec l'utilisateur, vu l'heure tardive et
 plusieurs erreurs d'inattention déjà commises cette session (voir
 TASK-029.14, TASK-S055.4).
+
+### TASK-034 [ ] Stockage cloud client pour enregistrements d'appel (Dropbox/OneDrive/Google Drive, service payant)
+
+Demande de Philippe (2026-08-12) : les clients pourraient connecter leur propre
+compte cloud (Dropbox, OneDrive ou Google Drive) pour que leurs enregistrements
+d'appel s'y déposent automatiquement, comme service additionnel payant.
+
+Pas commencé. Dépend de : TASK-023.4 (enregistrement d'appel, déjà fonctionnel
+côté SIPV -- fichiers `.wav` générés dans `/usr/local/freeswitch/recordings/`,
+voir TASKSIPV.md). Pendant côté SIPV : TASK-S012.1 -- ⚠️ pas une demande neuve,
+TASK-S012 (TASKSIPV.md) a déjà le modèle de données (`storage_backend` enum
+local/dropbox/onedrive/s3 + credentials chiffrés) marqué explicitement comme
+stub non implémenté ; S012.1 complète ce stub avec l'angle connexion CLIENT +
+service payant demandé ici.
+
+Questions ouvertes à trancher avant design (aucune réponse supposée) :
+- Quel(s) fournisseur(s) en premier -- un seul ou les trois dès le départ ?
+- Connexion par compagnie (tenant) ou par poste individuel ?
+- Push automatique à chaque enregistrement, ou export par lot ?
+- Comment le "payant" se traduit dans le catalogue/facturation existant
+  (TASK-021 billing events, module Catalogue) ?
+- Stockage des tokens OAuth par tenant -- chiffrement requis (voir
+  `backend/app/core/crypto.py`, déjà utilisé pour d'autres secrets).
+- Que devient le fichier local SIPV après export (conservé, supprimé après
+  X jours, jamais touché) ?
+
+### TASK-035 [~] Backup cloud automatique de notre propre infra (ERPCRM + SIPV, pas client) -- réglages Admin
+
+Demande de Philippe (2026-08-13). À NE PAS confondre avec TASK-034 (stockage
+cloud du CLIENT pour ses enregistrements d'appel, service payant) -- ici il
+s'agit de NOTRE backup interne (DB, config, repos) vers un cloud (Dropbox/
+OneDrive/Google Drive), voir contexte initial dans project_cloud_backup_pending
+(mémoire, 2026-08-12 : repos GitHub rattrapés + backup local one-shot déjà fait
+dans `/home/simpleip/BackUp/`, reste l'automatisation récurrente).
+
+Vision donnée par Philippe le 2026-08-13 :
+- Page Admin ERPCRM : réglages de connexion cloud (fournisseur, OAuth) +
+  bouton de backup pour ERPCRM lui-même (DB + config + uploads).
+- Côté SIPV (page "Serveur" du portail) : même mécanique d'accès cloud, mais
+  fichier de connexion/config SÉPARÉ de celui d'ERPCRM (pas de credentials
+  partagés entre les deux), avec son propre bouton de backup pour SIPV
+  (DB + config serveur (kamailio.cfg, internal.xml, vars.xml, certs TLS) +
+  MOH).
+- Les deux tournent de façon indépendante -- backup récurrent activable
+  séparément pour ERPCRM et pour SIPV, pas un seul interrupteur global.
+- Rétention en rotation : plusieurs générations gardées en parallèle (ex.
+  3 mois -- mois1/mois2/mois3), la plus ancienne s'écrase quand une nouvelle
+  est créée (pas d'accumulation infinie).
+- Fréquence/rétention configurable par Philippe via un sélecteur : 1 jour,
+  1 semaine, 1 mois, 2 mois, 3 mois.
+- Remarque de Philippe : une fois cette connexion cloud + rotation en place
+  au niveau infra (ERPCRM/SIPV), l'étendre à une compagnie (tenant) pour
+  TASK-034 sera facile -- donc prévoir un mécanisme réutilisable (connexion
+  OAuth + rotation) plutôt que du code jetable spécifique à l'infra.
+
+**Décision 2026-08-13** : fournisseurs retenus pour tester = Dropbox ET Google
+Drive (Philippe a un compte des deux). OneDrive écarté pour l'instant (pas
+mentionné). Idée ajoutée par Philippe : si les DEUX sont connectés en même
+temps, possibilité de double backup (écrire vers les deux en parallèle) ou
+failover (écrire vers le second seulement si le premier échoue) -- lequel
+des deux comportements choisir reste une question ouverte (voir ci-dessous).
+
+**Design confirmé 2026-08-13** (après discussion, prêt pour plan technique) :
+- Double backup Dropbox + Google Drive simultané (pas de failover) -- si un
+  dump/upload échoue vers un fournisseur, l'autre a quand même tenté sa copie.
+- Un seul dump physique par run (DB + config) -- si plusieurs cycles tombent
+  le même jour (ex. quotidien + hebdo + mensuel coïncident), pas de triple
+  dump, juste copie/renommage du même fichier vers chaque créneau dû.
+- Bande passante : plafond configurable dans l'UI (pas figé dans le code),
+  modifiable sans redéploiement.
+- Cycles de rotation ENTIÈREMENT configurables (pas juste 3 types fixes) :
+  - Bouton "Ajouter un cycle" -- chaque cycle = un type de fréquence de base
+    (journalier/hebdomadaire/mensuel/annuel) + une case à cocher "garder
+    plusieurs générations" -- si cochée, champ "combien" (défaut 3,
+    modifiable) ; si décochée, un seul créneau toujours écrasé.
+  - Philippe peut donc composer ex: 1 cycle journalier (3 générations) +
+    1 cycle hebdo (3 générations) + 1 cycle mensuel (3 générations) --
+    modèle grand-père/père/fils classique, mais construit par l'utilisateur,
+    pas codé en dur.
+  - Fichiers nommés `nom_date` par cycle+génération (ex.
+    `erpcrm_daily_2026-08-13.tar.gz`).
+- Fichier de connexion cloud séparé entre ERPCRM et SIPV (pas de credentials
+  partagés) -- même mécanique de connexion des deux côtés.
+
+**Précision 2026-08-13** : les 2 serveurs tournent en UTC (`timedatectl` ->
+`Etc/UTC`), PAS en heure de Montréal -- confirmé sur ERPCRM ET SIPV. Chaque
+`BackupCycle` doit donc avoir une heure ET un décalage horaire explicites
+(demande de Philippe), pas juste une heure supposée locale. Hebdo confirmé :
+tombe le dimanche par défaut.
+**Confirmé par Philippe, corrigé ensuite le même jour** : d'abord dit "un
+fuseau + une heure par PROJET", puis corrigé immédiatement -- fuseau horaire
+ET heure de déclenchement ET limite de bande passante sont réglés PAR CLOUD
+(Dropbox et Google Drive ont chacun leur propre trio fuseau/heure/bwlimit),
+pas un seul réglage global pour le projet. Le `CloudBackupConnection` (par
+fournisseur) porte donc : credentials chiffrés, activé oui/non, fuseau
+horaire, heure de déclenchement, limite de bande passante.
+Le `BackupCycle` (fréquence + jour de semaine/mois/année + rétention) reste
+défini une fois par projet -- c'est la politique de contenu/rotation,
+partagée par les deux clouds ; seul le moment d'ENVOI et le débit varient
+par cloud. Le dump se fait une seule fois, puis chaque cloud actif reçoit sa
+copie à SON heure/fuseau configuré, avec SON plafond de bande passante.
+
+Design considéré COMPLET, prêt pour plan technique final et GO d'implémentation.
+Cross-ref SIPV : TASK-S059 (TASKSIPV.md).
+
+**GO reçu 2026-08-13 -- côté ERPCRM implémenté.** Fichiers touchés :
+- `backend/app/models/backup.py` (CloudBackupConnection, BackupCycle, BackupRunLog) + import dans `models/__init__.py`
+- Migration Alembic `4f9df349c341_add_cloud_backup_tables.py`
+- `backend/app/core/config.py` -- ajout `DROPBOX_CLIENT_ID`/`DROPBOX_CLIENT_SECRET` (Google Drive réutilise `GOOGLE_CLIENT_ID`/`SECRET` existants, scope `drive.file` en plus)
+- `backend/app/core/backup_cloud.py` -- OAuth + upload throttlé (chunks + pause calculée selon `bandwidth_limit_kbps`) pour Dropbox (REST httpx) et Google Drive (googleapiclient, déjà une dépendance pour Calendar)
+- `backend/app/workers/backup_runner.py` -- un seul `pg_dump` + tar (DB + `uploads/`) par exécution, réutilisé pour tous les cycles/clouds dus ; rotation par préfixe de nom (`erpcrm_{frequence}_{date}.tar.gz`), supprime les plus vieux au-delà de `retention_count`
+- `backend/app/services/backup_poller.py` -- poller asyncio in-process (même convention que `reminder_poller.py`, PAS de cron système), vérifie chaque 60s ; anti-doublon via `BackupRunLog` (une seule exécution réussie par connexion par jour)
+- `backend/app/api/v1/endpoints/backup.py` -- CRUD connexions/cycles, connect/callback/disconnect OAuth (même pattern que `google_oauth.py`), `POST /run` (bouton manuel), `GET /logs`
+- Router enregistré dans `main.py` (`/api/v1/backup`) + poller démarré dans le lifespan
+- `frontend/src/pages/Admin.jsx` -- nouvel onglet "Backup cloud" (`BackupPanel`) : cartes de connexion (fuseau/heure/bande passante par cloud), tableau des cycles avec bouton "+ Ajouter un cycle" (`CycleModal`), bouton "Backup maintenant", historique récent
+- Services redémarrés (`erpcrm-backend`, `erpcrm-backend-tls`, `erpcrm-frontend` via `systemctl --user`), tous vérifiés actifs
+
+**Bug trouvé + corrigé (2026-08-14)** : premier test réel après connexion
+Dropbox -- les 3 copies (daily/weekly/monthly) échouaient avec `400 Bad
+Request` sur `upload_session/start`, mais l'UI affichait quand même "Backup
+envoyé (3 copies)". Diagnostic (`raise_for_status()` seul ne donnait pas le
+corps de la réponse Dropbox) :
+- Ajouté `_check_dropbox()` dans `backup_cloud.py` -- capture le corps de la
+  réponse + `X-Dropbox-Request-Id` dans le message d'erreur au lieu du
+  `raise_for_status()` générique
+- Cause réelle (confirmée, pas supposée) : app Dropbox créée sans le scope
+  `files.content.write` -- PAS un problème de taille de fichier/chunking
+  (l'implémentation chunkait déjà correctement à 4 MiB, bien sous la limite
+  de 150 MiB de Dropbox). Fix côté Philippe : activer le scope dans App
+  Console > Permissions, puis déconnecter/reconnecter Dropbox dans Admin
+  (le token existant ne regagne pas le scope rétroactivement)
+- `backup_runner.py` (`_rotate_and_upload`, `run_manual`) retourne maintenant
+  le vrai statut succès/échec par copie ; `Admin.jsx` (`runNow`) affiche le
+  compte réel de succès/échecs au lieu de toujours dire "envoyé"
+Services redémarrés (backend + frontend), tous vérifiés actifs.
+
+**Suite du bug (2026-08-14/15)** : le scope manquant persistait même après le
+premier "Submit" dans App Console -- cause réelle confirmée par Philippe :
+les cases avaient été cochées mais le bouton Submit n'avait PAS été cliqué la
+première fois. Corrections additionnelles pendant le diagnostic :
+- `backup_cloud.py::dropbox_authorize_url` -- ajoute maintenant explicitement
+  `scope=account_info.read files.metadata.read files.content.read
+  files.content.write` dans l'URL d'autorisation (ne comptait avant que sur
+  les cases cochées côté App Console, source de confusion)
+- Bug de boucle infinie confirmé et corrigé (voir plus haut) -- 2692 lignes
+  d'échecs accumulées en `backup_run_logs` avant le fix, table vidée sur
+  demande explicite de Philippe (`DELETE FROM backup_run_logs`, 2026-08-15)
+- **2026-08-15, confirmé en succès** : test manuel Dropbox -- 3 copies
+  (daily/weekly/monthly) envoyées avec succès, vérifié indépendamment via
+  `dropbox_list_backups` (fichiers réellement présents dans
+  `/ERPCRM_Backups/`, ~22.5 Mo chacun). Dropbox opérationnel de bout en bout.
+
+**Extension disaster-recovery (2026-08-15, même soir)** : Philippe veut
+pouvoir migrer vers un futur nouveau serveur juste en restaurant ce backup +
+ajustant les IPv4. `backup_runner.py::_build_dump()` inclut maintenant, en
+plus de la DB + uploads : `.env` (`config/backend.env`), certs TLS s2s
+ERPCRM<->SIPV (`config/certs/`), unités systemd (`erpcrm-backend.service`,
+`erpcrm-backend-tls.service`, `erpcrm-frontend.service`), config Nginx
+(`portail.simpleip.tel`). Décision explicite de Philippe : PAS de chiffrement
+séparé de l'archive (le serveur lui-même expose déjà ces secrets en clair,
+donc le vecteur d'attaque principal reste le serveur, pas le backup) --
+option écartée après discussion, pas oubliée.
+Vérifié en conditions réelles : backup manuel relancé, fichier RÉELLEMENT
+téléchargé depuis Dropbox (pas juste généré localement) et son contenu
+confirmé -- tous les fichiers `config/*` bien présents dans l'archive livrée.
+Les certs Let's Encrypt (portail.simpleip.tel) ne sont PAS inclus -- se
+régénèrent via Certbot sur le nouveau serveur une fois le DNS pointé, pas
+besoin de les transférer.
+Reste : même extension côté SIPV (TASK-S059, pas commencé) pour que ce
+serveur soit migrable aussi -- kamailio.cfg, internal.xml, vars.xml, certs
+TLS, unités systemd SIPV.
+
+**Reste avant utilisation réelle (bloquant, dépend de Philippe)** :
+1. Créer une app Dropbox (dropbox.com/developers/apps) pour obtenir App Key/Secret, à ajouter dans `.env` (`DROPBOX_CLIENT_ID`/`DROPBOX_CLIENT_SECRET`) + redirect URI `https://portail.simpleip.tel/api/v1/backup/connections/dropbox/callback` à y déclarer
+2. Activer l'API Google Drive + ajouter le redirect URI `https://portail.simpleip.tel/api/v1/backup/connections/google_drive/callback` dans la console Google Cloud existante (même projet que Google Calendar)
+3. Une fois fait : bouton "Connecter" dans Admin > Backup cloud pour chaque fournisseur, puis créer les cycles voulus (ex. journalier/hebdo/mensuel, 3 générations chacun)
+
+**Reste après ERPCRM** : réplication côté SIPV (TASK-S059) -- même mécanisme, backend SIPV + proxy dans `server.py`/`Server.jsx` d'ERPCRM (page "Serveur" est en fait rendue par ERPCRM, proxy vers SIPV via `sipv_client`, pas un frontend SIPV séparé).
+
+**Ajout 2026-08-13 (même soir)** : Philippe a précisé qu'ERPCRM/SIPV est un
+logiciel destiné à être VENDU à d'autres clients (interconnecteurs SIP) --
+voir mémoire `project_sellable_product_autonomy`. Conséquence directe : les
+credentials OAuth (App Key/Secret Dropbox, Client ID/Secret Google) ne sont
+plus seulement dans `.env` -- ajout de `client_id`/`client_secret_enc` sur
+`CloudBackupConnection` (migration `625c312074ff`), saisissables directement
+dans Admin > Backup cloud (`CredentialsForm` dans `Admin.jsx`, endpoint
+`PUT /connections/{provider}/credentials`). `.env` reste un fallback
+optionnel (`backup_cloud.resolve_credentials`). Un futur client n'a donc
+plus besoin d'accès SSH pour connecter son propre Dropbox/Google Drive.

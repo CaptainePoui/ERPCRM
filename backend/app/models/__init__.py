@@ -25,3 +25,4 @@ from app.models.email_open import EmailOpen
 from app.models.devis import Devis, DevisLine
 from app.models.appointment import Appointment
 from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine
+from app.models.backup import CloudBackupConnection, BackupCycle, BackupRunLog

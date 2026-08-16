@@ -16,6 +16,11 @@ DEFAULTS = {
     "labour_round_minutes": "15",
     "commission_rate": "10.0",
     "default_vendor_contact_id": "",
+    # TASK-015.12 : seuil (minutes) au-dela duquel TicketDetail demande une
+    # confirmation/correction du temps avant d'enregistrer une note (protege
+    # contre le chrono client-side laisse tourner par erreur, ex. onglet
+    # oublie ouvert toute la nuit).
+    "ticket_time_confirm_threshold_minutes": "30",
 }
 
 
@@ -48,6 +53,7 @@ class SettingsOut(BaseModel):
     labour_round_minutes: int
     commission_rate: float
     default_vendor_contact_id: str
+    ticket_time_confirm_threshold_minutes: int
 
 
 class SettingsIn(BaseModel):
@@ -55,6 +61,7 @@ class SettingsIn(BaseModel):
     labour_round_minutes: int | None = None
     commission_rate: float | None = None
     default_vendor_contact_id: str | None = None
+    ticket_time_confirm_threshold_minutes: int | None = None
 
 
 class InflationPayload(BaseModel):
@@ -68,6 +75,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         labour_round_minutes=int(await get_setting(db, "labour_round_minutes")),
         commission_rate=float(await get_setting(db, "commission_rate")),
         default_vendor_contact_id=await get_setting(db, "default_vendor_contact_id"),
+        ticket_time_confirm_threshold_minutes=int(await get_setting(db, "ticket_time_confirm_threshold_minutes")),
     )
 
 
@@ -86,6 +94,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "commission_rate", str(payload.commission_rate))
     if payload.default_vendor_contact_id is not None:
         await set_setting(db, "default_vendor_contact_id", payload.default_vendor_contact_id)
+    if payload.ticket_time_confirm_threshold_minutes is not None:
+        await set_setting(db, "ticket_time_confirm_threshold_minutes", str(payload.ticket_time_confirm_threshold_minutes))
     return await get_settings(db)
 
 

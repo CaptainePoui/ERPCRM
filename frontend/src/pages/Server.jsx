@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
+import './Admin.css'
+
+const SERVER_TABS = ['Téléphonie', 'Backup cloud']
 
 export default function Server() {
+  const [searchParams] = useSearchParams()
+  const [tab, setTab] = useState(searchParams.get('server_backup') ? 1 : 0)
+
   const [servers, setServers] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -24,29 +31,41 @@ export default function Server() {
   return (
     <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
       <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Serveur</h1>
-      <p style={{ color: '#6B7280', fontSize: 14, marginTop: 8, marginBottom: 24 }}>
+      <p style={{ color: '#6B7280', fontSize: 14, marginTop: 8, marginBottom: 16 }}>
         Configuration globale du serveur SIPV (canaux de lignes, Fail2Ban, etc.) — à venir.
       </p>
-      <VoicemailSettingsSection />
-      <MohLibrarySection companies={companies} />
-      {loading ? <div className="loading">Chargement...</div> : servers.length === 0 ? (
-        <div className="empty-tab">Aucun serveur SIPV enregistré.</div>
-      ) : (
-        servers.map(s => (
-          <div key={s.id} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
-              <span style={{ fontSize: 12, color: s.is_active ? '#059669' : '#9CA3AF' }}>{s.is_active ? 'Actif' : 'Inactif'}</span>
-            </div>
-            <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 16 }}>
-              {s.hostname} {s.ip_address ? `(${s.ip_address})` : ''} — {s.tenant_count} compagnie(s) hébergée(s)
-            </div>
-            <SipChannelIpsSection server={s} onSave={updateServerField} />
-            <GlobalTemplatesSection server={s} />
-            <TenantTemplatesSection server={s} />
-          </div>
-        ))
+      <div className="adm-tabs" style={{ marginBottom: 24 }}>
+        {SERVER_TABS.map((t, i) => (
+          <button key={t} className={`adm-tab${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+        ))}
+      </div>
+
+      {tab === 0 && (
+        <>
+          <VoicemailSettingsSection />
+          <MohLibrarySection companies={companies} />
+          {loading ? <div className="loading">Chargement...</div> : servers.length === 0 ? (
+            <div className="empty-tab">Aucun serveur SIPV enregistré.</div>
+          ) : (
+            servers.map(s => (
+              <div key={s.id} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
+                  <span style={{ fontSize: 12, color: s.is_active ? '#059669' : '#9CA3AF' }}>{s.is_active ? 'Actif' : 'Inactif'}</span>
+                </div>
+                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 16 }}>
+                  {s.hostname} {s.ip_address ? `(${s.ip_address})` : ''} — {s.tenant_count} compagnie(s) hébergée(s)
+                </div>
+                <SipChannelIpsSection server={s} onSave={updateServerField} />
+                <GlobalTemplatesSection server={s} />
+                <TenantTemplatesSection server={s} />
+              </div>
+            ))
+          )}
+        </>
       )}
+
+      {tab === 1 && <BackupCloudSection />}
     </div>
   )
 }
@@ -92,6 +111,387 @@ function VoicemailSettingsSection() {
             style={{ width: '100%', borderColor: saving ? '#3B82F6' : undefined, background: saving ? '#EFF6FF' : undefined }} />
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Backup cloud SIPV (TASK-S059) ────────────────────────────────────────
+// Meme mecanisme que Admin > Backup cloud (ERPCRM), proxy via /v1/server/backup/*
+// -- tout vit reellement cote SIPV, le flux OAuth est relaye par ERPCRM (seul
+// domaine public joignable par Dropbox/Google).
+
+const SIPV_PROVIDER_LABELS = { dropbox: 'Dropbox', google_drive: 'Google Drive' }
+const SIPV_FREQUENCY_LABELS = { daily: 'Journalier', weekly: 'Hebdomadaire', monthly: 'Mensuel', yearly: 'Annuel' }
+const SIPV_WEEKDAY_LABELS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+const SIPV_TIMEZONES = ['America/Toronto', 'America/Winnipeg', 'America/Edmonton', 'America/Vancouver', 'America/Halifax']
+const SIPV_BACKUP_STATUS_SUFFIXES = ['_no_refresh_token', '_connected', '_error', '_csrf']
+
+function parseSipvBackupCallback(value) {
+  if (!value) return null
+  for (const suffix of SIPV_BACKUP_STATUS_SUFFIXES) {
+    if (value.endsWith(suffix)) return { provider: value.slice(0, -suffix.length), status: suffix.slice(1) }
+  }
+  return null
+}
+
+const SIPV_BACKUP_CALLBACK_MESSAGES = {
+  connected: { text: p => `✓ ${SIPV_PROVIDER_LABELS[p] || p} connecté avec succès.`, color: '#059669' },
+  error: { text: p => `La connexion ${SIPV_PROVIDER_LABELS[p] || p} a été refusée ou annulée.`, color: '#DC2626' },
+  csrf: { text: () => "Échec de vérification de sécurité, veuillez réessayer.", color: '#DC2626' },
+  no_refresh_token: { text: p => `${SIPV_PROVIDER_LABELS[p] || p} n'a pas retourné de jeton — réessayez.`, color: '#DC2626' },
+}
+
+function fmtLogDate(iso) {
+  const d = new Date(iso)
+  return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
+}
+
+function BackupCloudSection() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [connections, setConnections] = useState([])
+  const [cycles, setCycles] = useState([])
+  const [logs, setLogs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [runningNow, setRunningNow] = useState(false)
+  const [runMsg, setRunMsg] = useState('')
+  const [showCycleModal, setShowCycleModal] = useState(false)
+  const [editingCycle, setEditingCycle] = useState(null)
+
+  const callback = parseSipvBackupCallback(searchParams.get('server_backup'))
+  const callbackMsg = callback && SIPV_BACKUP_CALLBACK_MESSAGES[callback.status]
+
+  useEffect(() => { load() }, [])
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [c, cy, lg] = await Promise.all([
+        api.get('/v1/server/backup/connections'),
+        api.get('/v1/server/backup/cycles'),
+        api.get('/v1/server/backup/logs'),
+      ])
+      setConnections(c.data)
+      setCycles(cy.data)
+      setLogs(lg.data)
+    } finally { setLoading(false) }
+  }
+
+  function dismissMsg() {
+    searchParams.delete('server_backup')
+    setSearchParams(searchParams)
+  }
+
+  function connect(provider) {
+    window.location.href = `/api/v1/server/backup/connections/${provider}/connect`
+  }
+
+  async function disconnect(provider) {
+    if (!confirm(`Déconnecter ${SIPV_PROVIDER_LABELS[provider]} ? Le backup SIPV vers ce cloud sera suspendu.`)) return
+    await api.post(`/v1/server/backup/connections/${provider}/disconnect`)
+    await load()
+  }
+
+  async function updateConnection(provider, patch) {
+    await api.put(`/v1/server/backup/connections/${provider}`, patch)
+    setConnections(p => p.map(c => c.provider === provider ? { ...c, ...patch } : c))
+  }
+
+  async function deleteCycle(cycle) {
+    if (!confirm(`Supprimer le cycle ${SIPV_FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
+    await api.delete(`/v1/server/backup/cycles/${cycle.id}`)
+    setCycles(p => p.filter(c => c.id !== cycle.id))
+  }
+
+  async function toggleCycle(cycle) {
+    const r = await api.put(`/v1/server/backup/cycles/${cycle.id}`, { enabled: !cycle.enabled })
+    setCycles(p => p.map(c => c.id === cycle.id ? r.data : c))
+  }
+
+  async function runNow() {
+    setRunningNow(true)
+    setRunMsg('')
+    try {
+      const r = await api.post('/v1/server/backup/run')
+      const ran = r.data.ran
+      if (!ran.length) {
+        setRunMsg('Aucune connexion/cycle actif — rien à envoyer.')
+      } else {
+        const okCount = ran.filter(x => x.success).length
+        const failCount = ran.length - okCount
+        setRunMsg(
+          failCount === 0 ? `✓ Backup envoyé (${okCount} copies).`
+          : okCount === 0 ? `✗ Échec des ${failCount} copies — voir l'historique ci-dessous.`
+          : `⚠ ${okCount} copie(s) envoyée(s), ${failCount} échec(s) — voir l'historique ci-dessous.`
+        )
+      }
+      const lg = await api.get('/v1/server/backup/logs')
+      setLogs(lg.data)
+    } catch (e) {
+      setRunMsg(e.response?.data?.detail || 'Échec du backup')
+    } finally { setRunningNow(false) }
+  }
+
+  const cycleLabel = c => {
+    if (c.frequency_type === 'weekly') return `${SIPV_FREQUENCY_LABELS[c.frequency_type]} — ${SIPV_WEEKDAY_LABELS[c.day_of_week] ?? '?'}`
+    if (c.frequency_type === 'monthly') return `${SIPV_FREQUENCY_LABELS[c.frequency_type]} — le ${c.day_of_month}`
+    if (c.frequency_type === 'yearly') return `${SIPV_FREQUENCY_LABELS[c.frequency_type]} — ${c.day_of_month}/${c.month_of_year}`
+    return SIPV_FREQUENCY_LABELS[c.frequency_type]
+  }
+
+  return (
+    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        Backup cloud SIPV
+      </div>
+      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 16 }}>
+        Backup automatique de notre propre infra SIPV (base de données, config Kamailio/FreeSWITCH, MOH) vers Dropbox et/ou Google Drive — accès séparé de celui d'ERPCRM.
+      </div>
+
+      {callbackMsg && (
+        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>{callbackMsg.text(callback.provider)}</span>
+          <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
+        </div>
+      )}
+
+      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : (
+        <>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
+            {connections.map(c => (
+              <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid #E5E7EB', borderRadius: 8, padding: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <strong>{SIPV_PROVIDER_LABELS[c.provider]}</strong>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                    background: c.connected ? '#D1FAE5' : '#FEF2F2',
+                    color: c.connected ? '#059669' : '#DC2626',
+                  }}>
+                    {c.connected ? '✓ Connecté' : 'Non connecté'}
+                  </span>
+                </div>
+                {c.connected && c.account_label && (
+                  <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 10 }}>{c.account_label}</div>
+                )}
+                {!c.connected ? (
+                  <>
+                    <SipvCredentialsForm provider={c.provider} initialClientId={c.client_id} onSaved={load} />
+                    <button className="btn-primary" onClick={() => connect(c.provider)} disabled={!c.has_credentials}>
+                      Connecter {SIPV_PROVIDER_LABELS[c.provider]}
+                    </button>
+                    {!c.has_credentials && (
+                      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="form-group">
+                      <label>Fuseau horaire</label>
+                      <select value={c.timezone} onChange={e => updateConnection(c.provider, { timezone: e.target.value })}>
+                        {SIPV_TIMEZONES.map(tz => <option key={tz} value={tz}>{tz}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Heure de déclenchement</label>
+                      <input type="time" value={c.backup_hour} onChange={e => updateConnection(c.provider, { backup_hour: e.target.value })} />
+                    </div>
+                    <div className="form-group">
+                      <label>Limite de bande passante (kbps, vide = illimité)</label>
+                      <input type="number" min="0" value={c.bandwidth_limit_kbps ?? ''}
+                        onChange={e => updateConnection(c.provider, { bandwidth_limit_kbps: e.target.value === '' ? null : parseInt(e.target.value) })} />
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, marginBottom: 10, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={c.enabled} onChange={e => updateConnection(c.provider, { enabled: e.target.checked })} />
+                      Actif (participe au backup)
+                    </label>
+                    <button className="btn-secondary" onClick={() => disconnect(c.provider)}>Déconnecter</button>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>{cycles.length} cycle{cycles.length !== 1 ? 's' : ''} de rotation</span>
+            <button className="btn-primary" onClick={() => { setEditingCycle(null); setShowCycleModal(true) }}>+ Ajouter un cycle</button>
+          </div>
+          <table className="adm-table">
+            <thead><tr><th>Cycle</th><th>Générations gardées</th><th>Actif</th><th></th></tr></thead>
+            <tbody>
+              {cycles.map(c => (
+                <tr key={c.id} className={c.enabled ? '' : 'adm-row-inactive'}>
+                  <td className="adm-name">{cycleLabel(c)}</td>
+                  <td>{c.retention_enabled ? c.retention_count : '1 (toujours écrasé)'}</td>
+                  <td>
+                    <button className={`adm-toggle ${c.enabled ? 'active' : 'inactive'}`} onClick={() => toggleCycle(c)}>
+                      {c.enabled ? 'Actif' : 'Inactif'}
+                    </button>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button className="adm-edit-btn" onClick={() => { setEditingCycle(c); setShowCycleModal(true) }}>Modifier</button>
+                      <button className="adm-del-btn" onClick={() => deleteCycle(c)}>✕</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
+            </tbody>
+          </table>
+
+          <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button className="btn-primary" onClick={runNow} disabled={runningNow}>{runningNow ? '...' : 'Backup maintenant'}</button>
+            {runMsg && <span style={{ fontSize: 13, color: '#6B7280' }}>{runMsg}</span>}
+          </div>
+
+          {logs.length > 0 && (
+            <div style={{ marginTop: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Historique récent</div>
+              <table className="adm-table">
+                <thead><tr><th>Date</th><th>Fournisseur</th><th>Fichier</th><th>Résultat</th></tr></thead>
+                <tbody>
+                  {logs.map(l => (
+                    <tr key={l.id}>
+                      <td style={{ fontSize: 12, color: '#9CA3AF' }}>{fmtLogDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
+                      <td>{SIPV_PROVIDER_LABELS[l.provider] || l.provider}</td>
+                      <td style={{ fontSize: 12, color: '#6B7280' }}>{l.filename || '—'}</td>
+                      <td>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: l.success ? '#059669' : '#DC2626' }}>
+                          {l.success ? 'Succès' : (l.error_message || 'Échec')}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {showCycleModal && (
+        <SipvCycleModal cycle={editingCycle} onClose={() => setShowCycleModal(false)}
+          onSaved={c => {
+            setCycles(p => editingCycle ? p.map(x => x.id === c.id ? c : x) : [...p, c])
+            setShowCycleModal(false)
+          }} />
+      )}
+    </div>
+  )
+}
+
+function SipvCredentialsForm({ provider, initialClientId, onSaved }) {
+  const [clientId, setClientId] = useState(initialClientId || '')
+  const [clientSecret, setClientSecret] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+
+  async function save() {
+    if (!clientId.trim() || !clientSecret.trim()) return
+    setSaving(true)
+    try {
+      await api.put(`/v1/server/backup/connections/${provider}/credentials`, { client_id: clientId.trim(), client_secret: clientSecret.trim() })
+      setSaved(true)
+      setClientSecret('')
+      await onSaved()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>
+        IDENTIFIANTS API {provider === 'dropbox' ? '(App Key / App Secret Dropbox)' : '(Client ID / Client Secret Google)'}
+      </div>
+      <div className="form-group">
+        <label>{provider === 'dropbox' ? 'App Key' : 'Client ID'}</label>
+        <input value={clientId} onChange={e => { setClientId(e.target.value); setSaved(false) }} />
+      </div>
+      <div className="form-group">
+        <label>{provider === 'dropbox' ? 'App Secret' : 'Client Secret'}</label>
+        <input type="password" value={clientSecret} onChange={e => { setClientSecret(e.target.value); setSaved(false) }}
+          placeholder={initialClientId ? 'laisser vide pour ne pas changer' : ''} />
+      </div>
+      <button className="btn-secondary" onClick={save} disabled={saving || !clientId.trim() || !clientSecret.trim()}>
+        {saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer les identifiants'}
+      </button>
+    </div>
+  )
+}
+
+function SipvCycleModal({ cycle, onClose, onSaved }) {
+  const [form, setForm] = useState({
+    frequency_type: cycle?.frequency_type || 'daily',
+    day_of_week: cycle?.day_of_week ?? 6,
+    day_of_month: cycle?.day_of_month ?? 1,
+    month_of_year: cycle?.month_of_year ?? 1,
+    retention_enabled: cycle?.retention_enabled ?? true,
+    retention_count: cycle?.retention_count ?? 3,
+  })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  async function save() {
+    setSaving(true)
+    setError('')
+    try {
+      let r
+      if (cycle) {
+        r = await api.put(`/v1/server/backup/cycles/${cycle.id}`, form)
+      } else {
+        r = await api.post('/v1/server/backup/cycles', { ...form, enabled: true })
+      }
+      onSaved(r.data)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Erreur')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">{cycle ? 'Modifier le cycle' : 'Ajouter un cycle'}</h3>
+        {error && <div className="adm-form-error">{error}</div>}
+        <div className="form-group">
+          <label>Fréquence</label>
+          <select value={form.frequency_type} onChange={e => f('frequency_type', e.target.value)} disabled={!!cycle}>
+            {Object.entries(SIPV_FREQUENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </select>
+        </div>
+        {form.frequency_type === 'weekly' && (
+          <div className="form-group">
+            <label>Jour de la semaine</label>
+            <select value={form.day_of_week} onChange={e => f('day_of_week', parseInt(e.target.value))}>
+              {SIPV_WEEKDAY_LABELS.map((label, i) => <option key={i} value={i}>{label}</option>)}
+            </select>
+          </div>
+        )}
+        {(form.frequency_type === 'monthly' || form.frequency_type === 'yearly') && (
+          <div className="form-group">
+            <label>Jour du mois</label>
+            <input type="number" min="1" max="31" value={form.day_of_month} onChange={e => f('day_of_month', parseInt(e.target.value))} />
+          </div>
+        )}
+        {form.frequency_type === 'yearly' && (
+          <div className="form-group">
+            <label>Mois</label>
+            <input type="number" min="1" max="12" value={form.month_of_year} onChange={e => f('month_of_year', parseInt(e.target.value))} />
+          </div>
+        )}
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 10, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.retention_enabled} onChange={e => f('retention_enabled', e.target.checked)} />
+          Garder plusieurs générations (sinon un seul fichier toujours écrasé)
+        </label>
+        {form.retention_enabled && (
+          <div className="form-group">
+            <label>Combien de générations garder</label>
+            <input type="number" min="1" value={form.retention_count} onChange={e => f('retention_count', parseInt(e.target.value))} />
+          </div>
+        )}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Enregistrer'}</button>
+        </div>
+      </div>
     </div>
   )
 }

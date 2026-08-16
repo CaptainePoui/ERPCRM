@@ -997,3 +997,93 @@ async def set_moh_selection(tenant_id: str, items: list[dict]) -> list[dict]:
         resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/moh/selection/tenant/{tenant_id}", json=items, headers=_headers())
         resp.raise_for_status()
         return resp.json()
+
+
+# ── Backup cloud SIPV (TASK-S059, proxy depuis la page Serveur) ────────────
+
+async def list_backup_connections() -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/backup/connections", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_backup_connection(provider: str, **kwargs) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/backup/connections/{provider}", json=kwargs, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_backup_credentials(provider: str, client_id: str, client_secret: str) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/backup/connections/{provider}/credentials",
+            json={"client_id": client_id, "client_secret": client_secret}, headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_backup_connect_url(provider: str) -> str:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/backup/connections/{provider}/connect-url", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()["url"]
+
+
+async def relay_backup_callback(provider: str, code: str, state: str) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/backup/connections/{provider}/callback",
+            json={"code": code, "state": state}, headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def disconnect_backup(provider: str) -> None:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/backup/connections/{provider}/disconnect", headers=_headers())
+        resp.raise_for_status()
+
+
+async def list_backup_cycles() -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/backup/cycles", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_backup_cycle(**kwargs) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/backup/cycles", json=kwargs, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_backup_cycle(cycle_id: str, **kwargs) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/backup/cycles/{cycle_id}", json=kwargs, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_backup_cycle(cycle_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/backup/cycles/{cycle_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def run_backup_now() -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/backup/run", headers=_headers(), timeout=120.0)
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def list_backup_logs() -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/backup/logs", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
