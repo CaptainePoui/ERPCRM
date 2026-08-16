@@ -3069,7 +3069,7 @@ restart `sipv-backend`/`sipv-backend-tls`), syntaxe vérifiée (`ast.parse`)
 avant chaque déploiement.
 Dépend de : TASK-029.2, TASKSIPV TASK-S055/S055.1/S055.3.
 
-### TASK-031 [ ] Audit config centralisée -- éliminer les IPs/chemins codés en dur restants
+### TASK-031 [x] Audit config centralisée -- éliminer les IPs/chemins codés en dur restants
 
 Discuté avec l'utilisateur (2026-08-11, "on parle pour voir") : objectif de
 pouvoir déménager un serveur (ex: nouvelle salle serveur) en ne changeant
@@ -3084,9 +3084,9 @@ Exemple déjà trouvé en cours de route (TASK-029.14) : `UPLOAD_DIR` et
 `PROMPT_CACHE_DIR` dans `sipv/backend/app/api/v1/endpoints/prompts.py` sont
 des chemins absolus codés en dur, pas dans `settings`.
 
-Pas commencé -- l'utilisateur veut d'abord finir TASK-029.14 (fait). Revenir
-dessus maintenant.
-Lien TASKSIPV : TASK-S056.
+Fait le 2026-08-16 -- aucune IP codée en dur côté ERPCRM (déjà propre).
+Détail complet du travail côté SIPV (13 chemins centralisés, 6 fichiers) :
+TASKSIPV.md TASK-S056.
 
 ### TASK-032 [ ] CDR dans la fiche compagnie + CDR par poste (filtré à ses appels)
 
@@ -3351,12 +3351,32 @@ Reste : même extension côté SIPV (TASK-S059, pas commencé) pour que ce
 serveur soit migrable aussi -- kamailio.cfg, internal.xml, vars.xml, certs
 TLS, unités systemd SIPV.
 
-**Reste avant utilisation réelle (bloquant, dépend de Philippe)** :
-1. Créer une app Dropbox (dropbox.com/developers/apps) pour obtenir App Key/Secret, à ajouter dans `.env` (`DROPBOX_CLIENT_ID`/`DROPBOX_CLIENT_SECRET`) + redirect URI `https://portail.simpleip.tel/api/v1/backup/connections/dropbox/callback` à y déclarer
-2. Activer l'API Google Drive + ajouter le redirect URI `https://portail.simpleip.tel/api/v1/backup/connections/google_drive/callback` dans la console Google Cloud existante (même projet que Google Calendar)
-3. Une fois fait : bouton "Connecter" dans Admin > Backup cloud pour chaque fournisseur, puis créer les cycles voulus (ex. journalier/hebdo/mensuel, 3 générations chacun)
+**État final 2026-08-16** :
+1. Dropbox ✓ -- connecté, testé de bout en bout (voir "Bug trouvé + corrigé"
+   et "Suite du bug" ci-dessus), cycles daily/weekly/monthly actifs (3
+   générations chacun), backup automatique + manuel confirmés fonctionnels.
+2. Google Drive -- **reporté par choix explicite de Philippe** (2026-08-16,
+   "je n'activerai pas l'API Google de suite"), PAS un blocage technique --
+   le code est prêt (même mécanisme que Dropbox), juste pas encore activé
+   côté console Google. Reprendre quand Philippe le demande.
+3. Cycles créés et vérifiés actifs.
 
-**Reste après ERPCRM** : réplication côté SIPV (TASK-S059) -- même mécanisme, backend SIPV + proxy dans `server.py`/`Server.jsx` d'ERPCRM (page "Serveur" est en fait rendue par ERPCRM, proxy vers SIPV via `sipv_client`, pas un frontend SIPV séparé).
+**Réplication SIPV (TASK-S059)** : FAIT, voir TASKSIPV.md -- même mécanisme,
+backend SIPV + proxy dans `server.py`/`Server.jsx` d'ERPCRM (page "Serveur"
+est en fait rendue par ERPCRM, proxy vers SIPV via `sipv_client`, pas un
+frontend SIPV séparé). Dropbox connecté et testé côté SIPV aussi. Google
+Drive même statut que ci-dessus (reporté).
+
+**Incident dépôt GitHub SIPV (2026-08-16)** : découvert que `CaptainePoui/SIPV`
+était poussé depuis un miroir du code conservé sur ERPCRM (`/home/simpleip/sipv`),
+jamais depuis le vrai serveur SIPV -- périmé depuis le 12 août, tout le
+travail de cette session (dont TASK-S059 au complet) n'y était pas. Repoussé
+à jour (rattrapé), mais Philippe a explicitement rejeté ce miroir (SIPV doit
+être autonome, va changer de serveur bientôt -- voir mémoire
+`project_server_migration_planned`) : mise en place en cours d'un accès
+Git DIRECT depuis le serveur SIPV lui-même (clé de déploiement générée,
+en attente que Philippe l'ajoute sur GitHub). Détail complet de l'incident
+dans TASKSIPV.md (TASK-S059).
 
 **Ajout 2026-08-13 (même soir)** : Philippe a précisé qu'ERPCRM/SIPV est un
 logiciel destiné à être VENDU à d'autres clients (interconnecteurs SIP) --
