@@ -9,6 +9,7 @@ import Autocomplete from '../components/Autocomplete'
 import QuickNewContact from '../components/QuickNewContact'
 import QuickNewCompany from '../components/QuickNewCompany'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
+import CdrReportsSection from '../components/CdrReportsSection'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 
@@ -1193,6 +1194,7 @@ export default function ContactDetail({ isNew }) {
                               </div>
                             </>
                           )}
+                          {companyId && <CdrReportsSection companyId={companyId} fixedExtension={sipExt.extension} />}
                         </>
                       )}
                     </div>

@@ -3255,6 +3255,23 @@ cdr_report_poller.py`, `backend/app/core/email.py`, `backend/app/main.py`,
 CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
 Cross-ref : TASKSIPV.md TASK-S055.6.
 
+**TASK-032.3 [x] Rapports programmés manquants côté fiche contact (2026-08-19)**
+Philippe : "pourquoi je ne l'ai pas dans le contact ??" -- `CdrReportsSection`
+n'avait été câblée que dans l'onglet CDR de la fiche compagnie, pas dans le
+toggle "Historique d'appels" de la fiche contact (l'exemple donné au départ,
+"poste 227", est justement un cas contact). Corrigé : `CdrReportsSection`
++ `CdrReportModal` extraits de `CompanyDetail.jsx` vers
+`frontend/src/components/CdrReportsSection.jsx` (composant partagé --
+avant dupliqué inutilement) avec un nouveau prop `fixedExtension` : quand
+fourni (fiche contact), verrouille le poste sur celui du contact (champ
+non éditable), cache la colonne "Filtre" (déjà impliqué), et filtre la
+liste affichée aux seuls rapports de ce poste. `ContactDetail.jsx` :
+ajouté dans le toggle "Historique d'appels", sous le tableau CDR.
+Vérifié : rapport créé avec `extension` verrouillé, correctement filtré
+côté client par poste (testé en direct, nettoyé après coup).
+Fichiers : nouveau `frontend/src/components/CdrReportsSection.jsx`,
+`frontend/src/pages/CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
+
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
 Demande de l'utilisateur (2026-08-11, GO reçu -- "oui fait tout ça"), en
