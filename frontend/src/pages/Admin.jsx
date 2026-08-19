@@ -534,7 +534,7 @@ function CycleModal({ cycle, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">{cycle ? 'Modifier le cycle' : 'Ajouter un cycle'}</h3>
         {error && <div className="adm-form-error">{error}</div>}
@@ -699,7 +699,7 @@ function UserModal({ user, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">{user ? 'Modifier utilisateur' : 'Nouvel utilisateur'}</h3>
         {error && <div className="adm-form-error">{error}</div>}
@@ -839,7 +839,7 @@ function PortalUserModal({ onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460 }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvel accès portail</h3>
         {error && <div className="adm-form-error">{error}</div>}

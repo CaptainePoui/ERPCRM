@@ -298,7 +298,7 @@ function SendTaskModal({ task, onClose, onSent }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Envoyer le rendez-vous</h3>
         {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
@@ -1223,7 +1223,7 @@ export default function Tasks({ defaultView = 'list' }) {
 
 function QuickAddChooser({ date, onClose, onPickTask, onPickRdv, onPickAppel }) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
         <h3 className="modal-title">Ajouter le {new Date(date + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1329,7 +1329,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
 
   return (
     <>
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 480 }}>
         <h3 className="modal-title">{isEdit ? 'Modifier' : 'Ajouter'} un événement</h3>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}

@@ -286,7 +286,7 @@ function SendDevisModal({ devisId, companyId, onClose, onSent }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Envoyer le devis</h3>
         {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
@@ -354,7 +354,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Ajouter une ligne</h3>
         <div className="inv-mode-tabs">

@@ -132,7 +132,7 @@ function NewItemModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvel item</h3>
         <div className="form-group">
@@ -166,7 +166,7 @@ function ClassifyModal({ items, onSave, onClose }) {
   const sorted = [...items].sort((a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' }))
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box classify-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Classer les articles</h3>
         <div className="classify-list">

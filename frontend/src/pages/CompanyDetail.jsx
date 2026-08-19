@@ -376,7 +376,7 @@ export default function CompanyDetail({ isNew }) {
       )}
 
       {confirmSipv !== null && c && (
-        <div className="modal-overlay" onClick={() => { setConfirmSipv(null); setSipvError('') }}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ width: 460 }} onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">
               {confirmSipv ? 'Créer/activer le tenant SIPV ?' : 'Désactiver le tenant SIPV ?'}
@@ -955,7 +955,7 @@ function NewAccessModal({ companyId, onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvel accès</h3>
         <div className="form-group">
@@ -1061,7 +1061,7 @@ function NewEquipmentModal({ companyId, onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480 }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvel équipement</h3>
         <div className="form-group">
@@ -3341,7 +3341,7 @@ function TenantModelTemplatesSection({ companyId, templates, loading, phoneModel
         </div>
       )}
       {(showNew || editing) && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau template par modèle'}</h3>
             <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
@@ -3556,7 +3556,7 @@ function NewDIDModal({ companyId, onClose, onCreated }) {
     } finally { setSaving(false) }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouveau DID</h3>
         <div className="form-group"><label>Numéro *</label><input value={form.number} onChange={e => f('number', e.target.value)} placeholder="Ex: 5149998888" autoFocus /></div>
@@ -3589,7 +3589,7 @@ function NewExtModal({ companyId, dids, onClose, onCreated }) {
     } finally { setSaving(false) }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvelle extension</h3>
         <div className="form-group"><label>Extension *</label><input value={form.extension} onChange={e => f('extension', e.target.value)} placeholder="Ex: 100" autoFocus /></div>

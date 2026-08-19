@@ -187,7 +187,7 @@ function CdrReportModal({ companyId, report, sipExts, fixedExtension, onClose, o
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
         <h3 className="modal-title">{report ? 'Modifier le rapport' : 'Nouveau rapport programmé'}</h3>
         {error && <div className="adm-form-error">{error}</div>}

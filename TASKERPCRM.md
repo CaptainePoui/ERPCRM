@@ -3578,3 +3578,45 @@ dans Admin > Backup cloud (`CredentialsForm` dans `Admin.jsx`, endpoint
 `PUT /connections/{provider}/credentials`). `.env` reste un fallback
 optionnel (`backup_cloud.resolve_credentials`). Un futur client n'a donc
 plus besoin d'accès SSH pour connecter son propre Dropbox/Google Drive.
+
+### TASK-036 [x] Aucun popup ne doit se fermer au clic extérieur (règle globale, tous les modaux)
+
+Philippe, très en colère, à raison : cliquer à l'extérieur d'un popup
+(sur l'overlay) le fermait et faisait perdre toute la saisie en cours --
+pattern quasi-systématique dans le frontend (`<div className="modal-overlay"
+onClick={onClose}>`). Règle persistante ajoutée en mémoire
+(`feedback_no_close_on_outside_click`) : seuls des boutons explicites
+(Annuler/Enregistrer) peuvent fermer un popup, plus jamais un clic sur
+l'overlay.
+
+**Fait (2026-08-19)** : tous les `modal-overlay` du frontend ERPCRM
+audités et corrigés (~40 popups, tous les fichiers `pages/*.jsx` et
+`components/*.jsx`, fichiers `.backup_*` ignorés volontairement -- code
+mort) :
+- `onClick={onClose}` (et variantes : `onClick={closeForm}`,
+  `onClick={() => setShowX(false)}`, fonctions imbriquées avec plusieurs
+  instructions) retiré de CHAQUE `<div className="modal-overlay">`.
+- Audit complémentaire demandé par Philippe : vérifié individuellement
+  que chaque popup garde bien un bouton Annuler/dismiss explicite ET
+  (si applicable) un bouton de sauvegarde -- aucun popup rendu
+  définitivement infermable par le retrait du clic extérieur. Un seul
+  cas particulier (`InvoiceDetail.jsx`, `PricePromptModal`) n'a pas de
+  bouton nommé littéralement "Annuler" mais ses 2 boutons ferment déjà
+  proprement sans perte de données (la ligne de facture est déjà
+  sauvegardée avant que ce popup n'apparaisse, il ne pose qu'une
+  question secondaire sur le catalogue) -- laissé tel quel.
+- `npm run build` + `erpcrm-frontend` redémarré, vérifié actif.
+
+Fichiers touchés (retrait `onClick` sur l'overlay uniquement, aucun autre
+changement) : `pages/Portal.jsx`, `pages/DevisDetail.jsx`,
+`pages/InvoiceDetail.jsx`, `pages/Employees.jsx`, `pages/Catalogue.jsx`,
+`pages/Server.jsx`, `pages/PurchaseOrders.jsx`, `pages/PurchaseOrderDetail.jsx`,
+`pages/TicketDetail.jsx`, `pages/CompanyDetail.jsx`, `pages/Tasks.jsx`,
+`pages/Admin.jsx`, `pages/ContactDetail.jsx`, `components/NewTicketModal.jsx`,
+`components/NewInvoiceModal.jsx`, `components/NewTaskModal.jsx`,
+`components/NewDevisModal.jsx`, `components/QuickNewContact.jsx`,
+`components/QuickNewCompany.jsx`, `components/CdrReportsSection.jsx`.
+
+⚠️ Règle à appliquer à TOUT nouveau popup créé désormais (ERPCRM et SIPV) --
+ne jamais remettre `onClick={onClose}` sur un `modal-overlay`, voir mémoire
+persistante `feedback_no_close_on_outside_click`.

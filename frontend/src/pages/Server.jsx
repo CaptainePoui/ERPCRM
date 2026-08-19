@@ -447,7 +447,7 @@ function SipvCycleModal({ cycle, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">{cycle ? 'Modifier le cycle' : 'Ajouter un cycle'}</h3>
         {error && <div className="adm-form-error">{error}</div>}
@@ -761,7 +761,7 @@ function GlobalTemplatesSection({ server }) {
         </div>
       )}
       {(showNew || editing) && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau Global Template'}</h3>
             <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
@@ -853,7 +853,7 @@ function TenantTemplatesSection({ server }) {
         </div>
       )}
       {(showNew || editing) && (
-        <div className="modal-overlay" onClick={closeForm}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau template de tenant'}</h3>
             <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>

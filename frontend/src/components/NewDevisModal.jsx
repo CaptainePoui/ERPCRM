@@ -37,7 +37,7 @@ export default function NewDevisModal({ onClose, prefillCompany = null }) {
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay">
         <div className="modal-box" onClick={e => e.stopPropagation()}>
           <h3 className="modal-title">Nouveau devis</h3>
           <Autocomplete

@@ -93,7 +93,7 @@ function NewPOModal({ onClose, onCreated }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouveau bon de commande</h3>
         <div className="form-group"><label>Fournisseur *</label><input value={form.supplier_name} onChange={e => f('supplier_name', e.target.value)} autoFocus /></div>

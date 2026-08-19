@@ -48,7 +48,7 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay">
         <div className="modal-box" onClick={e => e.stopPropagation()}>
           <h3 className="modal-title">Nouvelle facture</h3>
           <Autocomplete

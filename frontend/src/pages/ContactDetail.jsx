@@ -805,7 +805,7 @@ export default function ContactDetail({ isNew }) {
         <QuickNewContact initialName={quickContactName} onCreated={afterSiteContactCreated} onClose={() => setQuickContactName(null)} />
       )}
       {confirmSipv && c && (
-        <div className="modal-overlay" onClick={() => { setConfirmSipv(false); setSipvError('') }}>
+        <div className="modal-overlay">
           <div className="modal-box" style={{ width: 460 }} onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Créer un poste SIP pour {c.first_name} {c.last_name} ?</h3>
             <p>
@@ -1642,7 +1642,7 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ width: 460, maxHeight: '85vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">{isEdit ? "Modifier l'accès portail" : 'Nouvel accès portail'}</h3>
         {error && <div className="form-error">{error}</div>}

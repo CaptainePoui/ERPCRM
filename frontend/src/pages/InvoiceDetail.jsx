@@ -438,7 +438,7 @@ function SendInvoiceModal({ invoiceId, companyId, onClose, onSent }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Envoyer la facture</h3>
         {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
@@ -503,7 +503,7 @@ function AddPaymentModal({ methods, invoiceTotal, amountPaid, onClose, onSave })
   const fmtC = v => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(v)
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Encaisser un paiement</h3>
         <div className="form-group">
@@ -592,7 +592,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box modal-wide" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Ajouter une ligne</h3>
         <div className="inv-mode-tabs">

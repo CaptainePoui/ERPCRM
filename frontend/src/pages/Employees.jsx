@@ -139,7 +139,7 @@ export default function Employees() {
 
       {/* ── Modal ajouter employé ── */}
       {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Ajouter un employé</h3>
             <Autocomplete label="Contact" items={contactItems} value={null} onSelect={addEmployee} placeholder="Rechercher un contact..." autoFocus />
@@ -152,7 +152,7 @@ export default function Employees() {
 
       {/* ── Modal créer paiement salaire ── */}
       {showPay && (
-        <div className="modal-overlay" onClick={() => setShowPay(null)}>
+        <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Ajouter un salaire à payer</h3>
             <div style={{ display: 'flex', gap: 10 }}>

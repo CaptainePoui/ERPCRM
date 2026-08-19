@@ -175,7 +175,7 @@ export default function NewTaskModal({
   const appliedTpl = chosenTemplate ? templates.find(t => String(t.id) === chosenTemplate) : null
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 580, maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouvelle tâche</h3>
 

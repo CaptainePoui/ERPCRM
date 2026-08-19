@@ -458,7 +458,7 @@ function NewTicketModal({ onClose, onCreated }) {
     } finally { setSaving(false) }
   }
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Nouveau ticket</h3>
         <div className="form-group"><label>Titre *</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus /></div>

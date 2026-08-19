@@ -226,7 +226,7 @@ function AddLineModal({ poId, onClose, onAdded }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Ajouter une ligne</h3>
         <div className="form-group">

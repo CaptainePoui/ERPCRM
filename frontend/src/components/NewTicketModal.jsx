@@ -6,7 +6,7 @@ import QuickNewCompany from './QuickNewCompany'
 
 function CompanyPickerModal({ companies, onPick, onClose }) {
   return (
-    <div className="modal-overlay" onClick={onClose} style={{ zIndex: 300 }}>
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
       <div className="modal-box" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Choisir la compagnie</h3>
         <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>Ce contact est lié à plusieurs compagnies :</p>
@@ -101,7 +101,7 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-overlay">
         <div className="modal-box" onClick={e => e.stopPropagation()}>
           <h3 className="modal-title">Nouveau ticket</h3>
           <Autocomplete
