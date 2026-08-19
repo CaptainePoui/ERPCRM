@@ -11,7 +11,7 @@ import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 
-const TABS = ['Général', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'Tâches', 'Photos', 'Journal']
+const TABS = ['Général', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
 const TAB_SLUGS = ['general', 'contacts', 'tickets', 'inventaire', 'telephonie', 'taches', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
@@ -508,9 +508,10 @@ export default function CompanyDetail({ isNew }) {
             {tab === 2 && <TicketsTab companyId={id} />}
             {tab === 3 && <InventaireTab companyId={id} />}
             {tab === 4 && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}
-            {tab === 5 && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
-            {tab === 6 && <PhotosTab companyId={id} />}
-            {tab === 7 && <JournalFeed entityId={id} />}
+            {tab === 5 && <CdrSection companyId={id} />}
+            {tab === 6 && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
+            {tab === 7 && <PhotosTab companyId={id} />}
+            {tab === 8 && <JournalFeed entityId={id} />}
           </>
         )}
       </div>
@@ -1701,8 +1702,6 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
       <TenantModelTemplatesSection companyId={companyId} templates={tenantModelTemplates} loading={tenantModelTemplatesLoading}
         phoneModels={phoneModels} onRefresh={loadTenantModelTemplates} />
 
-      <CdrSection companyId={companyId} sipExts={sipExts} />
-
       <TrunkSection companyId={companyId} />
 
       {showNewDid && (
@@ -1723,15 +1722,19 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 }
 
 // ── CDR (TASK-032) -- historique d'appels de toute la compagnie, filtre optionnel par poste.
-function CdrSection({ companyId, sipExts }) {
+function CdrSection({ companyId }) {
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [extFilter, setExtFilter] = useState('')
   const [loading, setLoading] = useState(false)
+  const [sipExts, setSipExts] = useState([])
   const pageSize = 25
 
   useEffect(() => { load() }, [companyId, page, extFilter])
+  // Onglet CDR séparé (plus dans l'onglet Téléphonie) -- charge ses propres
+  // postes pour le filtre au lieu de dépendre de l'état de TelephonyTab.
+  useEffect(() => { api.get(`/v1/companies/${companyId}/sip-extensions`).then(r => setSipExts(r.data)) }, [companyId])
 
   function load() {
     setLoading(true)

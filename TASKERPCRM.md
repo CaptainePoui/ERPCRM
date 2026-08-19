@@ -3139,6 +3139,24 @@ Fichiers ERPCRM : `backend/app/core/sipv_client.py`,
 `frontend/src/pages/CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
 Cross-ref : TASKSIPV.md TASK-S055.5.
 
+**TASK-032.1 [x] CDR séparé du reste, pas empilé sur la même page (2026-08-19)**
+Demande de Philippe : le CDR ne doit pas être affiché en permanence mêlé au
+reste (fiche compagnie ni fiche contact) -- un onglet à part.
+- `CompanyDetail.jsx` -- `CdrSection` sortie de l'onglet Téléphonie, devient
+  son propre onglet top-level ("CDR", nouvel index 5 dans `TABS`, décale
+  Tâches/Photos/Journal de 1). Charge maintenant ses propres postes
+  (`/v1/companies/{id}/sip-extensions`) au lieu de dépendre de l'état de
+  `TelephonyTab`.
+- `ContactDetail.jsx` -- pas de vrai système d'onglets sur cette page
+  (page à défilement unique). Ajouté un mini-toggle à 2 boutons ("Poste
+  SIP" / "Historique d'appels", classe `tab-btn` réutilisée) juste au-dessus
+  de la zone concernée : masque "Options du poste" + "Plan d'appel" quand
+  CDR est affiché, et vice-versa. Identification/caller ID/renvois/DND/
+  E911/messagerie (au-dessus de ce toggle) restent visibles en tout temps,
+  pas concernés par la demande.
+`npm run build` + `erpcrm-frontend` redémarré (aucun changement backend,
+les 2 endpoints CDR existants sont réutilisés tels quels).
+
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
 Demande de l'utilisateur (2026-08-11, GO reçu -- "oui fait tout ça"), en
