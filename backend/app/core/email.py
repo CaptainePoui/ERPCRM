@@ -1,7 +1,9 @@
 import aiosmtplib
 from datetime import datetime, timezone
+from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email import encoders
 from jinja2 import Environment, BaseLoader
 from app.core.config import settings
 
@@ -439,20 +441,29 @@ def build_ics_invite(
     return "\r\n".join(lines) + "\r\n"
 
 
-async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None) -> bool:
-    """Send email. Returns True on success, False if SMTP not configured or on error."""
+async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None, attachment: tuple[str, bytes, str] | None = None) -> bool:
+    """Send email. Returns True on success, False if SMTP not configured or on error.
+    attachment: (filename, content_bytes, mime_subtype) -- ex: ("rapport.csv", b"...", "csv")."""
     if not settings.SMTP_HOST:
         return False
     if tracking_entity_type and tracking_entity_id:
         html_body = html_body + _tracking_pixel(tracking_entity_type, tracking_entity_id)
-    if ics_content:
+    if ics_content or attachment:
         msg = MIMEMultipart("mixed")
         alt = MIMEMultipart("alternative")
         alt.attach(MIMEText(html_body, "html", "utf-8"))
         msg.attach(alt)
-        ics_part = MIMEText(ics_content, "calendar; method=REQUEST", "utf-8")
-        ics_part.add_header("Content-Disposition", "attachment", filename="invite.ics")
-        msg.attach(ics_part)
+        if ics_content:
+            ics_part = MIMEText(ics_content, "calendar; method=REQUEST", "utf-8")
+            ics_part.add_header("Content-Disposition", "attachment", filename="invite.ics")
+            msg.attach(ics_part)
+        if attachment:
+            filename, content, subtype = attachment
+            part = MIMEBase("application", subtype)
+            part.set_payload(content)
+            encoders.encode_base64(part)
+            part.add_header("Content-Disposition", "attachment", filename=filename)
+            msg.attach(part)
     else:
         msg = MIMEMultipart("alternative")
         msg.attach(MIMEText(html_body, "html", "utf-8"))
@@ -690,3 +701,50 @@ async def send_rdv_confirmation_email(
         attendee_name=attendee_name,
     )
     return await _send(to_email, subject, html, tracking_entity_type="appointment", tracking_entity_id=appointment_id, ics_content=ics)
+
+
+# ── Rapport CDR programme (TASK-032.2) ──────────────────────────────────────
+
+_CDR_REPORT_TMPL = """\
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 0; background: #f5f7fa; }
+  .wrap { max-width: 560px; margin: 20px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px #0001; }
+  .header { background: #0f3460; color: #fff; padding: 20px 28px; }
+  .header h2 { margin: 0; font-size: 18px; }
+  .body { padding: 24px 28px; font-size: 14px; line-height: 1.5; }
+  .footer { padding: 16px 28px; font-size: 11px; color: #999; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header"><h2>{{ report_name }}</h2></div>
+  <div class="body">
+    <p>Rapport d'appels pour {{ company_name }}, période du {{ period_from }} au {{ period_to }}.</p>
+    <p>{{ call_count }} appel(s){{ filter_label }}.</p>
+    <p>Le détail est en pièce jointe (fichier CSV).</p>
+  </div>
+  <div class="footer">Simple IP — rapport envoyé automatiquement</div>
+</div>
+</body>
+</html>
+"""
+
+
+async def send_cdr_report_email(
+    to_email: str,
+    report_name: str,
+    company_name: str,
+    period_from: str,
+    period_to: str,
+    call_count: int,
+    filter_label: str,
+    csv_bytes: bytes,
+    csv_filename: str,
+) -> bool:
+    ctx = dict(report_name=report_name, company_name=company_name, period_from=period_from, period_to=period_to, call_count=call_count, filter_label=filter_label)
+    html = _render(_CDR_REPORT_TMPL, ctx)
+    subject = f"{report_name} — {company_name}"
+    return await _send(to_email, subject, html, attachment=(csv_filename, csv_bytes, "csv"))

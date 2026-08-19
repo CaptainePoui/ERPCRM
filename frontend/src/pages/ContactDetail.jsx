@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import NewTicketModal from '../components/NewTicketModal'
@@ -165,6 +165,25 @@ function NewContactForm() {
   )
 }
 
+// Détail complet d'un appel (TASK-032.2) -- même composant que CompanyDetail.jsx.
+function CdrDetailRow({ c, colSpan }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} style={{ padding: '8px 12px', background: '#F3F4F6', fontSize: 11 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6 }}>
+          <div><span style={{ color: '#6B7280' }}>Réponse : </span>{c.answer_time ? new Date(c.answer_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: '#6B7280' }}>Fin : </span>{c.end_time ? new Date(c.end_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: '#6B7280' }}>Durée totale : </span>{c.duration != null ? `${c.duration}s` : '—'}</div>
+          <div><span style={{ color: '#6B7280' }}>Nom afficheur : </span>{c.clid || '—'}</div>
+          <div><span style={{ color: '#6B7280' }}>Coût : </span>{c.cost != null ? `${c.cost} $` : '—'}</div>
+          <div><span style={{ color: '#6B7280' }}>Taux/min : </span>{c.rate_per_minute != null ? `${c.rate_per_minute} $` : '—'}</div>
+          <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#6B7280' }}>ID appel : </span><code>{c.uniqueid || '—'}</code></div>
+        </div>
+      </td>
+    </tr>
+  )
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
   const { id } = useParams()
@@ -231,6 +250,7 @@ export default function ContactDetail({ isNew }) {
   // Demande de Philippe (2026-08-19) : CDR dans son propre onglet, pas en
   // permanence affiche sur la meme page que le reste du poste SIP.
   const [showCdr, setShowCdr] = useState(false)
+  const [expandedCdrId, setExpandedCdrId] = useState(null)
 
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
 
@@ -1152,14 +1172,17 @@ export default function ContactDetail({ isNew }) {
                                 </thead>
                                 <tbody>
                                   {cdrItems.map(c => (
-                                    <tr key={c.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
-                                      <td style={{ padding: '6px 8px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
-                                      <td style={{ padding: '6px 8px' }}>{c.src || ''}</td>
-                                      <td style={{ padding: '6px 8px' }}>{c.dst || ''}</td>
-                                      <td style={{ padding: '6px 8px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
-                                      <td style={{ padding: '6px 8px' }}>{c.billsec != null ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, '0')}` : ''}</td>
-                                      <td style={{ padding: '6px 8px' }}>{c.disposition || ''}</td>
-                                    </tr>
+                                    <Fragment key={c.id}>
+                                      <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpandedCdrId(expandedCdrId === c.id ? null : c.id)}>
+                                        <td style={{ padding: '6px 8px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
+                                        <td style={{ padding: '6px 8px' }}>{c.src || ''}</td>
+                                        <td style={{ padding: '6px 8px' }}>{c.dst || ''}</td>
+                                        <td style={{ padding: '6px 8px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
+                                        <td style={{ padding: '6px 8px' }}>{c.billsec != null ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, '0')}` : ''}</td>
+                                        <td style={{ padding: '6px 8px' }}>{c.disposition || ''}</td>
+                                      </tr>
+                                      {expandedCdrId === c.id && <CdrDetailRow c={c} colSpan={6} />}
+                                    </Fragment>
                                   ))}
                                 </tbody>
                               </table>

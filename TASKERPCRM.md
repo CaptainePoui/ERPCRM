@@ -3157,6 +3157,104 @@ reste (fiche compagnie ni fiche contact) -- un onglet à part.
 `npm run build` + `erpcrm-frontend` redémarré (aucun changement backend,
 les 2 endpoints CDR existants sont réutilisés tels quels).
 
+### TASK-032.2 [x] Détail d'appel au clic + rapports CDR programmés par courriel + rétention configurable
+
+Demande de Philippe (2026-08-19), 3 morceaux :
+
+**1. Détail d'appel au clic** -- cliquer une ligne CDR (compagnie ou contact)
+affiche les champs pas déjà dans le tableau (heure de réponse, heure de fin,
+coût, taux, uniqueid FreeSWITCH, disposition brute).
+
+**2. Rapports CDR programmés par courriel** -- exemple donné : poste 227,
+appels SORTANTS seulement, envoyé chaque semaine à un destinataire choisi.
+Récurrence voulue, très précise :
+- "Journalier" avec choix de PLUSIEURS jours de la semaine (L,M,M,J,V,S,D
+  -- pas juste un jour, un sous-ensemble)
+- "Hebdomadaire" avec UN jour de la semaine
+- "Mensuel" avec UN jour du mois
+Design retenu : réutilise exactement le pattern déjà validé de
+`BackupCycle`/`CycleModal` (Admin.jsx, TASK-035) -- `frequency_type`
+(`custom_days`/`weekly`/`monthly`), `day_of_week`/`day_of_month` comme
+là-bas, + `days_of_week` (tableau, nouveau) pour le mode `custom_days`
+demandé ici. Filtre par poste (optionnel) + direction (optionnel,
+entrant/sortant/tous). Envoi côté ERPCRM (déjà l'infra courriel,
+`core/email.py`), données CDR tirées via le proxy SIPV déjà en place
+(TASK-032). Poller asyncio in-process (même convention que
+`backup_poller.py`), pas de cron système.
+⚠️ "je veux pouvoir être très précis, choisir le nombre de jours semaine
+mois" -- interprété comme choisir un jour EXACT (numéro précis, ex. jour
+17 du mois) plutôt qu'un multiplicateur "chaque N semaines/mois" (pas
+demandé clairement, non ajouté pour éviter une supposition -- LOI 4). À
+revoir avec Philippe si ce n'est pas ce qu'il voulait dire.
+
+**3. Rétention CDR configurable par tenant** -- 1 an par défaut, augmentable
+si un client paie pour cette ressource. Coté SIPV : `retention_days` sur
+`Tenant` (défaut 365) + job de purge (même pattern poller). Pas de logique
+de facturation/paywall ajoutée ici (pas demandé) -- juste le champ
+configurable, à ajuster manuellement par Philippe quand une entente est
+prise avec un client.
+
+**Fait (2026-08-19)** :
+
+**1. Détail au clic** -- `CdrDetailRow` (composant partagé, dupliqué dans
+`CompanyDetail.jsx` et `ContactDetail.jsx`, page à défilement unique sans
+composants partagés entre pages dans ce projet) : réponse, fin, durée
+totale, nom afficheur, coût, taux/min, ID appel. Côté SIPV, `CDROut`
+(`cdr.py`) étendu avec ces champs (déjà en DB, jamais exposés par l'API
+avant) -- voir TASKSIPV.md TASK-S055.6.
+
+**2. Rapports programmés** -- nouvelles tables `cdr_report_schedules` +
+`cdr_report_run_logs` (migration `3792331071d9`, autogenerate nettoyée de
+2 suppressions d'index sans rapport détectées au passage, pas touchées).
+- `backend/app/workers/cdr_report_runner.py` -- construit le CSV (fetch
+  toutes les pages CDR via `sipv_client.list_cdr`, filtré poste/direction),
+  envoie par courriel (pièce jointe), journalise dans
+  `CdrReportRunLog`. Fenêtre du rapport = depuis le dernier envoi
+  (`last_sent_at`) ; si jamais envoyé, défaut 7 jours (30 pour mensuel) --
+  évite un premier rapport vide (créé et envoyé le même jour sinon).
+- `backend/app/services/cdr_report_poller.py` -- même pattern 60s que
+  `backup_poller.py`, une seule tentative par jour par rapport (même
+  garde-fou anti-boucle que le bug backup du 2026-08-14).
+- `backend/app/core/email.py` -- `_send()` accepte maintenant une pièce
+  jointe générique (`attachment: (filename, bytes, mimetype)`), en plus du
+  cas ICS déjà existant. Nouveau `send_cdr_report_email()`.
+- Endpoints (`telephony.py`) : CRUD complet + `POST .../send-now` (bouton
+  "Envoyer maintenant", teste immédiatement) + `GET .../logs` (historique).
+- `CompanyDetail.jsx` -- `CdrReportsSection` (onglet CDR) : tableau des
+  rapports (récurrence lisible, filtre, destinataires, actif), ligne
+  dépliable = historique des envois, `CdrReportModal` pour créer/modifier
+  (sélecteur de fréquence réutilisant exactement `CycleModal`/`BackupCycle`
+  d'Admin.jsx -- même design déjà validé par Philippe pour les cycles de
+  backup, étendu avec le mode "jours choisis" en boutons toggle L/M/M/J/V/S/D).
+
+Vérifié en conditions réelles (pas juste des imports) : rapport de test créé
+directement en DB (tenant "Simple IP inc."), envoyé manuellement --
+5 appels (poste 103, entrants, 7 derniers jours) correctement filtrés,
+CSV généré, courriel reçu avec pièce jointe. `run_scheduled()` exécuté à
+vide sans erreur. Schémas Pydantic validés contre le format exact envoyé
+par `CdrReportModal.jsx` (custom_days, weekly, monthly, update partiel).
+Rapport de test supprimé après coup.
+
+**3. Rétention** -- `Tenant.cdr_retention_days` (SIPV, défaut 365) +
+purge horaire (`cdr_retention_runner.py`/`cdr_retention_poller.py`, même
+pattern poller). Endpoint ERPCRM `GET/PUT /telephony/company/{id}/
+cdr-retention`, contrôle ajouté dans l'en-tête de l'onglet CDR
+(`CompanyDetail.jsx`). Testé contre la DB réelle : 365 jours par défaut,
+`purge_expired_cdr()` exécuté sans rien supprimer (rien de plus vieux
+qu'1 an, attendu). Pas de logique de facturation ajoutée -- juste le champ,
+ajustable manuellement par Philippe.
+
+`npm run build` + les 3 services ERPCRM + `sipv-backend`/`sipv-backend-tls`
+redémarrés, tous vérifiés actifs.
+
+Fichiers ERPCRM : `backend/app/models/cdr_report.py`, `backend/app/models/
+__init__.py`, `backend/alembic/versions/3792331071d9_cdr_report_schedules.py`,
+`backend/app/workers/cdr_report_runner.py`, `backend/app/services/
+cdr_report_poller.py`, `backend/app/core/email.py`, `backend/app/main.py`,
+`backend/app/api/v1/endpoints/telephony.py`, `frontend/src/pages/
+CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
+Cross-ref : TASKSIPV.md TASK-S055.6.
+
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
 Demande de l'utilisateur (2026-08-11, GO reçu -- "oui fait tout ça"), en

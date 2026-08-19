@@ -13,7 +13,9 @@ from app.api.v1.endpoints.auth import get_current_user, get_current_user_media
 from app.models.telephony import DID, Extension
 from app.models.company import Company
 from app.models.company_site import CompanySite
+from app.models.cdr_report import CdrReportSchedule, CdrReportRunLog
 from app.models.user import User
+from app.workers.cdr_report_runner import run_manual as run_cdr_report_manual
 
 router = APIRouter()
 
@@ -556,6 +558,170 @@ async def list_company_cdr(
         )
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+class CdrRetentionOut(BaseModel):
+    retention_days: int
+
+class CdrRetentionIn(BaseModel):
+    retention_days: int
+
+
+@router.get("/company/{company_id}/cdr-retention", response_model=CdrRetentionOut)
+async def get_company_cdr_retention(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id_for_did(company_id, db)
+    if not tenant_id:
+        return CdrRetentionOut(retention_days=365)
+    try:
+        tenant = await sipv_client.get_tenant(tenant_id)
+        return CdrRetentionOut(retention_days=tenant.get("cdr_retention_days", 365))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.put("/company/{company_id}/cdr-retention", response_model=CdrRetentionOut)
+async def update_company_cdr_retention(company_id: uuid.UUID, payload: CdrRetentionIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id_required(company_id, db)
+    if payload.retention_days < 1:
+        raise HTTPException(status_code=400, detail="La rétention doit être d'au moins 1 jour")
+    try:
+        tenant = await sipv_client.update_tenant(tenant_id, cdr_retention_days=payload.retention_days)
+        return CdrRetentionOut(retention_days=tenant.get("cdr_retention_days", payload.retention_days))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Rapports CDR programmés (TASK-032.2) ──────────────────────────────────────
+
+class CdrReportScheduleOut(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    name: str
+    recipients: str
+    extension: str | None
+    direction: str | None
+    frequency_type: str
+    days_of_week: list[int] | None
+    day_of_week: int | None
+    day_of_month: int | None
+    send_hour: str
+    timezone: str
+    is_active: bool
+    last_sent_at: str | None = None
+    model_config = {"from_attributes": True}
+
+class CdrReportScheduleIn(BaseModel):
+    name: str
+    recipients: str
+    extension: str | None = None
+    direction: str | None = None
+    frequency_type: str  # custom_days / weekly / monthly
+    days_of_week: list[int] | None = None
+    day_of_week: int | None = None
+    day_of_month: int | None = None
+    send_hour: str = "08:00"
+    timezone: str = "America/Toronto"
+
+class CdrReportScheduleUpdate(BaseModel):
+    name: str | None = None
+    recipients: str | None = None
+    extension: str | None = None
+    clear_extension: bool = False
+    direction: str | None = None
+    clear_direction: bool = False
+    frequency_type: str | None = None
+    days_of_week: list[int] | None = None
+    day_of_week: int | None = None
+    day_of_month: int | None = None
+    send_hour: str | None = None
+    timezone: str | None = None
+    is_active: bool | None = None
+
+class CdrReportRunLogOut(BaseModel):
+    id: uuid.UUID
+    success: bool
+    error_message: str | None
+    call_count: int
+    recipient_count: int
+    triggered_manually: bool
+    sent_at: str
+    model_config = {"from_attributes": True}
+
+
+def _report_out(s: CdrReportSchedule) -> CdrReportScheduleOut:
+    return CdrReportScheduleOut(
+        id=s.id, company_id=s.company_id, name=s.name, recipients=s.recipients,
+        extension=s.extension, direction=s.direction, frequency_type=s.frequency_type,
+        days_of_week=s.days_of_week, day_of_week=s.day_of_week, day_of_month=s.day_of_month,
+        send_hour=s.send_hour, timezone=s.timezone, is_active=s.is_active,
+        last_sent_at=s.last_sent_at.isoformat() if s.last_sent_at else None,
+    )
+
+
+@router.get("/company/{company_id}/cdr-reports", response_model=list[CdrReportScheduleOut])
+async def list_cdr_reports(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(select(CdrReportSchedule).where(CdrReportSchedule.company_id == company_id).order_by(CdrReportSchedule.name))
+    return [_report_out(s) for s in result.scalars().all()]
+
+
+@router.post("/company/{company_id}/cdr-reports", response_model=CdrReportScheduleOut, status_code=status.HTTP_201_CREATED)
+async def create_cdr_report(company_id: uuid.UUID, payload: CdrReportScheduleIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    s = CdrReportSchedule(company_id=company_id, **payload.model_dump())
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    return _report_out(s)
+
+
+@router.put("/cdr-reports/{schedule_id}", response_model=CdrReportScheduleOut)
+async def update_cdr_report(schedule_id: uuid.UUID, payload: CdrReportScheduleUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    s = await db.get(CdrReportSchedule, schedule_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Rapport introuvable")
+    data = payload.model_dump(exclude_unset=True, exclude={"clear_extension", "clear_direction"})
+    if payload.clear_extension:
+        data["extension"] = None
+    if payload.clear_direction:
+        data["direction"] = None
+    for k, v in data.items():
+        setattr(s, k, v)
+    await db.commit()
+    await db.refresh(s)
+    return _report_out(s)
+
+
+@router.delete("/cdr-reports/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_cdr_report(schedule_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    s = await db.get(CdrReportSchedule, schedule_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Rapport introuvable")
+    await db.delete(s)
+    await db.commit()
+
+
+@router.post("/cdr-reports/{schedule_id}/send-now", response_model=CdrReportRunLogOut)
+async def send_cdr_report_now(schedule_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        log_row = await run_cdr_report_manual(schedule_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return CdrReportRunLogOut(
+        id=log_row.id, success=log_row.success, error_message=log_row.error_message,
+        call_count=log_row.call_count, recipient_count=log_row.recipient_count,
+        triggered_manually=log_row.triggered_manually, sent_at=log_row.sent_at.isoformat(),
+    )
+
+
+@router.get("/cdr-reports/{schedule_id}/logs", response_model=list[CdrReportRunLogOut])
+async def list_cdr_report_logs(schedule_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    result = await db.execute(
+        select(CdrReportRunLog).where(CdrReportRunLog.schedule_id == schedule_id).order_by(CdrReportRunLog.sent_at.desc()).limit(20)
+    )
+    return [
+        CdrReportRunLogOut(id=r.id, success=r.success, error_message=r.error_message, call_count=r.call_count,
+                            recipient_count=r.recipient_count, triggered_manually=r.triggered_manually, sent_at=r.sent_at.isoformat())
+        for r in result.scalars().all()
+    ]
 
 
 # ── Trunks (TASK-S018.2, fiche trunk unifiée) ─────────────────────────────────

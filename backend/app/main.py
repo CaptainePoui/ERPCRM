@@ -14,6 +14,7 @@ from app.api.v1.endpoints import backup as backup_router
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
+from app.services.cdr_report_poller import run_cdr_report_poller
 
 
 @asynccontextmanager
@@ -23,13 +24,15 @@ async def lifespan(app: FastAPI):
     poller_task = asyncio.create_task(run_poller())
     reminder_task = asyncio.create_task(run_reminder_poller())
     backup_task = asyncio.create_task(run_backup_poller())
+    cdr_report_task = asyncio.create_task(run_cdr_report_poller())
     try:
         yield
     finally:
         poller_task.cancel()
         reminder_task.cancel()
         backup_task.cancel()
-        for t in (poller_task, reminder_task, backup_task):
+        cdr_report_task.cancel()
+        for t in (poller_task, reminder_task, backup_task, cdr_report_task):
             try:
                 await t
             except asyncio.CancelledError:
