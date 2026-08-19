@@ -185,6 +185,61 @@ function CdrDetailRow({ c, colSpan }) {
   )
 }
 
+// Onglet CDR de la fiche contact (TASK-032.4) -- toujours visible (pas caché
+// derrière la présence d'un poste SIP, même logique que CompanyDetail.jsx qui
+// affiche l'onglet même sans tenant SIPV actif, juste avec un état vide clair).
+function ContactCdrTab({ id, companyId, sipExt, sipExtLoading, cdrItems, cdrTotal, cdrPage, setCdrPage, cdrLoading, cdrPageSize, expandedCdrId, setExpandedCdrId }) {
+  if (sipExtLoading) return <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>
+  if (!sipExt) return <div className="empty-tab">Ce contact n'a pas de poste SIP associé -- aucun historique d'appels possible.</div>
+
+  return (
+    <div>
+      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+        Historique d'appels — poste {sipExt.extension} ({cdrTotal})
+      </div>
+      {!cdrLoading && cdrItems.length === 0 && (
+        <div className="empty-tab">Aucun appel enregistré.</div>
+      )}
+      {cdrItems.length > 0 && (
+        <>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+            <thead>
+              <tr style={{ background: '#F9FAFB' }}>
+                {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {cdrItems.map(c => (
+                <Fragment key={c.id}>
+                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpandedCdrId(expandedCdrId === c.id ? null : c.id)}>
+                    <td style={{ padding: '8px 12px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
+                    <td style={{ padding: '8px 12px' }}>{c.src || ''}</td>
+                    <td style={{ padding: '8px 12px' }}>{c.dst || ''}</td>
+                    <td style={{ padding: '8px 12px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
+                    <td style={{ padding: '8px 12px' }}>{c.billsec != null ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, '0')}` : ''}</td>
+                    <td style={{ padding: '8px 12px' }}>{c.disposition || ''}</td>
+                  </tr>
+                  {expandedCdrId === c.id && <CdrDetailRow c={c} colSpan={6} />}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10, alignItems: 'center' }}>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={cdrPage <= 1} onClick={() => setCdrPage(p => p - 1)}>← Précédent</button>
+            <span style={{ fontSize: 12, color: '#6B7280' }}>Page {cdrPage} / {Math.max(1, Math.ceil(cdrTotal / cdrPageSize))}</span>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={cdrPage >= Math.max(1, Math.ceil(cdrTotal / cdrPageSize))} onClick={() => setCdrPage(p => p + 1)}>Suivant →</button>
+          </div>
+        </>
+      )}
+      {companyId && <CdrReportsSection companyId={companyId} fixedExtension={sipExt.extension} />}
+    </div>
+  )
+}
+
+const CONTACT_TABS = ['Général', 'CDR']
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
   const { id } = useParams()
@@ -248,10 +303,11 @@ export default function ContactDetail({ isNew }) {
   const [cdrPage, setCdrPage] = useState(1)
   const [cdrLoading, setCdrLoading] = useState(false)
   const cdrPageSize = 10
-  // Demande de Philippe (2026-08-19) : CDR dans son propre onglet, pas en
-  // permanence affiche sur la meme page que le reste du poste SIP.
-  const [showCdr, setShowCdr] = useState(false)
   const [expandedCdrId, setExpandedCdrId] = useState(null)
+  // Demande de Philippe (2026-08-19) : un vrai onglet CDR (pas un bouton
+  // enfoui au milieu de la fiche) -- meme pattern detail-tabs/tab-btn que
+  // CompanyDetail.jsx.
+  const [tab, setTab] = useState(0)
 
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
 
@@ -787,8 +843,20 @@ export default function ContactDetail({ isNew }) {
         </div>
       )}
 
+      {!isNew && (
+        <div className="detail-tabs">
+          {CONTACT_TABS.map((t, i) => (
+            <button key={t} className={`tab-btn${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          ))}
+        </div>
+      )}
+
       <div className="detail-body">
-        {isNew ? <NewContactForm /> : (
+        {isNew ? <NewContactForm /> : tab === 1 ? (
+          <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading}
+            cdrItems={cdrItems} cdrTotal={cdrTotal} cdrPage={cdrPage} setCdrPage={setCdrPage} cdrLoading={cdrLoading}
+            cdrPageSize={cdrPageSize} expandedCdrId={expandedCdrId} setExpandedCdrId={setExpandedCdrId} />
+        ) : (
           <div>
             <div className="ifield-section-title">Statuts</div>
             <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts" />
@@ -1151,55 +1219,7 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                      <div style={{ display: 'flex', gap: 4, marginBottom: showCdr ? 10 : 0 }}>
-                        <button className={`tab-btn${!showCdr ? ' active' : ''}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCdr(false)}>Poste SIP</button>
-                        <button className={`tab-btn${showCdr ? ' active' : ''}`} style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowCdr(true)}>Historique d'appels ({cdrTotal})</button>
-                      </div>
-                      {showCdr && (
-                        <>
-                          {!cdrLoading && cdrItems.length === 0 && (
-                            <div style={{ fontSize: 12, color: '#6B7280' }}>Aucun appel enregistré.</div>
-                          )}
-                          {cdrItems.length > 0 && (
-                            <>
-                              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                                <thead>
-                                  <tr style={{ background: '#F9FAFB' }}>
-                                    {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
-                                      <th key={h} style={{ textAlign: 'left', padding: '6px 8px', borderBottom: '1px solid #E5E7EB', fontSize: 11, fontWeight: 600, color: '#6B7280' }}>{h}</th>
-                                    ))}
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {cdrItems.map(c => (
-                                    <Fragment key={c.id}>
-                                      <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpandedCdrId(expandedCdrId === c.id ? null : c.id)}>
-                                        <td style={{ padding: '6px 8px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
-                                        <td style={{ padding: '6px 8px' }}>{c.src || ''}</td>
-                                        <td style={{ padding: '6px 8px' }}>{c.dst || ''}</td>
-                                        <td style={{ padding: '6px 8px' }}>{c.direction === 'inbound' ? 'Entrant' : c.direction === 'outbound' ? 'Sortant' : (c.direction || '')}</td>
-                                        <td style={{ padding: '6px 8px' }}>{c.billsec != null ? `${Math.floor(c.billsec / 60)}:${String(c.billsec % 60).padStart(2, '0')}` : ''}</td>
-                                        <td style={{ padding: '6px 8px' }}>{c.disposition || ''}</td>
-                                      </tr>
-                                      {expandedCdrId === c.id && <CdrDetailRow c={c} colSpan={6} />}
-                                    </Fragment>
-                                  ))}
-                                </tbody>
-                              </table>
-                              <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 8, alignItems: 'center' }}>
-                                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} disabled={cdrPage <= 1} onClick={() => setCdrPage(p => p - 1)}>← Précédent</button>
-                                <span style={{ fontSize: 11, color: '#6B7280' }}>Page {cdrPage} / {Math.max(1, Math.ceil(cdrTotal / cdrPageSize))}</span>
-                                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} disabled={cdrPage >= Math.max(1, Math.ceil(cdrTotal / cdrPageSize))} onClick={() => setCdrPage(p => p + 1)}>Suivant →</button>
-                              </div>
-                            </>
-                          )}
-                          {companyId && <CdrReportsSection companyId={companyId} fixedExtension={sipExt.extension} />}
-                        </>
-                      )}
-                    </div>
-
-                    {!showCdr && phone && (
+                    {phone && (
                       <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
                         <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 4 }}>Options du poste</div>
                         <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
@@ -1234,7 +1254,6 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     )}
 
-                    {!showCdr && (
                     <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
                       <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
                       {[
@@ -1265,7 +1284,6 @@ export default function ContactDetail({ isNew }) {
                         <InlineField label={`NIP d'autorisation *80<NIP><numéro> — laisser vide pour ne pas changer${sipExt.has_ld_pin ? ' (déjà configuré)' : ''}`} value="" onSave={v => saveSipExtField('ld_pin', v)} />
                       </div>
                     </div>
-                    )}
                   </>
                 )}
               </div>

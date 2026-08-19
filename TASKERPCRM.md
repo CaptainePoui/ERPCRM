@@ -3272,6 +3272,33 @@ côté client par poste (testé en direct, nettoyé après coup).
 Fichiers : nouveau `frontend/src/components/CdrReportsSection.jsx`,
 `frontend/src/pages/CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
 
+**TASK-032.4 [x] Correction -- CDR pas dans un vrai onglet côté contact (2026-08-19)**
+Philippe, très mécontent à raison : TASK-032.3 avait ajouté le CDR derrière
+un bouton-toggle enfoui au milieu de la section "Poste SIP" (imbriqué dans
+plusieurs `&&`, invisible si le contact n'a pas de poste SIP chargé) --
+PAS un vrai onglet comme demandé depuis TASK-032.1, et deux options
+empilées l'une sur l'autre au lieu d'une séparation propre.
+Corrigé -- `ContactDetail.jsx` a maintenant un vrai système d'onglets
+top-level (`detail-tabs`/`tab-btn`, exactement le même pattern que
+`CompanyDetail.jsx`) : **Général** (tout le contenu existant, inchangé)
+et **CDR** (nouveau, `ContactCdrTab`) -- toujours visible dans la barre
+d'onglets dès qu'on ouvre un contact, pas caché derrière la présence d'un
+poste SIP (affiche un état vide clair "Ce contact n'a pas de poste SIP
+associé" si applicable, même logique que l'onglet CDR de la fiche
+compagnie qui gère l'absence de tenant). Retiré : le toggle "Poste SIP"/
+"Historique d'appels" et les `!showCdr &&` qui gataient "Options du
+poste"/"Plan d'appel" -- ces sections redeviennent visibles en tout temps
+comme avant TASK-032.1, seul le CDR est sorti dans son propre onglet.
+⚠️ Découverte en vérifiant les services (sans lien direct avec ce bug) :
+un service SYSTÈME `erpcrm-frontend.service` (`npm run dev`, mode dev,
+PAS le build de prod) tourne en parallèle depuis le 13 août -- déjà
+documenté comme mort/abandonné dans la mémoire persistante, mais toujours
+actif. Le service `--user` (le bon, celui qui sert vraiment le port 3010)
+est confirmé correct à chaque restart de cette session. Signalé à
+Philippe, pas arrêté unilatéralement (action système, pas dans le scope
+de cette demande).
+Fichiers : `frontend/src/pages/ContactDetail.jsx`.
+
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
 Demande de l'utilisateur (2026-08-11, GO reçu -- "oui fait tout ça"), en
