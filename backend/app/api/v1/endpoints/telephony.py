@@ -556,3 +556,79 @@ async def list_company_cdr(
         )
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Trunks (TASK-S018.2, fiche trunk unifiée) ─────────────────────────────────
+
+class TrunkIn(BaseModel):
+    name: str
+    carrier_name: str
+    host: str
+    username: str | None = None
+    password: str | None = None
+    from_domain: str | None = None
+    caller_id: str | None = None
+    failover_trunk_id: uuid.UUID | None = None
+
+class TrunkPatch(BaseModel):
+    name: str | None = None
+    carrier_name: str | None = None
+    host: str | None = None
+    username: str | None = None
+    password: str | None = None
+    from_domain: str | None = None
+    caller_id: str | None = None
+    failover_trunk_id: uuid.UUID | None = None
+    is_active: bool | None = None
+
+
+@router.get("/company/{company_id}/trunks")
+async def list_company_trunks(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id_for_did(company_id, db)
+    if not tenant_id:
+        return []
+    try:
+        return await sipv_client.list_trunks(tenant_id)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.post("/company/{company_id}/trunks", status_code=status.HTTP_201_CREATED)
+async def create_company_trunk(company_id: uuid.UUID, payload: TrunkIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id_required(company_id, db)
+    try:
+        return await sipv_client.create_trunk(tenant_id, **payload.model_dump(mode="json", exclude_none=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.put("/trunks/{trunk_id}")
+async def update_company_trunk(trunk_id: uuid.UUID, payload: TrunkPatch, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_trunk(str(trunk_id), **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.delete("/trunks/{trunk_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_trunk(trunk_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_trunk(str(trunk_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/trunks/{trunk_id}/status")
+async def company_trunk_status(trunk_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.get_trunk_status(str(trunk_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/trunks/{trunk_id}/routes")
+async def company_trunk_routes(trunk_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.get_trunk_routes(str(trunk_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")

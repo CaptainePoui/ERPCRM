@@ -499,6 +499,47 @@ async def list_cdr(tenant_id: str, page: int = 1, page_size: int = 50, extension
         return resp.json()
 
 
+async def list_trunks(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/trunks/tenant/{tenant_id}", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_trunk(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/trunks/tenant/{tenant_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_trunk(trunk_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(f"{settings.SIPV_API_URL}/api/v1/trunks/{trunk_id}", json=fields, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_trunk(trunk_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/trunks/{trunk_id}", headers=_headers())
+        resp.raise_for_status()
+
+
+async def get_trunk_status(trunk_id: str) -> dict:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/trunks/{trunk_id}/status", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def get_trunk_routes(trunk_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/trunks/{trunk_id}/routes", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
 async def list_ivrs(tenant_id: str) -> list[dict]:
     async with _client() as client:
         resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/ivr/tenant/{tenant_id}", headers=_headers())

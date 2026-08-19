@@ -1703,6 +1703,8 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 
       <CdrSection companyId={companyId} sipExts={sipExts} />
 
+      <TrunkSection companyId={companyId} />
+
       {showNewDid && (
         <NewDIDModal companyId={companyId} onClose={() => setShowNewDid(false)}
           onCreated={d => { setDids(p => [...p, d]); setShowNewDid(false) }} />
@@ -1788,6 +1790,182 @@ function CdrSection({ companyId, sipExts }) {
             <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Suivant →</button>
           </div>
         </>
+      )}
+    </div>
+  )
+}
+
+// ── Trunk (TASK-S018.2, fiche trunk unifiée) -- carrier, credentials, failover,
+// statut live (ESL), routes utilisant ce trunk. Le fichier gateway FreeSWITCH
+// lui-même reste écrit à la main sur le serveur (pas généré depuis cette table,
+// voir TASK-023.27) -- freeswitch_synced=false est affiché comme un avertissement
+// honnête plutôt que caché, pour ne pas laisser croire qu'une modification ici
+// prend effet automatiquement sur le trunk réel.
+const emptyTrunkForm = { name: '', carrier_name: '', host: '', username: '', password: '', from_domain: '', caller_id: '', failover_trunk_id: '' }
+
+function TrunkSection({ companyId }) {
+  const [trunks, setTrunks] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showNew, setShowNew] = useState(false)
+  const [newForm, setNewForm] = useState(emptyTrunkForm)
+  const [expanded, setExpanded] = useState(null)
+  const [status, setStatus] = useState({})
+  const [routes, setRoutes] = useState({})
+
+  function load() {
+    setLoading(true)
+    api.get(`/v1/telephony/company/${companyId}/trunks`).then(r => setTrunks(r.data)).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [companyId])
+
+  async function createTrunk() {
+    if (!newForm.name.trim() || !newForm.carrier_name.trim() || !newForm.host.trim()) return
+    const payload = { ...newForm }
+    if (!payload.password) delete payload.password
+    if (!payload.failover_trunk_id) delete payload.failover_trunk_id
+    await api.post(`/v1/telephony/company/${companyId}/trunks`, payload)
+    setNewForm(emptyTrunkForm); setShowNew(false); load()
+  }
+  async function updateTrunk(id, patch) {
+    await api.put(`/v1/telephony/trunks/${id}`, patch)
+    load()
+  }
+  async function removeTrunk(id) {
+    if (!confirm('Supprimer ce trunk ? Les routes qui l\'utilisent devront être réassignées.')) return
+    await api.delete(`/v1/telephony/trunks/${id}`)
+    load()
+  }
+  function toggleExpand(id) {
+    if (expanded === id) { setExpanded(null); return }
+    setExpanded(id)
+    if (!status[id]) {
+      api.get(`/v1/telephony/trunks/${id}/status`).then(r => setStatus(p => ({ ...p, [id]: r.data })))
+    }
+    if (!routes[id]) {
+      api.get(`/v1/telephony/trunks/${id}/routes`).then(r => setRoutes(p => ({ ...p, [id]: r.data })))
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Trunks ({trunks.length})
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
+      </div>
+      {showNew && (
+        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+          <div className="form-group"><label>Nom</label><input value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
+          <div className="form-group"><label>Carrier</label><input value={newForm.carrier_name} onChange={e => setNewForm(f => ({ ...f, carrier_name: e.target.value }))} /></div>
+          <div className="form-group"><label>Host</label><input value={newForm.host} onChange={e => setNewForm(f => ({ ...f, host: e.target.value }))} placeholder="ex: vgw1.provider.com" /></div>
+          <div className="form-group"><label>Username</label><input value={newForm.username} onChange={e => setNewForm(f => ({ ...f, username: e.target.value }))} /></div>
+          <div className="form-group"><label>Password</label><input type="password" value={newForm.password} onChange={e => setNewForm(f => ({ ...f, password: e.target.value }))} /></div>
+          <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createTrunk}>Créer</button>
+        </div>
+      )}
+      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : trunks.length === 0 ? (
+        <div className="empty-tab">Aucun trunk configuré.</div>
+      ) : (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+          <thead>
+            <tr style={{ background: '#F9FAFB' }}>
+              {['Nom', 'Carrier', 'Host', 'Synchronisé', 'Actif', ''].map(h => (
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {trunks.map(t => (
+              <Fragment key={t.id}>
+                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => toggleExpand(t.id)}>
+                  <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.name}</td>
+                  <td style={{ padding: '10px 12px' }}>{t.carrier_name}</td>
+                  <td style={{ padding: '10px 12px' }}>{t.host}</td>
+                  <td style={{ padding: '10px 12px' }}>
+                    {t.freeswitch_synced ? (
+                      <span style={{ fontSize: 11, color: '#166534' }}>✓ synchronisé</span>
+                    ) : (
+                      <span title="Modifié dans SIPV mais pas encore redéployé sur le gateway FreeSWITCH réel (fichier serveur, manuel)" style={{ fontSize: 11, color: '#B45309' }}>⚠ non synchronisé</span>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <input type="checkbox" checked={t.is_active} onClick={e => e.stopPropagation()} onChange={e => updateTrunk(t.id, { is_active: e.target.checked })} />
+                  </td>
+                  <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={e => { e.stopPropagation(); removeTrunk(t.id) }}>✕</button></td>
+                </tr>
+                {expanded === t.id && (
+                  <tr>
+                    <td colSpan={6} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Statut live (gateway FreeSWITCH)</div>
+                      {!status[t.id] ? (
+                        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 14 }}>Chargement...</div>
+                      ) : !status[t.id].configured ? (
+                        <div style={{ fontSize: 12, color: '#B45309', marginBottom: 14 }}>Gateway pas encore déployé sur FreeSWITCH ({status[t.id].error})</div>
+                      ) : (
+                        <div style={{ fontSize: 12, marginBottom: 14 }}>
+                          <span style={{
+                            display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontWeight: 600,
+                            background: status[t.id].status === 'UP' ? '#DCFCE7' : '#FEE2E2',
+                            color: status[t.id].status === 'UP' ? '#166534' : '#991B1B',
+                          }}>{status[t.id].status || '?'}</span>
+                          <span style={{ marginLeft: 8, color: '#6B7280' }}>État : {status[t.id].state || '?'} — {status[t.id].gateway_name}</span>
+                        </div>
+                      )}
+
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
+                        <div className="form-group" style={{ maxWidth: 220 }}>
+                          <label>Nom</label>
+                          <input defaultValue={t.name} onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.name) updateTrunk(t.id, { name: v }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 220 }}>
+                          <label>Carrier</label>
+                          <input defaultValue={t.carrier_name} onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.carrier_name) updateTrunk(t.id, { carrier_name: v }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 260 }}>
+                          <label>Host</label>
+                          <input defaultValue={t.host} onBlur={e => { const v = e.target.value.trim(); if (v && v !== t.host) updateTrunk(t.id, { host: v }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 200 }}>
+                          <label>Username</label>
+                          <input defaultValue={t.username || ''} onBlur={e => { const v = e.target.value.trim(); if (v !== (t.username || '')) updateTrunk(t.id, { username: v || null }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 200 }}>
+                          <label>Password {t.has_password && <span style={{ color: '#6B7280', fontWeight: 400 }}>(déjà défini)</span>}</label>
+                          <input type="password" placeholder="Laisser vide pour ne pas changer" onBlur={e => { const v = e.target.value; if (v) updateTrunk(t.id, { password: v }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 200 }}>
+                          <label>Caller ID sortant</label>
+                          <input defaultValue={t.caller_id || ''} onBlur={e => { const v = e.target.value.trim(); if (v !== (t.caller_id || '')) updateTrunk(t.id, { caller_id: v || null }) }} />
+                        </div>
+                        <div className="form-group" style={{ maxWidth: 220 }}>
+                          <label>Trunk de failover</label>
+                          <select value={t.failover_trunk_id || ''} onChange={e => updateTrunk(t.id, { failover_trunk_id: e.target.value || null })}>
+                            <option value="">— Aucun —</option>
+                            {trunks.filter(o => o.id !== t.id).map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Routes sortantes utilisant ce trunk</div>
+                      {!routes[t.id] ? (
+                        <div style={{ fontSize: 12, color: '#6B7280' }}>Chargement...</div>
+                      ) : routes[t.id].length === 0 ? (
+                        <div style={{ fontSize: 12, color: '#6B7280' }}>Aucune route n'utilise ce trunk.</div>
+                      ) : (
+                        <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
+                          {routes[t.id].map(r => (
+                            <li key={r.id}>{r.name} — <code>{r.dial_patterns}</code>{!r.is_active && ' (inactif)'}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
+            ))}
+          </tbody>
+        </table>
       )}
     </div>
   )
