@@ -1761,7 +1761,29 @@ function CdrSection({ companyId }) {
   const [retentionSaving, setRetentionSaving] = useState(false)
   const pageSize = 25
 
-  useEffect(() => { load() }, [companyId, page, extFilter])
+  // Filtres texte/date (TASK-032.5) -- appliqués seulement au clic sur
+  // "Appliquer" (pas en direct à chaque frappe, demande explicite de Philippe).
+  // pendingX = champs affichés, X = filtres réellement utilisés par la requête.
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [pendingDateFrom, setPendingDateFrom] = useState('')
+  const [pendingDateTo, setPendingDateTo] = useState('')
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  function applyFilters() {
+    setSearch(pendingSearch)
+    setDateFrom(pendingDateFrom)
+    setDateTo(pendingDateTo)
+    setPage(1)
+  }
+  function resetFilters() {
+    setPendingSearch(''); setPendingDateFrom(''); setPendingDateTo('')
+    setSearch(''); setDateFrom(''); setDateTo('')
+    setPage(1)
+  }
+
+  useEffect(() => { load() }, [companyId, page, extFilter, search, dateFrom, dateTo])
   // Onglet CDR séparé (plus dans l'onglet Téléphonie) -- charge ses propres
   // postes pour le filtre au lieu de dépendre de l'état de TelephonyTab.
   useEffect(() => { api.get(`/v1/companies/${companyId}/sip-extensions`).then(r => setSipExts(r.data)) }, [companyId])
@@ -1777,7 +1799,14 @@ function CdrSection({ companyId }) {
 
   function load() {
     setLoading(true)
-    api.get(`/v1/telephony/company/${companyId}/cdr`, { params: { page, page_size: pageSize, extension: extFilter || undefined } })
+    api.get(`/v1/telephony/company/${companyId}/cdr`, {
+      params: {
+        page, page_size: pageSize, extension: extFilter || undefined,
+        search: search || undefined,
+        date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+        date_to: dateTo ? new Date(dateTo).toISOString() : undefined,
+      },
+    })
       .then(r => { setItems(r.data.items); setTotal(r.data.total) })
       .finally(() => setLoading(false))
   }
@@ -1813,6 +1842,25 @@ function CdrSection({ companyId }) {
             {sipExts.map(e => <option key={e.id} value={e.extension}>{e.extension} — {e.name}</option>)}
           </select>
         </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8 }}>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Recherche (numéro)</label>
+          <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder="ex: 514" style={{ fontSize: 12, padding: '4px 8px', width: 130 }}
+            onKeyDown={e => e.key === 'Enter' && applyFilters()} />
+        </div>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Du</label>
+          <input type="datetime-local" value={pendingDateFrom} onChange={e => setPendingDateFrom(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+        </div>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Au</label>
+          <input type="datetime-local" value={pendingDateTo} onChange={e => setPendingDateTo(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px', alignSelf: 'flex-end' }} onClick={applyFilters}>Appliquer</button>
+        {(search || dateFrom || dateTo) && (
+          <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', alignSelf: 'flex-end' }} onClick={resetFilters}>Réinitialiser</button>
+        )}
       </div>
       {!loading && items.length === 0 ? (
         <div className="empty-tab">Aucun appel enregistré.</div>

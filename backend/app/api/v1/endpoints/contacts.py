@@ -437,10 +437,15 @@ async def get_contact_sip_connection_info(contact_id: uuid.UUID, db: AsyncSessio
 @router.get("/{contact_id}/sip-extension/cdr")
 async def get_contact_sip_extension_cdr(
     contact_id: uuid.UUID, page: int = 1, page_size: int = 50,
+    direction: str | None = None, date_from: str | None = None, date_to: str | None = None,
+    search: str | None = None,
     db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user),
 ):
     """TASK-032 : historique d'appels de ce poste seulement, meme mecanique que
-    portal_cdr (portal.py) mais cote staff ERPCRM (fiche contact)."""
+    portal_cdr (portal.py) mais cote staff ERPCRM (fiche contact).
+    TASK-032.5 : filtres direction/date/recherche, meme mecanique que la vue
+    compagnie -- appelle list_cdr (pas list_cdr_for_extension, qui ne supporte
+    pas ces filtres) avec le poste du contact force."""
     contact = await db.get(Contact, contact_id)
     if not contact:
         raise HTTPException(status_code=404, detail="Contact introuvable")
@@ -451,7 +456,10 @@ async def get_contact_sip_extension_cdr(
         if not extensions:
             return {"total": 0, "page": page, "page_size": page_size, "items": []}
         ext = extensions[0]
-        return await sipv_client.list_cdr_for_extension(str(ext["tenant_id"]), ext["extension"], page=page, page_size=page_size)
+        return await sipv_client.list_cdr(
+            str(ext["tenant_id"]), page=page, page_size=page_size, extension=ext["extension"],
+            direction=direction, date_from=date_from, date_to=date_to, search=search,
+        )
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 

@@ -545,6 +545,7 @@ async def list_company_cdr(
     disposition: str | None = Query(None),
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
+    search: str | None = Query(None, description="Recherche partielle sur les numéros (src/dst), ex: '514'"),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -554,7 +555,7 @@ async def list_company_cdr(
     try:
         return await sipv_client.list_cdr(
             tenant_id, page=page, page_size=page_size, extension=extension,
-            direction=direction, disposition=disposition, date_from=date_from, date_to=date_to,
+            direction=direction, disposition=disposition, date_from=date_from, date_to=date_to, search=search,
         )
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")

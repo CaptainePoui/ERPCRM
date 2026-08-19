@@ -3299,6 +3299,45 @@ Philippe, pas arrêté unilatéralement (action système, pas dans le scope
 de cette demande).
 Fichiers : `frontend/src/pages/ContactDetail.jsx`.
 
+**TASK-032.5 [x] Filtres CDR -- recherche texte + plage de dates/heures précise (2026-08-19)**
+Demande de Philippe : filtrer les CDR par recherche libre (ex. "514" trouve
+tout numéro qui contient 514) et par plage date/heure précise (ex. 12 août
+9h34 à 10h02, ou 11 août 9h34 au 19 août 8h55), dans les deux vues (compagnie
+et contact), avec un bouton "Appliquer" explicite (pas de filtrage en direct
+à chaque frappe).
+- SIPV (`cdr.py`) : nouveau paramètre `search` sur `GET /cdr/tenant/{id}` --
+  `ILIKE '%...%'` sur `src` OU `dst`. `date_from`/`date_to` existaient déjà
+  (type `datetime`, déjà assez précis pour heure/minute) mais n'étaient pas
+  exposés côté UI avant cette tâche.
+- ERPCRM : `sipv_client.list_cdr` -- ajout `search`. `telephony.py`
+  (`/company/{id}/cdr`) -- ajout `search`. `contacts.py`
+  (`/{contact_id}/sip-extension/cdr`) -- **changé de
+  `list_cdr_for_extension` vers `list_cdr`** (avec `extension` forcé) pour
+  hériter de tous les filtres (search/date/direction) au lieu de dupliquer
+  la logique -- `list_cdr_for_extension` reste utilisée telle quelle par
+  `portal.py` (portail Mon poste client), pas touchée.
+- Frontend : barre de filtre identique dans `CdrSection` (`CompanyDetail.jsx`)
+  et `ContactCdrTab` (`ContactDetail.jsx`, sorti de `ContactDetail` en
+  composant autonome avec son propre état/fetch au passage -- avant geré par
+  le parent) : champ recherche + "Du"/"Au" (`datetime-local`, précision à la
+  minute) + bouton "Appliquer" (Entrée sur le champ recherche fonctionne
+  aussi) + "Réinitialiser" si un filtre est actif. Les champs affichés ne
+  déclenchent la requête qu'au clic sur Appliquer (état "pending" séparé de
+  l'état réellement utilisé par la requête), comme demandé explicitement.
+
+Vérifié en conditions réelles : `search=102` sur le tenant "Simple IP
+inc." -- 17 résultats corrects (côté compagnie ET côté contact poste 103,
+même chaîne testée directement) ; plage de date `2026-08-16T00:00:00` à
+`2026-08-16T23:59:59` -- 1 résultat correct. `npm run build` + les 3
+services ERPCRM + `sipv-backend`/`sipv-backend-tls` redémarrés, tous
+vérifiés actifs.
+
+Fichiers SIPV : `backend/app/api/v1/endpoints/cdr.py`.
+Fichiers ERPCRM : `backend/app/core/sipv_client.py`,
+`backend/app/api/v1/endpoints/telephony.py`,
+`backend/app/api/v1/endpoints/contacts.py`,
+`frontend/src/pages/CompanyDetail.jsx`, `frontend/src/pages/ContactDetail.jsx`.
+
 ### TASK-033 [ ] Création d'un poste SIP depuis un contact + parité facturation contact/compagnie + double 1ère facture datée
 
 Demande de l'utilisateur (2026-08-11, GO reçu -- "oui fait tout ça"), en

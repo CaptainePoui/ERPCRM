@@ -188,7 +188,50 @@ function CdrDetailRow({ c, colSpan }) {
 // Onglet CDR de la fiche contact (TASK-032.4) -- toujours visible (pas caché
 // derrière la présence d'un poste SIP, même logique que CompanyDetail.jsx qui
 // affiche l'onglet même sans tenant SIPV actif, juste avec un état vide clair).
-function ContactCdrTab({ id, companyId, sipExt, sipExtLoading, cdrItems, cdrTotal, cdrPage, setCdrPage, cdrLoading, cdrPageSize, expandedCdrId, setExpandedCdrId }) {
+function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
+  const [cdrItems, setCdrItems] = useState([])
+  const [cdrTotal, setCdrTotal] = useState(0)
+  const [cdrPage, setCdrPage] = useState(1)
+  const [cdrLoading, setCdrLoading] = useState(false)
+  const cdrPageSize = 10
+  const [expandedCdrId, setExpandedCdrId] = useState(null)
+
+  // Filtres texte/date (TASK-032.5) -- appliqués seulement au clic sur
+  // "Appliquer", même mécanique que CdrSection (CompanyDetail.jsx).
+  const [pendingSearch, setPendingSearch] = useState('')
+  const [pendingDateFrom, setPendingDateFrom] = useState('')
+  const [pendingDateTo, setPendingDateTo] = useState('')
+  const [search, setSearch] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+
+  function applyFilters() {
+    setSearch(pendingSearch); setDateFrom(pendingDateFrom); setDateTo(pendingDateTo)
+    setCdrPage(1)
+  }
+  function resetFilters() {
+    setPendingSearch(''); setPendingDateFrom(''); setPendingDateTo('')
+    setSearch(''); setDateFrom(''); setDateTo('')
+    setCdrPage(1)
+  }
+
+  // Ne recharge que si le numero de poste change reellement (pas a chaque
+  // poll de statut du parent, qui renvoie un nouvel objet sipExt toutes les 5s).
+  useEffect(() => {
+    if (!sipExt?.extension) { setCdrItems([]); setCdrTotal(0); return }
+    setCdrLoading(true)
+    api.get(`/v1/contacts/${id}/sip-extension/cdr`, {
+      params: {
+        page: cdrPage, page_size: cdrPageSize,
+        search: search || undefined,
+        date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,
+        date_to: dateTo ? new Date(dateTo).toISOString() : undefined,
+      },
+    })
+      .then(r => { setCdrItems(r.data.items); setCdrTotal(r.data.total) })
+      .finally(() => setCdrLoading(false))
+  }, [id, sipExt?.extension, cdrPage, search, dateFrom, dateTo])
+
   if (sipExtLoading) return <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>
   if (!sipExt) return <div className="empty-tab">Ce contact n'a pas de poste SIP associé -- aucun historique d'appels possible.</div>
 
@@ -196,6 +239,25 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading, cdrItems, cdrTota
     <div>
       <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
         Historique d'appels — poste {sipExt.extension} ({cdrTotal})
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8 }}>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Recherche (numéro)</label>
+          <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder="ex: 514" style={{ fontSize: 12, padding: '4px 8px', width: 130 }}
+            onKeyDown={e => e.key === 'Enter' && applyFilters()} />
+        </div>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Du</label>
+          <input type="datetime-local" value={pendingDateFrom} onChange={e => setPendingDateFrom(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+        </div>
+        <div className="form-group" style={{ margin: 0 }}>
+          <label style={{ fontSize: 11 }}>Au</label>
+          <input type="datetime-local" value={pendingDateTo} onChange={e => setPendingDateTo(e.target.value)} style={{ fontSize: 12, padding: '4px 8px' }} />
+        </div>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px', alignSelf: 'flex-end' }} onClick={applyFilters}>Appliquer</button>
+        {(search || dateFrom || dateTo) && (
+          <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', alignSelf: 'flex-end' }} onClick={resetFilters}>Réinitialiser</button>
+        )}
       </div>
       {!cdrLoading && cdrItems.length === 0 && (
         <div className="empty-tab">Aucun appel enregistré.</div>
@@ -297,13 +359,6 @@ export default function ContactDetail({ isNew }) {
   const [billingStartDate, setBillingStartDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [billingFrequency, setBillingFrequency] = useState('mensuel')
   const [extensionNumber, setExtensionNumber] = useState('')
-  // TASK-032 : historique d'appels de ce poste seulement, meme zone que record_*.
-  const [cdrItems, setCdrItems] = useState([])
-  const [cdrTotal, setCdrTotal] = useState(0)
-  const [cdrPage, setCdrPage] = useState(1)
-  const [cdrLoading, setCdrLoading] = useState(false)
-  const cdrPageSize = 10
-  const [expandedCdrId, setExpandedCdrId] = useState(null)
   // Demande de Philippe (2026-08-19) : un vrai onglet CDR (pas un bouton
   // enfoui au milieu de la fiche) -- meme pattern detail-tabs/tab-btn que
   // CompanyDetail.jsx.
@@ -325,16 +380,6 @@ export default function ContactDetail({ isNew }) {
     return () => clearInterval(timer)
   }, [id, isNew, contact?.sipv_sync])
 
-  // TASK-032 : historique d'appels de ce poste -- ne recharge que si le numero de
-  // poste change reellement (pas a chaque poll de statut, qui renvoie un nouvel
-  // objet sipExt toutes les 5s).
-  useEffect(() => {
-    if (!sipExt?.extension) { setCdrItems([]); setCdrTotal(0); return }
-    setCdrLoading(true)
-    api.get(`/v1/contacts/${id}/sip-extension/cdr`, { params: { page: cdrPage, page_size: cdrPageSize } })
-      .then(r => { setCdrItems(r.data.items); setCdrTotal(r.data.total) })
-      .finally(() => setCdrLoading(false))
-  }, [id, sipExt?.extension, cdrPage])
 
   async function load() {
     setLoading(true)
@@ -853,9 +898,7 @@ export default function ContactDetail({ isNew }) {
 
       <div className="detail-body">
         {isNew ? <NewContactForm /> : tab === 1 ? (
-          <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading}
-            cdrItems={cdrItems} cdrTotal={cdrTotal} cdrPage={cdrPage} setCdrPage={setCdrPage} cdrLoading={cdrLoading}
-            cdrPageSize={cdrPageSize} expandedCdrId={expandedCdrId} setExpandedCdrId={setExpandedCdrId} />
+          <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
         ) : (
           <div>
             <div className="ifield-section-title">Statuts</div>

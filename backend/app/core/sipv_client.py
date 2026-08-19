@@ -474,10 +474,11 @@ async def list_cdr_for_extension(tenant_id: str, extension: str, page: int = 1, 
 
 async def list_cdr(tenant_id: str, page: int = 1, page_size: int = 50, extension: str | None = None,
                     direction: str | None = None, disposition: str | None = None,
-                    date_from: str | None = None, date_to: str | None = None) -> dict:
+                    date_from: str | None = None, date_to: str | None = None, search: str | None = None) -> dict:
     """TASK-032 : historique d'appels de toute la compagnie (fiche compagnie ERPCRM),
     avec filtre optionnel par poste -- meme endpoint SIPV que list_cdr_for_extension,
-    juste sans forcer le filtre extension."""
+    juste sans forcer le filtre extension. TASK-032.5 : search = recherche partielle
+    sur src/dst (ex: '514')."""
     params = {"page": page, "page_size": page_size}
     if extension:
         params["extension"] = extension
@@ -489,6 +490,8 @@ async def list_cdr(tenant_id: str, page: int = 1, page_size: int = 50, extension
         params["date_from"] = date_from
     if date_to:
         params["date_to"] = date_to
+    if search:
+        params["search"] = search
     async with _client() as client:
         resp = await client.get(
             f"{settings.SIPV_API_URL}/api/v1/cdr/tenant/{tenant_id}",
