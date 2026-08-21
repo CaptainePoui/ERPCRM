@@ -37,3 +37,10 @@ backend/uploads/
 
 # Serena MCP (outillage dev local, pas pour le produit livré)
 .serena/
+
+# Graphiti/Neo4j -- secrets et donnees locales, pas pour le produit livre
+tools/knowledge/graphiti/.env
+tools/knowledge/graphiti/neo4j_data/
+tools/knowledge/graphiti/neo4j_logs/
+tools/knowledge/graphiti/graphiti-build/*.tar.gz
+tools/knowledge/graphiti/graphiti-build/graphiti-021d3a5*/
