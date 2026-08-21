@@ -695,6 +695,26 @@ class RingGroupFailoverStepUpdatePayload(BaseModel):
     destination: str | None = None
     ring_seconds: int | None = None
 
+class ParkingLotPayload(BaseModel):
+    name: str
+    park_extension: str = "700"
+    parking_slots_start: int = 701
+    parking_slots_end: int = 720
+    timeout_seconds: int = 120
+    return_extension: str | None = None
+    timeout_return_mode: str = "parker"
+    announce_slot: bool = False
+
+class ParkingLotUpdatePayload(BaseModel):
+    name: str | None = None
+    park_extension: str | None = None
+    parking_slots_start: int | None = None
+    parking_slots_end: int | None = None
+    timeout_seconds: int | None = None
+    return_extension: str | None = None
+    timeout_return_mode: str | None = None
+    announce_slot: bool | None = None
+
 
 async def _company_tenant_id(company_id: uuid.UUID, db: AsyncSession) -> str:
     company = await db.get(Company, company_id)
@@ -765,6 +785,58 @@ async def update_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, pay
 async def delete_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, _: User = Depends(get_current_user)):
     try:
         await sipv_client.delete_ring_group(str(rg_id))
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+def _forward_sipv_error(e: httpx.HTTPError) -> HTTPException:
+    """Propage le message reel de SIPV (ex. collisions de numerotation) plutot
+    qu'un generique 'SIPV injoignable' -- utile surtout pour create/update
+    ParkingLot ou le validateur central donne un detail exploitable."""
+    if isinstance(e, httpx.HTTPStatusError):
+        detail = "SIPV injoignable"
+        try:
+            detail = e.response.json().get("detail", detail)
+        except Exception:
+            pass
+        return HTTPException(status_code=e.response.status_code if e.response.status_code < 500 else 502, detail=detail)
+    return HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/{company_id}/parking-lots")
+async def list_company_parking_lots(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return []
+    try:
+        return await sipv_client.list_parking_lots(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        return []
+
+
+@router.post("/{company_id}/parking-lots", status_code=status.HTTP_201_CREATED)
+async def create_company_parking_lot(company_id: uuid.UUID, payload: ParkingLotPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant_id(company_id, db)
+    try:
+        return await sipv_client.create_parking_lot(tenant_id, **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise _forward_sipv_error(e)
+
+
+@router.put("/{company_id}/parking-lots/{lot_id}")
+async def update_company_parking_lot(company_id: uuid.UUID, lot_id: uuid.UUID, payload: ParkingLotUpdatePayload, _: User = Depends(get_current_user)):
+    try:
+        return await sipv_client.update_parking_lot(str(lot_id), **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError as e:
+        raise _forward_sipv_error(e)
+
+
+@router.delete("/{company_id}/parking-lots/{lot_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_company_parking_lot(company_id: uuid.UUID, lot_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        await sipv_client.delete_parking_lot(str(lot_id))
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 

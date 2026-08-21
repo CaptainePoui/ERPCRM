@@ -3659,3 +3659,309 @@ changement) : `pages/Portal.jsx`, `pages/DevisDetail.jsx`,
 ⚠️ Règle à appliquer à TOUT nouveau popup créé désormais (ERPCRM et SIPV) --
 ne jamais remettre `onClick={onClose}` sur un `modal-overlay`, voir mémoire
 persistante `feedback_no_close_on_outside_click`.
+
+### TASK-037 [ ] Conférence -- backlog non prioritaire
+
+Repéré pendant la revue d'arborescence téléphonie (2026-08-19, voir TASK-027).
+`mod_conference` est chargé et configuré sur le serveur FreeSWITCH
+(`conference.conf.xml`) mais aucun modèle SIPV ne l'exploite. `DESTINATION_TYPES`
+(`api/v1/endpoints/dids.py` côté SIPV) réserve déjà la valeur `conference` dans
+l'énum, mais rien de fonctionnel derrière -- sélectionner ce type de
+destination ne mènerait nulle part aujourd'hui.
+
+Explicitement dépriorisé par Philippe : "en 8 ans j'ai utilisé conference 1
+fois". Pendant SIPV : TASK-S060 (TASKSIPV.md). Ne pas construire sans GO.
+
+### TASK-038 [ ] Parcage d'appel -- utilisé en permanence chez les clients, PAS dépriorisé
+
+⚠️ Distinct de TASK-037 (Conférence) -- Philippe a corrigé le classement initial
+(2026-08-19) : le parcage n'est pas un backlog dormant, c'est une fonction
+utilisée activement et en permanence chez ses clients. Analogie donnée :
+l'équivalent moderne d'une ligne partagée mise en attente sur un ancien
+système analogique -- on park un appel, et il apparaît en BLF sur tous les
+postes pour que n'importe qui le reprenne. Important pour la priorisation
+future.
+
+État réel : `ParkingLot` existe déjà comme modèle SIPV (`models/ivr.py`,
+depuis TASK-S007) mais aucun endpoint ne l'expose (`api/v1/endpoints/ivr.py`
+n'a que IVR/Queue/RingGroup/PagingGroup). Rien côté ERPCRM. Point encourageant :
+`PhoneButton.button_type` (côté SIPV, `models/provisioning.py`) a déjà `park` et
+`park_retrieve` dans son énumération de types de touches -- le BLF de parcage
+était déjà anticipé au niveau du provisioning.
+
+**Plan technique (2026-08-19, revu par ChatGPT puis vérifié ligne par ligne
+dans le vrai module chargé sur le serveur -- `fs_cli show application/api` +
+lecture de `mod_valet_parking.c` présent sur SIPV) :**
+1. CRUD `ParkingLot` côté SIPV -- modèle déjà là, même patron que
+   ring-groups/paging-groups.
+2. Dialplan `park_extension` (700 par défaut) → appli `valet_park <lot> auto
+   in <min> <max>` (PAS `valet_park_fetch`, cette appli n'existe pas --
+   erreur corrigée avant de coder).
+3. Dialplan `parking_slots_start`-`end` (701-720 par défaut) → même appli
+   `valet_park <lot> <extension>` -- gère park ET reprise selon l'état de
+   l'appel, une seule appli pour les deux.
+4. Timeout/retour : variables natives `valet_parking_timeout` et
+   `valet_parking_orbit_exten` (confirmées dans le source C), pas de
+   logique maison à inventer.
+5. Statut des slots occupés : API `valet_info <lot>` (confirmée), même
+   famille que le pattern ESL déjà existant (`esl.py`, `monitoring/{username}`).
+6. BLF : le module émet bien `SWITCH_EVENT_PRESENCE_IN` (confirmé dans le
+   source), mais ne pas déployer avant un test réel sur un poste Grandstream
+   -- l'émission d'événement ne garantit pas l'affichage correct côté
+   téléphone.
+7. Remplissage des touches BLF (701→7xx) : PAS automatique -- un GXP2135 (8
+   touches) et un GXP2170 (24+) n'ont pas la même capacité, ça reste un
+   choix de configuration humain, pas un auto-fill.
+8. Proxy ERPCRM + écran (`CompanyDetail.jsx` → Téléphonie, tenant-scope) :
+   en dernier.
+
+Multi-lots par tenant : vérifié, aucune contrainte unique sur `tenant_id`
+dans le modèle ni les migrations -- plusieurs `ParkingLot` par tenant déjà
+supportés par le schéma sans rien changer. Backend garde cette capacité,
+l'écran ERPCRM peut démarrer simple (un lot principal affiché en premier).
+
+Pendant SIPV : TASK-S061 (TASKSIPV.md). Toujours pas de GO pour construire.
+
+**Recherche complémentaire (2026-08-19, 6 points challengés par ChatGPT,
+vérifiés dans le vrai code plutôt qu'estimés) :**
+
+1. **Collision de numéros — AUCUN mécanisme central n'existe dans SIPV,
+   confirmé.** `create_extension` (`extensions.py`) ne vérifie l'unicité que
+   dans sa propre table (`SIPExtension.username`). `create_ring_group` et
+   `create_paging_group` (`ivr.py`) n'ont **aucune** validation, même pas
+   dans leur propre table. Rien ne croise Extension/RingGroup/PagingGroup/
+   ParkingLot entre eux -- ce n'est pas un trou spécifique au parking, c'est
+   un trou systémique déjà présent partout où un objet porte un numéro
+   composable. `IVR`/`Queue` n'ont pas de champ extension direct (atteints
+   via destination_id, pas concernés par cette collision).
+2. **Slot vide (701 sans appel dedans)** : confirmé dans le source
+   (`mod_valet_parking.c`, ~ligne 550-605) -- `valet_park <lot> <ext>`
+   cherche un token existant pour cet ext ; s'il n'y en a pas, l'appel EN
+   COURS est parké dans ce slot (aucun message, aucun raccrochage,
+   aucune tonalité spéciale). La même appli sert à parker et à reprendre,
+   selon qu'un token existe déjà ou non.
+3. **Timeout/retour, 4 cas confirmés dans le source (~ligne 690-740)** :
+   - Ni `valet_parking_timeout` ni `valet_parking_orbit_exten` réglés →
+     l'appel reste en attente indéfiniment (musique), aucune logique de
+     timeout ne s'active.
+   - Timeout réglé, pas d'orbit → au timeout, l'appel sort du parking sans
+     transfert (tombe sur la suite du dialplan -- raccroche si rien après).
+   - Timeout + orbit réglés → `switch_ivr_session_transfer` vers l'orbit.
+   - Orbit pointant vers une destination qui n'existe plus, ou boucle
+     retour-vers-parking : le module ne protège contre rien de ça -- c'est
+     la responsabilité du dialplan généré par SIPV (xml_curl.py) d'avoir un
+     fallback sain et d'éviter les boucles, pas une garantie du module.
+   - Poste de retour occupé/ne répond pas : redevient un appel normal vers
+     cette extension, gouverné par ses propres règles (renvoi/messagerie),
+     rien de spécifique au parking.
+4. **BLF bout en bout (Grandstream→Kamailio→FreeSWITCH→Kamailio→Grandstream)** :
+   confirmé que le module émet `SWITCH_EVENT_PRESENCE_IN`/bind
+   `PRESENCE_PROBE`, mais le chemin complet à travers Kamailio n'est PAS
+   vérifiable par lecture de code -- test réel sur poste requis, reporté à
+   l'étape 8 de l'ordre ci-dessous, pas avant.
+5. **`PhoneButton.button_type` `park`(19)/`park_retrieve`(26)** : mappés
+   dans `BUTTON_TYPE_TO_GS_MODE` (`provisioning.py`), mais le commentaire du
+   code lui-même précise que seuls BLF(11)/Speed Dial(10) ont été
+   "confirmés empiriquement contre un fichier ScopServ réellement
+   fonctionnel" -- park/park_retrieve n'ont pas cette confirmation. Ne pas
+   assumer que 700→`park` et 701→`park_retrieve` produiront un P-code
+   Grandstream correct sans test réel du gabarit de config.
+
+**Ordre retenu (proposé par ChatGPT, adopté) :**
+1. Mécanisme central de détection de collision de numéros (partagé
+   Extension/RingGroup/PagingGroup/ParkingLot, PAS une validation spéciale
+   ParkingLot)
+2. CRUD ParkingLot
+3. Dialplan 700 (auto in)
+4. Dialplan 701-7xx (valet_park direct)
+5. Test réel park/reprise (fs_cli + téléphones)
+6. Test réel timeout/orbit
+7. `valet_info` / statut
+8. BLF réel à travers Kamailio
+9. Provisioning des touches
+10. Proxy ERPCRM
+11. Interface ERPCRM
+
+**Étape 1 livrée côté SIPV (2026-08-19)** — voir TASK-S061 (TASKSIPV.md)
+pour le détail complet : `app/core/numbering.py` (validateur central, aucune
+nouvelle table), infrastructure de tests créée de zéro (DB `sipv_test`
+dédiée, garde-fou anti-DB-de-prod). Rien côté ERPCRM pour cette étape --
+c'est du backend SIPV uniquement.
+
+⚠️ Correction le même jour : le premier récapitulatif annonçait l'étape 1
+terminée sans avoir branché le validateur dans les vrais CRUD (create/update
+d'Extension/RingGroup/PagingGroup) -- Philippe a vérifié et avait raison,
+rien n'était câblé. Corrigé, prouvé par 5 tests passant par le vrai routing
+HTTP (pas juste `numbering.py` en isolation). Suite finale : 12/12 verts.
+Étape 2 (CRUD ParkingLot) livrée le même jour -- voir TASK-S061 (TASKSIPV.md)
+pour le détail complet : CRUD `ParkingLot` côté SIPV, mise à jour partielle
+validée sur l'état final fusionné (pilote+plage), 9 tests via vrai routing
+HTTP, suite complète 21/21 verts. Point de concurrence (course entre deux
+créations simultanées) identifié et documenté mais volontairement pas
+corrigé -- mitigation suggérée (verrou Postgres par tenant) si ça devient un
+problème réel. Rien côté ERPCRM -- étapes 10-11 du plan, pas commencées, pas
+de GO.
+
+**Étape 3 livrée le même jour** -- dialplan du pilote (700 → `valet_park
+<clé technique> auto in <start> <end>`), voir TASK-S061 (TASKSIPV.md) pour
+le détail. Point critique vérifié avant de coder : `mod_valet_parking`
+indexe ses lots dans une table globale au processus FreeSWITCH (aucune
+isolation par tenant) -- clé technique dérivée des UUID
+(`tenant_{tenant_id}_parking_{lot_id}`) plutôt que du nom affiché, pour
+éviter toute collision inter-tenant et rester stable au renommage. 4
+nouveaux tests sur le XML réellement généré. Suite complète : 25/25 verts.
+Scope volontairement limité au pilote seulement -- rien côté ERPCRM.
+
+**Étape 4 livrée le même jour** -- plage 701-7xx (parcage direct + reprise).
+Comportement métier clarifié avec Philippe avant de coder (usage réel de
+l'UCM confirmé, pas trouvé dans les relevés de champs) : le comportement
+natif "toggle" de `valet_park` (parque si vide, reprend si occupé) EST le
+comportement voulu -- aucune logique "retrieve only" à fabriquer. Une seule
+règle dialplan pour toute la plage (alternation regex), pas 20 extensions
+séparées. 2 nouveaux tests. Suite complète : 27/27 verts. Toujours rien
+côté ERPCRM.
+
+**Étape 5 (tests réels) en cours, état consolidé le même jour avant
+compression** -- voir TASK-S061 (TASKSIPV.md) pour le détail complet des 4
+sous-problèmes trouvés en testant sur de vrais postes (102/103) :
+1. **Délai 500ms sur la MOH réelle** -- RÉSOLU (retiré de `hold_music_var`,
+   déplacé vers les préécoutes `call_moh`/`call_prompt`), vérifié en
+   direct sur services redémarrés.
+2. **MOH qui repart du début à chaque park/reprise** -- PAS résolu. Erreur
+   de méthode de test trouvée (tous les tests faits jusqu'ici sont des
+   appels neufs indépendants, pas un même appel re-parké) -- vrai
+   protocole de test à 2 postes proposé, pas encore exécuté.
+3. **Annonce du slot pour attended, jamais pour blind** -- PAS résolu.
+   Piste trouvée (`pre_answering channel` en blind transfer) mais pas
+   confirmée par comparaison propre avec l'attended. Macro d'annonce
+   manquante en français trouvée en chemin (bloque toute annonce
+   actuellement, indépendamment de blind/attended).
+4. **BLF 701-703 ne s'allume pas** -- PAS résolu. Presence par-slot
+   confirmée exister nativement dans FreeSWITCH, hypothèse de domaine
+   (`cluecon.com` par défaut) pas encore confirmée -- aucune capture
+   `PRESENCE_IN` réussie malgré moniteur ESL corrigé.
+Rien côté ERPCRM dans tout ça -- travail 100% backend SIPV (`numbering.py`,
+`ivr.py`, `xml_curl.py`, `moh.py`, `prompts.py` + suite de tests complète,
+27+ tests verts, DB `sipv_test` créée).
+
+**Correctif annonce blind livré côté SIPV le même jour** --
+`valet_announce_slot=false` sans condition sur le pilote 700 (vérifié
+ligne par ligne dans `mod_valet_parking.c`, pas supposé). Nouveau champ
+`ParkingLot.announce_slot` (migration `0063_parking_lot_announce`, défaut
+`false`), plus jamais hardcodé.
+
+**Portion Parcage construite dans ERPCRM le même jour, GO explicite de
+Philippe** ("profiter du fait que tout est encore frais") -- voir TASK-S061
+(TASKSIPV.md) pour le détail complet :
+- `sipv_client.py` : `list/create/update/delete_parking_lot`.
+- `companies.py` : proxy `/{company_id}/parking-lots[...]` + nouveau
+  helper `_forward_sipv_error()` qui propage le vrai message d'erreur SIPV
+  (collision de numérotation, etc.) au lieu d'un générique "SIPV
+  injoignable" -- vérifié en direct avec un vrai token, un `POST` en
+  collision retourne bien `400` avec le détail exact du validateur.
+- `CompanyDetail.jsx` : nouveau composant `ParkingLotsSection` (Téléphonie,
+  après Groupes de paging) -- CRUD complet des lots par compagnie (nom,
+  pilote, plage, timeout, extension de retour, annonce du slot). Clé
+  technique FreeSWITCH jamais exposée à l'utilisateur.
+- Explicitement rien de simulé pour ce qui n'est pas encore prêt côté
+  SIPV : pas de statut live, pas de BLF, pas de continuité MOH dans
+  l'écran -- ces backends n'existent pas encore.
+- Vérifié de bout en bout (login réel, `GET`/`POST` avec collision,
+  `npm run build` propre, services redémarrés -- `erpcrm-frontend.service`
+  jamais `sudo`, règle du projet).
+- Réutilise entièrement les validations SIPV déjà construites -- zéro
+  logique de collision dupliquée côté ERPCRM.
+
+**Correction d'architecture le même jour, GO Philippe** -- j'avais d'abord
+empilé `ParkingLotsSection` directement dans `CompanyDetail.jsx` (3300+
+lignes), exactement le problème identifié au tout début de cette
+conversation. Corrigé : sorti vers
+`frontend/src/pages/telephony/ParkingLotsSection.jsx`, premier morceau
+d'une arborescence par domaine (le reste des sections téléphonie reste
+pour l'instant dans `CompanyDetail.jsx`, à migrer graduellement, pas un
+big-bang). `npm run build` propre, vérifié en direct après redémarrage.
+Aussi ajouté `ParkingLot.is_active` (manquait, repéré par Philippe) --
+voir TASK-S061 (TASKSIPV.md) pour le détail complet, y compris le backlog
+non construit sur l'annonce TTS/Voicebox (deux options documentées, aucun
+GO donné).
+
+**Vraie navigation par sous-onglets construite + raffinements (2026-08-20,
+même session)** -- Philippe voulait les branches VISIBLES à l'écran, pas
+juste le rangement de fichiers. `TelephonyTab.jsx` a maintenant 7
+sous-onglets réels (barre cliquable en haut) : Numéros, Postes,
+Acheminement d'appels, Horaires & Audio, Appareils, Urgence & Sécurité
+(nouveau, placeholders Fax/SMS/Sécurité), Avancé. Bug trouvé et corrigé en
+chemin : `E911AddressesSection`/`CdrSection` cassés après le déplacement de
+code précédent (pas exportés), réparé avant de continuer.
+`timeout_seconds` et `return_extension` (menu déroulant des vrais postes,
+plus du texte libre) maintenant modifiables sur un lot existant, vérifiés
+de bout en bout. Voir TASK-S061 (TASKSIPV.md) pour le détail complet,
+y compris deux demandes non réalisables ce soir (retour dynamique vers
+"le poste qui a parké", annonce liée à la langue du POSTE pas de la
+compagnie) -- documentées clairement, aucun GO donné.
+
+**INCIDENT même soir, causé et corrigé côté SIPV** -- un commentaire XML
+ajouté dans le dialplan contenait `--` (invalide en XML), a cassé le
+routage complet des appels pour le tenant pendant un moment avant d'être
+repéré et corrigé. Un deuxième défaut identique préexistant trouvé et
+corrigé au passage. Détail complet + risque systémique pas encore audité
+(noms d'utilisateur avec `--` pourraient reproduire le même crash
+ailleurs) dans TASK-S061 (TASKSIPV.md) -- à traiter en priorité avant
+tout nouveau développement sur le dialplan.
+
+**Preuve confirmée pour "poste qui a parké"** (retour dynamique au timeout,
+plutôt qu'une extension statique) : `sip_h_Referred-By` fonctionne,
+vérifié sur un vrai appel réel, contient bien l'identité du poste qui a
+fait le park. Pas construit ce soir -- voir TASK-S061 pour le plan.
+
+**"Poste qui a parqué" construit et vérifié en direct (2026-08-20, même
+soirée)** -- côté SIPV : `sip_h_Referred-By` capturé et injecté
+dynamiquement dans `valet_parking_orbit_exten` au moment du park (voir
+TASK-S061 dans TASKSIPV.md pour le détail dialplan). Testé sur de vrais
+appels : timeout réel déclenché, rappel du poste qui avait parqué,
+réponse et reconnexion à l'appel parqué -- fonctionne.
+
+**Raffinement demandé par Philippe le même soir** -- pas un simple
+fallback automatique : "je ne veux pas de poste de sécurité, je veux
+avoir l'option de rappel [...] comme ça je peux sélectionner la réception
+et envoyer les park pas répondu là, ou de choisir l'option de base de
+rappeler le poste qui a parqué." Nouveau champ `timeout_return_mode`
+(parker/fixed, défaut parker) sur `ParkingLot`, exposé dans ERPCRM :
+`ParkingLotsSection.jsx` a maintenant une colonne "Mode de rappel" (menu
+déroulant) en plus du poste de rappel -- en mode "fixed", validé des
+deux côtés (front + SIPV) qu'un poste est bien choisi. Migration SIPV
+`0065_park_timeout_mode`, tests dialplan ajoutés (mode parker garde la
+condition dynamique, mode fixed l'ignore complètement). `npm run build`
+propre, backend + frontend ERPCRM redémarrés (`erpcrm-backend[-tls]` via
+sudo systemctl -- services système, pas `--user` comme le frontend ; voir
+[[project_infrastructure]] pour la nuance).
+
+**INCIDENT + correction infra même soir (détail complet dans TASKSIPV.md,
+TASK-S061)** -- un redémarrage `sipv-backend` a fait tomber le poste 102
+(REGISTER/SUBSCRIBE en plein trou de service). Corrigé : `sipv-backend`
+tourne maintenant sous `gunicorn` (2 workers, reload à chaud sans
+coupure) -- nouvelle procédure de déploiement SIPV : `systemctl reload`,
+plus jamais `restart` sauf process mort.
+
+**Bug trouvé et corrigé côté SIPV pendant les tests de continuité MOH** --
+`uuid_getvar` renvoie littéralement `"_undef_"` pour une variable non
+définie (ni vide, ni `-ERR`) ; le code de fallback dans
+`moh_hold_tracker.py` ne traitait pas ce cas, empêchant tout le mécanisme
+de reprise MOH du parcage de fonctionner. Corrigé, pas encore reconfirmé
+sur un cycle complet park -> reprise -> re-park après le fix (traces de
+diagnostic temporaires encore en place côté SIPV).
+
+**Concept UI refait + lien audio ajouté (2026-08-20, même soirée)** --
+Philippe a rejeté le menu à deux options nommées ("plus obligé de garder le
+plus d'affaire possible") : remplacé par une case "Poste dédié" +
+sélecteur de poste qui apparaît juste à côté quand coché (style
+destinations DID). Décoché = comportement par défaut (rappelle le poste
+qui a parqué), pas besoin de le nommer. Bug corrigé en chemin : la
+première version cachait le poste tant que le mode n'était pas "fixed",
+créant un blocage (impossible de choisir un poste pour justement pouvoir
+passer en mode fixed) -- les deux champs partent maintenant ensemble en
+une seule requête dès qu'un poste est choisi. Lien "Horaires & Audio"
+ajouté sous la section (bascule le sous-onglet) pour configurer plus tard
+les audios d'annonce du parcage avec choix de langue -- pointeur seulement,
+le mécanisme TTS/Voicebox lui-même reste backlog (voir TASK-S061 dans
+TASKSIPV.md).

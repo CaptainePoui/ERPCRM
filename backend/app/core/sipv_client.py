@@ -598,6 +598,47 @@ async def delete_ring_group(rg_id: str) -> None:
         resp.raise_for_status()
 
 
+async def list_parking_lots(tenant_id: str) -> list[dict]:
+    async with _client() as client:
+        resp = await client.get(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/parking-lots/tenant/{tenant_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def create_parking_lot(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/parking-lots/tenant/{tenant_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_parking_lot(lot_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/parking-lots/{lot_id}",
+            json=fields,
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_parking_lot(lot_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/parking-lots/{lot_id}",
+            headers=_headers(),
+        )
+        resp.raise_for_status()
+
+
 async def add_ring_group_member(rg_id: str, **fields) -> dict:
     async with _client() as client:
         resp = await client.post(
