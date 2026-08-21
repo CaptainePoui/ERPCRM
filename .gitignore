@@ -34,3 +34,6 @@ backend/uploads/
 
 # Logs
 *.log
+
+# Serena MCP (outillage dev local, pas pour le produit livré)
+.serena/
