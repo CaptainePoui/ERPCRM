@@ -1,7 +1,7 @@
 ---
 name: integration-verifier
 description: "Suit une fonctionnalite de bout en bout : UI ERPCRM -> API -> DB -> assignation serveur -> generation config -> SIPV -> FreeSWITCH/Kamailio -> runtime. Utiliser pour verifier qu'une option ERPCRM a un effet reel, pas juste visuel, et identifier tout chainon manquant."
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena-erpcrm__initial_instructions, mcp__serena-erpcrm__find_symbol, mcp__serena-erpcrm__get_symbols_overview, mcp__serena-erpcrm__find_referencing_symbols, mcp__serena-erpcrm__find_declaration, mcp__serena-erpcrm__find_implementations, mcp__serena-erpcrm__get_diagnostics_for_file, mcp__serena-sipv__initial_instructions, mcp__serena-sipv__find_symbol, mcp__serena-sipv__get_symbols_overview, mcp__serena-sipv__find_referencing_symbols, mcp__serena-sipv__find_declaration, mcp__serena-sipv__find_implementations, mcp__serena-sipv__get_diagnostics_for_file
 model: sonnet
 ---
 

@@ -1,7 +1,7 @@
 ---
 name: skeptic
 description: "Ne code jamais. Recoit des conclusions (les siennes ou celles d'autres agents) et cherche activement a les refuter avec des preuves. Utiliser pour challenger une affirmation importante avant de la considerer etablie, notamment en debug multi-agent (voir skill debug-with-agent-team)."
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena-erpcrm__initial_instructions, mcp__serena-erpcrm__find_symbol, mcp__serena-erpcrm__get_symbols_overview, mcp__serena-erpcrm__find_referencing_symbols, mcp__serena-erpcrm__find_declaration, mcp__serena-erpcrm__find_implementations, mcp__serena-erpcrm__get_diagnostics_for_file, mcp__serena-sipv__initial_instructions, mcp__serena-sipv__find_symbol, mcp__serena-sipv__get_symbols_overview, mcp__serena-sipv__find_referencing_symbols, mcp__serena-sipv__find_declaration, mcp__serena-sipv__find_implementations, mcp__serena-sipv__get_diagnostics_for_file
 model: sonnet
 ---
 

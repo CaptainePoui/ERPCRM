@@ -1,7 +1,7 @@
 ---
 name: erpcrm-researcher
 description: "Recherche read-only dans le code ERPCRM (modele, API, frontend, generation de config, tests). Utiliser pour repondre a 'comment est-ce fait aujourd'hui cote ERPCRM' sans polluer le contexte principal. Ne code pas, ne suppose pas -- rapporte des preuves (fichier:ligne)."
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena-erpcrm__initial_instructions, mcp__serena-erpcrm__find_symbol, mcp__serena-erpcrm__get_symbols_overview, mcp__serena-erpcrm__find_referencing_symbols, mcp__serena-erpcrm__find_declaration, mcp__serena-erpcrm__find_implementations, mcp__serena-erpcrm__get_diagnostics_for_file
 model: sonnet
 ---
 

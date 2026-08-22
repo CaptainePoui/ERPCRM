@@ -1,7 +1,7 @@
 ---
 name: sipv-researcher
 description: "Recherche read-only dans le vrai depot SIPV (FreeSWITCH, Kamailio, RTPengine, code, config, docs). Utiliser pour repondre a 'comment est-ce fait/configure aujourd'hui cote SIPV' sans polluer le contexte principal. Travaille sur le vrai depot via SSH/Serena, jamais sur un mirror."
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Glob, Bash, mcp__serena-sipv__initial_instructions, mcp__serena-sipv__find_symbol, mcp__serena-sipv__get_symbols_overview, mcp__serena-sipv__find_referencing_symbols, mcp__serena-sipv__find_declaration, mcp__serena-sipv__find_implementations, mcp__serena-sipv__get_diagnostics_for_file
 model: sonnet
 ---
 
