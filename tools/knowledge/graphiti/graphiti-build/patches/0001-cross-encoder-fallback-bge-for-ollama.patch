@@ -1,0 +1,16 @@
+--- a/mcp_server/src/services/factories.py
++++ b/mcp_server/src/services/factories.py
+@@ -462,6 +462,13 @@
+             case 'openai':
+                 if not config.providers.openai:
+                     return None
++                if is_non_openai_provider(config.providers.openai.api_url):
++                    # OpenAI-compatible but non-OpenAI endpoints (Ollama, LM Studio, vLLM, ...)
++                    # do not support logit_bias + logprobs, which OpenAIRerankerClient requires.
++                    # Return None so the caller falls through to the local BGE reranker instead
++                    # of instantiating a client that would silently produce meaningless scores.
++                    # Simple IP Platform patch, see graphiti-build/patches/.
++                    return None
+                 from graphiti_core.cross_encoder.openai_reranker_client import (
+                     OpenAIRerankerClient,
+                 )

@@ -11,6 +11,9 @@ llm:
   provider: "openai"
   model: ${MODEL_NAME:gpt-4.1-mini}
   max_tokens: 4096
+  # json_object : le modele local (Ollama) n'honore pas toujours json_schema de facon fiable --
+  # voir README officiel mcp_server pour Ollama, recommandation explicite.
+  structured_output_mode: "json_object"
 
   providers:
     openai:
@@ -21,7 +24,10 @@ llm:
 embedder:
   provider: "openai"
   model: ${EMBEDDER_MODEL:text-embedding-3-small}
-  dimensions: 1536
+  # 768 = dimension reelle de nomic-embed-text (Ollama), verifiee par appel direct a
+  # /v1/embeddings le 2026-08-22. Ne PAS remettre 1536 (defaut OpenAI) -- graphiti_core
+  # tronque silencieusement sans erreur si ca ne correspond pas (embedder/openai.py).
+  dimensions: 768
 
   providers:
     openai:

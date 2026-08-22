@@ -21,6 +21,14 @@ echo "${EXPECTED_SHA256}  graphiti-${COMMIT:0:7}.tar.gz" | sha256sum -c -
 rm -rf "graphiti-${COMMIT}"
 tar xzf "graphiti-${COMMIT:0:7}.tar.gz"
 
+# Patches Simple IP Platform (appliques sur l'extraction, jamais sur le tarball source
+# verifie SHA256 ci-dessus). Voir patches/*.patch pour le detail de chaque correctif.
+for p in patches/*.patch; do
+  [ -e "$p" ] || continue
+  echo "Application du patch : $p"
+  patch -p1 -d "graphiti-${COMMIT}" < "$p"
+done
+
 cd "graphiti-${COMMIT}/mcp_server"
 DOCKER_BUILDKIT=1 docker build \
   -f docker/Dockerfile.standalone \

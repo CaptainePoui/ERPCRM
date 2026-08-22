@@ -52,6 +52,9 @@ services:
       - CONFIG_PATH=/app/mcp/config/config.yaml
     volumes:
       - ./config/config-docker-neo4j.yaml:/app/mcp/config/config.yaml:ro
+      - bge_reranker_cache:/root/.cache/huggingface # persiste BAAI/bge-reranker-v2-m3 (~2.3 Go) entre recreations
+    extra_hosts:
+      - "host.docker.internal:host-gateway" # pour joindre Ollama local sur l'hote (voir OPENAI_API_URL dans .env)
     ports:
       - "127.0.0.1:8000:8000" # MCP HTTP transport, LAN/Internet non expose
     command: ["uv", "run", "main.py"]
@@ -60,3 +63,4 @@ services:
 volumes:
   neo4j_data:
   neo4j_logs:
+  bge_reranker_cache:
