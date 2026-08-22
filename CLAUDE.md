@@ -131,21 +131,22 @@ pages/
 
 ## Règles absolues
 - GO obligatoire avant tout code
-- Lire `TASKERPCRM.md` EN PREMIER avant toute intervention
+- Lire `docs/platform/PLATFORM_TASKS.md` EN PREMIER avant toute intervention
 - Zéro supposition — demander si incertain
 - Implémenter SEULEMENT ce qui est demandé
 - Jamais d'IPs codées en dur
 - Ne pas modifier un module existant sans demande explicite
 
-## Convention TASKERPCRM.md
-- TASK-XXX = création initiale d'un module (ex: TASK-015 = Module Tâches)
+## Convention PLATFORM_TASKS.md
+- TASK-XXX = création initiale d'un module ERPCRM (ex: TASK-015 = Module Tâches) ; TASK-SXXX = création initiale d'un module SIPV.
 - TASK-XXX.Y = tout ajout ou fix sur ce module (ex: TASK-015.1, TASK-015.2, ...)
+- `TASKERPCRM.md`/`TASKSIPV.md` sont les sources historiques archivées (migration 2026-08-21/22, voir `docs/platform/PLATFORM_TASKS.md` et `PHASE_O_ID_MAPPING.md`) — utiles pour consulter l'historique complet d'un ancien ID, plus aucune nouvelle entrée active n'y est ajoutée.
 
-### Procédure obligatoire avant d'écrire une entrée dans TASKERPCRM.md
-1. Chercher dans TASKERPCRM.md si le module concerné a déjà un numéro TASK-XXX
+### Procédure obligatoire avant d'écrire une entrée dans PLATFORM_TASKS.md
+1. Chercher dans `docs/platform/PLATFORM_TASKS.md` si le module concerné a déjà un numéro TASK-XXX (ERPCRM) ou TASK-SXXX (SIPV)
 2. Si oui → ajouter TASK-XXX.Y (Y = prochain numéro disponible pour ce module)
-3. Si non → créer TASK-XXX (numéro suivant le dernier utilisé dans le fichier)
-4. Toujours mettre à jour TASKERPCRM.md après le travail, pas avant
+3. Si non → créer TASK-XXX (numéro suivant le dernier utilisé dans le fichier, dans la bonne famille ERPCRM/SIPV)
+4. Toujours mettre à jour `docs/platform/PLATFORM_TASKS.md` après le travail, pas avant
 
 ### Pourquoi
 L'utilisateur travaille de façon non-linéaire : il revient sur des modules existants,

@@ -20,7 +20,7 @@ Jamais de SQL manuel (`UPDATE`/`DELETE`) en production sans demande explicite de
 
 - Tester la migration up ET down si raisonnable.
 - Redemarrer le backend concerne immediatement si le changement l'exige (jamais laisser un backend tourner avec un schema desynchronise).
-- Mettre a jour TASKERPCRM.md/TASKSIPV.md avec le numero de migration.
+- Mettre a jour docs/platform/PLATFORM_TASKS.md avec le numero de migration.
 
 ## Multi-tenant / multi-SIPV
 

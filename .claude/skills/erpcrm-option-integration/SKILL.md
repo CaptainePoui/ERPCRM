@@ -58,7 +58,7 @@ Une option n'est consideree terminee que si CHAQUE couche applicable est prouvee
 - [ ] Generation de config SIPV
 - [ ] Effet reel confirme sur SIPV (dialplan/XML genere, ou runtime si applicable)
 - [ ] Tests
-- [ ] TASKERPCRM.md / TASKSIPV.md mis a jour (procedure existante : chercher le TASK-XXX du module avant de creer un nouveau numero)
+- [ ] docs/platform/PLATFORM_TASKS.md mis a jour (procedure existante : chercher le TASK-XXX/TASK-SXXX du module avant de creer un nouveau numero)
 - [ ] Graphiti/BUILD_HISTORY si la decision est structurante
 
 ## Ne jamais faire
