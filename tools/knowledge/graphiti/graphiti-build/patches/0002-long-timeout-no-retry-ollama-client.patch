@@ -1,0 +1,68 @@
+--- a/mcp_server/src/services/factories.py
++++ b/mcp_server/src/services/factories.py
+@@ -1,5 +1,7 @@
+ """Factory classes for creating LLM, Embedder, and Database clients."""
+ 
++from urllib.parse import urlparse
++
+ from graphiti_core.cross_encoder.client import CrossEncoderClient
+ from graphiti_core.embedder import EmbedderClient, OpenAIEmbedder
+ from graphiti_core.llm_client import LLMClient, OpenAIClient
+@@ -108,6 +110,27 @@
+     return not any(domain in base_url for domain in openai_domains)
+ 
+ 
++def is_local_ollama_provider(base_url: str | None) -> bool:
++    """Return True only for the local Ollama endpoint used by Simple IP Platform.
++
++    Strict match on http://host.docker.internal:11434/v1 (see docker-compose.yml
++    extra_hosts and systemd/ollama-resolve-docker-host.sh) -- not a bare port check,
++    which would also match a remote OpenAI-compatible endpoint that happens to use
++    Ollama's default port. host.docker.internal is Docker's own stable alias for the
++    host gateway, not a hardcoded IP, so this stays correct across reboots/migrations.
++    """
++    if not base_url:
++        return False
++
++    parsed = urlparse(base_url)
++    return (
++        parsed.scheme == 'http'
++        and parsed.hostname == 'host.docker.internal'
++        and parsed.port == 11434
++        and parsed.path.rstrip('/') == '/v1'
++    )
++
++
+ def reasoning_effort_for_model(model: str) -> str | None:
+     """Reasoning effort to send for a reasoning model, or None if not one.
+ 
+@@ -164,8 +187,29 @@
+                 if use_generic_client:
+                     # Use OpenAIGenericClient for Ollama and other OpenAI-compatible providers
+                     # This uses the standard Chat Completions API instead of Responses API
++                    local_client = None
++                    if is_local_ollama_provider(config.providers.openai.api_url):
++                        # Simple IP Platform patch: local Ollama on CPU-only hardware can
++                        # take much longer per call than a remote API. Give it one long
++                        # attempt instead of the SDK's default 600s x (1 + 2 retries), which
++                        # wastes up to 1800s retrying a call that just needed more time.
++                        # Scoped strictly to our own Ollama endpoint (see
++                        # is_local_ollama_provider) -- any other OpenAI-compatible provider
++                        # (LM Studio, vLLM, a remote gateway) keeps the SDK's normal
++                        # timeout/retry behavior. See graphiti-build/patches/. Local import:
++                        # mirrors the Azure branches below, and avoids the module-level name
++                        # colliding with their own local `from openai import AsyncOpenAI`.
++                        from openai import AsyncOpenAI
++
++                        local_client = AsyncOpenAI(
++                            api_key=llm_config.api_key,
++                            base_url=llm_config.base_url,
++                            timeout=3600.0,
++                            max_retries=0,
++                        )
+                     return OpenAIGenericClient(
+                         config=llm_config,
++                        client=local_client,
+                         max_tokens=config.max_tokens,
+                         structured_output_mode=config.structured_output_mode,
+                     )

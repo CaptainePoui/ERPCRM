@@ -11,9 +11,12 @@ llm:
   provider: "openai"
   model: ${MODEL_NAME:gpt-4.1-mini}
   max_tokens: 4096
-  # json_object : le modele local (Ollama) n'honore pas toujours json_schema de facon fiable --
-  # voir README officiel mcp_server pour Ollama, recommandation explicite.
-  structured_output_mode: "json_object"
+  # json_schema : teste et valide sur cette installation (gpt-oss:20b + Ollama local) le
+  # 2026-08-23 -- json_object (le defaut recommande par le README officiel mcp_server pour
+  # Ollama en general) laissait gpt-oss repondre avec un JSON valide mais hors schema
+  # (ex: echo du schema lui-meme au lieu des donnees) sur extract_edges. json_schema est
+  # aussi le defaut natif de Graphiti v0.29.3 pour OpenAIGenericClient.
+  structured_output_mode: "json_schema"
 
   providers:
     openai:
