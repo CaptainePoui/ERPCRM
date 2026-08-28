@@ -1,0 +1,15 @@
+[Unit]
+Description=Backfill PLATFORM_TASKS.md / ERRORS_LESSONS.md dans Graphiti (reprise apres interruption)
+After=docker.service
+Requires=docker.service
+StartLimitIntervalSec=86400
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/run-graphiti-backfill.sh
+Restart=on-failure
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target
