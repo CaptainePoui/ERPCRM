@@ -765,7 +765,7 @@ function MonthView({ year, month, tasks, googleEvents, onSelectTask, onEventClic
                   return (
                     <div key={di} onClick={() => onDayClick(date)} style={{ background: inMonth ? '#fff' : '#F9FAFB', padding: 6, position: 'relative', minWidth: 0, overflowY: 'auto', cursor: 'pointer', ...cellBorder(di, isLastRow) }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : inMonth ? '#374151' : '#C1C7D0', background: isToday ? 'var(--brand)' : 'transparent', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{date.getDate()}</div>
+                        <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : inMonth ? '#374151' : '#9CA3AF', background: isToday ? 'var(--brand)' : 'transparent', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{date.getDate()}</div>
                         {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                       </div>
                       {barsSpace > 0 && <div style={{ height: barsSpace }} />}
@@ -963,8 +963,14 @@ export default function Tasks({ defaultView = 'list' }) {
     if (!isAgenda) return
     let start, end
     if (view === 'month') {
-      start = new Date(calYear, calMonth, 1)
-      end = new Date(calYear, calMonth + 1, 0, 23, 59, 59)
+      // Meme grille que MonthView (semaines completes) : inclut les jours du
+      // mois precedent/suivant affiches pour combler le tableau, sinon leurs
+      // RDV ne sont jamais charges et ces cases restent vides.
+      const daysInMonth = getDaysInMonth(calYear, calMonth)
+      const firstDay = getFirstDayOfWeek(calYear, calMonth)
+      const totalCells = Math.ceil((daysInMonth + firstDay) / 7) * 7
+      start = new Date(calYear, calMonth, 1 - firstDay)
+      end = new Date(calYear, calMonth, 1 - firstDay + totalCells, 23, 59, 59)
     } else if (view === 'week') {
       start = new Date(calWeekStart)
       end = new Date(calWeekStart)
