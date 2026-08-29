@@ -48,10 +48,27 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
 }
 
 const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets']
+// Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets']
 
 export default function Admin() {
-  const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState(searchParams.get('google_calendar') ? 3 : searchParams.get('backup') ? 4 : 0)
+  const [searchParams, setSearchParams] = useSearchParams()
+  // google_calendar/backup restent prioritaires -- ce sont des callbacks OAuth qui
+  // doivent atterrir sur le bon onglet meme sans ?tab= (IntegrationsPanel/BackupPanel
+  // les effacent eux-memes une fois le message affiche, voir plus bas).
+  const initialTab = searchParams.get('google_calendar') ? 3
+    : searchParams.get('backup') ? 4
+    : Math.max(0, TAB_SLUGS.indexOf(searchParams.get('tab')))
+  const [tab, setTab] = useState(initialTab)
+
+  // Persiste l'onglet actif dans l'URL -- sinon un refresh retombe toujours sur
+  // le premier onglet (Utilisateurs), meme si on etait sur un autre.
+  function selectTab(i) {
+    setTab(i)
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', TAB_SLUGS[i])
+    setSearchParams(next, { replace: true })
+  }
 
   return (
     <div className="adm-page">
@@ -60,7 +77,7 @@ export default function Admin() {
       </div>
       <div className="adm-tabs">
         {TABS.map((t, i) => (
-          <button key={t} className={`adm-tab${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          <button key={t} className={`adm-tab${tab === i ? ' active' : ''}`} onClick={() => selectTab(i)}>{t}</button>
         ))}
       </div>
       <div className="adm-body">
