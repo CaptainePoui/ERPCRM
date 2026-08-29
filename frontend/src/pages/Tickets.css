@@ -20,8 +20,7 @@
   border-bottom: 1px solid #F3F4F6;
 }
 .tkt-sticky-header .page-header { margin-bottom: 10px; }
-.tkt-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-@media (max-width: 700px) { .tkt-detail-grid { grid-template-columns: 1fr; } }
+.tkt-detail-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 20px; }
 .tkt-section { background: #fff; border: 1px solid #E5E7EB; border-radius: 10px; padding: 18px; }
 .tkt-section-title { font-size: 12px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
 .tkt-info-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #F3F4F6; font-size: 14px; }
