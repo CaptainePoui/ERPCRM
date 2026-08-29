@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useBlocker } from 'react-router-dom'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
+import TimerNavigationPrompt from '../components/TimerNavigationPrompt'
 import './Tickets.css'
 
 const PRIORITY_LABELS = {
@@ -130,6 +131,12 @@ export default function TicketDetail() {
       const services = c.data.filter(i => i.is_active && i.type === 'service')
       setCatalogue(services)
       setLoading(false)
+      // Le chrono represente le temps reellement passe sur le ticket, pas son
+      // age depuis sa creation -- il demarre a l'ouverture de SA PAGE, pas en
+      // base de donnees (voir Ticket.timer_start_at). Si un autre appareil a
+      // deja la page ouverte (timer deja actif), ne pas y toucher ici --
+      // resumeTimer() ecraserait timer_start_at et perdrait son temps ecoule.
+      if (!r.data.closed_at && !r.data.timer_running) resumeTimer()
     })
   }, [id])
 
@@ -193,6 +200,15 @@ export default function TicketDetail() {
     const r = await api.post(`/v1/tickets/${id}/timer/resume`)
     applyTicket(r.data)
   }
+
+  // Quitter la route du ticket (pas juste perdre le focus/la visibilite --
+  // changer d'onglet ou verrouiller l'ecran ne doit RIEN declencher ici) pendant
+  // que le chrono roule : demande si le chrono doit continuer (voir
+  // TimerNavigationPrompt -- "oui" ouvre cette page dans un nouvel onglet,
+  // "non" met en pause) avant de laisser partir la navigation.
+  const timerNavBlocker = useBlocker(
+    ({ currentLocation, nextLocation }) => timerRunning && currentLocation.pathname !== nextLocation.pathname
+  )
 
   // Un clic n'importe où sur la page relance le chrono s'il est en pause
   // (sauf sur le bouton Pause/Reprendre, qui gère déjà son propre clic)
@@ -719,6 +735,8 @@ export default function TicketDetail() {
           </div>
         </div>
       )}
+
+      <TimerNavigationPrompt blocker={timerNavBlocker} onPause={pauseTimer} onResume={resumeTimer} />
     </div>
   )
 }

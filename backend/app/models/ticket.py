@@ -37,7 +37,13 @@ class Ticket(Base):
     # Anchors ecrites UNIQUEMENT par le serveur (jamais un timestamp fourni
     # par le client) pour eviter tout probleme de derive d'horloge entre
     # appareils -- voir /timer/pause et /timer/resume dans tickets.py.
-    timer_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    # Defaut None (en pause) -- le chrono ne represente pas l'age du ticket
+    # depuis sa creation, seulement le temps reellement passe a travailler
+    # dessus. Il demarre a la premiere ouverture de la page (frontend), pas a
+    # l'insertion en base -- sinon tout ecart entre creation et ouverture
+    # reelle (RDV planifie a l'avance, ticket cree pour un technicien qui ne
+    # l'ouvre que plus tard) est compte comme du temps travaille.
+    timer_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
     timer_base_seconds: Mapped[int] = mapped_column(Integer, default=0)
     last_note_marker_seconds: Mapped[int] = mapped_column(Integer, default=0)
     draft_note_desc: Mapped[str | None] = mapped_column(Text)
