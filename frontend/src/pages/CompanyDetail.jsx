@@ -14,7 +14,7 @@ import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 
 const TABS = ['Général', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'contacts', 'tickets', 'inventaire', 'telephonie', 'taches', 'photos', 'journal']
+const TAB_SLUGS = ['general', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
