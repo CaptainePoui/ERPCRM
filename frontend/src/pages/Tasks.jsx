@@ -1005,12 +1005,12 @@ export default function Tasks({ defaultView = 'list' }) {
   function pickRdv() {
     const d = quickAddDate
     setQuickAddDate(null)
-    setEditingGoogleEvent({ mode: 'create', date: d, title: 'RDV - ', description: '', location: '', startTime: '09:00', endTime: '10:00' })
+    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'RDV - ', description: '', location: '', startTime: '09:00', endTime: '10:00' })
   }
   function pickAppel() {
     const d = quickAddDate
     setQuickAddDate(null)
-    setEditingGoogleEvent({ mode: 'create', date: d, title: 'Appel - ', description: '', location: '', startTime: '09:00', endTime: '09:30' })
+    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'Appel - ', description: '', location: '', startTime: '09:00', endTime: '09:30' })
   }
   function openEditGoogleEvent(e) {
     const start = googleEventDate(e)
@@ -1019,6 +1019,7 @@ export default function Tasks({ defaultView = 'list' }) {
       mode: 'edit', calendar_id: e.calendar_id, event_id: e.id,
       title: e.title, description: e.description || '', location: e.location || '',
       date: dateStr(start),
+      endDate: dateStr(end),
       startTime: start.toTimeString().slice(0, 5),
       endTime: end.toTimeString().slice(0, 5),
     })
@@ -1256,11 +1257,21 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const [description, setDescription] = useState(data.description || '')
   const [location, setLocation] = useState(data.location || '')
   const [date, setDate] = useState(data.date)
+  const [endDate, setEndDate] = useState(data.endDate || data.date)
   const [startTime, setStartTime] = useState(data.startTime)
   const [endTime, setEndTime] = useState(data.endTime)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+
+  // Si l'evenement etait sur une seule journee (cas le plus courant), deplacer
+  // la date de debut deplace aussi la date de fin -- sinon changer juste le
+  // debut creerait un evenement multi-jours non voulu. Une fois les deux
+  // dates rendues differentes volontairement, ce lien s'arrete.
+  function changeDate(newDate) {
+    if (date === endDate) setEndDate(newDate)
+    setDate(newDate)
+  }
 
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([])
@@ -1303,13 +1314,20 @@ function GoogleEventModal({ data, onClose, onSaved }) {
     setSaving(true)
     setError('')
     try {
-      const start = new Date(`${date}T${startTime}:00`).toISOString()
-      const end = new Date(`${date}T${endTime}:00`).toISOString()
+      const start = new Date(`${date}T${startTime}:00`)
+      const end = new Date(`${endDate}T${endTime}:00`)
+      if (end <= start) {
+        setError('La date/heure de fin doit être après le début')
+        setSaving(false)
+        return
+      }
+      const startIso = start.toISOString()
+      const endIso = end.toISOString()
       if (isEdit) {
-        await api.put('/v1/google-calendar/events', { calendar_id: data.calendar_id, event_id: data.event_id, title, description, location, start, end })
+        await api.put('/v1/google-calendar/events', { calendar_id: data.calendar_id, event_id: data.event_id, title, description, location, start: startIso, end: endIso })
       } else {
         await api.post('/v1/google-calendar/events', {
-          title, description, location, start, end,
+          title, description, location, start: startIso, end: endIso,
           company_id: selectedCompany?.id || null,
           contact_id: selectedContact?.id || null,
           send_confirmation: sendConfirmation,
@@ -1341,9 +1359,12 @@ function GoogleEventModal({ data, onClose, onSaved }) {
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
         <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus style={{ color: '#374151', background: '#fff' }} /></div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <div className="form-group" style={{ flex: 1 }}><label>Date</label><input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date début</label><input type="date" value={date} onChange={e => changeDate(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
         </div>
         {!isEdit && (
           <>
