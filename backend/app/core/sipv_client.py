@@ -3,8 +3,13 @@ Client HTTP ERPCRM -> SIPV.
 Utilise pour creer/activer/desactiver le tenant telephonique d'une compagnie.
 Authentification par X-Api-Key (settings.ERPCRM_API_KEY) — jamais de compte utilisateur.
 """
+import logging
+from contextlib import asynccontextmanager
+
 import httpx
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # CA privee ERPCRM<->SIPV (TASK-039 TLS inter-serveurs) -- verifie le certificat du
 # port TLS dedie de SIPV (8022), distinct du port HTTP existant (8020, inchange,
@@ -16,8 +21,24 @@ def _headers() -> dict:
     return {"X-Api-Key": settings.ERPCRM_API_KEY}
 
 
-def _client() -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=5.0, verify=_CA_PATH)
+@asynccontextmanager
+async def _client():
+    """Point d'entree UNIQUE de tous les appels SIPV (~50 fonctions ici, 126
+    endpoints en aval qui retombent tous sur `except httpx.HTTPError: raise
+    HTTPException(502, "SIPV injoignable")`). Avant ce correctif, cette
+    exception etait avalee sans trace -- un vrai incident (ex: 2026-08-29
+    18h48, commande "ecouter message" sur poste 102) ne laissait aucune preuve
+    exploitable. Logger ici, une seule fois, couvre les 126 endroits sans
+    y toucher : chacun garde son 502 tel quel, mais precede desormais d'une
+    ligne de log exploitable (type d'erreur reel + methode/URL visee)."""
+    async with httpx.AsyncClient(timeout=5.0, verify=_CA_PATH) as client:
+        try:
+            yield client
+        except httpx.HTTPError as e:
+            req = getattr(e, "request", None)
+            where = f"{req.method} {req.url}" if req is not None else "?"
+            logger.error(f"Appel SIPV echoue ({type(e).__name__}) sur {where} : {e}")
+            raise
 
 
 async def sync_company(account_number: str, company_name: str, erpcrm_company_id: str, is_active: bool) -> dict:
