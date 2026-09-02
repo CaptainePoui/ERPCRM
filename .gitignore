@@ -35,6 +35,17 @@ backend/uploads/
 # Logs
 *.log
 
+# Journal de conversation Claude Code -- contient le mot-pour-mot des sessions
+# (peut inclure des secrets tapes dans le chat), jamais commite
+docs/platform/CONVERSATION_LOG.md
+tools/logging/.conversation_log_state.json
+
+# File d'attente Graphiti (ecrite/consommee en continu, pas de la documentation)
+docs/platform/graphiti_queue.jsonl
+tools/knowledge/graphiti/incoming/*.jsonl
+tools/knowledge/graphiti/scripts/.graphiti_write.lock
+tools/knowledge/graphiti/scripts/.graphiti_queue_state.json
+
 # Serena MCP (outillage dev local, pas pour le produit livré)
 .serena/
 

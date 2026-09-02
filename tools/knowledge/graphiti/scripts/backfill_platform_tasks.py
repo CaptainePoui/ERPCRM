@@ -22,8 +22,11 @@ meme groupe pourraient creer des entites en double (le serveur MCP ne serialise
 que ses propres appels entre eux, pas les ecritures d'un processus externe).
 
 Execution (a l'interieur du conteneur graphiti-mcp, qui a la config/deps
-deja validees) :
-    docker exec graphiti-graphiti-mcp-1 python3 /app/mcp/scripts/backfill_platform_tasks.py
+deja validees) -- TOUJOURS via le verrou d'ecriture (voir run_with_write_lock.sh
+et graphiti_queue_consumer.py, 2026-09-02), pour ne jamais tourner en meme
+temps qu'une autre ecriture directe dans Graphiti :
+    ./run_with_write_lock.sh docker exec graphiti-graphiti-mcp-1 \\
+        /app/mcp/.venv/bin/python3 /app/mcp/scripts/backfill_platform_tasks.py
 """
 
 import asyncio
