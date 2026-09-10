@@ -16,6 +16,22 @@ Ligne `Classification:` ajoutée en tête de chaque bloc TASK-XXX top-level, rep
 
 ---
 
+## TASK-000 [PLATFORM] [x] Migration Phases M→P — fusion documentaire PLATFORM_TASKS.md
+Date de demande : 2026-08-21 (décision de migrer `TASKERPCRM.md`/`TASKSIPV.md` vers un document unique)
+Date(s) de travail : 2026-08-21, 2026-08-22
+
+Classification: HISTORICAL
+
+Travail antérieur à la convention TASK-XXX telle qu'utilisée aujourd'hui — placé en TASK-000 pour lui donner un numéro de référence (les erreurs qui s'y rattachent en ont besoin), pas une fonctionnalité ERPCRM/SIPV. Inventaire/classification (Phase M), archivage hashé des sources (Phase N), fusion documentaire avec mapping d'IDs (Phase O), audit indépendant `task-migration-auditor` (Phase P, verdict PASS AVEC RÉSERVES puis toutes réserves fermées). Résultat : `PLATFORM_TASKS.md` (ce fichier), mapping complet dans `PHASE_O_ID_MAPPING.md`.
+
+### TASK-000.1 [x] ID de tâche dupliqué — `TASK-015.12` utilisé pour deux fonctionnalités sans rapport
+`TASK-015.12` désignait deux entrées sans rapport dans `TASKERPCRM.md` ("Correction manuelle du temps chrono ticket" et "Envoi de RDV par courriel"). "Correction manuelle du temps chrono ticket" renumérotée `TASK-015.14` en Phase O.
+
+### TASK-000.2 [x] Compteur générique réutilisé — 22 sous-tâches SIPV mal rattachées à `TASK-S023`
+22 sous-entrées numérotées `023.X`/`S023.X` n'avaient aucun rapport avec `TASK-S023` (synchronisation `PendingChange`, jamais construite) — compteur générique réutilisé pendant le backlog du 2026-07-24. Redistribuées vers leurs vraies familles (`S004`/`S007`/`S008`/`S011`/`S018`/`S020`) en Phase O.
+
+---
+
 ## TASK-001 [ERPCRM] [x] Auth — Login JWT, get_current_user, sessions
 Classification: HISTORICAL
 
@@ -31,6 +47,17 @@ Classification: HISTORICAL
 *(Entrée sans section dédiée dans TASKERPCRM.md — seule trace : une ligne dans le tableau récapitulatif "Complétées", module-clé `companies`. Reproduite telle quelle, aucun détail supplémentaire disponible dans la source.)*
 
 **Description (table) :** Compagnies — liste, fiche, onglets, boutons + Ticket / + Facture / + Tâche
+
+### TASK-002.1 [x] Fix — slug 'cdr' manquant dans TAB_SLUGS
+Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-29
+
+`TABS` a 9 entrées (Général..Journal) mais `TAB_SLUGS` n'en avait que 8 — 'cdr'
+manquait, décalant tout ce qui suit d'un cran dès que l'URL pilote l'onglet
+(refresh, lien partagé) : CDR se comportait comme Tâches, Tâches comme Photos,
+Photos comme Journal, Journal retombait sur Général (slug 'undefined'
+introuvable). Ajouté le slug manquant, 9 entrées alignées 1-pour-1.
+Fichier : frontend/src/pages/CompanyDetail.jsx (commit a978bba).
 
 ---
 
@@ -197,13 +224,8 @@ manuellement si souhaité.
 
 ### TASK-004.2 [x] Fix contrainte CHECK bloquant "connaissance" + rate_multiplier (Appel d'urgence x2)
 
-⚠️ Bug : juste après TASK-004.1, l'utilisateur ne pouvait cocher aucune case
-"Connaissance" dans l'écran de classement -- clic sans effet visible. Logs
-`erpcrm-backend` : `IntegrityError: CheckViolationError ...
-catalogue_items_type_check`. La table avait un CHECK constraint en base
-(`type IN ('service','materiel')`) posé hors du modèle SQLAlchemy à un moment
-non tracé dans l'historique Alembic -- invisible dans `models/catalogue.py`
-donc pas repéré avant TASK-004.1.
+Un CHECK constraint en base (`type IN ('service','materiel')`, posé hors du
+modèle SQLAlchemy) bloquait la case "Connaissance" introduite par TASK-004.1.
 Fix : migration `d5e6f7a8b9c0_catalogue_connaissance_constraint` --
 `drop_constraint` + `create_check_constraint` avec les 3 valeurs.
 
@@ -290,6 +312,37 @@ Classification: HISTORICAL
 *(Entrée sans section dédiée dans TASKERPCRM.md — seule trace : une ligne dans le tableau récapitulatif "Complétées", module-clé `tickets`. Reproduite telle quelle, aucun détail supplémentaire disponible dans la source.)*
 
 **Description (table) :** Tickets — statuts, entrées temps, email résumé, + Tâche
+
+### TASK-006.2 [x] TicketDetail — sections Informations et Description en pleine largeur
+Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-29
+
+`.tkt-detail-grid` était en 2 colonnes — Informations (contact/compagnie) et
+Description se retrouvaient côte à côte, chacune étroite. Passé à 1 colonne :
+les deux sections s'empilent en pleine largeur, Description juste sous
+Informations.
+Fichier : frontend/src/pages/TicketDetail.jsx (commit 3d85c91).
+
+### TASK-006.3 [x] Ticket — le chrono démarre à l'ouverture de la page, pas à la création
+Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-29
+
+Le chrono facturable représentait l'âge du ticket depuis sa création
+(`timer_start_at` par défaut = maintenant), pas le temps réellement passé à
+travailler dessus — un ticket créé pour plus tard (RDV planifié, tâche
+assignée) accumulait du temps facturable avant même d'être ouvert. Incident
+réel : ticket "Appel - Alex Bro" à 26h+ dès sa première ouverture.
+- `Ticket.timer_start_at` par défaut `None` (en pause), plus jamais "maintenant".
+- `TicketDetail.jsx` démarre le chrono automatiquement au chargement si un
+  autre appareil n'a pas déjà la page ouverte avec le chrono actif, jamais sur
+  un ticket fermé/facturé.
+- Quitter la route du ticket (dans l'app) pendant que le chrono roule demande
+  si le chrono doit continuer (`TimerNavigationPrompt`) : "non" le met en
+  pause immédiatement, "oui" reprend puis ouvre la page dans un nouvel onglet.
+  Fermer directement l'onglet du navigateur reste hors de portée (aucune API
+  JS ne permet de l'intercepter de façon fiable).
+Fichiers : backend/app/models/ticket.py, frontend/src/pages/TicketDetail.jsx,
+composant TimerNavigationPrompt (commit 4c6de1e).
 
 ### TASK-006.1 [x] Suivi d'ouverture des courriels de ticket (infrastructure de tracking)
 Demande : voir dans l'ERP si un courriel envoyé (ticket, puis facture/devis/RDV) a
@@ -401,6 +454,18 @@ Classification: HISTORICAL
 
 **Description (table) :** Admin — gestion utilisateurs, rôles
 
+### TASK-014.1 [x] Persister l'onglet actif dans l'URL
+Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-29
+
+Le clic sur un onglet ne changeait qu'un `useState` local — un refresh
+retombait toujours sur "Utilisateurs" peu importe l'onglet consulté. Ajouté
+un paramètre `?tab=<slug>` (slug stable, pas l'index, pour survivre à un
+réordonnancement de TABS), lu à l'ouverture et écrit à chaque clic. Les
+callbacks OAuth existants (`?google_calendar=`, `?backup=`) restent
+prioritaires et inchangés.
+Fichier : frontend/src/pages/Admin.jsx (commit a29bfdc).
+
 ---
 
 ## TASK-015 [ERPCRM] [x] Tâches & Agenda — liste, vues mois/semaine/jour, checklist, templates, rappels
@@ -491,8 +556,7 @@ Fichiers touchés :
 - `frontend/src/pages/Tasks.jsx` — dropdown sous-tâches rendu inline au-dessus du champ (marginBottom au lieu de position absolute + bottom:100%)
 - `backend/app/api/v1/endpoints/tickets.py` — `create_ticket` : statut par défaut → `en_cours` (via `Ticket(**payload.model_dump(), status="en_cours")`); email ouverture fire-and-forget; import `send_ticket_open_email` + `settings`
 - `backend/app/core/email.py` — ajout `_TICKET_OPEN_TMPL` HTML + `send_ticket_open_email()` (portail client, description, priorité, lien portail)
-⚠️ Bug fix : `HOURLY_RATE` (nom non défini) dans `create_invoice_from_ticket` → corrigé en `hourly_rate`
-⚠️ Bug fix : `work_mins` pouvait être négatif si seul un crédit "Donner du temps" existait → ajout `max(0, ...)`
+`HOURLY_RATE` (faute de frappe) corrigée en `hourly_rate` dans `create_invoice_from_ticket` ; `work_mins` borné à `max(0, ...)`.
 URL portail : `http://{settings.ERPCRM_HOST}:3010/portal` (pas d'IP codée en dur)
 
 ### TASK-015.10 [x] TicketDetail — chrono permanent + note inline + Donner du temps
@@ -668,6 +732,213 @@ via `systemctl --user`), tous vérifiés actifs.
 ### TASK-015.5 [?] Tâches — vue "Mes tâches" vs "Toute l'équipe"
 *(Entrée sans section dédiée dans TASKERPCRM.md — seule trace : une ligne dans le tableau récapitulatif, module-clé `tasks agenda`. Reproduite telle quelle.)*
 
+### TASK-015.15 [~] Refonte du module Tâches — bibliothèque de procédures découplée de l'agenda, liée aux tickets
+
+Demande (2026-08-27) : le module "Tâches & Agenda" (TASK-015) mélange depuis sa
+création plusieurs concepts qui doivent être séparés. Philippe : "les tâche dans
+l'agenda ne doit pas être là, les tâche c'est comme les article mais pour les
+connaissance et les tâche répétitive [...] tout le travail fait avec un client
+doit être un ticket, c'est les ticket qui prouve le temps et la description de
+ce que j'ai fait, les tâche sont des tâche répétitive."
+
+**Modèle cible (discuté, pas encore construit) :**
+- **Tickets** — inchangé, reste la seule preuve du travail fait avec un client
+  (temps + description).
+- **Tâches** — bibliothèque de procédures/connaissances répétitives (façon
+  Catalogue), pas des rendez-vous, pas du temps facturable en soi. Ex. :
+  "Ouverture de compte" contient des sous-tâches (création compte, poste, DID,
+  IVR, etc.) avec checklist pour suivre où on est rendu — utile si le travail
+  est interrompu ou repris par quelqu'un d'autre.
+- **Agenda** — seulement les RDV (Google Calendar) + contraintes personnelles
+  de Philippe. Le reste est du temps libre que les clients peuvent réserver en
+  ligne. Les tâches n'apparaissent plus dans les vues calendrier (mois/
+  semaine/jour).
+- **RDV → Ticket automatique** : créer un RDV crée automatiquement un ticket
+  (lié au contact et à la compagnie du RDV). Les tâches ajoutées depuis le RDV
+  s'ajoutent à CE ticket — un seul ensemble de tâches, jamais dupliqué entre
+  RDV et ticket (confirmé 2026-08-27, répond à la question ouverte du
+  scoping).
+- **RDV (création/modification)** : possibilité d'y attacher une ou des
+  tâches (le choix de la date/heure reste manuel, fait par Philippe).
+- **RDV (consultation seulement)** : affiche le lien vers le ticket, pas vers
+  la tâche — le ticket est la preuve permanente, la tâche n'était que l'outil
+  de travail pendant l'exécution.
+- **Rappels ponctuels liés à un client** (ex. "rappeler Alex le 28", sans
+  checklist) → deviennent de simples RDV dans l'agenda (à reconfirmer une
+  dernière fois avant implémentation).
+- **Tâche → action dynamique**, choisie en créant le template/sous-tâche :
+  - soit une **page de config ERPCRM précise** (ex. "création de poste" ouvre
+    directement le bon sous-onglet Téléphonie, compagnie du ticket déjà
+    résolue) — nécessite d'étendre `TelephonyTab.jsx` (aujourd'hui `subTab`
+    en `useState` local uniquement) pour que ses sous-sections soient
+    adressables par URL, comme `CompanyDetail.jsx` l'est déjà pour ses onglets
+    principaux (`?tab=slug`, voir `TAB_SLUGS`) ;
+  - soit une **action** comme "Appel" — contact et entreprise résolus
+    automatiquement depuis le ticket, clique = appelle le contact via SIPV.
+    Fondation déjà existante côté proxy ERPCRM→SIPV (`sipv_client.py`,
+    endpoints `POST /moh/{id}/call` et `POST /telephony/prompts/{id}/call`)
+    mais celle-ci fait sonner un poste interne pour tester un message
+    d'attente/prompt — appeler un vrai numéro client est nouveau, pas encore
+    construit.
+
+**Reporté à plus tard (mots de Philippe : "bientôt"), noté ici pour ne pas le
+perdre, PAS construit dans cette entrée :**
+- Durée par tâche (ex. "création de poste" = 3 min).
+- Placement dans l'agenda MANUEL (pas automatique, correction de Philippe
+  2026-08-27) : c'est lui qui place le bloc, le système avertit s'il y a
+  collision avec un autre RDV selon la durée cumulée des tâches ("attention,
+  ça empiète sur le RDV X") — pas un algorithme qui cherche/choisit une place
+  libre tout seul.
+- Lien BIDIRECTIONNEL temps ticket ↔ RDV (précisé 2026-08-27) : ajouter une
+  tâche depuis LE TICKET (pas seulement depuis le RDV) modifie aussi la durée
+  du RDV correspondant, et peut déclencher le même avertissement de collision
+  ("attention, vous empiétez sur le RDV X") si la nouvelle durée cumulée
+  dépasse le bloc déjà réservé.
+- Envoi de rappels, blocage du créneau pour empêcher une
+  réservation client en ligne à cette place (nécessite d'étudier la logique
+  actuelle de disponibilité du portail RDV public, `RDV.jsx`, avant de
+  concevoir).
+- Appel réel vers un client — dépend des vraies lignes SIP, pas encore
+  connectées (voir `project_real_sip_lines_incoming.md`).
+
+**Phase 1 implémentée (2026-08-27), GO explicite reçu ("on peaufinera plus
+tard, fait-le") :**
+
+- Migration Alembic `05a9b10d2b33` : `Ticket.google_calendar_event_id`/
+  `google_calendar_id` (nouveaux), `Task.google_calendar_event_id`/
+  `google_calendar_id` (retirés, superseded — ajoutés par erreur la veille
+  dans TASK-026.5). Migration de données : la seule tâche existante avec un
+  lien calendrier ("Appel - Alex Bro") a été convertie en ticket avec ce même
+  lien, rien perdu. Testée up/down/up.
+- `backend/app/api/v1/endpoints/google_oauth.py` : `create_google_event` crée
+  désormais un **Ticket** (pas une Task) quand une compagnie ou un contact
+  est fourni — résolution de la compagnie via le contact (même logique que
+  `contacts.py`, compagnie principale ou première active) si seul un contact
+  est choisi. Créé directement en ORM (pas via `POST /v1/tickets`) pour NE
+  PAS déclencher le courriel "ticket ouvert" — un RDV n'est pas encore du
+  travail effectué. Nouvel endpoint `GET /events/{event_id}/ticket` pour
+  retrouver le ticket lié à un RDV existant. Le tracking d'ouverture du
+  courriel de confirmation RDV bascule de `entity_type="appointment"` (jamais
+  lu nulle part) à `"ticket"` (déjà affiché sur la fiche ticket).
+- `frontend/src/pages/Tasks.jsx` : tâches retirées de l'affichage des vues
+  calendrier (Mois/Semaine/Jour) — l'agenda n'affiche plus que les RDV.
+  Option "Tâche" retirée du sélecteur rapide (clic sur un jour) — ne reste
+  que RDV/Appel. Bouton "+ Nouvelle tâche" du toolbar agenda remplacé par
+  "+ RDV". `GoogleEventModal` : en édition, résout et affiche le ticket lié
+  (lien cliquable) + section Tâches (ajouter/retirer, via nouveau composant
+  `RdvTasksSection`) ; en création, après le premier "Enregistrer" (si une
+  compagnie/contact est fournie), le formulaire se verrouille et affiche la
+  même section Ticket+Tâches avant fermeture ("Terminé") — pas de double
+  sauvegarde, un seul ticket, jamais dupliqué.
+- `backend/app/api/v1/endpoints/tasks.py` : `ticket_id` peut désormais être
+  explicitement effacé (`null`) via `PUT /v1/tasks/{id}` — nécessaire pour
+  "retirer" une tâche d'un ticket depuis le RDV (même pattern déjà utilisé
+  pour `parent_task_id`).
+- Import manquant de `QuickNewContact` dans `frontend/src/pages/telephony/TelephonyTab.jsx` (trouvé par lint, sans lien direct avec cette tâche) corrigé au passage.
+- Non testé visuellement dans un vrai navigateur (pas d'outil de test
+  disponible — `chromium-cli` absent de cette machine, confirmé en tentant la
+  skill `run`) — build réussi, endpoints vérifiés directement en script contre
+  les vraies données migrées (`get_event_ticket`, `list_tasks?ticket_id=`,
+  `_resolve_company_id` dans ses 3 cas). Philippe à valider en usage réel,
+  notamment : création d'un RDV avec compagnie (ticket auto-créé), ajout/
+  retrait de tâches, RDV sans client (aucun ticket créé, comportement voulu).
+
+**Bugs trouvés par Philippe après coup, corrigés le 2026-08-27 :**
+1. `AttributeError` sur CHAQUE appel `GET /v1/tasks` (page Tâches vide + Agenda vide) — backend redémarré après le retrait de `google_calendar_event_id`/`google_calendar_id` du modèle `Task` mais pas après leur retrait du schéma `TaskOut`. Corrigé par un 2e redémarrage.
+2. Calendrier visible SOUS la liste de tâches sur `/tasks` (React Router ne démonte pas `Tasks.jsx` entre routes sœurs, state `view` survivait d'une page à l'autre) — fix à la racine : `useEffect` de resynchronisation + verrou explicite `isAgenda &&` sur le rendu des 3 vues calendrier.
+
+Confirmation du sort des rappels ponctuels sans checklist : ils deviennent de
+simples RDV — comportement obtenu de facto puisque la création de Task ad-hoc
+depuis l'agenda n'existe plus.
+
+---
+
+### TASK-015.16 [x] Tasks.jsx — agenda mensuel : charger et alléger les jours hors-mois
+Date de demande : 2026-08-28 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-28
+
+Les RDV des derniers jours du mois précédent et premiers jours du mois
+suivant, affichés dans la grille pour compléter le tableau (ex: 27-31 juillet
+avant août, 1-6 septembre après), n'apparaissaient jamais — `loadGoogleEvents`
+ne demandait que les RDV du mois strict, pas la plage réelle affichée par
+`MonthView` (semaines complètes). Même calcul de grille réutilisé pour aligner
+la requête sur ce qui est réellement rendu. Couleur du numéro de jour
+hors-mois adoucie (#C1C7D0 → #9CA3AF), toujours distincte du mois courant
+mais moins délavée.
+Fichier : frontend/src/pages/Tasks.jsx (commit 3788dac).
+
+### TASK-015.17 [x] Agenda — événements Google Calendar sur plusieurs journées
+Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-29
+
+"Ajouter/Modifier un événement" n'avait qu'un seul champ Date, partagé entre
+début et fin — impossible de créer un RDV sur plusieurs jours, et modifier un
+événement multi-jours existant écrasait silencieusement sa vraie date de fin
+à l'enregistrement (ramenée à la date de début). Ajouté un champ "Date fin"
+distinct. Changer la date de début déplace aussi la date de fin tant que
+l'événement est sur une seule journée (sinon on perdrait une plage déjà fixée
+volontairement en retouchant juste le début). Validation : impossible
+d'enregistrer si la fin est avant/égale au début.
+Fichier : frontend/src/pages/Tasks.jsx (commit 40a3874).
+
+### TASK-015.15 phase 2 [x] Checklist = sous-tâches réutilisables + lien de page + chrono + rapport de compétence
+
+Demande (2026-08-27), suite à un essai réel de Philippe sur "Ouverture de
+compte" en template : la "checklist" (texte simple, non réutilisable) et les
+"sous-tâches" (vraies tâches, recherche par template) étaient deux mécanismes
+séparés qui se chevauchaient — Philippe voulait le mot "checklist" mais avec
+le comportement des sous-tâches. Discussion complète (voir historique de
+conversation) a aussi fait émerger : lien de page par tâche (éditable), chrono
+par tâche avec correction manuelle (répercutée sur le chrono du ticket lié,
+pour ne pas avoir à tout recalculer à la fin), moyenne historique par type de
+tâche (+15%) pour suggérer la durée planifiée, et un rapport de compétence par
+employé.
+
+**Fait :**
+- Migration Alembic `2bfeddcc8fe9` — `TaskChecklistItem` (13 lignes réelles)
+  converti en vraies `Task` (`parent_task_id`), ordre préservé, table
+  supprimée. `Task` gagne `template_id` (lignage vers le template source, pour
+  la moyenne), `link_url`, `estimated_minutes`, `actual_minutes`,
+  `timer_start_at`/`timer_base_seconds` (même pattern que `Ticket`, voir
+  TASK-015.13).
+- `backend/app/api/v1/endpoints/tasks.py` : `create_from_template` copie
+  récursivement 1 niveau de sous-tâches du template (checklist complète
+  instanciée d'un coup) avec lignage `template_id`. Nouveaux endpoints
+  `POST /{id}/timer/start`, `POST /{id}/complete-with-time` (calcule l'écart
+  entre le temps chronométré et le temps confirmé par l'utilisateur, répercute
+  cet écart sur `Ticket.timer_base_seconds` si la tâche est liée à un ticket —
+  demande explicite de Philippe pour ne pas avoir à ajuster manuellement à la
+  fin). `GET /report/competency` — temps moyen par (employé, type de tâche)
+  vs moyenne d'équipe. `TaskOut`/`SubTaskOut` exposent
+  `suggested_estimated_minutes` (moyenne historique × 1.15, calculée à la
+  volée, jamais imposée) sur les templates.
+- `frontend/src/pages/Tasks.jsx` : section "Checklist" fusionnée (ex-Sous-
+  tâches), recherche/filtre alphabétique par template conservée. Chaque ligne
+  affiche le lien 🔗 (ouvre dans un nouvel onglet + démarre le chrono),
+  l'indicateur de chrono en cours, le temps réel/estimé. Cocher une tâche
+  liée à une page ouvre `ConfirmTimeModal` (temps chronométré pré-rempli,
+  corrigible) plutôt que de cocher directement. Nouvelle section repliable
+  "Rapport de compétence par employé" en bas de la page Tâches (pas Agenda).
+  `NewTaskModal.jsx` : champs "Page liée"/"Durée approximative" ajoutés,
+  ancienne UI checklist texte retirée (note affichée : la checklist s'ajoute
+  après la création).
+- `frontend/src/pages/CompanyDetail.jsx` (onglet Tâches de la fiche
+  compagnie) : compteur de checklist basé sur `subtasks` au lieu de l'ancien
+  `checklist_items`.
+
+Testé en script direct contre la vraie base (pas de navigateur disponible) :
+cycle complet template → instance (sous-tâche copiée avec lien+durée) →
+démarrage chrono → complétion avec correction de temps (20 min chronométrées
+→ 8 min confirmées) → écart de -720s bien répercuté sur le ticket lié →
+lignage `template_id` correct → suggestion moyenne+15% calculée juste (8×1.15
+= 9). Migration testée up/down/up sans perte ni doublon.
+
+**Reste à faire (pas dans cette passe) :** lien tâche→action dynamique vers
+une page de config ERPCRM précise avec compagnie auto-résolue (le champ
+`link_url` actuel est une URL fixe, pas dynamique) — nécessite d'étendre
+`TelephonyTab.jsx` pour un `subTab` adressable par URL. Action "Appel"
+(dépend des vraies lignes SIP, toujours pas connectées).
+
 ---
 
 ## TASK-016 [ERPCRM] [x] Contact — champs SIPV
@@ -679,9 +950,7 @@ Fichiers modifiés :
 - `backend/app/schemas/contact.py` — ajout dans ContactCreate, ContactUpdate, ContactOut
 - `backend/app/api/v1/endpoints/contacts.py` — `create_contact` inclut `phone_other` + `sipv_sync`
 - `frontend/src/pages/ContactDetail.jsx` — checkbox "Synchroniser avec SIPV" + badge "SIP actif" + champ "Autre numéro"
-Migration : `g8h9i0j1k2l3_add_contact_sipv_fields.py` (down_revision corrigé : `b7a0691596a0`).
-⚠️ Bug : `down_revision` initial pointait vers `f7a8b9c0d1e2` (inexistant) → erreur `alembic heads` (multiple heads)
-   Fix  : corrigé à `b7a0691596a0` (vraie tête Alembic au moment de la migration)
+Migration : `g8h9i0j1k2l3_add_contact_sipv_fields.py` (down_revision corrigé : `b7a0691596a0`, pointait initialement vers une révision inexistante).
 Note : `mobile` (cellulaire) et `extension` (poste SIP) existaient déjà — non dupliqués.
 La checkbox `sipv_sync` se coche/décoche via PATCH /v1/contacts/{id} (inline dans ContactDetail).
 Écart vs plan TASK-S037 : `extension_number` et `phone_cell` non ajoutés (champs existants `extension` et `mobile` jugés suffisants — à confirmer avant TASK-S022).
@@ -968,10 +1237,7 @@ Fait :
   une facture maintenant") ; nouvel item de nav "Récurrence" (icône `IconRefresh`
   ajoutée) entre Factures et Commandes.
 
-⚠️ Bug trouvé et corrigé en testant (pas laissé tel quel) : `generate-invoice`
-plantait avec `MissingGreenlet` — `db.get(Invoice, id, options=[...])` ne
-déclenche pas l'eager loading attendu dans ce contexte async ; remplacé par un
-vrai `select().options(selectinload(...))`.
+`generate-invoice` corrigé après un `MissingGreenlet` (`db.get(..., options=[...])` remplacé par un vrai `select().options(selectinload(...))`).
 
 Testé de bout en bout (tenant réel `t1001`, jamais un tenant de production) :
 activation → récurrence créée avec les bonnes bornes de cycle ; article
@@ -1032,6 +1298,24 @@ backend/app/api/v1/endpoints/companies.py, backend/app/core/sipv_client.py (nouv
 backend/app/core/config.py, backend/requirements.txt,
 backend/alembic/versions/k2l3m4n5o6p7_company_sipv_tenant.py,
 frontend/src/pages/CompanyDetail.jsx.
+
+### TASK-022.1 [x] Logger le détail réel de tout appel SIPV échoué
+Date de demande : 2026-08-30 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
+Date(s) de travail : 2026-08-30
+
+126 endpoints (5 fichiers) retombent tous sur le même
+`except httpx.HTTPError: raise HTTPException(502, "SIPV injoignable")` —
+l'exception réelle (type, méthode, URL, message) n'était jamais loggée nulle
+part. Incident réel sans preuve exploitable : 2026-08-29 18h48, commande
+"écouter message" sur poste 102, 502 sans aucune trace côté ERPCRM ni côté
+SIPV pour en déterminer la cause. `_client()` (point d'entrée unique des ~50
+fonctions du module, donc des 126 endpoints en aval) devient un
+contextmanager qui logge l'exception avant de la relaisser remonter
+inchangée — aucun des 126 appelants n'a besoin d'être modifié, chacun garde
+son 502 tel quel, précédé désormais d'une ligne de log exploitable. Testé :
+chemin succès et chemin échec (ConnectError simulé, log confirmé + exception
+toujours remontée).
+Fichier : backend/app/core/sipv_client.py (commit 38bc887).
 
 ---
 
@@ -1319,10 +1603,7 @@ Fait côté ERPCRM :
   type/libellé/valeur/destination/compte SIP/client éditable/verrouillé) avec
   ajout/suppression en ligne.
 
-⚠️ Bug trouvé et corrigé en testant (pas laissé tel quel) : `PhoneUpdatePayload`
-oubliait le champ `is_active` -- la désactivation d'un appareil de test semblait
-réussir (200 OK) mais ne changeait rien réellement (Pydantic ignore silencieusement
-les champs non déclarés). Ajouté, retesté, confirmé (`is_active: false` appliqué).
+`PhoneUpdatePayload` complété avec `is_active` (oublié, ignoré silencieusement par Pydantic, désactivation sans effet réel malgré un 200 OK).
 
 Testé en direct de bout en bout via l'API (contact "Test Deux", lié à t1001-101) :
 catalogue de 65 modèles récupéré via le proxy ; téléphone attribué (modèle GXP2130
@@ -1635,10 +1916,7 @@ Fait :
   jamais demandés (colonnes gardées en base, toujours envoyées vides). Auto-assignation
   réelle (sauvegarde `api.put`, pas juste un défaut UI) de la succursale primaire à tout
   poste qui n'a pas encore de 911.
-- Bug corrigé en testant : `ensure_primary_site` importé dans `companies.py` mais oublié
-  dans `contacts.py` (`NameError` -- 500 sur les endpoints 911/succursale) ; `is_primary`
-  manquant dans `_site_dict()` de `contacts.py`, cassait silencieusement la détection de
-  la primaire.
+- `ensure_primary_site` importé aussi dans `contacts.py` (oublié, `NameError`/500) ; `is_primary` ajouté à `_site_dict()` de `contacts.py` (manquant, cassait la détection de la primaire).
 - `invoice.py` : `site_id` + `site_label_snapshot`/`site_address_snapshot` (copie figée
   au moment de la facturation) ; `NewInvoiceModal.jsx`, `InvoiceDetail.jsx`,
   `Invoices.jsx` mis à jour pour choisir/afficher la succursale facturée.
@@ -1700,19 +1978,7 @@ Fait :
 - Étiquette retirée du formulaire et du tableau (fusionnée dans Notes avant coup, voir
   migration ci-dessus).
 
-Bugs corrigés en testant (plusieurs itérations, glisser-déposer ne fonctionnait pas au
-premier essai) :
-- `e.dataTransfer.setData(...)` manquant au `onDragStart` -- requis par le navigateur
-  pour initier une vraie session de glisser natif, sans lui rien ne se passait au dépôt
-  malgré un PUT qui réussissait en arrière-plan.
-- Dépôt sur un DID sans `destination_type` n'avait rien à copier -- `onDropOnRow`
-  détermine désormais `'extension'` par défaut et rétro-remplit aussi le DID cible pour
-  que les deux partagent une vraie clé de regroupement.
-- Script d'import initial n'avait pas toujours rempli `destination` (seulement
-  `destination_type`) pour certains DID -- groupes avec destination vide ne
-  fusionnaient jamais visuellement même si le PUT réussissait ; corrigé en réécrivant
-  des valeurs de destination réelles/distinctes pour les DID concernés (Mc Crystal,
-  Patio Design, Simple IP) directement en base après diagnostic `psql`.
+Glisser-déposer non fonctionnel au premier essai, corrigé en plusieurs itérations : `dataTransfer.setData(...)` ajouté au `onDragStart` (requis par le navigateur) ; `onDropOnRow` détermine désormais `'extension'` par défaut si `destination_type` manque et rétro-remplit le DID cible ; valeurs `destination` réécrites en base pour les DID concernés (Mc Crystal, Patio Design, Simple IP) après diagnostic `psql` (script d'import initial ne les avait pas toujours remplies).
 - 3 DID de Simple IP dont la destination avait été vidée pendant les tests de la zone
   "retirer du groupe" ont été restaurés.
 
@@ -1848,11 +2114,7 @@ Fichiers touchés :
   (galerie en grille, upload avec légende optionnelle via `prompt()`, clic sur photo
   = ouvre en plein écran dans un nouvel onglet, suppression avec confirmation)
 
-⚠️ Bug trouvé et corrigé en cours de route : le paramètre `caption` de l'endpoint
-d'upload était déclaré comme paramètre simple (`caption: str | None = None`) au lieu
-de `Form(None)` — FastAPI le traitait comme un paramètre de query, jamais rempli par
-un champ multipart. Découvert en testant l'upload avec légende (revenait toujours
-`null`), corrigé avant de considérer la tâche terminée.
+Paramètre `caption` de l'endpoint d'upload corrigé en `Form(None)` (était un paramètre simple, traité comme query par FastAPI, jamais rempli — `null` systématique).
 
 Pas d'édition de légende après upload (seulement à la création) — pas demandé
 explicitement, aurait nécessité soit un endpoint PATCH dédié soit retirer/re-uploader ;
@@ -2071,10 +2333,7 @@ Secret ajoutés au `.env`. Connexion testée et confirmée fonctionnelle de bout
 en bout (création réelle d'un événement RDV test dans Google Calendar, vérifié
 visuellement par Philippe, puis nettoyé).
 
-⚠️ Bug rencontré : après avoir ajouté le scope `calendar.readonly` au code,
-`invalid_scope` au refresh — le refresh token existant ne portait pas le
-nouveau scope. Fix : révoquer l'accès depuis `myaccount.google.com/permissions`
-puis reconnecter à neuf (force un nouveau refresh token avec les scopes actuels).
+Ajout du scope `calendar.readonly` a causé un `invalid_scope` au refresh (token existant ne portant pas le nouveau scope) — fix : révoquer l'accès depuis `myaccount.google.com/permissions` puis reconnecter à neuf.
 
 Décision consciente de Philippe : rester sur Gmail gratuit (pas Workspace)
 malgré le refresh token à durée de vie de 7 jours en mode Test — préfère
@@ -2158,9 +2417,7 @@ attendu. Fichier frontend vérifié sans erreur de compilation Vite après chaqu
   l'espace vertical ; l'onglet Tâches garde son en-tête original inchangé.
 - Grille Mois/Semaine étirée pour remplir tout l'espace vertical restant (flex
   imbriqué : semaines `flex:1`, cellules `height:100%` via `gridTemplateRows:'1fr'`).
-- ⚠️ Bug corrigé : le `gap` CSS entre colonnes de la grille faussait le calcul en
-  % des bandes multi-jours (colonnes plus étroites que 1/7 exact) — remplacé par
-  des bordures individuelles par cellule, gap retiré entièrement.
+- `gap` CSS (faussait le calcul en % des bandes multi-jours) retiré entièrement, remplacé par des bordures individuelles par cellule.
 - Jours hors-mois (fin du mois précédent / début du suivant) : affichent
   maintenant leur vrai numéro grisé avec toutes leurs tâches/événements
   fonctionnels (pas des cases vides) — comportement standard d'un calendrier.
@@ -2184,13 +2441,7 @@ attendu. Fichier frontend vérifié sans erreur de compilation Vite après chaqu
   repli sur empilement classique par lane. `rowsNeeded` (espace réservé en haut
   de chaque case) suit le maximum de rangées réellement nécessaires par
   semaine, plus juste que l'ancien calcul par nombre de lanes.
-  ⚠️ Bug corrigé : les segments consécutifs du même événement (ex: plein→moitié
-  à la jonction) avaient chacun leur propre espacement/coin arrondi,
-  créant une coupure visuelle à la jonction ("c'est mélangeant"). Fix :
-  `joinLeft`/`joinRight` détectent si un autre segment du même `event.id`
-  touche directement ce segment (jour adjacent) ; si oui, aucun espacement ni
-  arrondi de ce côté — la pastille reste visuellement continue même si son
-  épaisseur change en cours de route.
+  Segments consécutifs du même événement (jonction plein→moitié) corrigés via `joinLeft`/`joinRight` (détecte un segment adjacent du même `event.id`, supprime l'espacement/arrondi de ce côté — coupure visuelle trompeuse signalée par Philippe).
 - Texte des bandes multi-jours centré ; texte des puces d'un seul jour resté
   aligné à gauche (Philippe a explicitement redemandé la distinction).
 
@@ -2274,6 +2525,21 @@ Aucun changement de code — uniquement configuration Google Cloud Console
 
 ### TASK-026.1 [ ] RDV — option Urgence (tarif ×2 min 2h, alerte courriel+appel cell/poste, sans délai) — reporté par Philippe, lignes téléphoniques pas prêtes
 *(Entrée sans section dédiée dans TASKERPCRM.md — seule trace : une ligne dans le tableau récapitulatif, module-clé `rdv`. Reproduite telle quelle.)*
+
+---
+
+### TASK-026.5 [x] Fusion visuelle RDV/Tâche + téléphone d'entreprise + lien contact→compagnie + garde de navigation
+
+Demande (2026-08-26) : en créant un RDV téléphonique avec une compagnie/contact lié, Philippe voyait deux entrées séparées dans l'agenda (le RDV Google Calendar ET une Tâche locale) qui semblaient dupliquées — `create_google_event` (`google_oauth.py`) crée les deux depuis longtemps (TASK-026.3) mais rien ne les reliait en base. Voulu : liées, jamais dupliquées/copiées.
+
+- **Backend** : migration Alembic `15309e1f3718` — `Task.google_calendar_event_id` / `Task.google_calendar_id` (nullable). `create_google_event` remplit ces champs à la création. `TaskOut` les expose. Script ponctuel `backend/link_tasks_to_calendar_retroactive.py` — relie rétroactivement les tâches déjà créées à leur événement (match exact titre+date+heure, jamais de lien ambigu) : 1 tâche liée, 1 laissée non liée (aucun événement correspondant trouvé).
+- **Frontend (Tasks.jsx, agenda)** : `MonthView`/`WeekView`/`DayView` n'affichent plus l'événement Google séparément quand une tâche liée existe déjà (`isEventLinkedToTask`) — une seule carte avec badge 📅. `TaskDetail` affiche "📅 Liée à l'agenda".
+- **`QuickNewContact`** (composant partagé, 4 usages : agenda, tickets, fiche compagnie, téléphonie) : nouveau champ "Téléphone de l'entreprise", pré-rempli depuis `Company.office_phone`, sauvegardé directement dessus (pas de duplication).
+- **Lien 🔗 contact→compagnie** : dans le formulaire de RDV et le détail de tâche, à côté du champ Contact — dérivé de l'entreprise du contact lui-même (`contact.companies[0].company_id`), pas du champ "Compagnie" séparé du formulaire (corrigé après un premier essai qui ne s'affichait pas quand seul un contact était choisi). Ouvre dans un nouvel onglet.
+- **Migration du routeur React Router** : `<BrowserRouter>` → `createBrowserRouter`/`RouterProvider` (`App.jsx`) — nécessaire pour `useBlocker`, décision explicite de Philippe de faire le changement complet plutôt qu'une solution partielle qui évite de toucher au routeur (voir `feedback_priority_robustness_over_speed.md`, récidive 2026-08-26).
+- **Garde de navigation** : hook réutilisable `useUnsavedChangesGuard` (`hooks/`) + popup `UnsavedChangesPrompt` (fermable seulement par bouton) — intercepte back/forward navigateur, fermeture d'onglet, et navigation dans l'app quand des changements non sauvegardés existent. Appliqué au formulaire de RDV (`GoogleEventModal`). Les notes de ticket n'en ont pas besoin — déjà couvertes par un brouillon auto-sauvegardé côté serveur (TASK-015.13), mécanisme distinct et plus robuste qu'un popup.
+
+Non testé visuellement dans un vrai navigateur par Claude (pas d'outil de test disponible) — build réussi, routes qui répondent, mais Philippe à confirmer en utilisation réelle.
 
 ---
 
@@ -2482,29 +2748,9 @@ Backend + frontend redémarrés.
 
 ### TASK-028.2 [x] MOH -- fix dropdown Compagnie vide (Serveur) + feedback upload manquant
 
-⚠️ Bug 1 : le menu déroulant "Compagnie" du formulaire d'upload MOH (page
-Serveur) était TOUJOURS vide (aucune option sauf "Global"). Cause : `GET
-/v1/companies` (liste) utilise le schéma `CompanyListItem`
-(`schemas/company.py`), qui n'incluait PAS `sipv_enabled`/`sipv_tenant_id` --
-contrairement à `CompanyOut` (fiche individuelle) qui les a toujours eus.
-Le filtre frontend `c.sipv_enabled && c.sipv_tenant_id` (`Server.jsx`)
-échouait donc pour TOUTES les compagnies, y compris "Simple IP inc." (seul
-tenant SIPV réel). Vérifié en clair : `curl /api/v1/companies` renvoyait
-`sipv_enabled: null` pour toutes les lignes avant le fix.
-Fix : `sipv_enabled`/`sipv_tenant_id` ajoutés à `CompanyListItem`, peuplés
-dans `list_companies` (`companies.py`). Revérifié après fix : "Simple IP
-inc." apparaît correctement avec son tenant_id.
+Menu déroulant "Compagnie" du formulaire d'upload MOH toujours vide, corrigé : `sipv_enabled`/`sipv_tenant_id` ajoutés à `CompanyListItem` (manquaient, contrairement à `CompanyOut`) et peuplés dans `list_companies`.
 
-⚠️ Bug 2 (rapporté en même temps, "le fichier reste en place, rien
-n'indique que ça a téléversé") : le `<input type="file">` HTML n'était
-jamais réinitialisé après un upload réussi (seul le state React `file:
-null` était remis à zéro, ce qui ne vide pas l'affichage natif du nom de
-fichier choisi dans le navigateur) -- ET aucun message de succès/erreur
-n'était affiché, upload silencieux même quand il réussissait. Corrigé dans
-`Server.jsx` ET `CompanyDetail.jsx` (même bug dans les 2) : `key`
-incrémentée sur l'input file pour forcer un vrai reset visuel, message
-"✓ Téléversé" (vert, 4s) ou message d'erreur explicite (rouge, depuis
-`e.response.data.detail`) affiché à côté du bouton.
+Upload silencieux (aucun feedback même en cas de succès), corrigé dans `Server.jsx` ET `CompanyDetail.jsx` : `key` incrémentée sur l'input file pour forcer un vrai reset visuel, message "✓ Téléversé" (vert, 4s) ou erreur explicite (rouge) affiché à côté du bouton.
 
 Vérification du lien SIPV demandée par l'utilisateur ("est-ce bien lié au
 SIPV des 2 côtés ?") : testé directement en `curl` un upload complet sur le
@@ -2519,22 +2765,7 @@ Backend + frontend redémarrés.
 
 ### TASK-028.3 [x] MOH -- fix "Échec de l'envoi" (413 nginx, fichiers > 1 Mo)
 
-⚠️ Bug : malgré le fix TASK-028.2, l'upload échouait encore ("Échec de
-l'envoi") pour un vrai fichier audio, en Global comme vers Simple IP inc.
--- et RIEN dans les logs `erpcrm-backend` pendant l'essai en direct
-(surveillé avec l'utilisateur pendant la manip). Absence totale de log =
-la requête n'atteignait jamais uvicorn.
-Diagnostic : `/etc/nginx/sites-enabled/portail.simpleip.tel` (le reverse
-proxy public, `proxy_pass http://127.0.0.1:3010` -- vite preview relaie
-lui-même `/api/*` vers le backend 8010 via son propre `proxy` config,
-`vite.config.js`) n'avait aucun `client_max_body_size` -- défaut nginx
-1 Mo, largement sous la taille d'un fichier MOH réel. Confirmé en testant
-un upload de 3 Mo : 201 en direct sur le port 8010, 201 via vite preview
-3010, **413 via `https://portail.simpleip.tel`**.
-Fix : `client_max_body_size 50m;` ajouté au bloc `server` de
-`/etc/nginx/sites-enabled/portail.simpleip.tel`, `nginx -t` puis
-`systemctl reload nginx`. Re-testé après fix : 201 confirmé via le domaine
-public avec un fichier de 3 Mo.
+"Échec de l'envoi" persistant malgré TASK-028.2, corrigé : `client_max_body_size 50m;` ajouté au bloc `server` de `/etc/nginx/sites-enabled/portail.simpleip.tel` (défaut nginx 1 Mo, aucun log applicatif car la requête n'atteignait jamais uvicorn), `nginx -t` puis `systemctl reload nginx`. Re-testé : 201 confirmé via le domaine public avec un fichier de 3 Mo.
 
 Précision donnée à l'utilisateur : le changement de tenant après upload
 existe déjà (menu déroulant "Compagnie" sur chaque ligne de la
@@ -2557,10 +2788,7 @@ un MOH par appel réel à un poste, même principe que les Phrases IVR
 (ordre choisi) ou aléatoire.
 
 Fait :
-- `CompanyDetail.jsx::MohSelectionSection` : ligne passée en CSS Grid
-  (colonnes fixes) pour que rien ne bouge visuellement à la sélection —
-  bug initial où l'audio/téléchargement se décalaient (`marginLeft: auto`
-  dynamique), corrigé par le passage en grille.
+- `CompanyDetail.jsx::MohSelectionSection` : ligne passée en CSS Grid (colonnes fixes) — corrige un décalage visuel de l'audio/téléchargement à la sélection (`marginLeft: auto` dynamique).
 - Bouton ✕ (suppression, confirmation FR) affiché seulement si
   `f.tenant_id` (fichier dédié à CETTE compagnie) ; bouton
   Activer/Désactiver sinon (fichier global/de base) — `PUT .../is_active`.
@@ -2574,12 +2802,7 @@ Fait :
   8kHz, script ponctuel, pas une migration).
 - Écouter par appel : `POST /v1/moh/{id}/call` (SIPV, même principe que
   `AudioPrompt.call`/TASK-S055, `esl.originate_app` direct, pas de
-  dialplan). ⚠️ Bug trouvé et corrigé pendant le test réel : lecture
-  directe depuis `uploads/moh_files/` échouait ("Permission denied",
-  `/home/sipv/` en 750, `freeswitch` ne peut pas traverser) — copie
-  d'abord vers `/usr/local/freeswitch/conf/moh_call_cache/` (dossier créé
-  manuellement, `chown sipv:sipv`, `755`, même pattern que
-  `prompts_cache`), joué depuis là. Proxy ERPCRM :
+  dialplan). Lecture directe depuis `uploads/moh_files/` échouait ("Permission denied", `/home/sipv/` en 750) — corrigé en copiant d'abord vers `/usr/local/freeswitch/conf/moh_call_cache/` (dossier créé manuellement, `chown sipv:sipv`, `755`, même pattern que `prompts_cache`). Proxy ERPCRM :
   `sipv_client.call_moh` + `POST /v1/server/moh/{id}/call` (`server.py`).
 - Ordre liste/aléatoire : nouveau champ `Tenant.moh_shuffle` (SIPV,
   migration `0060`, défaut `true` = comportement historique inchangé).
@@ -2786,7 +3009,7 @@ n'est PAS commencé (seul le Mode 1 "écouter par poste" est fait).
 
 ### TASK-029.3 [x] Voicebox -- fix crash SIGILL au démarrage (pedalboard exige AVX2)
 
-⚠️ Bug bloquant : le conteneur Voicebox crash-loopait en boucle (exit
+Crash bloquant : le conteneur Voicebox crash-loopait en boucle (exit
 code 132 = SIGILL) dès le démarrage, avant même "Application startup
 complete". Diagnostic initial erroné en cours de route (voir échange avec
 l'utilisateur) : d'abord suspecté "pas assez de vCPU" (faux), puis "PyTorch
@@ -2823,24 +3046,9 @@ Fichiers : `/home/simpleip/services/voicebox/backend/requirements.txt`
 ### TASK-029.4 [x] Voicebox -- testé bout en bout, GÉNÉRATION FONCTIONNELLE
 
 Après le fix pedalboard (TASK-029.3), le conteneur démarre proprement
-(`health=healthy`, `restarts=0`). Deux bugs supplémentaires trouvés et
-corrigés en testant une vraie génération de bout en bout :
-
-1. **`engine` manquant dans la requête `/generate`** : un profil preset
-   (voice_type=preset, preset_engine=kokoro) rejette silencieusement toute
-   requête sans `engine: "kokoro"` explicite (défaut Voicebox = "qwen",
-   incompatible) → 400 "only supports engine 'kokoro', not 'qwen'". Fix :
-   `voicebox_client.generate()` envoie maintenant `"engine": PRESET_ENGINE`
-   dans le payload `/generate`.
-2. **Permissions des volumes Docker** : l'appli tourne en utilisateur
-   `voicebox` (uid 999) dans le conteneur, mais Docker crée les volumes/
-   bind-mounts en `root:root` par défaut à la première utilisation →
-   `PermissionError` sur `/home/voicebox/.cache/huggingface/hub` (volume
-   nommé, téléchargement du modèle Kokoro) ET sur `/app/data/generations`
-   (bind-mount `./output`, écriture du fichier audio généré). Fix :
-   `chown -R 999:999` sur le volume nommé `voicebox_huggingface-cache`
-   (via un conteneur jetable) et sur `/home/simpleip/services/voicebox/
-   output` (bind-mount, chown direct sur l'hôte).
+(`health=healthy`, `restarts=0`). Deux bugs corrigés en testant une vraie génération bout en bout :
+1. `voicebox_client.generate()` envoie désormais `"engine": PRESET_ENGINE` explicitement dans le payload `/generate` (défaut Voicebox = "qwen", incompatible avec un profil preset kokoro sans ce paramètre → 400).
+2. `chown -R 999:999` appliqué sur le volume nommé `voicebox_huggingface-cache` et sur `/home/simpleip/services/voicebox/output` (`PermissionError` — Docker crée volumes/bind-mounts en `root:root`, incompatible avec l'utilisateur `voicebox` uid 999 du conteneur).
 
 Testé de bout en bout via l'API ERPCRM réelle (compagnie Simple IP inc.,
 tenant t1001) : génération "Bienvenue chez Simple IP" en français (voix
@@ -2912,32 +3120,9 @@ Deux bugs distincts remontés par l'utilisateur en testant Kokoro/Siwis en
 conditions réelles.
 
 **1. Audio muet sur les 4 boutons de lecture** (`playFile` ×2, `playPrompt`,
-`previewVoice`). Message d'erreur obtenu sur l'un des boutons (le seul qui
-utilisait déjà `alert()` au lieu d'un message discret) : *"play() can only
-be initiated by a user gesture"*. Cause : `new Audio(url); audio.play()`
-est appelé APRÈS un `await` réseau (fetch du fichier ou génération TTS) --
-le navigateur ne considère plus ça comme "dans le geste utilisateur" une
-fois le délai réseau passé, et bloque la lecture. Fix (pattern standard) :
-créer l'élément `Audio` et appeler `.play()` **immédiatement** dans le
-handler de clic (avant l'attente réseau, avec un `.catch(() => {})` pour
-ignorer le rejet attendu faute de source) -- ça "débloque" l'élément côté
-navigateur. Une fois le fichier prêt, on change juste `audio.src` et on
-rappelle `.play()` sur ce MÊME élément déjà débloqué. Appliqué aux 4
-fonctions identiquement.
+`previewVoice`) — "play() can only be initiated by a user gesture" (`.play()` appelé après un `await` réseau). Fix (première tentative, insuffisante — voir TASK-029.8) : créer l'élément `Audio` et appeler `.play()` immédiatement dans le handler de clic avant l'attente réseau, `.catch(() => {})` pour absorber le rejet attendu. Appliqué aux 4 fonctions identiquement.
 
-**2. "Écouter par le poste" -- 502** sur `POST /prompts/{id}/call`.
-Traceback SIPV : `PermissionError: [Errno 13] Permission denied:
-'/usr/local/freeswitch/conf/prompts_cache'`. Cause : le code (TASK-029.2)
-faisait `PROMPT_CACHE_DIR.mkdir(parents=True, exist_ok=True)` en
-supposant que le process `sipv` pouvait créer ce dossier -- faux, `conf/`
-appartient à `freeswitch:freeswitch` (755), seul le propriétaire peut y
-créer de nouvelles entrées. Le dossier MOH équivalent (`local_stream/`)
-fonctionnait uniquement parce qu'il existait déjà (créé par un autre moyen
-avant). Fix : dossier créé manuellement (`sudo mkdir` + `chown sipv:sipv`
-+ `chmod 755`) une fois pour toutes, comme `local_stream/`. ⚠️ Pas
-persistant dans du code/une migration -- si ce dossier disparaît un jour
-(reset du serveur SIPV, réinstallation), il faudra le recréer à la main
-avec les mêmes commandes.
+**2. "Écouter par le poste" -- 502** sur `POST /prompts/{id}/call` (`PermissionError` sur `/usr/local/freeswitch/conf/prompts_cache`, `conf/` appartient à `freeswitch:freeswitch`). Fix : dossier créé manuellement (`sudo mkdir` + `chown sipv:sipv` + `chmod 755`), même pattern que `local_stream/`. Pas persistant — à recréer à la main si ce dossier disparaît (reset serveur, réinstallation).
 
 Fichiers : `frontend/src/pages/Server.jsx`,
 `frontend/src/pages/CompanyDetail.jsx`. Frontend rebuild + redémarré.
@@ -2958,14 +3143,7 @@ nouveaux states `readyId`/`readyUrlRef` (et `previewReady`/`previewUrlRef`
 dédiés pour `previewVoice`, remis à `false` si la voix ou le texte change
 pour ne pas rejouer un ancien test périmé).
 
-**Bug séparé, appel au poste** : la commande FreeSWITCH générée par
-`originate_app()` (TASK-029.2) était syntaxiquement invalide --
-`"originate {vars}endpoint '&app(args)'"` avec des apostrophes littérales
-(syntaxe shell, sans effet sur le parseur ESL brut) → `Parse Error!` côté
-FreeSWITCH → `DESTINATION_OUT_OF_ORDER`, poste ne sonne jamais malgré un
-200 OK côté API (l'origination était bien lancée en arrière-plan mais
-échouait silencieusement après). Fix : apostrophes retirées,
-`"originate {vars}endpoint &app(args)"` (syntaxe correcte, sans quoting).
+**Bug séparé, appel au poste** : `originate_app()` générait une commande FreeSWITCH syntaxiquement invalide (apostrophes littérales, syntaxe shell sans effet sur le parseur ESL brut) → `Parse Error!` → `DESTINATION_OUT_OF_ORDER`. Fix : apostrophes retirées, `"originate {vars}endpoint &app(args)"`.
 
 Fichiers : `frontend/src/pages/Server.jsx`,
 `frontend/src/pages/CompanyDetail.jsx` (rebuild + redémarré),
@@ -2981,10 +3159,7 @@ bloqué -- toujours fonctionnel car c'est le navigateur qui gère, pas du JS).
 Remplace `playingId`/`readyId` par `readyUrls` (objet `{id: url}`) +
 `loadingId` dans les 3 sections concernées.
 
-**2. ⚠️ Régression corrigée** : en ajoutant la vérification "texte requis"
-plus tôt, le bouton "Tester cette voix" a été lié par erreur au champ
-Texte (désactivé si vide, jouait le contenu du champ). C'est faux -- les
-deux sont indépendants :
+**2. Régression corrigée** : le bouton "Tester cette voix" avait été lié par erreur au champ Texte (désactivé si vide, jouait le contenu du champ) en ajoutant la vérification "texte requis". Corrigé — les deux sont indépendants :
 - **"Tester cette voix"** : joue TOUJOURS une phrase fixe de présentation
   ("Bonjour, je suis {nom de la voix}, je suis une des voix de Simple IP,
   avec cette voix, je peux lire votre texte.") -- jamais lié au champ Texte,
@@ -3289,13 +3464,7 @@ même zone que les cases d'enregistrement `record_*`, TASK-023.5).
   pagination 10/page, ne recharge que si le numéro de poste change (pas à
   chaque poll de statut 5s).
 
-**Bug trouvé et corrigé pendant le test réel (pas supposé)** : le filtre
-`extension` de l'endpoint SIPV (déjà en place depuis TASK-S055) ratait tous
-les appels SORTANTS d'un poste -- `CDR.src` est stocké avec le préfixe
-tenant (`t1001-103`), pas juste le numéro nu, contrairement à `dst`. Poste
-103 : 0 résultat retourné avant le fix alors que 17 appels existaient
-réellement en DB. Corrigé côté SIPV, voir TASKSIPV.md TASK-S055.5 pour le
-détail (affecte aussi le portail Mon poste, pas seulement cette tâche).
+Filtre `extension` de l'endpoint SIPV ratait tous les appels SORTANTS d'un poste (`CDR.src` stocké avec préfixe tenant, contrairement à `dst`) — corrigé côté SIPV, voir TASKSIPV.md TASK-S055.5 (affecte aussi le portail Mon poste).
 
 Vérifié en conditions réelles (pas juste des imports) : appel direct de
 `sipv_client.list_cdr`/`list_cdr_for_extension` contre le tenant réel
@@ -3708,40 +3877,11 @@ Cross-ref SIPV : TASK-S059 (TASKSIPV.md).
 - `frontend/src/pages/Admin.jsx` -- nouvel onglet "Backup cloud" (`BackupPanel`) : cartes de connexion (fuseau/heure/bande passante par cloud), tableau des cycles avec bouton "+ Ajouter un cycle" (`CycleModal`), bouton "Backup maintenant", historique récent
 - Services redémarrés (`erpcrm-backend`, `erpcrm-backend-tls`, `erpcrm-frontend` via `systemctl --user`), tous vérifiés actifs
 
-**Bug trouvé + corrigé (2026-08-14)** : premier test réel après connexion
-Dropbox -- les 3 copies (daily/weekly/monthly) échouaient avec `400 Bad
-Request` sur `upload_session/start`, mais l'UI affichait quand même "Backup
-envoyé (3 copies)". Diagnostic (`raise_for_status()` seul ne donnait pas le
-corps de la réponse Dropbox) :
-- Ajouté `_check_dropbox()` dans `backup_cloud.py` -- capture le corps de la
-  réponse + `X-Dropbox-Request-Id` dans le message d'erreur au lieu du
-  `raise_for_status()` générique
-- Cause réelle (confirmée, pas supposée) : app Dropbox créée sans le scope
-  `files.content.write` -- PAS un problème de taille de fichier/chunking
-  (l'implémentation chunkait déjà correctement à 4 MiB, bien sous la limite
-  de 150 MiB de Dropbox). Fix côté Philippe : activer le scope dans App
-  Console > Permissions, puis déconnecter/reconnecter Dropbox dans Admin
-  (le token existant ne regagne pas le scope rétroactivement)
-- `backup_runner.py` (`_rotate_and_upload`, `run_manual`) retourne maintenant
-  le vrai statut succès/échec par copie ; `Admin.jsx` (`runNow`) affiche le
-  compte réel de succès/échecs au lieu de toujours dire "envoyé"
-Services redémarrés (backend + frontend), tous vérifiés actifs.
-
-**Suite du bug (2026-08-14/15)** : le scope manquant persistait même après le
-premier "Submit" dans App Console -- cause réelle confirmée par Philippe :
-les cases avaient été cochées mais le bouton Submit n'avait PAS été cliqué la
-première fois. Corrections additionnelles pendant le diagnostic :
-- `backup_cloud.py::dropbox_authorize_url` -- ajoute maintenant explicitement
-  `scope=account_info.read files.metadata.read files.content.read
-  files.content.write` dans l'URL d'autorisation (ne comptait avant que sur
-  les cases cochées côté App Console, source de confusion)
-- Bug de boucle infinie confirmé et corrigé (voir plus haut) -- 2692 lignes
-  d'échecs accumulées en `backup_run_logs` avant le fix, table vidée sur
-  demande explicite de Philippe (`DELETE FROM backup_run_logs`, 2026-08-15)
-- **2026-08-15, confirmé en succès** : test manuel Dropbox -- 3 copies
-  (daily/weekly/monthly) envoyées avec succès, vérifié indépendamment via
-  `dropbox_list_backups` (fichiers réellement présents dans
-  `/ERPCRM_Backups/`, ~22.5 Mo chacun). Dropbox opérationnel de bout en bout.
+**Bug trouvé + corrigé (2026-08-14/15)** : les 3 copies (daily/weekly/monthly) échouaient (`400 Bad Request`) malgré une UI affichant "Backup envoyé" — app Dropbox créée sans le scope `files.content.write`, scope resté manquant même après un premier passage dans App Console (Submit jamais cliqué la 1re fois), 2692 lignes d'échecs accumulées en boucle en `backup_run_logs`. Corrigé : `_check_dropbox()` capture le vrai corps de la réponse d'erreur, scope inclus explicitement dans l'URL d'autorisation, `backup_runner.py`/`Admin.jsx` affichent le vrai statut par copie, table de logs vidée après confirmation.
+**2026-08-15, confirmé en succès** : test manuel Dropbox -- 3 copies
+(daily/weekly/monthly) envoyées avec succès, vérifié indépendamment via
+`dropbox_list_backups` (fichiers réellement présents dans
+`/ERPCRM_Backups/`, ~22.5 Mo chacun). Dropbox opérationnel de bout en bout.
 
 **Extension disaster-recovery (2026-08-15, même soir)** : Philippe veut
 pouvoir migrer vers un futur nouveau serveur juste en restaurant ce backup +
@@ -4087,9 +4227,7 @@ même session)** -- Philippe voulait les branches VISIBLES à l'écran, pas
 juste le rangement de fichiers. `TelephonyTab.jsx` a maintenant 7
 sous-onglets réels (barre cliquable en haut) : Numéros, Postes,
 Acheminement d'appels, Horaires & Audio, Appareils, Urgence & Sécurité
-(nouveau, placeholders Fax/SMS/Sécurité), Avancé. Bug trouvé et corrigé en
-chemin : `E911AddressesSection`/`CdrSection` cassés après le déplacement de
-code précédent (pas exportés), réparé avant de continuer.
+(nouveau, placeholders Fax/SMS/Sécurité), Avancé. `E911AddressesSection`/`CdrSection` (cassés après le déplacement de code précédent, pas exportés) réparés avant de continuer.
 `timeout_seconds` et `return_extension` (menu déroulant des vrais postes,
 plus du texte libre) maintenant modifiables sur un lot existant, vérifiés
 de bout en bout. Voir TASK-S061 (TASKSIPV.md) pour le détail complet,
@@ -4140,28 +4278,54 @@ tourne maintenant sous `gunicorn` (2 workers, reload à chaud sans
 coupure) -- nouvelle procédure de déploiement SIPV : `systemctl reload`,
 plus jamais `restart` sauf process mort.
 
-**Bug trouvé et corrigé côté SIPV pendant les tests de continuité MOH** --
-`uuid_getvar` renvoie littéralement `"_undef_"` pour une variable non
-définie (ni vide, ni `-ERR`) ; le code de fallback dans
-`moh_hold_tracker.py` ne traitait pas ce cas, empêchant tout le mécanisme
-de reprise MOH du parcage de fonctionner. Corrigé, pas encore reconfirmé
-sur un cycle complet park -> reprise -> re-park après le fix (traces de
-diagnostic temporaires encore en place côté SIPV).
+`uuid_getvar` renvoie littéralement `"_undef_"` pour une variable non définie (ni vide, ni `-ERR`) — le fallback dans `moh_hold_tracker.py` ne traitait pas ce cas, bloquant la reprise MOH du parcage. Corrigé, pas encore reconfirmé sur un cycle complet park -> reprise -> re-park (traces de diagnostic temporaires encore en place côté SIPV).
 
 **Concept UI refait + lien audio ajouté (2026-08-20, même soirée)** --
 Philippe a rejeté le menu à deux options nommées ("plus obligé de garder le
 plus d'affaire possible") : remplacé par une case "Poste dédié" +
 sélecteur de poste qui apparaît juste à côté quand coché (style
 destinations DID). Décoché = comportement par défaut (rappelle le poste
-qui a parqué), pas besoin de le nommer. Bug corrigé en chemin : la
-première version cachait le poste tant que le mode n'était pas "fixed",
-créant un blocage (impossible de choisir un poste pour justement pouvoir
-passer en mode fixed) -- les deux champs partent maintenant ensemble en
-une seule requête dès qu'un poste est choisi. Lien "Horaires & Audio"
+qui a parqué), pas besoin de le nommer. La première version cachait le sélecteur de poste tant que le mode n'était pas "fixed" (blocage : impossible de choisir un poste pour passer en mode fixed) -- corrigé, les deux champs partent maintenant ensemble en une seule requête dès qu'un poste est choisi. Lien "Horaires & Audio"
 ajouté sous la section (bascule le sous-onglet) pour configurer plus tard
 les audios d'annonce du parcage avec choix de langue -- pointeur seulement,
 le mécanisme TTS/Voicebox lui-même reste backlog (voir TASK-S061 dans
 TASKSIPV.md).
+
+---
+
+## TASK-039 [ERPCRM] [x] Onglet Admin "Graphe de connaissance" — visualisation 3D de Graphiti
+
+Demande (2026-08-24) : Philippe a vu des vidéos de visualisation de graphe de
+connaissance en 3D et voulait pouvoir voir "les neurones" de son projet
+(Graphiti/Neo4j) directement dans ERPCRM plutôt que via le dashboard Neo4j
+brut.
+
+Backend : `backend/app/api/v1/endpoints/knowledge_graph.py`, nouveau routeur
+`GET /v1/knowledge-graph/graph` (`require_admin`, même pattern que
+`admin.py`). Connexion directe au driver `neo4j` (ajouté à
+`requirements.txt`) vers le conteneur Neo4j de Graphiti
+(`tools/knowledge/graphiti/docker-compose.yml`), en Bolt sur
+`127.0.0.1:7687` (loopback, même serveur qu'ERPCRM — PAS le hostname Docker
+interne `neo4j` utilisé par le conteneur graphiti-mcp). Nouveaux settings
+`NEO4J_URI`/`NEO4J_USER`/`NEO4J_PASSWORD`/`NEO4J_DATABASE`
+(`backend/app/core/config.py`), mot de passe copié dans `backend/.env`
+depuis `tools/knowledge/graphiti/.env`. Requête Cypher générique
+`MATCH (n)-[r]->(m) RETURN n, r, m LIMIT $limit`, filtre optionnel par
+`group_id` (platform/erpcrm/sipv), propriétés `*_embedding` retirées de la
+réponse (gros vecteurs, inutiles côté client). Validé en direct (script
+manuel bypassant l'auth HTTP) : 9 nœuds / 18 liens retournés correctement
+depuis les vraies données Graphiti.
+
+Frontend : nouveau composant `frontend/src/components/KnowledgeGraphViewer.jsx`
+avec `react-force-graph-3d` (three.js — nouvelles dépendances `three` +
+`react-force-graph-3d` dans `package.json`), nouvel onglet "Graphe de
+connaissance" dans `Admin.jsx` (`TABS`). Filtre par domaine + limite de
+nœuds, panneau de détail au clic sur un nœud. Build de prod relancé
+(`npm run build` + `systemctl --user restart erpcrm-frontend`).
+
+Non vérifié visuellement dans le navigateur par Claude (pas d'accès aux
+identifiants de connexion ERPCRM) — Philippe à confirmer que l'onglet
+s'affiche et se comporte comme attendu une fois connecté.
 
 ---
 
@@ -4223,9 +4387,7 @@ Port 8020 backend, port 3020 frontend. Même pattern qu'ERPCRM (schemas Pydantic
 
 #### TASK-S004.1 [x] Premier trunk PSTN réel (ScopServ, TLS) — bug contexte sipv-external
 *(anciennement TASK-023.27 — voir mapping Phase O)*
-Connexion d'un vrai compte SIP ScopServ (`vgw1.simpleip.scopcloud.com`, DID de test `15143222112`, usage test uniquement confirmé par Philippe). Deux bugs trouvés et corrigés :
-1. Profil sofia `external` utilisait `context="public"`, collision avec le fichier statique vanilla `dialplan/public.xml` (même piège déjà rencontré sur `internal`, TASK-S036) — renommé `sipv-external`, `_dialplan_public()` corrigée pour échoir le contexte réellement demandé (FreeSWITCH exige une correspondance exacte).
-2. 403 Forbidden en UDP simple malgré digest correct — TLS activé sur le profil `external` (port 5081, réutilise les certs `internal`), gateway reconfiguré `register-transport="tls"` vers `vgw1.simpleip.scopcloud.com:5061`. Confirmé `State: REGED`/`Status: UP` côté SIPV et ScopServ.
+Connexion d'un vrai compte SIP ScopServ (`vgw1.simpleip.scopcloud.com`, DID de test `15143222112`, usage test uniquement confirmé par Philippe). Deux bugs corrigés : contexte `sipv-external` (renommé, collisionnait avec `dialplan/public.xml` sous le nom générique `public`) ; TLS activé sur le profil `external` (port 5081, certs `internal` réutilisés) après un 403 Forbidden en UDP malgré digest correct — gateway reconfiguré `register-transport="tls"` vers `vgw1.simpleip.scopcloud.com:5061`. Confirmé `State: REGED`/`Status: UP` côté SIPV et ScopServ.
 `SIPTrunk.password` désormais chiffré (Fernet). Enregistrements créés (tenant t1001) : trunk "ScopServ Test", DID `15143222112`, InboundRoute (→ extension test `t1001-100`), OutboundRoute (patterns NANP standard).
 Écart vs plan : gateway écrit à la main sur le serveur (pas de génération dynamique via xml_curl) — à revoir si plusieurs trunks/tenants s'ajoutent fréquemment.
 Reste à faire : tester un vrai appel entrant/sortant réel (pas fait au moment de l'écriture), router l'InboundRoute vers une destination définitive.
@@ -4248,7 +4410,7 @@ Champs agent : `agent_number`, `agent_password` (non chiffré, valeur active né
 
 #### TASK-S007.3 [~] Ring groups reconstruits (priorité/ordre/exclusion/confirmation/horaire)
 *(anciennement TASK-S023.9)*
-Nouvelle table `ring_group_members` (extension_id, priority, ring_order, temporarily_excluded) — CSV `members` legacy migré automatiquement (migration de données), conservé comme repli. `RingGroup.confirm_before_answer`, `schedule_id` (réutilise S016). `_ringgroup_dialplan_entries()` réécrite : tri hunt par ring_order/priority, exclusion temporaire, vérification horaire, transfert vers `no_answer_destination` si fermé, préfixe `group_confirm_key` si confirmation requise. Bug MissingGreenlet trouvé et corrigé en testant (eager-load manquant). Testé en direct (ordre hunt confirmé, exclusion confirmée). `[~]` : horaire et confirm_before_answer testés seulement au niveau génération XML, pas avec un vrai décrochage/touche. Migration `0032_ring_group_members_s023_9`.
+Nouvelle table `ring_group_members` (extension_id, priority, ring_order, temporarily_excluded) — CSV `members` legacy migré automatiquement (migration de données), conservé comme repli. `RingGroup.confirm_before_answer`, `schedule_id` (réutilise S016). `_ringgroup_dialplan_entries()` réécrite : tri hunt par ring_order/priority, exclusion temporaire, vérification horaire, transfert vers `no_answer_destination` si fermé, préfixe `group_confirm_key` si confirmation requise. `MissingGreenlet` corrigé (eager-load manquant). Testé en direct (ordre hunt confirmé, exclusion confirmée). `[~]` : horaire et confirm_before_answer testés seulement au niveau génération XML, pas avec un vrai décrochage/touche. Migration `0032_ring_group_members_s023_9`.
 
 #### TASK-S007.4 [x] QueueMember : sonnerie même si occupé + plusieurs appels de file
 *(anciennement TASK-023.10)*
@@ -4320,13 +4482,13 @@ Dépend de : TASK-S010, TASK-S010.2. Fondation de données déjà complète côt
 `PhoneModel` (brand/model/firmware, config_template Jinja2, max_accounts, protocole), `ProvisionedPhone` (mac_address unique, extension_id, extra_config JSON). `GET /provisioning/mac/{mac}/config` sans auth (appelé directement par le téléphone). Grandstream prioritaire (98% clients). Fichiers : `models/provisioning.py`, `api/v1/endpoints/provisioning.py`, `frontend/src/pages/ProvisioningPage.jsx`.
 
 #### TASK-S011.2 [x] Fiche physique du poste (ProvisionedPhone étendu)
-Dépend de : TASK-S011 (provisioning existant). `serial_number`, `hardware_version`, `encrypted_admin_password` (Fernet), `wifi_enabled`, `bluetooth_enabled`, `headset_used`, `expansion_module`. Mot de passe admin jamais renvoyé en clair par défaut (`reveal-admin-password` à la demande). Remplacement d'appareil = PUT avec nouveau MAC/SN sur le même enregistrement (jamais recréer). ⚠️ Bug pré-existant trouvé et corrigé en marge (depuis S018) : `GET /esl/registration/{username}` répondait toujours "Unregistered" — `sofia_contact` exige `user@domain`, pas juste `user`. Nombre d'appareils enregistrés (`registered_count`) ajouté à `GET /esl/registration/{username}` et `GET /esl/registrations/tenant/{id}` — a nécessité de changer `_parse_registrations()` (esl.py) qui écrasait silencieusement les enregistrements multiples pour un même username (dict simple) → devenu une liste par username. Migration `0021_phone_physical_fields`.
+Dépend de : TASK-S011 (provisioning existant). `serial_number`, `hardware_version`, `encrypted_admin_password` (Fernet), `wifi_enabled`, `bluetooth_enabled`, `headset_used`, `expansion_module`. Mot de passe admin jamais renvoyé en clair par défaut (`reveal-admin-password` à la demande). Remplacement d'appareil = PUT avec nouveau MAC/SN sur le même enregistrement (jamais recréer). `GET /esl/registration/{username}` (répondait toujours "Unregistered" — `sofia_contact` exige `user@domain`, pas juste `user`) corrigé en marge. Nombre d'appareils enregistrés (`registered_count`) ajouté à `GET /esl/registration/{username}` et `GET /esl/registrations/tenant/{id}` — a nécessité de changer `_parse_registrations()` (esl.py) qui écrasait silencieusement les enregistrements multiples pour un même username (dict simple) → devenu une liste par username. Migration `0021_phone_physical_fields`.
 
 #### TASK-S011.3 [!] Configuration visuelle du modèle de téléphone (image cliquable)
 Dépend de : TASK-S011, TASK-S011.2. Exigence : nouvelle table de mapping bouton (poste/modèle, position, type bouton — BLF/speed dial/extension/autre, valeur, label) + coordonnées cliquables sur l'image, popup au clic avec save/cancel ; décision à trancher au moment du code : mapping stocké par `PhoneModel` (template partagé) ou par `ProvisionedPhone` (par appareil physique) — probablement les deux. ⚠️ BLOQUÉ depuis 2026-07-23 : nécessite la photo du GXP2135 (fournie par Philippe pour le bouton mais jamais pour cette table de mapping visuel précise) — pas de photo = pas de conception de coordonnées cliquables à l'aveugle. Contournement fonctionnel construit à la place : voir S011.11 (éditeur en liste, découplé de la photo, mêmes colonnes réutilisables telles quelles si la photo arrive). Reste bloqué en l'état, en attente de clarification/photo.
 
 #### TASK-S011.4 [~] Auto-provisioning Grandstream (fichier cfg\<MAC\>.xml, zero-touch)
-Référence P-codes complète documentée (P271/P31/P270/P47/P48/P35/P36/P34/P3/P130/P2329/P40/P138/P26002/P95030/P212/P237). Mécanisme zero-touch : `cfg<mac>.xml` en HTTPS, `cfg.xml` générique en repli. Limite confirmée : aucun P-code ne force un enregistrement à distance côté serveur — le téléphone décide toujours (démarrage/cycle/retry). **Fait le 2026-08-02** : premier `config_template` GXP2135 réel écrit (Jinja2, croisé contre un fichier ScopServ réel fonctionnel + la doc officielle, jamais copié tel quel). Bug trouvé en testant : mot de passe SIP stocké chiffré exposé en clair dans le premier jet du template — corrigé (déchiffré côté contexte avant rendu). Ambiguïté VPK résolue empiriquement (légende "Fixed VPK" du fichier réel, pas "Dynamic VPK" de la doc officielle, qui semble mal étiquetée). `[~]` : le déclenchement "premier démarrage zero-touch" (DHCP option 66 vs config manuelle unique) reste une question ouverte, jamais tranchée avec Philippe. Migration `0045_gxp2135_provisioning`.
+Référence P-codes complète documentée (P271/P31/P270/P47/P48/P35/P36/P34/P3/P130/P2329/P40/P138/P26002/P95030/P212/P237). Mécanisme zero-touch : `cfg<mac>.xml` en HTTPS, `cfg.xml` générique en repli. Limite confirmée : aucun P-code ne force un enregistrement à distance côté serveur — le téléphone décide toujours (démarrage/cycle/retry). **Fait le 2026-08-02** : premier `config_template` GXP2135 réel écrit (Jinja2, croisé contre un fichier ScopServ réel fonctionnel + la doc officielle, jamais copié tel quel). Mot de passe SIP stocké chiffré exposé en clair dans le premier jet du template — corrigé (déchiffré côté contexte avant rendu). Ambiguïté VPK résolue empiriquement (légende "Fixed VPK" du fichier réel, pas "Dynamic VPK" de la doc officielle, qui semble mal étiquetée). `[~]` : le déclenchement "premier démarrage zero-touch" (DHCP option 66 vs config manuelle unique) reste une question ouverte, jamais tranchée avec Philippe. Migration `0045_gxp2135_provisioning`.
 
 #### TASK-S011.5 [x] Catalogue d'options téléphonie — défaut compagnie + override poste
 Demande de l'utilisateur (2026-08-02) : reproduire le concept "Options" de l'UCM Grandstream (catalogue de réglages, seuls ceux ajoutés explicitement apparaissent — page propre par défaut) sur 2 niveaux : Compagnie (défaut global) et Contact (personnalisation qui écrase le défaut compagnie pour ce poste précis seulement). `Tenant.phone_option_defaults` (JSON), `ProvisionedPhone.extra_config` (réutilisé). Fusion : défaut système → défaut compagnie → override poste. Catalogue minimal (une option : langue P1362) volontairement, extensible sans migration (dict JSON). `GET/PUT /{tenant_id}` basculés proxy-compatible.
@@ -4537,7 +4699,7 @@ Fait côté ERPCRM (TASK-016) : `sipv_sync`, `phone_other` sur Contact. `extensi
 
 ### TASK-S039 [SIPV] [~] Installation Kamailio + rtpengine (SBC, NAT, TLS, sécurité périmètre)
 **Classification: CURRENT**
-Dépend de : rien techniquement, mais logiquement avant TASK-S014.2 (affichage IP publique/statut F2B fiable pour un poste distant derrière NAT). kamailio 6.0.5 + rtpengine 13.5.1.4 (apt universe). ⚠️ Ne résout PAS le blocage d'accès distant connu (routeur, pas le serveur — voir mémoire projet). Config custom minimale écrite (pas de patch du template vendor 1108 lignes — rôle visé = proxy NAT-aware transparent, pas un registrar autonome). **Cutover live réussi (2026-07-23)** : Kamailio écoute les vrais ports 5060/5061, FreeSWITCH `internal` déplacé sur loopback. 2 bugs de routage FreeSWITCH→client trouvés et corrigés en cutover (`loose_route()` gaté à tort derrière `has_totag()`, `fs_path` traité comme proxy route pas header Route standard). Path RFC 3327 fonctionnel nativement côté FreeSWITCH. Validation audio réelle avec vrai téléphone **pas encore faite au moment de cette entrée** (voir S058.2 pour la suite avec vrais téléphones). `rtpengine_manage()` resté désactivé (jamais validé avec audio réel à ce stade).
+Dépend de : rien techniquement, mais logiquement avant TASK-S014.2 (affichage IP publique/statut F2B fiable pour un poste distant derrière NAT). kamailio 6.0.5 + rtpengine 13.5.1.4 (apt universe). ⚠️ Ne résout PAS le blocage d'accès distant connu (routeur, pas le serveur — voir mémoire projet). Config custom minimale écrite (pas de patch du template vendor 1108 lignes — rôle visé = proxy NAT-aware transparent, pas un registrar autonome). **Cutover live réussi (2026-07-23)** : Kamailio écoute les vrais ports 5060/5061, FreeSWITCH `internal` déplacé sur loopback. `loose_route()` (gaté à tort derrière `has_totag()`) et `fs_path` (traité comme proxy route au lieu d'un header Route standard) corrigés en cutover. Path RFC 3327 fonctionnel nativement côté FreeSWITCH. Validation audio réelle avec vrai téléphone **pas encore faite au moment de cette entrée** (voir S058.2 pour la suite avec vrais téléphones). `rtpengine_manage()` resté désactivé (jamais validé avec audio réel à ce stade).
 
 #### TASK-S039.1 [x] Chiffrement mot de passe SIP + TLS inter-serveurs ERPCRM↔SIPV
 Fernet (`core/crypto.py`, clé dérivée de `SECRET_KEY`) pour `SIPExtension.password`. CA privée auto-signée, un certificat par serveur, nouveaux ports TLS dédiés (SIPV 8022, ERPCRM 8011, en plus des ports HTTP existants inchangés). Piège rencontré : CA sans extensions X.509v3 rejetée par OpenSSL 3.x (fonctionnait avec curl, masquant le problème) — régénérée avec `basicConstraints`/`keyUsage` explicites. Validé en direct dans les deux sens.
@@ -4605,11 +4767,11 @@ Dépend de : TASK-S046 ✓, TASK-S048 ✓ (sans le fix S048, ce câblage n'aurai
 
 ### TASK-S050 [SIPV] [x] Sécurité — ACL entrante sur le profil "external" (trunks PSTN)
 **Classification: CURRENT**
-Demande explicite de l'utilisateur (2026-08-07 matin) : même pratique que sur ses autres serveurs — n'accepter le trafic SIP entrant que depuis le proxy du fournisseur, pour éviter les appels fantômes d'un scan/bot. Le profil `external` n'avait AUCUNE ACL entrante — port SIP du trunk grand ouvert à Internet. Nouvelle liste `sipv-trunks` (`default="deny"`, allow uniquement l'IP du fournisseur ScopServ). ⚠️ Limite connue : une seule IP (résolution DNS ponctuelle) — si le fournisseur utilise un pool d'IP ou change d'IP, de vrais appels pourraient être bloqués sans avertissement, à confirmer avec une plage CIDR officielle. Bug XML `--` dans un commentaire rencontré et corrigé la même nuit (premier cas documenté de ce piège, récidivé plus tard S061/2026-08-20).
+Demande explicite de l'utilisateur (2026-08-07 matin) : même pratique que sur ses autres serveurs — n'accepter le trafic SIP entrant que depuis le proxy du fournisseur, pour éviter les appels fantômes d'un scan/bot. Le profil `external` n'avait AUCUNE ACL entrante — port SIP du trunk grand ouvert à Internet. Nouvelle liste `sipv-trunks` (`default="deny"`, allow uniquement l'IP du fournisseur ScopServ). ⚠️ Limite connue : une seule IP (résolution DNS ponctuelle) — si le fournisseur utilise un pool d'IP ou change d'IP, de vrais appels pourraient être bloqués sans avertissement, à confirmer avec une plage CIDR officielle. Commentaire XML `--` corrigé la même nuit (premier cas documenté de ce piège, récidivé plus tard S061/2026-08-20).
 
 ### TASK-S051 [SIPV] [x] Chaîne illimitée de destinations après un groupe d'appel sans réponse
 **Classification: CURRENT**
-Demande de l'utilisateur (2026-08-07 matin), reformulée après plusieurs sessions sans suite ("ça fait plusieurs fois que je te le demande") — voir [[feedback_log_verbal_requests_immediately]], demande non tracée avant cette session. `RingGroup.no_answer_destination` existait depuis S007.3 mais n'était JAMAIS lu par le dialplan dans le cas "groupe ouvert avec membres actifs" (seul le cas "fermé par horaire" l'utilisait) — même famille de bug que S047/S048. `RingGroupFailoverStep` (liste ordonnée illimitée) remplace le champ simple (conservé en base pour compat lecture, marqué LEGACY). Bug trouvé en testant : reconstruction du username préfixé manquante pour le type "extension" — corrigé. Côté ERPCRM : proxy + UI complète (`RingGroupsSection`). Migration `0057_ring_group_failover_steps`.
+Demande de l'utilisateur (2026-08-07 matin), reformulée après plusieurs sessions sans suite ("ça fait plusieurs fois que je te le demande") — voir [[feedback_log_verbal_requests_immediately]], demande non tracée avant cette session. `RingGroup.no_answer_destination` existait depuis S007.3 mais n'était JAMAIS lu par le dialplan dans le cas "groupe ouvert avec membres actifs" (seul le cas "fermé par horaire" l'utilisait) — même famille de bug que S047/S048. `RingGroupFailoverStep` (liste ordonnée illimitée) remplace le champ simple (conservé en base pour compat lecture, marqué LEGACY). Reconstruction du username préfixé (manquante pour le type "extension") corrigée en testant. Côté ERPCRM : proxy + UI complète (`RingGroupsSection`). Migration `0057_ring_group_failover_steps`.
 
 ### TASK-S052 [SIPV] [~] Audit des champs SIPExtension stockés mais jamais câblés (busy/offline)
 **Classification: CURRENT**
@@ -4800,3 +4962,58 @@ Classification: NOT_RELEVANT
 Aucun cache pour les données SIPV n'existe aujourd'hui côté ERPCRM (vérifié, 0 résultat sur `cache|Cache|lru_cache|redis` dans `sipv_client.py`/`telephony.py`). Pas un problème actuel — contrainte à respecter dès la conception SI un cache est introduit un jour : le scoper par serveur SIPV, jamais global.
 
 Dépend de : rien (préventif, pas de blocage).
+
+---
+
+## TASK-040 [TOOLING] [x] Outillage Graphiti — fiabilité du backfill, alertes, refonte de la méthode d'ingestion
+Date de demande : 2026-09-03 (alertes Slack) — étendu le 2026-09-04 (refonte complète après audit qualité)
+Date(s) de travail : 2026-09-03, 2026-09-04
+
+Outillage de la plateforme (`tools/knowledge/graphiti/`), pas un module ERPCRM/SIPV — voir `ERRORS_LESSONS.md` pour le détail des erreurs rencontrées, identifiées par les mêmes numéros de sous-tâche ci-dessous.
+
+### TASK-040.1 [x] Correctif timeout LLM (backfill bloqué 7h+)
+`graphiti-backfill.service` coincé en boucle d'échec sur `openai.APITimeoutError` — cause réelle : `gpt-oss:20b` à ~4,4 tokens/sec en CPU pur, items denses dépassant régulièrement 1-4h. Timeout SDK OpenAI remonté de 3600s à 86400s dans `graphiti-build/patches/0002-long-timeout-no-retry-ollama-client.patch` + appliqué à chaud dans le conteneur.
+
+### TASK-040.2 [x] Alertes Slack de progression du backfill
+`scripts/slack_notify.py` — notifie à chaque fin d'item (succès/échec) avec % par catégorie + % global. Silencieux 22h-6h heure de Montréal, regroupé au réveil. Webhook dans `scripts/.slack_webhook_url` (jamais commité).
+
+### TASK-040.3 [x] Fiabilité — processus fantômes après `systemctl stop` (récidive 2x)
+`systemctl stop graphiti-backfill.service` ne tuait pas le vrai processus (`docker exec` sans proxy de signal, SIGTERM jamais propagé au conteneur) — récidivé 2x. Fix : après tout stop, vérifier avec `docker top graphiti-graphiti-mcp-1` et `kill -9` le PID réel côté hôte si orphelin.
+
+### TASK-040.4 [x] Fiabilité — `kill -9` gèle une requête concurrente sans erreur
+Un `kill -9` sur le processus fantôme (TASK-040.3) a gelé silencieusement une requête `add_memory` concurrente partageant le même Ollama (`-np 1`, un seul créneau d'inférence) — aucune erreur, 8h+ sans progrès. Fix : redémarrage complet du conteneur `graphiti-mcp`, épisode perdu resoumis après coup.
+
+### TASK-040.5 [x] Refonte complète de la méthode d'ingestion (table rase décidée)
+Audit qualité le 2026-09-03/04 : 77% du graphe (77/100 épisodes) issus du backfill mécanique de `PLATFORM_TASKS.md`, résumés vides, nœuds nommés par numéro de tâche au lieu du concept réel, zéro résultat pour "facturation"/"billing". Décision : `clear_graph` complet, nouvelle méthode où les nœuds portent le vrai nom du concept (Facturation, Ticket...) avec relations causales expliquées, et TASK-XXX comme simple référence de provenance. Reconstruction en cours.
+
+### TASK-040.6 [x] Reset partiel au lieu de complet (service/backend/données non réinitialisés ensemble)
+Plusieurs redémarrages isolés effectués séparément (service backfill seul, puis conteneur `graphiti-mcp` seul) au lieu des 3 couches (service/backend/données Neo4j) ensemble. Fix : redémarrage coordonné des 3 couches en une seule action une fois signalé.
+
+### TASK-040.7 [x] Premier test d'insertion post-reset trop gros malgré une demande explicite de test minimal
+Premier épisode de test contenait 8 entités (Captaine, Simple IP, ERPCRM, SIPV, Crypto, DashV16, Musique, Suno) au lieu d'une seule ("Captaine" seul, comme explicitement demandé). Interrompu (`kill`, vérifié 0 nœud écrit), relancé correctement avec une seule entité.
+
+### TASK-040.8 [x] Redémarrer le conteneur `graphiti-mcp` casse la connexion MCP de la session Claude Code
+Un `docker compose restart`/`up -d` du conteneur ferme brutalement la connexion HTTP du client MCP de la session (`ECONNRESET`) — récidivé à chaque redémarrage. Fix : reconnexion manuelle via `/mcp` → **Reconnect** (jamais Authenticate, ce serveur local n'a pas d'OAuth malgré le message trompeur).
+
+### TASK-040.9 [x] `add_triplet` jugé cassé après seulement 5 minutes — conclusion prématurée, retest concluant
+`add_triplet` déclaré défaillant après abandon côté client à 300s, jamais vérifié côté serveur. Retest avec surveillance CPU/Ollama directe : fonctionne, ~7-8 min, plus rapide que `add_memory` pour un fait précis (pas d'extraction générique). Reclassé fiable et recommandé pour la reconstruction du graphe.
+
+### TASK-040.10 [ ] `search_memory_facts` cassé — arête corrompue (`episodes: None`)
+Date de demande : 2026-09-10 (constaté en répondant à "où on est rendu" côté outil, pas une demande verbale de Philippe)
+Date(s) de travail : 2026-09-10
+
+Constaté en interrogeant Graphiti en premier (LOI 2) pour une relance de
+session : `search_memory_facts` échoue systématiquement, quelle que soit la
+requête, avec `1 validation error for EntityEdge / episodes: Input should be
+a valid list [type=list_type, input_value=None, input_type=NoneType]` — une
+arête du graphe a un champ `episodes` à `None` au lieu d'une liste, ce qui
+casse la désérialisation Pydantic pour TOUTE recherche de faits (pas juste
+celle visant l'arête en cause). `search_nodes` et `get_episodes` fonctionnent
+encore. Corrélé dans le temps avec les commits du jour sur l'outillage
+Graphiti (fusion des doublons SIPV/Simple IP, correction de self-loops,
+`ed7d87d` file d'attente d'écriture unique) — cause probable mais non
+confirmée : une de ces opérations d'écriture/fusion a laissé une arête sans
+provenance d'épisode. Pas corrigé dans cette session (montage Graphiti
+explicitement encore en construction, pas une urgence) — identifier l'arête
+fautive (`get_entity_edge` en balayant, ou requête directe Neo4j) avant la
+prochaine tentative de `search_memory_facts` en contexte réel.
