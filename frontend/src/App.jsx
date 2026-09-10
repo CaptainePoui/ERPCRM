@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Layout from './components/Layout'
 import Companies from './pages/Companies'
@@ -81,16 +81,16 @@ function InternalApp() {
   )
 }
 
+const router = createBrowserRouter(createRoutesFromElements(
+  <Route>
+    <Route path="/portal/*" element={<Portal />} />
+    <Route path="/shop/*" element={<Shop />} />
+    <Route path="/rdv" element={<RDV />} />
+    <Route path="/confidentialite" element={<Privacy />} />
+    <Route path="/*" element={<InternalApp />} />
+  </Route>
+))
+
 export default function App() {
-  return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/portal/*" element={<Portal />} />
-        <Route path="/shop/*" element={<Shop />} />
-        <Route path="/rdv" element={<RDV />} />
-        <Route path="/confidentialite" element={<Privacy />} />
-        <Route path="/*" element={<InternalApp />} />
-      </Routes>
-    </BrowserRouter>
-  )
+  return <RouterProvider router={router} />
 }

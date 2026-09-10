@@ -14,13 +14,14 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.crypto import encrypt
 from app.core.google_calendar import is_configured, list_events, create_event, update_event, delete_event, REFRESH_TOKEN_KEY
 from app.models.app_settings import AppSetting
-from app.models.task import Task
+from app.models.ticket import Ticket
 from app.models.contact import Contact
 from app.core.email import send_rdv_confirmation_email
 from app.api.v1.endpoints.auth import get_current_user
@@ -154,27 +155,51 @@ class EventDelete(BaseModel):
     event_id: str
 
 
+async def _resolve_company_id(db: AsyncSession, company_id: uuid.UUID | None, contact_id: uuid.UUID | None) -> uuid.UUID | None:
+    """Meme resolution que contacts.py : si aucune compagnie n'est fournie mais
+    qu'un contact l'est, prend sa compagnie principale (is_primary), sinon la
+    premiere compagnie active liee."""
+    if company_id:
+        return company_id
+    if not contact_id:
+        return None
+    contact = await db.get(Contact, contact_id, options=[selectinload(Contact.contact_companies)])
+    if not contact:
+        return None
+    active = [cc for cc in contact.contact_companies if cc.is_active]
+    chosen = next((cc for cc in active if cc.is_primary), None) or (active[0] if active else None)
+    return chosen.company_id if chosen else None
+
+
 @router.post("/events")
 async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     event_id = await create_event(db, payload.title, payload.description or "", payload.location, payload.start, payload.end)
     if not event_id:
         raise HTTPException(status_code=400, detail="Échec de la création — Google Calendar est-il bien connecté ?")
 
-    if payload.company_id or payload.contact_id:
+    ticket_id = None
+    resolved_company_id = await _resolve_company_id(db, payload.company_id, payload.contact_id)
+
+    if resolved_company_id:
         local_start = payload.start.astimezone(_LOCAL_TZ)
-        local_end = payload.end.astimezone(_LOCAL_TZ)
-        task = Task(
+        # RDV -> Ticket automatique (TASK-015.15) : un ticket est le seul
+        # enregistrement du travail fait avec un client, plus une Task
+        # separee comme avant (TASK-026.5, superseded). Cree directement
+        # (pas via POST /v1/tickets) pour ne pas declencher le courriel
+        # "ticket ouvert" -- un RDV n'est pas encore du travail effectue.
+        ticket = Ticket(
             title=payload.title,
             description=payload.description,
-            company_id=payload.company_id,
+            company_id=resolved_company_id,
             contact_id=payload.contact_id,
-            due_date=local_start.date(),
-            due_time=local_start.strftime("%H:%M"),
-            priority="normale",
+            priority="normal",
             status="en_cours",
+            google_calendar_event_id=event_id,
+            google_calendar_id="primary",
         )
-        db.add(task)
+        db.add(ticket)
         await db.flush()
+        ticket_id = ticket.id
 
         if payload.send_confirmation and payload.contact_id:
             contact = await db.get(Contact, payload.contact_id)
@@ -183,7 +208,7 @@ async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(g
                 duration_label = f"{h}h" if m == 0 else f"{h}h{m:02d}" if h else f"{m} min"
                 await send_rdv_confirmation_email(
                     to_email=contact.email,
-                    appointment_id=str(task.id),
+                    appointment_id=str(ticket.id),
                     label=payload.title,
                     date_label=local_start.strftime("%Y-%m-%d"),
                     time=local_start.strftime("%H:%M"),
@@ -197,7 +222,22 @@ async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(g
 
         await db.commit()
 
-    return {"id": event_id, "calendar_id": "primary"}
+    return {"id": event_id, "calendar_id": "primary", "ticket_id": str(ticket_id) if ticket_id else None}
+
+
+@router.get("/events/{event_id}/ticket")
+async def get_event_ticket(event_id: str, calendar_id: str = Query("primary"), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Retrouve le ticket auto-cree pour un RDV donne (TASK-015.15) -- pour
+    afficher le lien 'Ticket lie' en consultant un RDV existant."""
+    result = await db.execute(
+        select(Ticket)
+        .options(selectinload(Ticket.company))
+        .where(Ticket.google_calendar_event_id == event_id, Ticket.google_calendar_id == calendar_id)
+    )
+    ticket = result.scalar_one_or_none()
+    if not ticket:
+        return None
+    return {"id": str(ticket.id), "title": ticket.title, "company_name": ticket.company.name}
 
 
 @router.put("/events")
@@ -205,6 +245,22 @@ async def update_google_event(payload: EventUpdate, db: AsyncSession = Depends(g
     result = await update_event(db, payload.calendar_id, payload.event_id, payload.title, payload.description or "", payload.location, payload.start, payload.end)
     if not result:
         raise HTTPException(status_code=400, detail="Échec de la modification")
+
+    # Le ticket auto-cree par ce RDV (TASK-015.15) doit rester en phase avec
+    # ce qu'on ecrit dans le RDV -- sinon un titre/description corrige apres
+    # coup dans le RDV ne se reflete jamais sur le ticket.
+    result_ticket = await db.execute(
+        select(Ticket).where(
+            Ticket.google_calendar_event_id == payload.event_id,
+            Ticket.google_calendar_id == payload.calendar_id,
+        )
+    )
+    ticket = result_ticket.scalar_one_or_none()
+    if ticket:
+        ticket.title = payload.title
+        ticket.description = payload.description
+        await db.commit()
+
     return {"ok": True}
 
 

@@ -153,7 +153,7 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
         <CompanyPickerModal companies={pickerCompanies} onPick={handleCompanyPick} onClose={() => setPickerCompanies(null)} />
       )}
       {quickContact && (
-        <QuickNewContact initialName={quickContact} onCreated={afterContactCreated} onClose={() => setQuickContact(null)} />
+        <QuickNewContact initialName={quickContact} companyId={selectedCompany?.id} onCreated={afterContactCreated} onClose={() => setQuickContact(null)} />
       )}
       {quickCompany && (
         <QuickNewCompany initialName={quickCompany} onCreated={afterCompanyCreated} onClose={() => setQuickCompany(null)} />

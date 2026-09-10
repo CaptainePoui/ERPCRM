@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -84,6 +84,7 @@ app.include_router(appointments.router, prefix="/api/v1/rdv", tags=["rdv"])
 app.include_router(google_oauth.router, prefix="/api/v1/google-calendar", tags=["google-calendar"])
 app.include_router(server_router.router, prefix="/api/v1/server", tags=["server"])
 app.include_router(backup_router.router, prefix="/api/v1/backup", tags=["backup"])
+app.include_router(knowledge_graph.router, prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 
 

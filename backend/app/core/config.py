@@ -48,6 +48,13 @@ class Settings(BaseSettings):
     # Voicebox (TTS local, TASK-029) -- conteneur Docker sur ce meme serveur,
     # port 17600 sur l'hote -> 17493 dans le conteneur, lie a 127.0.0.1 uniquement.
     VOICEBOX_API_URL: str = "http://127.0.0.1:17600"
+    # Neo4j (base de Graphiti, TASK-039) -- conteneur Docker sur ce meme serveur,
+    # port 7687 (Bolt) lie a 127.0.0.1 uniquement (voir tools/knowledge/graphiti/docker-compose.yml).
+    # Depuis l'hote (pas depuis un autre conteneur Docker), donc 127.0.0.1 et pas le hostname "neo4j".
+    NEO4J_URI: str = "bolt://127.0.0.1:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = ""
+    NEO4J_DATABASE: str = "neo4j"
 
     class Config:
         env_file = ".env"

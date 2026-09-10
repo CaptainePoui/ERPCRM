@@ -700,7 +700,7 @@ async def send_rdv_confirmation_email(
         attendee_email=to_email,
         attendee_name=attendee_name,
     )
-    return await _send(to_email, subject, html, tracking_entity_type="appointment", tracking_entity_id=appointment_id, ics_content=ics)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=appointment_id, ics_content=ics)
 
 
 # ── Rapport CDR programme (TASK-032.2) ──────────────────────────────────────

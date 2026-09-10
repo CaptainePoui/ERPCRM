@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
+import KnowledgeGraphViewer from '../components/KnowledgeGraphViewer'
 import './Admin.css'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
@@ -47,9 +48,9 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets']
+const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets', 'Graphe de connaissance']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets', 'graphe-connaissance']
 
 export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -87,6 +88,7 @@ export default function Admin() {
         {tab === 3 && <IntegrationsPanel />}
         {tab === 4 && <BackupPanel />}
         {tab === 5 && <TicketsSettingsPanel />}
+        {tab === 6 && <KnowledgeGraphViewer />}
       </div>
     </div>
   )

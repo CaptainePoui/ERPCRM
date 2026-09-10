@@ -19,7 +19,7 @@ from app.models.telephony import DID, Extension
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderLine
 from app.models.portal import PortalUser
 from app.models.ecom import EcomOrder, EcomOrderLine
-from app.models.task import Task, TaskReminder, TaskChecklistItem
+from app.models.task import Task, TaskReminder
 from app.models.installation_photo import InstallationPhoto
 from app.models.email_open import EmailOpen
 from app.models.devis import Devis, DevisLine

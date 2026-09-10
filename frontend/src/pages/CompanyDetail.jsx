@@ -762,7 +762,7 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh })
         </div>
       )}
       {creatingNew && (
-        <QuickNewContact initialName="" onCreated={afterContactCreated} onClose={() => setCreatingNew(false)} />
+        <QuickNewContact initialName="" companyId={companyId} onCreated={afterContactCreated} onClose={() => setCreatingNew(false)} />
       )}
       {linking && (
         <div className="inline-form">
@@ -1226,10 +1226,10 @@ function TachesTab({ companyId, companyName, onShowTask }) {
                   {t.contact_name && <span>· {t.contact_name}</span>}
                   {t.ticket_title && <span>🎫 {t.ticket_title}</span>}
                 </div>
-                {t.checklist_items?.length > 0 && (
+                {t.subtasks?.length > 0 && (
                   <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
-                    Checklist : {t.checklist_items.filter(c => c.completed).length}/{t.checklist_items.length}
-                    {' '}{'▓'.repeat(t.checklist_items.filter(c => c.completed).length)}{'░'.repeat(t.checklist_items.length - t.checklist_items.filter(c => c.completed).length)}
+                    Checklist : {t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}
+                    {' '}{'▓'.repeat(t.subtasks.filter(s => s.completed).length)}{'░'.repeat(t.subtasks.length - t.subtasks.filter(s => s.completed).length)}
                   </div>
                 )}
               </div>

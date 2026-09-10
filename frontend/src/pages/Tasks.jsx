@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
 import Autocomplete from '../components/Autocomplete'
 import QuickNewCompany from '../components/QuickNewCompany'
 import QuickNewContact from '../components/QuickNewContact'
+import UnsavedChangesPrompt from '../components/UnsavedChangesPrompt'
+import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
 
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const PRIORITY_COLORS = { basse: '#6B7280', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
@@ -50,9 +52,9 @@ function TaskRow({ task, onToggle, onSelect }) {
       </td>
       <td style={{ padding: '10px 8px', fontSize: 14, color: task.completed ? '#9CA3AF' : '#111827', textDecoration: task.completed ? 'line-through' : 'none', fontWeight: 500 }}>
         {task.title}
-        {task.checklist_items?.length > 0 && (
+        {task.subtasks?.length > 0 && (
           <span style={{ marginLeft: 8, fontSize: 11, color: '#9CA3AF' }}>
-            {task.checklist_items.filter(c => c.completed).length}/{task.checklist_items.length}
+            {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}
           </span>
         )}
       </td>
@@ -81,10 +83,6 @@ function getFirstDayOfWeek(year, month) {
 
 function isSameDay(a, b) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate()
-}
-
-function taskDate(t) {
-  return t.due_date ? new Date(t.due_date + 'T12:00:00') : null
 }
 
 function googleEventDate(e) {
@@ -279,6 +277,40 @@ function fmtOpened(iso) {
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
+// Confirme (et corrige au besoin) le temps chronometre avant de cocher une
+// tache de checklist -- TASK-015.15 phase 2. L'ecart avec le temps
+// chronometre se repercute sur le chrono du ticket lie (cote backend).
+function ConfirmTimeModal({ subtask, onClose, onConfirm }) {
+  const rawMinutes = Math.round((subtask.elapsed_seconds || 0) / 60)
+  const [minutes, setMinutes] = useState(rawMinutes || subtask.estimated_minutes || 0)
+  const [saving, setSaving] = useState(false)
+
+  async function confirm() {
+    setSaving(true)
+    try { await onConfirm(minutes) } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Combien de temps ça a pris ?</h3>
+        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>{subtask.title}</p>
+        <div className="form-group">
+          <label>Minutes</label>
+          <input type="number" min="0" autoFocus value={minutes} onChange={e => setMinutes(parseInt(e.target.value) || 0)} />
+        </div>
+        {rawMinutes > 0 && rawMinutes !== minutes && (
+          <p style={{ fontSize: 12, color: '#9CA3AF' }}>Chronométré : {rawMinutes} min</p>
+        )}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={confirm} disabled={saving}>{saving ? '...' : 'Confirmer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SendTaskModal({ task, onClose, onSent }) {
   const [email, setEmail] = useState(task.contact_email || '')
   const [sending, setSending] = useState(false)
@@ -333,13 +365,12 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
       setOpensLoading(false)
     }
   }
-  const [form, setForm] = useState({ title: task.title, description: task.description || '', due_date: task.due_date || '', due_time: task.due_time || '', priority: task.priority, status: task.status })
+  const [form, setForm] = useState({ title: task.title, description: task.description || '', due_date: task.due_date || '', due_time: task.due_time || '', priority: task.priority, status: task.status, link_url: task.link_url || '', estimated_minutes: task.estimated_minutes ?? '' })
   const [saving, setSaving] = useState(false)
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([])
-  const [checklist, setChecklist] = useState([])
-  const [newCheckItem, setNewCheckItem] = useState('')
   const [reminders, setReminders] = useState([])
+  const [confirmTimeSubtask, setConfirmTimeSubtask] = useState(null)
   const [selectedCompany, setSelectedCompany] = useState(null)
   const [selectedContact, setSelectedContact] = useState(null)
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('')
@@ -356,7 +387,6 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
     : templates.slice(0, 6)
 
   function startEditing() {
-    setChecklist(task.checklist_items.map(c => ({ label: c.label, completed: c.completed, sort_order: c.sort_order })))
     setReminders(task.reminders.map(r => ({ reminder_type: r.reminder_type, minutes_before: r.minutes_before, custom_minutes: r.custom_minutes })))
     setSelectedCompany(task.company_id ? { id: task.company_id, label: task.company_name } : null)
     setSelectedContact(task.contact_id ? { id: task.contact_id, label: task.contact_name } : null)
@@ -370,11 +400,6 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
     onUpdated(r.data)
   }
 
-  async function toggleItem(item) {
-    const r = await api.patch(`/v1/tasks/${task.id}/checklist/${item.id}`, { completed: !item.completed })
-    onUpdated(r.data)
-  }
-
   async function save() {
     setSaving(true)
     try {
@@ -382,10 +407,11 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
         ...form,
         due_date: form.due_date || null,
         due_time: form.due_time || null,
+        estimated_minutes: form.estimated_minutes === '' ? null : parseInt(form.estimated_minutes),
+        link_url: form.link_url || null,
         company_id: selectedCompany?.id || null,
         contact_id: selectedContact?.id || null,
         reminders,
-        checklist_items: checklist,
       })
       onUpdated(r.data)
       setEditing(false)
@@ -428,9 +454,34 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
   }
 
   async function toggleSubtask(st) {
-    const r = st.completed
-      ? await api.put(`/v1/tasks/${st.id}`, { completed: false, status: 'en_cours' })
-      : await api.post(`/v1/tasks/${st.id}/complete`)
+    if (st.completed) {
+      await api.put(`/v1/tasks/${st.id}`, { completed: false, status: 'en_cours' })
+      const parent = await api.get(`/v1/tasks/${task.id}`)
+      onUpdated(parent.data)
+      return
+    }
+    if (st.link_url) {
+      // Tache liee a une page -- on demande/corrige le temps pris plutot que
+      // de cocher directement (TASK-015.15 phase 2, demande de Philippe).
+      setConfirmTimeSubtask(st)
+      return
+    }
+    await api.post(`/v1/tasks/${st.id}/complete`)
+    const parent = await api.get(`/v1/tasks/${task.id}`)
+    onUpdated(parent.data)
+  }
+
+  async function openSubtaskLink(st) {
+    window.open(st.link_url, '_blank', 'noopener,noreferrer')
+    await api.post(`/v1/tasks/${st.id}/timer/start`)
+    const parent = await api.get(`/v1/tasks/${task.id}`)
+    onUpdated(parent.data)
+  }
+
+  async function confirmSubtaskTime(minutes) {
+    if (!confirmTimeSubtask) return
+    await api.post(`/v1/tasks/${confirmTimeSubtask.id}/complete-with-time`, { minutes })
+    setConfirmTimeSubtask(null)
     const parent = await api.get(`/v1/tasks/${task.id}`)
     onUpdated(parent.data)
   }
@@ -442,13 +493,6 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
 
   const set = (f, v) => setForm(p => ({ ...p, [f]: v }))
 
-  function addCheckItem() {
-    const t = newCheckItem.trim()
-    if (!t) return
-    setChecklist(prev => [...prev, { label: t, completed: false, sort_order: prev.length }])
-    setNewCheckItem('')
-  }
-
   function updateReminder(i, field, val) {
     setReminders(prev => prev.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
   }
@@ -457,6 +501,9 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
   const contactItems = contacts
     .filter(c => !selectedCompany || (c.companies || []).some(co => co.company_id === selectedCompany.id))
     .map(c => ({ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), sub: c.email || '' }))
+  const selectedContactCompanyId = selectedContact
+    ? contacts.find(c => c.id === selectedContact.id)?.companies?.[0]?.company_id
+    : null
 
   return (
     <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, background: '#fff', boxShadow: '-4px 0 20px rgba(0,0,0,0.12)', zIndex: 300, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
@@ -475,6 +522,11 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
         <div style={{ padding: '12px 20px', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <PriorityBadge value={task.priority} />
           <StatusBadge value={task.status} />
+          {task.ticket_id && (
+            <a href={`/tickets/${task.ticket_id}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: 'var(--brand)', background: 'var(--brand)11', padding: '2px 7px', borderRadius: 10, textDecoration: 'none' }}>
+              🎫 {task.ticket_title || 'Ticket lié'}
+            </a>
+          )}
           {task.company_name && <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>{task.company_name}</span>}
           {task.assigned_name && <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>👤 {task.assigned_name}</span>}
         </div>
@@ -548,21 +600,38 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
             <div style={{ borderTop: '1px solid #E5E7EB', margin: '12px 0', paddingTop: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
               <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} placeholder="Rechercher une compagnie..." />
-              <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+              <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+                </div>
+                {selectedContactCompanyId && (
+                  <a
+                    href={`/companies/${selectedContactCompanyId}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Ouvrir la fiche de l'entreprise dans un nouvel onglet"
+                    style={{ marginBottom: 10, fontSize: 18, textDecoration: 'none' }}
+                  >
+                    🔗
+                  </a>
+                )}
+              </div>
             </div>
 
             <div style={{ borderTop: '1px solid #E5E7EB', margin: '12px 0', paddingTop: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Checklist</div>
-              {checklist.map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                  <input type="checkbox" checked={item.completed} onChange={e => setChecklist(prev => prev.map((c, idx) => idx === i ? { ...c, completed: e.target.checked } : c))} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
-                  <span style={{ flex: 1, fontSize: 13, color: item.completed ? '#9CA3AF' : '#374151', textDecoration: item.completed ? 'line-through' : 'none' }}>{item.label}</span>
-                  <button onClick={() => setChecklist(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
-                </div>
-              ))}
-              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                <input value={newCheckItem} onChange={e => setNewCheckItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCheckItem()} placeholder="Ajouter un élément..." style={{ flex: 1, fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151', background: '#fff' }} />
-                <button onClick={addCheckItem} className="btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>+</button>
+              <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Exécution</div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>Page liée (optionnel)</label>
+                <input value={form.link_url} onChange={e => set('link_url', e.target.value)} placeholder="https://portail.simpleip.tel/companies" style={{ color: '#374151', background: '#fff' }} />
+              </div>
+              <div className="form-group">
+                <label style={{ fontSize: 12 }}>
+                  Durée approximative (minutes)
+                  {task.suggested_estimated_minutes != null && (
+                    <span style={{ fontWeight: 400, color: '#9CA3AF' }}> — suggestion : {task.suggested_estimated_minutes} min</span>
+                  )}
+                </label>
+                <input type="number" min="0" value={form.estimated_minutes} onChange={e => set('estimated_minutes', e.target.value)} style={{ color: '#374151', background: '#fff' }} />
               </div>
             </div>
 
@@ -593,23 +662,9 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
           <>
             {task.description && <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 16 }}>{task.description}</p>}
 
-            {task.checklist_items?.length > 0 && (
-              <div style={{ marginBottom: 20 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Checklist ({task.checklist_items.filter(c => c.completed).length}/{task.checklist_items.length})
-                </div>
-                {task.checklist_items.map(item => (
-                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', cursor: 'pointer' }}>
-                    <input type="checkbox" checked={item.completed} onChange={() => toggleItem(item)} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
-                    <span style={{ fontSize: 13, color: item.completed ? '#9CA3AF' : '#374151', textDecoration: item.completed ? 'line-through' : 'none' }}>{item.label}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-
             <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 14, marginBottom: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                Sous-tâches
+                Checklist
                 {task.subtasks?.length > 0 && (
                   <span style={{ marginLeft: 6, fontWeight: 400, color: '#9CA3AF' }}>
                     ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})
@@ -630,10 +685,20 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
                   >
                     {st.title}
                   </span>
-                  {st.checklist_items?.length > 0 && (
-                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>
-                      {st.checklist_items.filter(c => c.completed).length}/{st.checklist_items.length}
-                    </span>
+                  {st.link_url && (
+                    <button
+                      onClick={() => openSubtaskLink(st)}
+                      title={`Ouvrir ${st.link_url}`}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, padding: 0 }}
+                    >
+                      🔗
+                    </button>
+                  )}
+                  {st.timer_running && <span title="Chrono en cours" style={{ fontSize: 12 }}>⏱</span>}
+                  {st.actual_minutes != null ? (
+                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{st.actual_minutes} min</span>
+                  ) : st.estimated_minutes != null && (
+                    <span style={{ fontSize: 11, color: '#C1C7D0' }}>~{st.estimated_minutes} min</span>
                   )}
                   {st.assigned_name && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{st.assigned_name}</span>}
                   <span style={{ fontSize: 11, color: STATUS_COLORS[st.status] || '#9CA3AF', fontWeight: 600 }}>{STATUS_LABELS[st.status] || st.status}</span>
@@ -655,8 +720,8 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
                         onMouseLeave={e => e.currentTarget.style.background = '#fff'}
                       >
                         <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{tpl.template_name || tpl.title}</div>
-                        {tpl.checklist_items?.length > 0 && (
-                          <span style={{ fontSize: 11, color: '#6B7280' }}>{tpl.checklist_items.length} étape{tpl.checklist_items.length > 1 ? 's' : ''}</span>
+                        {tpl.subtasks?.length > 0 && (
+                          <span style={{ fontSize: 11, color: '#6B7280' }}>{tpl.subtasks.length} étape{tpl.subtasks.length > 1 ? 's' : ''}</span>
                         )}
                       </div>
                     ))}
@@ -715,13 +780,21 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
           onSent={data => { onUpdated(data); setShowSend(false) }}
         />
       )}
+
+      {confirmTimeSubtask && (
+        <ConfirmTimeModal
+          subtask={confirmTimeSubtask}
+          onClose={() => setConfirmTimeSubtask(null)}
+          onConfirm={confirmSubtaskTime}
+        />
+      )}
     </div>
   )
 }
 
 // ── Calendar Views ────────────────────────────────────────────────────────────
 
-function MonthView({ year, month, tasks, googleEvents, onSelectTask, onEventClick, onDayClick, today }) {
+function MonthView({ year, month, googleEvents, onEventClick, onDayClick, today }) {
   const daysInMonth = getDaysInMonth(year, month)
   const firstDay = getFirstDayOfWeek(year, month)
   const totalCells = Math.ceil((daysInMonth + firstDay) / 7) * 7
@@ -758,7 +831,6 @@ function MonthView({ year, month, tasks, googleEvents, onSelectTask, onEventClic
                 {week.map((date, di) => {
                   const inMonth = date.getMonth() === month
                   const isToday = isSameDay(date, today)
-                  const dayTasks = tasks.filter(t => { const td = taskDate(t); return td && isSameDay(td, date) })
                   const dayEventsAll = singleDayEvents.filter(e => isSameDay(googleEventDate(e), date))
                   const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
                   const dayHolidays = dayEventsAll.filter(isHoliday)
@@ -769,12 +841,6 @@ function MonthView({ year, month, tasks, googleEvents, onSelectTask, onEventClic
                         {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                       </div>
                       {barsSpace > 0 && <div style={{ height: barsSpace }} />}
-                      {dayTasks.slice(0, 3).map(t => (
-                        <div key={t.id} onClick={evt => { evt.stopPropagation(); onSelectTask(t) }} style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, marginBottom: 2, background: STATUS_COLORS[t.status] + '20', color: STATUS_COLORS[t.status], cursor: 'pointer', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', fontWeight: 500 }}>
-                          {t.completed ? '✓ ' : ''}{t.title}
-                        </div>
-                      ))}
-                      {dayTasks.length > 3 && <div style={{ fontSize: 10, color: '#9CA3AF', paddingLeft: 4 }}>+{dayTasks.length - 3}</div>}
                       {dayGoogleEvents.slice(0, 2).map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}
                       {dayGoogleEvents.length > 2 && <div style={{ fontSize: 10, color: '#9CA3AF', paddingLeft: 4 }}>+{dayGoogleEvents.length - 2} agenda</div>}
                     </div>
@@ -790,7 +856,7 @@ function MonthView({ year, month, tasks, googleEvents, onSelectTask, onEventClic
   )
 }
 
-function WeekView({ weekStart, tasks, googleEvents, onSelectTask, onEventClick, onDayClick, today }) {
+function WeekView({ weekStart, googleEvents, onEventClick, onDayClick, today }) {
   const days = []
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart)
@@ -808,7 +874,6 @@ function WeekView({ weekStart, tasks, googleEvents, onSelectTask, onEventClick, 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: '1fr', flex: 1, minHeight: 0 }}>
         {days.map((d, i) => {
           const isToday = isSameDay(d, today)
-          const dayTasks = tasks.filter(t => { const td = taskDate(t); return td && isSameDay(td, d) })
           const dayEventsAll = singleDayEvents.filter(e => isSameDay(googleEventDate(e), d))
           const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
           const dayHolidays = dayEventsAll.filter(isHoliday)
@@ -823,12 +888,6 @@ function WeekView({ weekStart, tasks, googleEvents, onSelectTask, onEventClick, 
               </div>
               <div style={{ padding: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
                 {barsSpace > 0 && <div style={{ height: barsSpace }} />}
-                {dayTasks.map(t => (
-                  <div key={t.id} onClick={evt => { evt.stopPropagation(); onSelectTask(t) }} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, marginBottom: 4, background: STATUS_COLORS[t.status] + '20', color: STATUS_COLORS[t.status], cursor: 'pointer', fontWeight: 500, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                    {t.due_time && <span style={{ fontSize: 10, marginRight: 4 }}>{t.due_time}</span>}
-                    {t.completed ? '✓ ' : ''}{t.title}
-                  </div>
-                ))}
                 {dayGoogleEvents.map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}
               </div>
             </div>
@@ -840,8 +899,7 @@ function WeekView({ weekStart, tasks, googleEvents, onSelectTask, onEventClick, 
   )
 }
 
-function DayView({ day, tasks, googleEvents, onSelectTask, onEventClick, onDayClick }) {
-  const dayTasks = tasks.filter(t => { const td = taskDate(t); return td && isSameDay(td, day) })
+function DayView({ day, googleEvents, onEventClick, onDayClick }) {
   const dayGoogleEvents = googleEvents.filter(e => eventCoversDay(e, day))
   return (
     <div>
@@ -851,20 +909,10 @@ function DayView({ day, tasks, googleEvents, onSelectTask, onEventClick, onDayCl
         </div>
         <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => onDayClick(day)}>+ Ajouter</button>
       </div>
-      {dayTasks.length === 0 && dayGoogleEvents.length === 0 ? (
-        <div style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucune tâche ce jour</div>
+      {dayGoogleEvents.length === 0 ? (
+        <div style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucun RDV ce jour</div>
       ) : (
         <>
-          {dayTasks.map(t => (
-            <div key={t.id} onClick={() => onSelectTask(t)} style={{ padding: '12px 16px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 8, cursor: 'pointer', background: '#fff' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {t.due_time && <span style={{ fontSize: 13, color: 'var(--brand)', fontWeight: 600, minWidth: 50 }}>{t.due_time}</span>}
-                <span style={{ fontSize: 14, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
-                <PriorityBadge value={t.priority} />
-              </div>
-              {t.company_name && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{t.company_name}</div>}
-            </div>
-          ))}
           {dayGoogleEvents.map(e => (
             <div
               key={e.id}
@@ -879,6 +927,76 @@ function DayView({ day, tasks, googleEvents, onSelectTask, onEventClick, onDayCl
             </div>
           ))}
         </>
+      )}
+    </div>
+  )
+}
+
+// Rapport de compétence par employé (TASK-015.15 phase 2) : temps moyen par
+// type de tâche, comparé à la moyenne d'équipe -- pour ajuster le planing
+// (durée approximative +15%) sans pénaliser les employés plus lents.
+function CompetencyReportSection() {
+  const [open, setOpen] = useState(false)
+  const [rows, setRows] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setLoading(true)
+    api.get('/v1/tasks/report/competency').then(r => setRows(r.data)).finally(() => setLoading(false))
+  }, [open])
+
+  const byEmployee = rows.reduce((acc, r) => {
+    (acc[r.assigned_name] ||= []).push(r)
+    return acc
+  }, {})
+
+  return (
+    <div style={{ marginTop: 24, border: '1px solid #E5E7EB', borderRadius: 8 }}>
+      <button
+        onClick={() => setOpen(v => !v)}
+        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: '#F9FAFB', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+      >
+        Rapport de compétence par employé
+        <span>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: 16 }}>
+          {loading ? (
+            <div style={{ color: '#9CA3AF', fontSize: 13 }}>Chargement...</div>
+          ) : Object.keys(byEmployee).length === 0 ? (
+            <div style={{ color: '#9CA3AF', fontSize: 13 }}>Pas encore assez de tâches complétées avec temps enregistré.</div>
+          ) : (
+            Object.entries(byEmployee).map(([name, tasks]) => (
+              <div key={name} style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 6 }}>{name}</div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ color: '#6B7280', textAlign: 'left' }}>
+                      <th style={{ padding: '4px 8px' }}>Tâche</th>
+                      <th style={{ padding: '4px 8px' }}>Son temps moyen</th>
+                      <th style={{ padding: '4px 8px' }}>Moyenne équipe</th>
+                      <th style={{ padding: '4px 8px' }}>Nb fois</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map(t => {
+                      const diff = t.employee_avg_minutes - t.team_avg_minutes
+                      return (
+                        <tr key={t.template_id} style={{ borderTop: '1px solid #F3F4F6' }}>
+                          <td style={{ padding: '4px 8px' }}>{t.template_title}</td>
+                          <td style={{ padding: '4px 8px', color: diff > 0 ? '#DC2626' : diff < 0 ? '#059669' : '#374151', fontWeight: 600 }}>{t.employee_avg_minutes} min</td>
+                          <td style={{ padding: '4px 8px', color: '#9CA3AF' }}>{t.team_avg_minutes} min</td>
+                          <td style={{ padding: '4px 8px', color: '#9CA3AF' }}>{t.employee_count}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ))
+          )}
+        </div>
       )}
     </div>
   )
@@ -939,6 +1057,12 @@ export default function Tasks({ defaultView = 'list' }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState(defaultView)
+  // React Router ne demonte pas forcement ce composant en passant de /agenda
+  // a /tasks (meme type de composant a la meme position) -- sans ce reset,
+  // le state `view` d'une visite precedente survit et le calendrier peut
+  // s'afficher sur /tasks (ou l'inverse sur /agenda). Le garde-fou isAgenda
+  // sur le rendu du calendrier (plus bas) est la 2e moitie du fix.
+  useEffect(() => { setView(defaultView) }, [defaultView])
   const [showNew, setShowNew] = useState(false)
   const [selectedTask, setSelectedTask] = useState(null)
   const [filterStatus, setFilterStatus] = useState('')
@@ -956,7 +1080,6 @@ export default function Tasks({ defaultView = 'list' }) {
   const [calWeekStart, setCalWeekStart] = useState(getWeekStart(today))
   const [googleEvents, setGoogleEvents] = useState([])
   const [quickAddDate, setQuickAddDate] = useState(null)
-  const [prefillTaskDate, setPrefillTaskDate] = useState(null)
   const [editingGoogleEvent, setEditingGoogleEvent] = useState(null)
 
   const loadGoogleEvents = useCallback(() => {
@@ -996,19 +1119,13 @@ export default function Tasks({ defaultView = 'list' }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
-  function pickTask() {
-    const d = quickAddDate
-    setQuickAddDate(null)
-    setPrefillTaskDate(d)
-    setShowNew(true)
-  }
-  function pickRdv() {
-    const d = quickAddDate
+  function pickRdv(dateOverride) {
+    const d = dateOverride || quickAddDate
     setQuickAddDate(null)
     setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'RDV - ', description: '', location: '', startTime: '09:00', endTime: '10:00' })
   }
-  function pickAppel() {
-    const d = quickAddDate
+  function pickAppel(dateOverride) {
+    const d = dateOverride || quickAddDate
     setQuickAddDate(null)
     setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'Appel - ', description: '', location: '', startTime: '09:00', endTime: '09:30' })
   }
@@ -1105,20 +1222,10 @@ export default function Tasks({ defaultView = 'list' }) {
             ))}
           </div>
 
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151' }}>
-            <option value="">Tous les statuts</option>
-            {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-
-          <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151' }}>
-            <option value="">Toutes les priorités</option>
-            {Object.entries(PRIORITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-
           <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
             <button onClick={goNext} className="btn-secondary" style={{ fontSize: 13 }}>Suiv. ›</button>
             <button onClick={goToday} className="btn-secondary" style={{ fontSize: 13 }}>Aujourd'hui</button>
-            <button className="btn-primary" onClick={() => setShowNew(true)} style={{ fontSize: 13 }}>+ Nouvelle tâche</button>
+            <button className="btn-primary" onClick={() => pickRdv(dateStr(today))} style={{ fontSize: 13 }}>+ RDV</button>
           </div>
         </div>
       ) : (
@@ -1182,18 +1289,18 @@ export default function Tasks({ defaultView = 'list' }) {
               </table>
             </div>
           )}
-          {view === 'month' && <MonthView year={calYear} month={calMonth} tasks={filtered} googleEvents={googleEvents} onSelectTask={setSelectedTask} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
-          {view === 'week' && <WeekView weekStart={calWeekStart} tasks={filtered} googleEvents={googleEvents} onSelectTask={setSelectedTask} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
-          {view === 'day' && <DayView day={calDay} tasks={filtered} googleEvents={googleEvents} onSelectTask={setSelectedTask} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} />}
+          {!isAgenda && <CompetencyReportSection />}
+          {isAgenda && view === 'month' && <MonthView year={calYear} month={calMonth} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
+          {isAgenda && view === 'week' && <WeekView weekStart={calWeekStart} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
+          {isAgenda && view === 'day' && <DayView day={calDay} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} />}
         </>
       )}
       </div>
 
       {showNew && (
         <NewTaskModal
-          prefillDueDate={prefillTaskDate || ''}
-          onClose={() => { setShowNew(false); setPrefillTaskDate(null) }}
-          onCreated={t => { setTasks(prev => [t, ...prev]); setShowNew(false); setPrefillTaskDate(null) }}
+          onClose={() => setShowNew(false)}
+          onCreated={t => { setTasks(prev => [t, ...prev]); setShowNew(false) }}
         />
       )}
 
@@ -1211,7 +1318,6 @@ export default function Tasks({ defaultView = 'list' }) {
         <QuickAddChooser
           date={quickAddDate}
           onClose={() => setQuickAddDate(null)}
-          onPickTask={pickTask}
           onPickRdv={pickRdv}
           onPickAppel={pickAppel}
         />
@@ -1228,13 +1334,12 @@ export default function Tasks({ defaultView = 'list' }) {
   )
 }
 
-function QuickAddChooser({ date, onClose, onPickTask, onPickRdv, onPickAppel }) {
+function QuickAddChooser({ date, onClose, onPickRdv, onPickAppel }) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
         <h3 className="modal-title">Ajouter le {new Date(date + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={onPickTask}>📋 Tâche</button>
           <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={onPickRdv}>🧑‍🔧 RDV</button>
           <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={onPickAppel}>📞 Appel</button>
         </div>
@@ -1263,6 +1368,12 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState('')
+  const [dirty, setDirty] = useState(false)
+  const isFirstRender = useRef(true)
+  useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return }
+    setDirty(true)
+  }, [title, description, location, date, endDate, startTime, endTime])
 
   // Si l'evenement etait sur une seule journee (cas le plus courant), deplacer
   // la date de debut deplace aussi la date de fin -- sinon changer juste le
@@ -1272,6 +1383,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
     if (date === endDate) setEndDate(newDate)
     setDate(newDate)
   }
+  const blocker = useUnsavedChangesGuard(dirty)
 
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([])
@@ -1282,11 +1394,24 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const [companyAddresses, setCompanyAddresses] = useState([])
   const [sendConfirmation, setSendConfirmation] = useState(true)
 
+  // Ticket auto-cree par ce RDV (TASK-015.15) -- en edition, on le retrouve
+  // via l'evenement Google Calendar deja lie ; en creation, il n'existe
+  // qu'apres le premier "Enregistrer".
+  const [ticket, setTicket] = useState(null)
+  const [savedEvent, setSavedEvent] = useState(isEdit ? { event_id: data.event_id, calendar_id: data.calendar_id } : null)
+
   useEffect(() => {
     if (isEdit) return
     api.get('/v1/companies').then(r => setCompanies(r.data))
     api.get('/v1/contacts').then(r => setContacts(r.data))
   }, [isEdit])
+
+  useEffect(() => {
+    if (!isEdit) return
+    api.get(`/v1/google-calendar/events/${data.event_id}/ticket`, { params: { calendar_id: data.calendar_id } })
+      .then(r => setTicket(r.data))
+      .catch(() => setTicket(null))
+  }, [isEdit, data.event_id, data.calendar_id])
 
   useEffect(() => {
     if (!selectedCompany) { setCompanyAddresses([]); return }
@@ -1297,6 +1422,9 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const contactItems = contacts
     .filter(c => !selectedCompany || (c.companies || []).some(co => co.company_id === selectedCompany.id))
     .map(c => ({ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), sub: c.email || '' }))
+  const selectedContactCompanyId = selectedContact
+    ? contacts.find(c => c.id === selectedContact.id)?.companies?.[0]?.company_id
+    : null
 
   function afterCompanyCreated(company) {
     setCompanies(prev => [...prev, company])
@@ -1325,17 +1453,27 @@ function GoogleEventModal({ data, onClose, onSaved }) {
       const endIso = end.toISOString()
       if (isEdit) {
         await api.put('/v1/google-calendar/events', { calendar_id: data.calendar_id, event_id: data.event_id, title, description, location, start: startIso, end: endIso })
+        setDirty(false)
+        onSaved()
       } else {
-        await api.post('/v1/google-calendar/events', {
+        const r = await api.post('/v1/google-calendar/events', {
           title, description, location, start: startIso, end: endIso,
           company_id: selectedCompany?.id || null,
           contact_id: selectedContact?.id || null,
           send_confirmation: sendConfirmation,
         })
+        setDirty(false)
+        setSavedEvent({ event_id: r.data.id, calendar_id: r.data.calendar_id })
+        if (r.data.ticket_id) {
+          setTicket({ id: r.data.ticket_id, title, company_name: selectedCompany?.label || '' })
+        } else {
+          // Aucune compagnie/contact -- rien a lier, le RDV est simple et complet.
+          onSaved()
+        }
       }
-      onSaved()
     } catch (e) {
       setError(e.response?.data?.detail || 'Erreur lors de l\'enregistrement')
+      throw e
     } finally { setSaving(false) }
   }
 
@@ -1351,47 +1489,81 @@ function GoogleEventModal({ data, onClose, onSaved }) {
     }
   }
 
+  const justCreated = !isEdit && !!savedEvent
+  const locked = justCreated // champs verrouilles -- RDV deja enregistre, plus rien a re-sauvegarder ici
+
   return (
     <>
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 480 }}>
-        <h3 className="modal-title">{isEdit ? 'Modifier' : 'Ajouter'} un événement</h3>
+        <h3 className="modal-title">{isEdit ? 'Modifier' : justCreated ? 'RDV créé ✓' : 'Ajouter'} un événement</h3>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-        <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus style={{ color: '#374151', background: '#fff' }} /></div>
+        <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <div className="form-group" style={{ flex: 1.3 }}><label>Date début</label><input type="date" value={date} onChange={e => changeDate(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Heure début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date début</label><input type="date" value={date} onChange={e => changeDate(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
         </div>
-        {!isEdit && (
+        {!isEdit && !justCreated && (
           <>
             <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} onCreate={name => setQuickCompanyName(name)} placeholder="Rechercher une compagnie..." />
-            <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} onCreate={name => setQuickContactName(name)} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
+              <div style={{ flex: 1 }}>
+                <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} onCreate={name => setQuickContactName(name)} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+              </div>
+              {selectedContactCompanyId && (
+                <a
+                  href={`/companies/${selectedContactCompanyId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Ouvrir la fiche de l'entreprise dans un nouvel onglet"
+                  style={{ marginBottom: 10, fontSize: 18, textDecoration: 'none' }}
+                >
+                  🔗
+                </a>
+              )}
+            </div>
           </>
         )}
         <div className="form-group">
           <label>Lieu (optionnel)</label>
-          <input value={location} onChange={e => setLocation(e.target.value)} style={{ color: '#374151', background: '#fff' }} />
-          {companyAddresses.map(a => (
+          <input value={location} onChange={e => setLocation(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} />
+          {!locked && companyAddresses.map(a => (
             <button key={a.id} type="button" onClick={() => setLocation(formatAddress(a))} style={{ marginTop: 6, marginRight: 6, background: 'none', border: '1px solid #D1D5DB', color: 'var(--brand)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
               📍 Utiliser {a.address_type === 'service' ? "l'adresse de service" : a.address_type === 'billing' ? "l'adresse de facturation" : "cette adresse"} de la compagnie
             </button>
           ))}
         </div>
-        <div className="form-group"><label>Description (optionnel)</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} style={{ color: '#374151', background: '#fff' }} /></div>
-        {!isEdit && selectedContact && (
+        <div className="form-group"><label>Description (optionnel)</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+        {!isEdit && !justCreated && selectedContact && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151', marginBottom: 12 }}>
             <input type="checkbox" checked={sendConfirmation} onChange={e => setSendConfirmation(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
             Envoyer une confirmation de rendez-vous par courriel au client
           </label>
         )}
+
+        {ticket && (
+          <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
+            <a href={`/tickets/${ticket.id}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginBottom: 12, fontSize: 13, color: 'var(--brand)', textDecoration: 'none', background: 'var(--brand)11', padding: '4px 10px', borderRadius: 8 }}>
+              🎫 Ticket lié : {ticket.title}
+            </a>
+            <RdvTasksSection ticketId={ticket.id} ticketTitle={ticket.title} />
+          </div>
+        )}
+
         <div className="modal-actions">
           {isEdit && <button onClick={del} disabled={deleting} style={{ marginRight: 'auto', background: 'none', border: '1px solid #FCA5A5', color: '#DC2626', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 14 }}>{deleting ? '...' : 'Supprimer'}</button>}
-          <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>{saving ? '...' : 'Enregistrer'}</button>
+          {justCreated ? (
+            <button className="btn-primary" onClick={onSaved}>Terminé</button>
+          ) : (
+            <>
+              <button className="btn-secondary" onClick={onClose}>Annuler</button>
+              <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>{saving ? '...' : 'Enregistrer'}</button>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1399,8 +1571,62 @@ function GoogleEventModal({ data, onClose, onSaved }) {
       <QuickNewCompany initialName={quickCompanyName} onCreated={afterCompanyCreated} onClose={() => setQuickCompanyName(null)} />
     )}
     {quickContactName && (
-      <QuickNewContact initialName={quickContactName} onCreated={afterContactCreated} onClose={() => setQuickContactName(null)} />
+      <QuickNewContact initialName={quickContactName} companyId={selectedCompany?.id} onCreated={afterContactCreated} onClose={() => setQuickContactName(null)} />
     )}
+    {!justCreated && <UnsavedChangesPrompt blocker={blocker} onSave={save} />}
     </>
+  )
+}
+
+// ── Tâches liées au ticket d'un RDV (TASK-015.15) ────────────────────────────
+function RdvTasksSection({ ticketId, ticketTitle }) {
+  const [tasks, setTasks] = useState([])
+  const [showNewTask, setShowNewTask] = useState(false)
+
+  const load = useCallback(() => {
+    api.get('/v1/tasks', { params: { ticket_id: ticketId } }).then(r => setTasks(r.data))
+  }, [ticketId])
+
+  useEffect(() => { load() }, [load])
+
+  async function toggleComplete(task) {
+    const r = task.completed
+      ? await api.put(`/v1/tasks/${task.id}`, { completed: false, status: 'en_cours' })
+      : await api.post(`/v1/tasks/${task.id}/complete`)
+    setTasks(prev => prev.map(t => t.id === r.data.id ? r.data : t))
+  }
+
+  async function unlink(task) {
+    await api.put(`/v1/tasks/${task.id}`, { ticket_id: null })
+    setTasks(prev => prev.filter(t => t.id !== task.id))
+  }
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tâches</div>
+        <button className="btn-secondary" onClick={() => setShowNewTask(true)} style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}>+ Tâche</button>
+      </div>
+      {tasks.length === 0 && (
+        <div style={{ color: '#9CA3AF', fontSize: 13, padding: '4px 0 8px' }}>Aucune tâche liée.</div>
+      )}
+      {tasks.map(t => (
+        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', borderRadius: 6, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff' }}>
+          <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0 }} />
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+          {t.subtasks?.length > 0 && (
+            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
+          )}
+          <button onClick={() => unlink(t)} title="Retirer du ticket" style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
+        </div>
+      ))}
+      {showNewTask && (
+        <NewTaskModal
+          prefillTicket={{ id: ticketId, label: ticketTitle }}
+          onClose={() => setShowNewTask(false)}
+          onCreated={() => { setShowNewTask(false); load() }}
+        />
+      )}
+    </div>
   )
 }

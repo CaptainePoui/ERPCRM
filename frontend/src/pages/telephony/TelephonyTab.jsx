@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api, { getToken } from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
 import PhoneOptionsEditor from '../../components/PhoneOptionsEditor'
+import QuickNewContact from '../../components/QuickNewContact'
 import ParkingLotsSection from './ParkingLotsSection'
 
 // ── Téléphonie Tab ────────────────────────────────────────────────────────────
@@ -2583,7 +2584,7 @@ export function E911AddressesSection({ companyId }) {
         </div>
       )}
       {quickContactName != null && (
-        <QuickNewContact initialName={quickContactName} onCreated={afterContactCreated} onClose={() => setQuickContactName(null)} />
+        <QuickNewContact initialName={quickContactName} companyId={companyId} onCreated={afterContactCreated} onClose={() => setQuickContactName(null)} />
       )}
     </div>
   )

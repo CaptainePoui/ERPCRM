@@ -58,9 +58,9 @@ export default function NewTaskModal({
     assigned_to_id: '',
     is_template: false,
     template_name: '',
+    link_url: '',
+    estimated_minutes: '',
   })
-  const [checklist, setChecklist] = useState([])
-  const [newCheckItem, setNewCheckItem] = useState('')
   const [reminders, setReminders] = useState([])
   const [saving, setSaving] = useState(false)
   const [chosenTemplate, setChosenTemplate] = useState(templateId ? String(templateId) : '')
@@ -95,8 +95,9 @@ export default function NewTaskModal({
       due_time: tpl.due_time || '',
       priority: tpl.priority,
       status: 'en_cours',
+      link_url: tpl.link_url || '',
+      estimated_minutes: tpl.estimated_minutes ?? '',
     }))
-    setChecklist(tpl.checklist_items.map(c => ({ label: c.label, completed: false, sort_order: c.sort_order })))
     setReminders(tpl.reminders.map(r => ({ reminder_type: r.reminder_type, minutes_before: r.minutes_before, custom_minutes: r.custom_minutes })))
     setShowSuggestions(false)
   }
@@ -112,17 +113,6 @@ export default function NewTaskModal({
   const contactItems = contacts
     .filter(c => !selectedCompany || (c.companies || []).some(co => co.company_id === selectedCompany.id))
     .map(c => ({ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), sub: c.email || '' }))
-
-  function addCheckItem() {
-    const t = newCheckItem.trim()
-    if (!t) return
-    setChecklist(prev => [...prev, { label: t, completed: false, sort_order: prev.length }])
-    setNewCheckItem('')
-  }
-
-  function removeCheckItem(i) {
-    setChecklist(prev => prev.filter((_, idx) => idx !== i))
-  }
 
   function addReminder() {
     setReminders(prev => [...prev, { reminder_type: 'local', minutes_before: 0, custom_minutes: null }])
@@ -155,8 +145,9 @@ export default function NewTaskModal({
         assigned_to_id: form.assigned_to_id || null,
         is_template: form.is_template,
         template_name: form.is_template ? form.template_name || null : null,
+        link_url: form.link_url || null,
+        estimated_minutes: form.estimated_minutes === '' ? null : parseInt(form.estimated_minutes),
         reminders,
-        checklist_items: checklist,
       }
       let r
       if (chosenTemplate) {
@@ -237,9 +228,9 @@ export default function NewTaskModal({
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-                    {tpl.checklist_items?.length > 0 && (
+                    {tpl.subtasks?.length > 0 && (
                       <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '1px 7px', borderRadius: 8 }}>
-                        {tpl.checklist_items.length} étape{tpl.checklist_items.length > 1 ? 's' : ''}
+                        {tpl.subtasks.length} étape{tpl.subtasks.length > 1 ? 's' : ''}
                       </span>
                     )}
                     <span style={{ fontSize: 11, color: '#9CA3AF' }}>{tpl.priority}</span>
@@ -330,18 +321,18 @@ export default function NewTaskModal({
         </div>
 
         <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Checklist</div>
-          {checklist.map((item, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <input type="checkbox" checked={item.completed} onChange={e => setChecklist(prev => prev.map((c, idx) => idx === i ? { ...c, completed: e.target.checked } : c))} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
-              <span style={{ flex: 1, fontSize: 13, color: item.completed ? '#9CA3AF' : '#374151', textDecoration: item.completed ? 'line-through' : 'none' }}>{item.label}</span>
-              <button onClick={() => removeCheckItem(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16, padding: '0 4px' }}>×</button>
-            </div>
-          ))}
-          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-            <input value={newCheckItem} onChange={e => setNewCheckItem(e.target.value)} onKeyDown={e => e.key === 'Enter' && addCheckItem()} placeholder="Ajouter un élément..." style={{ flex: 1, fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6 }} />
-            <button onClick={addCheckItem} className="btn-secondary" style={{ padding: '6px 12px', fontSize: 13 }}>+</button>
+          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Exécution</div>
+          <div className="form-group">
+            <label>Page liée (optionnel)</label>
+            <input value={form.link_url} onChange={e => set('link_url', e.target.value)} placeholder="https://portail.simpleip.tel/companies" />
           </div>
+          <div className="form-group">
+            <label>Durée approximative (minutes)</label>
+            <input type="number" min="0" value={form.estimated_minutes} onChange={e => set('estimated_minutes', e.target.value)} />
+          </div>
+          {!chosenTemplate && (
+            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>La checklist s'ajoute après la création de la tâche.</p>
+          )}
         </div>
 
         <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>

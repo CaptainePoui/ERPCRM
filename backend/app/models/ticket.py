@@ -25,6 +25,12 @@ class Ticket(Base):
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Lien vers le RDV Google Calendar qui a cree ce ticket automatiquement
+    # (TASK-015.15) -- remplace le lien equivalent qui vivait sur Task
+    # (TASK-026.5, superseded : un RDV cree desormais un ticket, pas une tache).
+    google_calendar_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    google_calendar_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
