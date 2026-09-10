@@ -5102,7 +5102,7 @@ Fichier : tools/logging/sync_conversation_log.py.
 
 ---
 
-## TASK-S062 [TOOLING] [~] Graphiti EN PREMIER côté SIPV — lecture faite, écriture pas construite
+## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture
 Date de demande : 2026-09-10 (Philippe : "fais le SIPV", suite à TASK-040.14 côté ERPCRM)
 Date(s) de travail : 2026-09-10
 
@@ -5110,7 +5110,12 @@ Réplication côté SIPV de la règle "Graphiti EN PREMIER sur toute demande, sa
 
 **Écart trouvé en le faisant** : SIPV n'a aucun mécanisme d'écriture vers Graphiti. Le consommateur de file côté ERPCRM (`graphiti_queue_consumer.py`) attend un push `incoming/*.jsonl` via scp "depuis leur propre cron" — mais ce cron/script n'a jamais été construit côté SIPV. Une session SIPV peut donc interroger Graphiti (lecture, centralisée sur la VM ERPCRM) mais ne peut pas y écrire de nouveau fait elle-même aujourd'hui. Documenté explicitement dans le skill SIPV comme limitation connue plutôt que de laisser une session SIPV improviser une écriture directe (violerait l'autonomie SIPV).
 
-**Reste à faire** (backlog, pas construit dans cette entrée) : script + cron côté SIPV qui écrit dans un fichier `.jsonl` local puis le pousse par scp vers `tools/knowledge/graphiti/incoming/` côté ERPCRM — même patron que `tools/logging/sync_conversation_log.py` (ERPCRM, TASK-041) pour la structure cron/offset, mais poussant vers ERPCRM au lieu d'écrire localement.
+**Construit dans la foulée (même jour, GO explicite de Philippe : "fais le quand même pour être sûr que cette portion, même rare, ne tombe pas dans les limbes")** :
+- `scripts/graphiti_queue_fact.py` (SIPV) — ajoute un fait (format triplet) à une file locale `graphiti_queue.jsonl` (gitignored).
+- `scripts/push_graphiti_queue.py` (SIPV) + cron à la minute — pousse cette file par scp vers `erpcrm:/home/simpleip/erpcrm/tools/knowledge/graphiti/incoming/sipv.jsonl`.
+- Clé SSH dédiée `id_ed25519_erpcrm` (paire générée sur SIPV, clé publique ajoutée à `~simpleip/.ssh/authorized_keys` sur ERPCRM) + alias `erpcrm` dans `~/.ssh/config` (SIPV). **Choix explicite de Philippe : sans restriction d'accès** (pas de `command=` limitant au dossier `incoming/`) — sa priorité "sécurité" est la correction/intégrité des données (voir `feedback_security_priority_correctness_not_hardening`), pas le durcissement d'accès à ce stade du projet.
+- Testé de bout en bout avec un vrai fait (pas un test factice) : queue → push manuel → `incoming/sipv.jsonl` côté ERPCRM → `graphiti_queue_consumer.py` → lisible dans Graphiti, confirmé par relecture (`list_node_facts.py`).
+- **Lenteur assumée, pas corrigée** : le consommateur traite via `add_triplet` (graphiti-core, résolution LLM, ~7-8 min — même limite que TASK-040.9), pas le chemin rapide `fast_write.py` (secondes, mais sans filet anti-doublon). Proposé de basculer sur le chemin rapide pour les items de type triplet — refusé explicitement par Philippe ("non je veux la sécurité") : la protection LLM contre les quasi-doublons prime sur la vitesse, pour SIPV comme pour la file locale ERPCRM (même consommateur).
 
-**Autre écart trouvé en le faisant (signalé, pas corrigé — hors scope de cette tâche)** : `CLAUDE.md` de SIPV dit encore "Lire `TASKSIPV.md` EN PREMIER" alors que côté ERPCRM cette règle a été remplacée par `PLATFORM_TASKS.md` (source unifiée) depuis la migration Phase O. À clarifier avec Philippe si SIPV doit suivre la même migration.
-Fichiers (sur SIPV, dépôt distinct) : CLAUDE.md, .claude/skills/graphiti-knowledge/SKILL.md.
+**Autre écart trouvé en le faisant, corrigé sur demande de Philippe** : `CLAUDE.md` de SIPV référençait encore "Lire `TASKSIPV.md` EN PREMIER" alors que côté ERPCRM cette règle a été remplacée par `PLATFORM_TASKS.md` (source unifiée) depuis la migration Phase O — jamais propagé côté SIPV. Corrigé (référence `PLATFORM_TASKS.md`, section SIPV, avec note sur l'accès cross-dépôt via SSH ; `TASKSIPV.md` explicitement marqué comme archive).
+Fichiers (sur SIPV, dépôt distinct) : CLAUDE.md, .claude/skills/graphiti-knowledge/SKILL.md, .gitignore, scripts/{graphiti_queue_fact.py, push_graphiti_queue.py}. Côté ERPCRM : `~/.ssh/authorized_keys` (nouvelle clé).
