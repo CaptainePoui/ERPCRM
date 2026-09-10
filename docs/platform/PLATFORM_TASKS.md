@@ -4551,7 +4551,7 @@ Dépend de : TASK-S014 (ACLRule/BlockedIP/FraudRule existants). ⚠️ `[~]` vol
 `Schedule` (timezone, closed_destination), `ScheduleRule` (days_of_week, open/close), `Holiday`. `GET /{id}/is-open` (zoneinfo). Très réutilisé (S018, S007.3, S045.1). Fichiers : `models/schedule.py`, `api/v1/endpoints/schedules.py`, `frontend/src/pages/SchedulesPage.jsx`.
 
 ### TASK-S017 [SIPV] [x] Commit/rollback PendingChange
-**⚠️ Classification: LEGACY-ASTERISK — NE JAMAIS RÉACTIVER, remplacé par TASK-S017.1**
+**⚠️ Classification: LEGACY-ASTERISK — incompatible avec le stack actuel, remplacé par TASK-S017.1**
 `PendingChange` model (tenant_id, change_type, entity_type, entity_id, payload JSONB, status, error_message, applied_at, created_by) — conservé, toujours la base de données de S023/S024/S025 (backlog jamais construit). `commit.py` écrivait dans `ps_endpoints`/`ps_auths`/`ps_aors` (tables Asterisk, inexistantes dans FreeSWITCH) — logique morte. Champ `asterisk_synced` sur `SIPExtension`/`SIPTrunk` remplacé par `freeswitch_synced` (S017.1). **NE PAS UTILISER `commit.py` pour de nouveaux développements.** Fichiers (historiques, non retouchés) : `models/pending_change.py`, `api/v1/endpoints/commit.py`.
 
 #### TASK-S017.1 [~] Commit/sync FreeSWITCH
