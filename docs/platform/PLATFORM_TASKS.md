@@ -5064,6 +5064,33 @@ ici, voir le docstring de chaque script pour le détail exact :
 Fichiers : tools/knowledge/graphiti/scripts/{add_file_refs.py,
 add_genesis_tasks.py, backfill_summaries.py, _summaries_data.json}.
 
+### TASK-040.13 [x] Passe en profondeur — 63/63 nœuds audités, 22 liens SIPV manquants
+Date de demande : 2026-09-10
+Date(s) de travail : 2026-09-10
+
+Suite à la demande de Philippe de faire de Graphiti l'index du projet avec ses vrais liens de dépendance (pas un fichier séparé, pour ne pas doubler avec PLATFORM_TASKS.md/ERRORS_LESSONS.md). Méthode : un nœud à la fois, groupé par famille plutôt qu'alphabétique (pour garder le fil), checklist de suivi dans `docs/platform/graphiti_deep_pass.md`, vérification double (requête avant écriture, relecture après) sur chacun des 63 nœuds (`group_id=platform`).
+
+**Résultat** : SIPV avait 22 modules déjà présents dans le graphe mais jamais rattachés au nœud SIPV lui-même (`CONTAINS` manquant) — le vrai trou de la passe. Chaque ajout vérifié contre sa genèse `TASK-SXXX` réelle dans PLATFORM_TASKS.md. ERPCRM (25 modules) déjà complet depuis TASK-040.5, rien ajouté. Quelques ajouts ciblés : Captaine (+3 règles), Crypto (+1 lien vers Captaine, structure Captaine→Crypto→DashV16 documentée mais pas câblée), ReglagesGlobaux_SIPV (+1 chaîne d'héritage).
+
+**Outillage créé** : `list_all_nodes.py` (liste exhaustive), `list_node_facts.py` (toutes les relations d'un nœud — plus fiable que `search_memory_facts`, sémantique/BFS, pas garanti exhaustif ; réécrit en cours de route pour se connecter directement au driver Neo4j plutôt que via `graphiti_mcp_server.initialize_server()`, qui chargeait le reranker BGE ~2.3 Go à chaque appel et a causé un kill pour mémoire basse après plusieurs appels rapprochés).
+Fichiers : docs/platform/graphiti_deep_pass.md, tools/knowledge/graphiti/scripts/{list_all_nodes.py, list_node_facts.py}.
+
+### TASK-040.14 [x] Graphiti EN PREMIER sur toute demande, sans exception
+Date de demande : 2026-09-10
+Date(s) de travail : 2026-09-10
+
+Philippe : "je veux l'interroger a toute mes demande pour cibler Tout ce qu'on a besoin... eviter les doublon et avancer ou resoudre les situation." J'avais proposé une exception pour les demandes "purement mécaniques" (typo, commande, commit) — correction explicite et insistante de Philippe ("toute les demandes!!!") : pas de tri par jugement, interroger Graphiti systématiquement avant d'agir. Ajouté aussi le pendant écriture : alimenter Graphiti (nouveaux nœuds/liens) après toute tâche non-triviale qui crée ou périme un concept/une dépendance, avec la même vérification double.
+
+CLAUDE.md (règle absolue, visible immédiatement) et `.claude/skills/graphiti-knowledge/SKILL.md` (procédure complète, sections "Quand interroger"/"Quand alimenter") mis à jour. Testé en direct : lecture rapide (~1,2s), écriture + relecture confirmées, et le test a lui-même trouvé une vraie erreur (voir TASK-040.15).
+Fichiers : CLAUDE.md, .claude/skills/graphiti-knowledge/SKILL.md.
+
+### TASK-040.15 [x] Correction — classification "NE JAMAIS RÉACTIVER" reformulée en fait technique
+Date de demande : 2026-09-10 (trouvé en testant TASK-040.14)
+Date(s) de travail : 2026-09-10
+
+En testant le nouveau réflexe d'écriture (TASK-040.14), fait trouvé légèrement inexact sur le nœud PendingChange : référençait TASK-S017 comme sujet actif, alors que TASK-S017 est classé LEGACY-ASTERISK et le vrai backlog ouvert est TASK-S023. En corrigeant, Philippe a objecté au langage "NE JAMAIS RÉACTIVER" dans PLATFORM_TASKS.md — pas une règle que j'ai inventée (déjà présente depuis la réorg Phase O), mais formulée comme un interdit de principe alors que c'est un fait technique (commit.py écrit dans des tables Asterisk ps_endpoints/ps_auths/ps_aors, inexistantes depuis le passage à FreeSWITCH — code incompatible avec le stack actuel, pas une interdiction). Reformulé des deux côtés (PLATFORM_TASKS.md et le fait Graphiti correspondant). Passe de vérification faite sur tout PLATFORM_TASKS.md/ERRORS_LESSONS.md pour d'autres occurrences similaires ("jamais"/"toujours" en classification) — aucune autre trouvée, le reste sont soit des états factuels ("jamais construit"), soit des résumés historiques, soit des règles délibérées de Philippe déjà voulues (ex. jamais supprimer un tenant) — rien d'autre à adoucir.
+Fichiers : docs/platform/PLATFORM_TASKS.md (ligne TASK-S017), fait Graphiti `SIPV CONTAINS PendingChange`.
+
 ---
 
 ## TASK-041 [TOOLING] [x] Journal de conversation Claude Code -- ERPCRM
