@@ -136,6 +136,7 @@ pages/
 - Implémenter SEULEMENT ce qui est demandé
 - Jamais d'IPs codées en dur
 - Ne pas modifier un module existant sans demande explicite
+- Alimenter Graphiti (`add_memory`) en fin de tâche non-triviale — voir skills `documentation-sync`/`graphiti-knowledge`
 
 ## Convention PLATFORM_TASKS.md
 - TASK-XXX = création initiale d'un module ERPCRM (ex: TASK-015 = Module Tâches) ; TASK-SXXX = création initiale d'un module SIPV.
@@ -152,3 +153,12 @@ pages/
 L'utilisateur travaille de façon non-linéaire : il revient sur des modules existants,
 avance en parallèle sur plusieurs fronts. Sans recherche préalable, on crée des doublons
 et on perd le lien entre les sous-tâches et leur module.
+
+### Dates obligatoires sur chaque entrée TASK-XXX/TASK-SXXX
+- **Date de demande** : quand l'utilisateur a demandé ce travail (pas la date d'écriture de l'entrée).
+- **Date(s) de travail** : une date par session de travail réelle sur cette tâche. Si le travail reprend plus tard sur la même tâche (TASK-XXX.Y déjà existant, repris un autre jour), ajouter une nouvelle date de travail à la liste plutôt que de créer une nouvelle entrée.
+
+### Lien avec ERRORS_LESSONS.md (depuis 2026-09-04)
+Chaque erreur dans `ERRORS_LESSONS.md` est identifiée par le **même numéro que la tâche** où elle s'est produite (`TASK-XXX.Y`), jamais un compteur séquentiel indépendant. Si la même tâche produit une nouvelle erreur plus tard, elle s'ajoute datée sous le même numéro (pas une nouvelle entrée séparée) — voir `ERRORS_LESSONS.md` pour le format exact.
+
+**Procédure** : avant de travailler sur une tâche existante, vérifier si son numéro apparaît dans `ERRORS_LESSONS.md` (coût négligeable en tokens) — si oui, lire les erreurs déjà commises sur cette tâche avant de recommencer. Le but n'est pas de trouver un coupable : c'est de repérer les patterns récurrents (une situation qui refait échouer, une façon de formuler qui manque de précision) pour s'améliorer à chaque reprise, pas juste corriger l'incident isolé.

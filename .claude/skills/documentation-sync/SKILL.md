@@ -23,6 +23,16 @@ Une fausse piste mineure n'a pas besoin d'une entree complete -- utiliser le jug
 
 `ARCHITECTURE_PLATFORM.md` recoit la decision, le motif, les alternatives considerees, l'impact ERPCRM/SIPV/multi-SIPV. Distinguer explicitement `CURRENT_STATE` de `TARGET_ARCHITECTURE` -- une decision prise aujourd'hui n'est pas deja implementee tant qu'elle ne l'est pas.
 
+## Alimenter Graphiti
+
+Chacune des trois mises a jour ci-dessus (PLATFORM_TASKS/BUILD_HISTORY, ERRORS_LESSONS, ARCHITECTURE_PLATFORM) doit aussi se refleter dans Graphiti -- la synchronisation documentaire n'est pas terminee tant que cette etape n'est pas faite. **Ne jamais utiliser `add_memory`** pour ca (extraction LLM generique, lente ~20-25 min et de mauvaise qualite sur ce materiel -- voir TASK-040.5) : le graphe ERPCRM/SIPV est deja construit concept par concept avec de vrais noms (Compagnies, Facturation, Ticket... jamais un numero TASK-XXX comme nom de noeud).
+
+Procedure (rapide, quelques secondes, pas de raison de sauter cette etape par souci de temps) :
+1. Identifier le ou les concepts deja existants dans le graphe que la tache/erreur touche (`search_nodes` ou requete Cypher directe sur `Entity {group_id:'platform'}` pour confirmer le nom exact -- ne jamais deviner un nom, verifier qu'il existe deja ou decider consciemment d'en creer un nouveau).
+2. Ecrire UN fait par relation causale reelle (le "pourquoi", pas juste "lie a") -- integrer la reference TASK-XXX/TASK-SXXX directement dans le texte du fait (jamais un noeud separe pour le numero de tache) ; pour une erreur significative, la reference pointe vers l'entree `ERRORS_LESSONS.md` correspondante plutot que de dupliquer le detail technique dans le fait.
+3. Appeler `tools/knowledge/graphiti/scripts/fast_write.py` (dans le conteneur `graphiti-graphiti-mcp-1`) avec un objet JSON `{"source": "...", "edge_name": "RELATES_TO", "fact": "...", "target": "..."}` sur stdin -- voir le docstring du script pour le detail (verification d'existence par nom exact, embedding genere via le modele d'embedding rapide, ecriture directe). Un nouveau concept qui n'existe pas encore doit fournir `source_summary`/`target_summary`.
+4. Verifier que le nouveau concept est bien rattache a son systeme parent (ERPCRM ou SIPV) dans la MEME serie d'appels, jamais laisse flottant -- voir `feedback_graphiti_always_attach_to_hub` (memoire persistante).
+
 ## Anciens fichiers TASK
 
 `TASKERPCRM.md`/`TASKSIPV.md` restent les sources historiques archivees (voir migration 2026-08-21). Ne pas y ajouter de nouvelles entrees actives une fois PLATFORM_TASKS.md en place -- verifier son existence avant d'ecrire dans l'ancien fichier par habitude.

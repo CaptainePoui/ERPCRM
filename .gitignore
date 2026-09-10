@@ -46,6 +46,9 @@ tools/knowledge/graphiti/incoming/*.jsonl
 tools/knowledge/graphiti/scripts/.graphiti_write.lock
 tools/knowledge/graphiti/scripts/.graphiti_queue_state.json
 
+# Webhook Slack (secret) -- alertes de progression du backfill
+tools/knowledge/graphiti/scripts/.slack_webhook_url
+
 # Serena MCP (outillage dev local, pas pour le produit livré)
 .serena/
 

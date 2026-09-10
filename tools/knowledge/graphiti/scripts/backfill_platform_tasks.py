@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path('/app/mcp/src')))
 
 import graphiti_mcp_server as gms  # noqa: E402
 from graphiti_core.nodes import EpisodeType  # noqa: E402
+from slack_notify import notify as slack_notify  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -80,6 +81,7 @@ def parse_platform_tasks(text: str) -> list[dict]:
         items.append(
             {
                 'id': task_id,
+                'category': 'erpcrm',
                 'name': f'{task_id} {m.group(2)}'.strip(),
                 'content': body,
                 'source_description': (
@@ -98,6 +100,7 @@ def parse_errors_lessons(text: str) -> list[dict]:
         items.append(
             {
                 'id': error_id,
+                'category': 'errors_lessons',
                 'name': f'ERRORS_LESSONS.md — {error_id}. {m.group(2)}'.strip(),
                 'content': body,
                 'source_description': (
@@ -150,6 +153,26 @@ async def run() -> int:
         logger.info('Rien a faire -- backfill deja complet.')
         return 0
 
+    # Compteurs par categorie pour les notifications Slack -- structure prete a
+    # accueillir 'sipv' des que le backfill de la section SIPV sera ajoute
+    # (voir parse_platform_tasks : exclue exprès pour l'instant).
+    progress = {
+        'erpcrm': {'done': len(done_tasks), 'total': len(task_items)},
+        'errors_lessons': {'done': len(done_errors), 'total': len(error_items)},
+    }
+
+    def _progress_line() -> str:
+        parts = []
+        global_done = global_total = 0
+        for cat, c in progress.items():
+            pct = (c['done'] / c['total'] * 100) if c['total'] else 0.0
+            parts.append(f"{cat} {c['done']}/{c['total']} ({pct:.0f}%)")
+            global_done += c['done']
+            global_total += c['total']
+        global_pct = (global_done / global_total * 100) if global_total else 0.0
+        parts.append(f'global {global_done}/{global_total} ({global_pct:.0f}%)')
+        return ' | '.join(parts)
+
     failures = []
     for i, item in enumerate(todo, start=1):
         logger.info(f'[{i}/{len(todo)}] {item["name"]}')
@@ -173,15 +196,20 @@ async def run() -> int:
                 uuid=None,
             )
             logger.info('  -> OK')
+            progress[item['category']]['done'] += 1
+            slack_notify(f":white_check_mark: {item['id']} ingere -- {_progress_line()}")
         except Exception:
             logger.exception(f'  -> ECHEC sur {item["id"]} (sera retente au prochain lancement)')
             failures.append(item['id'])
+            slack_notify(f":x: {item['id']} ECHEC (retente au prochain lancement) -- {_progress_line()}")
 
     if failures:
         logger.error(f'Termine avec {len(failures)} echec(s) : {failures}')
+        slack_notify(f':warning: Cycle de backfill termine, {len(failures)} echec(s) : {failures}')
         return 1
 
     logger.info('Backfill termine sans erreur -- plus aucun item manquant.')
+    slack_notify(':tada: Backfill termine sans erreur -- plus aucun item manquant.')
     return 0
 
 

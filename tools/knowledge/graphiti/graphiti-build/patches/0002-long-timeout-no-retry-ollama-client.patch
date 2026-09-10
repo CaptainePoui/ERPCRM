@@ -36,7 +36,7 @@
  def reasoning_effort_for_model(model: str) -> str | None:
      """Reasoning effort to send for a reasoning model, or None if not one.
  
-@@ -164,8 +187,29 @@
+@@ -164,8 +187,34 @@
                  if use_generic_client:
                      # Use OpenAIGenericClient for Ollama and other OpenAI-compatible providers
                      # This uses the standard Chat Completions API instead of Responses API
@@ -46,6 +46,11 @@
 +                        # take much longer per call than a remote API. Give it one long
 +                        # attempt instead of the SDK's default 600s x (1 + 2 retries), which
 +                        # wastes up to 1800s retrying a call that just needed more time.
++                        # 86400s (24h) is not a real expected duration -- it's a ceiling that
++                        # only matters if Ollama actually dies mid-request (crash/OOM/deadlock)
++                        # rather than just being slow, so a hang still self-heals within a day
++                        # instead of needing another manual investigation (raised from 3600s
++                        # on 2026-09-02 after real episodes took 75-90min and still hit it).
 +                        # Scoped strictly to our own Ollama endpoint (see
 +                        # is_local_ollama_provider) -- any other OpenAI-compatible provider
 +                        # (LM Studio, vLLM, a remote gateway) keeps the SDK's normal
@@ -57,7 +62,7 @@
 +                        local_client = AsyncOpenAI(
 +                            api_key=llm_config.api_key,
 +                            base_url=llm_config.base_url,
-+                            timeout=3600.0,
++                            timeout=86400.0,
 +                            max_retries=0,
 +                        )
                      return OpenAIGenericClient(

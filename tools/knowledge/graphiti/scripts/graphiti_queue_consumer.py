@@ -35,7 +35,10 @@ import subprocess
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from slack_notify import notify as slack_notify  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
 GRAPHITI_DIR = Path(__file__).resolve().parents[1]
 LOCK_FILE = Path(__file__).resolve().parent / '.graphiti_write.lock'
 STATE_FILE = Path(__file__).resolve().parent / '.graphiti_queue_state.json'
@@ -52,6 +55,14 @@ SOURCE_FILES = [
 def log(msg: str) -> None:
     with LOG_FILE.open('a', encoding='utf-8') as f:
         f.write(msg.rstrip('\n') + '\n')
+
+
+def _item_label(item: dict) -> str:
+    if item.get('name'):
+        return item['name']
+    if 'fact' in item or item.get('type') == 'triplet':
+        return f"{item.get('source', '?')} -[{item.get('edge_name', '?')}]-> {item.get('target', '?')}"
+    return '?'
 
 
 def pid_alive(pid: int) -> bool:
@@ -149,15 +160,18 @@ def process_file(path: Path, state: dict) -> None:
             state['offsets'][key] = cursor
             continue
 
-        log(f'{path.name}: traitement de "{item.get("name", "?")}"...')
+        label = _item_label(item)
+        log(f'{path.name}: traitement de "{label}"...')
         ok, detail = add_episode_via_container(item)
         if ok:
             cursor += line_bytes
             state['offsets'][key] = cursor
             save_state(state)
-            log(f'{path.name}: OK -- "{item.get("name", "?")}"')
+            log(f'{path.name}: OK -- "{label}"')
+            slack_notify(f':white_check_mark: Graphiti -- {label}')
         else:
-            log(f'{path.name}: ECHEC sur "{item.get("name", "?")}" -- {detail} -- retente au prochain passage, arret de ce fichier pour ce passage.')
+            log(f'{path.name}: ECHEC sur "{label}" -- {detail} -- retente au prochain passage, arret de ce fichier pour ce passage.')
+            slack_notify(f':x: Graphiti ECHEC -- {label} -- {detail[:200]} (retente au prochain passage)')
             return
 
 

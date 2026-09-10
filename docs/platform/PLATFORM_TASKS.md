@@ -5017,3 +5017,46 @@ provenance d'épisode. Pas corrigé dans cette session (montage Graphiti
 explicitement encore en construction, pas une urgence) — identifier l'arête
 fautive (`get_entity_edge` en balayant, ou requête directe Neo4j) avant la
 prochaine tentative de `search_memory_facts` en contexte réel.
+
+### TASK-040.11 [x] `fast_write.py` — écriture directe rapide (contourne la résolution LLM)
+Date de demande : 2026-09-07 (rattrapé rétroactivement depuis mtime, non inscrit au moment de l'écriture)
+Date(s) de travail : 2026-09-07
+
+`add_triplet` fonctionne mais prend ~7-8 min par fait sur ce matériel CPU-seul
+(résolution/dedup par LLM local). Pour la construction courante du graphe,
+où c'est déjà Claude qui vérifie les noms existants avant d'écrire,
+`tools/knowledge/graphiti/scripts/fast_write.py` contourne cette étape LLM
+(seul l'embedder rapide `nomic-embed-text` est utilisé) — même résultat
+cherchable ensuite, mais en secondes. Détail de la procédure et des pièges
+(fusion à tort de deux concepts au nom proche) : voir
+`.claude/skills/graphiti-knowledge/SKILL.md`, section "Comment écrire un
+fait". Patch local du serveur MCP associé :
+`tools/knowledge/graphiti/patches/graphiti_mcp_server.py`.
+Fichiers : tools/knowledge/graphiti/scripts/fast_write.py,
+tools/knowledge/graphiti/patches/graphiti_mcp_server.py.
+
+### TASK-040.12 [x] Correctifs ponctuels post-refonte (provenance fichier, résumés manquants, tâches de genèse)
+Date de demande : 2026-09-06/08 (rattrapé rétroactivement depuis mtime, non inscrit au moment de l'écriture)
+Date(s) de travail : 2026-09-06, 2026-09-08
+
+Trois correctifs ponctuels appliqués après la reconstruction du graphe
+(TASK-040.5), chacun documenté en tête de son propre fichier — pas dupliqué
+ici, voir le docstring de chaque script pour le détail exact :
+- `add_file_refs.py` — ajoute la référence fichier modèle source en fin de
+  fait pour tout fait sans TASK-XXX associé (le code EST la provenance).
+- `add_genesis_tasks.py` — ajoute le TASK-XXX de création initiale en fin de
+  fait "ERPCRM CONTAINS <module>".
+- `backfill_summaries.py` (+ données `_summaries_data.json`) — remplit le
+  `summary` des nœuds créés via `add_triplet`/`fast_write.py` qui n'en
+  recevaient aucun à la construction.
+Fichiers : tools/knowledge/graphiti/scripts/{add_file_refs.py,
+add_genesis_tasks.py, backfill_summaries.py, _summaries_data.json}.
+
+---
+
+## TASK-041 [TOOLING] [x] Journal de conversation Claude Code -- ERPCRM
+Date de demande : 2026-09-01 (rattrapé rétroactivement depuis mtime/crontab, non inscrit au moment de l'écriture)
+Date(s) de travail : 2026-09-01
+
+Convertit les transcriptions JSONL que Claude Code écrit déjà (`~/.claude/projects/-home-simpleip-erpcrm/*.jsonl`) en un journal texte lisible et cumulatif, `docs/platform/CONVERSATION_LOG.md` (gitignored — mot-pour-mot des sessions, peut contenir des secrets tapés dans le chat, jamais commité). Rien n'est résumé/reformulé : messages utilisateur et réponses texte recopiés tels quels ; les appels d'outils sont réduits à une ligne datée (Lu/Créé/Modifié/Exécuté/...), pas leur contenu brut. Tourne via cron (`* * * * *`, déjà installé et actif — voir `crontab -l`), idempotent par offset (`tools/logging/.conversation_log_state.json`, gitignored). Scopé à ce serveur uniquement — DashV16/SIPV ont besoin de leur propre copie tournant sur leur propre machine (jamais de miroir de code entre projets, voir `feedback_sipv_must_stay_autonomous`).
+Fichier : tools/logging/sync_conversation_log.py.
