@@ -11,13 +11,32 @@ Graphiti (`graphiti-platform`, MCP HTTP `http://localhost:8000/mcp/`) est un gra
 
 `graphiti-mcp` tourne 100% local (Ollama `gpt-oss:20b` pour la resolution/dedup LLM, `nomic-embed-text` pour les embeddings -- rapide, secondes). Verifier `mcp__graphiti-platform__get_status` avant d'affirmer que le service est down.
 
-## Quand interroger Graphiti
+## Quand interroger Graphiti (revise 2026-09-10, elargi au-dela de "ou on est rendu")
 
-- "Pourquoi cette architecture a ete choisie ?"
-- "Quelles erreurs deja rencontrees sur X ?"
-- "Comment X et Y sont-ils relies dans le projet ?"
+**Des qu'une demande touche un concept du projet, pas seulement pour "pourquoi/historique"** :
+- Nouvelle fonctionnalite, bug, decision d'approche -- chercher le(s) module(s) concerne(s) AVANT de coder, pour voir ce qui existe deja, ce qui est deja decide, les pieges deja documentes (references ERRORS_LESSONS.md integrees dans les faits).
+- Avant de creer un nouveau `TASK-XXX`/`TASK-SXXX` ou de nommer un nouveau concept -- verifier dans Graphiti s'il existe deja sous un autre nom. Remplace le grep manuel dans PLATFORM_TASKS.md pour cette verification (plus rapide, deja structure par concept).
+- Bloque sur un probleme -- verifier si la situation (ou une proche) est deja documentee avant de repartir de zero.
+- "Pourquoi cette architecture a ete choisie ?", "Comment X et Y sont-ils relies ?" (usage historique, toujours valide).
+
+**Exception** : demandes purement mecaniques sans concept projet (corriger une faute de frappe, lancer une commande, committer) -- pas de recherche, n'apporterait rien.
 
 Ne pas l'utiliser pour "que fait le code aujourd'hui" (reponse : lire le code / Serena) ni pour "qu'est-ce qu'il reste a faire" (reponse : PLATFORM_TASKS.md). Consulter Graphiti EN PREMIER pour un concept (nom + resume + relations), puis suivre la reference TASK-XXX vers PLATFORM_TASKS.md/ERRORS_LESSONS.md seulement pour le detail technique fin -- c'est le but explicite de la refonte (sauver du temps/tokens plutot que lire de grandes portions de PLATFORM_TASKS.md).
+
+**Outil pour un noeud precis** : `search_memory_facts` (semantique/BFS) ne garantit PAS l'exhaustivite pour auditer un concept precis -- utiliser `tools/knowledge/graphiti/scripts/list_node_facts.py <<< 'NomDuNoeud'` (requete Neo4j directe, liste TOUTES les relations touchant ce noeud, dans les deux sens) quand la completude compte (ex. avant d'ajouter un fait, pour eviter un doublon).
+
+## Quand alimenter Graphiti (le graphe doit suivre l'evolution du projet)
+
+**Apres toute tache non-triviale qui change ce que Graphiti affirme** :
+- Nouveau module/concept cree -- ajouter le noeud ET son rattachement au systeme parent (`ERPCRM CONTAINS X` / `SIPV CONTAINS X`) dans la MEME serie d'appels, jamais laisse flottant.
+- Nouvelle dependance decouverte ou construite entre deux concepts existants -- ajouter la relation (le "pourquoi", pas juste le nom des deux bouts).
+- Un fait existant devient perime (ex. un module note "FAUX FONCTIONNEL" est maintenant reellement cable, ou une architecture documentee a change) -- corriger le fait, ne jamais le laisser perime silencieusement.
+
+**Toujours verifier avant ET apres** (voir `feedback_verify_means_verify` -- Philippe l'exige explicitement pour toute ecriture Graphiti) :
+1. Avant : le concept/la relation existe-t-il deja sous un autre nom (`search_nodes` ou `list_node_facts.py`) ?
+2. Apres : relire (`list_node_facts.py` sur le noeud concerne) pour confirmer que le fait ecrit est bien la, correctement forme.
+
+**Jamais de dump mecanique** -- un vrai concept avec un vrai "pourquoi", pas une liste de champs FK generee automatiquement. Voir TASK-040.5 pour l'incident qui a impose cette regle, et `docs/platform/graphiti_deep_pass.md` pour la methode complete (audit noeud par noeud, un a la fois, verification double) utilisee pour combler les trous existants -- reutilisable pour tout futur rattrapage.
 
 ## Comment ecrire un fait -- `fast_write.py`, pas `add_memory`/`add_triplet` en session interactive
 

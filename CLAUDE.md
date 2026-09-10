@@ -136,7 +136,8 @@ pages/
 - Implémenter SEULEMENT ce qui est demandé
 - Jamais d'IPs codées en dur
 - Ne pas modifier un module existant sans demande explicite
-- Alimenter Graphiti (`add_memory`) en fin de tâche non-triviale — voir skills `documentation-sync`/`graphiti-knowledge`
+- Graphiti EN PREMIER pour toute demande touchant un concept du projet (nouvelle fonctionnalité, bug, décision d'approche, nouveau TASK-XXX — pas juste "où on est rendu"), sauf demande purement mécanique (typo, commande, commit)
+- Alimenter Graphiti (nœuds/liens, `fast_write.py`) après toute tâche non-triviale qui crée ou rend périmé un concept/une dépendance — vérifier avant (doublon ?) et après (relecture) — voir skills `documentation-sync`/`graphiti-knowledge`
 
 ## Convention PLATFORM_TASKS.md
 - TASK-XXX = création initiale d'un module ERPCRM (ex: TASK-015 = Module Tâches) ; TASK-SXXX = création initiale d'un module SIPV.
