@@ -99,7 +99,7 @@ Généré le 2026-09-10 depuis une requête directe Neo4j (`tools/knowledge/grap
 - [x] IVR (degré 2 → 3, complété 2026-09-10) — complet, rien ajouté
 - [x] MOH (degré 1 → 2, complété 2026-09-10) — complet, rien ajouté
 - [x] ParkingLots (degré 1 → 2, complété 2026-09-10) — complet, rien ajouté
-- [x] PendingChange (degré 1 → 2, complété 2026-09-10) — complet ; note mineure : référence TASK-S023 (Tenant HAS) vs TASK-S017 (SIPV CONTAINS) — pas une contradiction (S017 = création, S023 = extension états sync), pas corrigé
+- [x] PendingChange (degré 1 → 2, complété 2026-09-10) — corrigé le même jour (test du réflexe d'écriture) : le fait `SIPV CONTAINS` référençait TASK-S017 comme si le sujet était actif, alors que TASK-S017 est classé LEGACY-ASTERISK (jamais réactiver) et le vrai backlog ouvert est TASK-S023 — fait mis à jour en place (pas de duplicata), vérifié par relecture
 - [x] SMS (degré 1 → 2, complété 2026-09-10) — complet, rien ajouté
 - [x] Webhooks (degré 1, complété 2026-09-10) — complet, rien ajouté (module confirmé non-fonctionnel, pas de sur-documentation ajoutée)
 
