@@ -96,11 +96,12 @@ async def run(item: dict) -> int:
         await session.run(
             'MATCH (a:Entity {uuid: $source_uuid}), (b:Entity {uuid: $target_uuid}) '
             'CREATE (a)-[r:RELATES_TO {uuid: $uuid, name: $name, fact: $fact, group_id: $group_id, '
-            'created_at: $created_at, valid_at: $valid_at, fact_embedding: $embedding}]->(b)',
+            'created_at: $created_at, valid_at: $valid_at, fact_embedding: $embedding, '
+            'episodes: $episodes}]->(b)',
             source_uuid=edge.source_node_uuid, target_uuid=edge.target_node_uuid,
             uuid=edge.uuid, name=edge.name, fact=edge.fact, group_id=edge.group_id,
             created_at=edge.created_at.isoformat(), valid_at=edge.valid_at.isoformat(),
-            embedding=edge.fact_embedding,
+            embedding=edge.fact_embedding, episodes=edge.episodes,
         )
 
     print('OK')

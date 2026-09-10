@@ -4998,25 +4998,37 @@ Un `docker compose restart`/`up -d` du conteneur ferme brutalement la connexion 
 ### TASK-040.9 [x] `add_triplet` jugé cassé après seulement 5 minutes — conclusion prématurée, retest concluant
 `add_triplet` déclaré défaillant après abandon côté client à 300s, jamais vérifié côté serveur. Retest avec surveillance CPU/Ollama directe : fonctionne, ~7-8 min, plus rapide que `add_memory` pour un fait précis (pas d'extraction générique). Reclassé fiable et recommandé pour la reconstruction du graphe.
 
-### TASK-040.10 [ ] `search_memory_facts` cassé — arête corrompue (`episodes: None`)
+### TASK-040.10 [x] `search_memory_facts` cassé — 34 arêtes sans `episodes` (`None` au lieu d'une liste)
 Date de demande : 2026-09-10 (constaté en répondant à "où on est rendu" côté outil, pas une demande verbale de Philippe)
 Date(s) de travail : 2026-09-10
 
 Constaté en interrogeant Graphiti en premier (LOI 2) pour une relance de
-session : `search_memory_facts` échoue systématiquement, quelle que soit la
+session : `search_memory_facts` échouait systématiquement, quelle que soit la
 requête, avec `1 validation error for EntityEdge / episodes: Input should be
-a valid list [type=list_type, input_value=None, input_type=NoneType]` — une
-arête du graphe a un champ `episodes` à `None` au lieu d'une liste, ce qui
-casse la désérialisation Pydantic pour TOUTE recherche de faits (pas juste
-celle visant l'arête en cause). `search_nodes` et `get_episodes` fonctionnent
-encore. Corrélé dans le temps avec les commits du jour sur l'outillage
-Graphiti (fusion des doublons SIPV/Simple IP, correction de self-loops,
-`ed7d87d` file d'attente d'écriture unique) — cause probable mais non
-confirmée : une de ces opérations d'écriture/fusion a laissé une arête sans
-provenance d'épisode. Pas corrigé dans cette session (montage Graphiti
-explicitement encore en construction, pas une urgence) — identifier l'arête
-fautive (`get_entity_edge` en balayant, ou requête directe Neo4j) avant la
-prochaine tentative de `search_memory_facts` en contexte réel.
+a valid list [type=list_type, input_value=None, input_type=NoneType]`.
+`search_nodes` et `get_episodes` fonctionnaient encore.
+
+**Cause confirmée** (requête directe Neo4j, `tools/knowledge/graphiti/scripts/find_null_episodes.py`) :
+34 relations avaient la propriété `episodes` totalement absente (donc `None`
+à la lecture), pas une seule arête isolée. Origine : `fast_write.py`
+(TASK-040.11, écriture rapide qui contourne le LLM) créait la relation par
+Cypher direct sans jamais inclure `episodes` dans le `CREATE` — la propriété
+n'existait simplement pas côté Neo4j.
+
+**Correctif appliqué :**
+1. `tools/knowledge/graphiti/scripts/fix_null_episodes.py` : `SET r.episodes = []`
+   sur les 34 relations concernées (liste vide, honnête — ces faits ont été
+   écrits directement, sans épisode source ; rien d'autre touché : fact,
+   source, target, embeddings inchangés). Vérifié avant (34) et après (0).
+2. `fast_write.py` corrigé pour inclure `episodes: $episodes` (= `edge.episodes`,
+   `[]` par défaut côté `EntityEdge`) dans son `CREATE` — n'arrivera plus sur
+   les prochains faits écrits par ce script.
+3. Vérifié avec le vrai outil MCP `search_memory_facts` (2 requêtes
+   distinctes, ERPCRM et SIPV) : résultats corrects, faits complets avec
+   relations et provenance (ex. "Ticket RELATES_TO Facturation", "SIPV
+   CONTAINS Interception").
+Fichiers : tools/knowledge/graphiti/scripts/{find_null_episodes.py,
+fix_null_episodes.py, fast_write.py}.
 
 ### TASK-040.11 [x] `fast_write.py` — écriture directe rapide (contourne la résolution LLM)
 Date de demande : 2026-09-07 (rattrapé rétroactivement depuis mtime, non inscrit au moment de l'écriture)

@@ -310,6 +310,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-040.10 — `fast_write.py` écrit des relations sans le champ `episodes`, casse TOUTE recherche de faits
+
+**Date** : 2026-09-10
+
+**On croyait** : que `fast_write.py` (TASK-040.11, écriture directe rapide contournant le LLM) produisait des relations en tout point équivalentes à celles créées par `add_memory`/`add_triplet` — mêmes propriétés, juste plus vite.
+
+**Preuve** : `search_memory_facts` échouait systématiquement, quelle que soit la requête, avec `1 validation error for EntityEdge / episodes: Input should be a valid list [type=list_type, input_value=None, input_type=NoneType]`. Requête directe Neo4j (`find_null_episodes.py`) : 34 relations avaient la propriété `episodes` totalement absente (donc `None` à la lecture), toutes créées via `fast_write.py`.
+
+**Cause réelle** : le `CREATE` Cypher de `fast_write.py` listait explicitement chaque propriété de la relation (`uuid`, `name`, `fact`, `group_id`, `created_at`, `valid_at`, `fact_embedding`) mais avait oublié `episodes` — alors que le modèle Pydantic `EntityEdge` la déclare requise (type `list[str]`, défaut `[]`). Une propriété absente côté Neo4j redevient `None` à la lecture, pas `[]`, ce qui fait planter la désérialisation pour TOUTE relation lue par `search_memory_facts` — pas seulement les 34 concernées, parce que le batch de résultats entier échoue dès qu'une seule relation ne valide pas.
+
+**Correction** : `SET r.episodes = []` sur les 34 relations (liste vide, honnête — ces faits ont été écrits directement, sans épisode source). `fast_write.py` corrigé pour inclure `episodes: $episodes` dans son `CREATE`. Revérifié avec deux requêtes `search_memory_facts` réelles (ERPCRM et SIPV) après correction.
+
+**Leçon (à ne pas refaire)** : tout script d'écriture directe dans Graphiti (hors pipeline `add_memory` officiel) doit produire des objets relisibles par le MODÈLE PYDANTIC complet, pas seulement par une requête Cypher ad hoc qui semble fonctionner à l'écriture — une seule relation malformée peut casser la lecture de TOUT le graphe, pas juste elle-même. Toujours valider un nouveau script d'écriture en relisant ensuite via le vrai outil MCP (`search_memory_facts`/`search_nodes`), pas seulement en vérifiant que l'écriture Cypher n'a pas levé d'erreur.
+
+---
+
 ## TASK-004.2 — Contrainte CHECK en base non reflétée dans le modèle SQLAlchemy bloque une nouvelle valeur d'enum
 
 **Date** : voir TASK-004.1/TASK-004.2
