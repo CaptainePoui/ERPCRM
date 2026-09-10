@@ -5099,3 +5099,18 @@ Date(s) de travail : 2026-09-01
 
 Convertit les transcriptions JSONL que Claude Code écrit déjà (`~/.claude/projects/-home-simpleip-erpcrm/*.jsonl`) en un journal texte lisible et cumulatif, `docs/platform/CONVERSATION_LOG.md` (gitignored — mot-pour-mot des sessions, peut contenir des secrets tapés dans le chat, jamais commité). Rien n'est résumé/reformulé : messages utilisateur et réponses texte recopiés tels quels ; les appels d'outils sont réduits à une ligne datée (Lu/Créé/Modifié/Exécuté/...), pas leur contenu brut. Tourne via cron (`* * * * *`, déjà installé et actif — voir `crontab -l`), idempotent par offset (`tools/logging/.conversation_log_state.json`, gitignored). Scopé à ce serveur uniquement — DashV16/SIPV ont besoin de leur propre copie tournant sur leur propre machine (jamais de miroir de code entre projets, voir `feedback_sipv_must_stay_autonomous`).
 Fichier : tools/logging/sync_conversation_log.py.
+
+---
+
+## TASK-S062 [TOOLING] [~] Graphiti EN PREMIER côté SIPV — lecture faite, écriture pas construite
+Date de demande : 2026-09-10 (Philippe : "fais le SIPV", suite à TASK-040.14 côté ERPCRM)
+Date(s) de travail : 2026-09-10
+
+Réplication côté SIPV de la règle "Graphiti EN PREMIER sur toute demande, sans exception" (TASK-040.14). `CLAUDE.md` et `.claude/skills/graphiti-knowledge/SKILL.md` de SIPV mis à jour et poussés **depuis SIPV lui-même** (SSH `sipv@192.168.1.55`, jamais de mirroir sur le disque ERPCRM — voir `feedback_sipv_must_stay_autonomous`), commit `14be5e0` sur `github.com:CaptainePoui/SIPV.git`.
+
+**Écart trouvé en le faisant** : SIPV n'a aucun mécanisme d'écriture vers Graphiti. Le consommateur de file côté ERPCRM (`graphiti_queue_consumer.py`) attend un push `incoming/*.jsonl` via scp "depuis leur propre cron" — mais ce cron/script n'a jamais été construit côté SIPV. Une session SIPV peut donc interroger Graphiti (lecture, centralisée sur la VM ERPCRM) mais ne peut pas y écrire de nouveau fait elle-même aujourd'hui. Documenté explicitement dans le skill SIPV comme limitation connue plutôt que de laisser une session SIPV improviser une écriture directe (violerait l'autonomie SIPV).
+
+**Reste à faire** (backlog, pas construit dans cette entrée) : script + cron côté SIPV qui écrit dans un fichier `.jsonl` local puis le pousse par scp vers `tools/knowledge/graphiti/incoming/` côté ERPCRM — même patron que `tools/logging/sync_conversation_log.py` (ERPCRM, TASK-041) pour la structure cron/offset, mais poussant vers ERPCRM au lieu d'écrire localement.
+
+**Autre écart trouvé en le faisant (signalé, pas corrigé — hors scope de cette tâche)** : `CLAUDE.md` de SIPV dit encore "Lire `TASKSIPV.md` EN PREMIER" alors que côté ERPCRM cette règle a été remplacée par `PLATFORM_TASKS.md` (source unifiée) depuis la migration Phase O. À clarifier avec Philippe si SIPV doit suivre la même migration.
+Fichiers (sur SIPV, dépôt distinct) : CLAUDE.md, .claude/skills/graphiti-knowledge/SKILL.md.
