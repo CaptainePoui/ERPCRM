@@ -136,7 +136,7 @@ pages/
 - Implémenter SEULEMENT ce qui est demandé
 - Jamais d'IPs codées en dur
 - Ne pas modifier un module existant sans demande explicite
-- Graphiti EN PREMIER pour toute demande touchant un concept du projet (nouvelle fonctionnalité, bug, décision d'approche, nouveau TASK-XXX — pas juste "où on est rendu"), sauf demande purement mécanique (typo, commande, commit)
+- Graphiti EN PREMIER pour TOUTE demande, sans exception (nouvelle fonctionnalité, bug, décision d'approche, nouveau TASK-XXX, question, correction mineure — pas juste "où on est rendu")
 - Alimenter Graphiti (nœuds/liens, `fast_write.py`) après toute tâche non-triviale qui crée ou rend périmé un concept/une dépendance — vérifier avant (doublon ?) et après (relecture) — voir skills `documentation-sync`/`graphiti-knowledge`
 
 ## Convention PLATFORM_TASKS.md

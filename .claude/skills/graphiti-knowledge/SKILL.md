@@ -11,15 +11,20 @@ Graphiti (`graphiti-platform`, MCP HTTP `http://localhost:8000/mcp/`) est un gra
 
 `graphiti-mcp` tourne 100% local (Ollama `gpt-oss:20b` pour la resolution/dedup LLM, `nomic-embed-text` pour les embeddings -- rapide, secondes). Verifier `mcp__graphiti-platform__get_status` avant d'affirmer que le service est down.
 
-## Quand interroger Graphiti (revise 2026-09-10, elargi au-dela de "ou on est rendu")
+## Quand interroger Graphiti (revise 2026-09-10 x2, elargi a TOUTE demande sans exception)
 
-**Des qu'une demande touche un concept du projet, pas seulement pour "pourquoi/historique"** :
+**Correction explicite de Philippe (2026-09-10)** : pas de tri entre demandes "importantes" et
+"mecaniques" fait par Claude -- interroger Graphiti sur TOUTE demande, sans exception, avant
+d'agir. Le cout d'une consultation (`search_nodes`/`list_node_facts.py`) est faible (secondes,
+requete directe depuis le correctif memoire du 2026-09-10) ; le cout de perdre le fil ou de
+manquer un doublon est deja arrive plusieurs fois. Ne pas re-introduire de tri par jugement.
+
+Cas d'usage typiques (liste illustrative, pas limitative) :
 - Nouvelle fonctionnalite, bug, decision d'approche -- chercher le(s) module(s) concerne(s) AVANT de coder, pour voir ce qui existe deja, ce qui est deja decide, les pieges deja documentes (references ERRORS_LESSONS.md integrees dans les faits).
 - Avant de creer un nouveau `TASK-XXX`/`TASK-SXXX` ou de nommer un nouveau concept -- verifier dans Graphiti s'il existe deja sous un autre nom. Remplace le grep manuel dans PLATFORM_TASKS.md pour cette verification (plus rapide, deja structure par concept).
 - Bloque sur un probleme -- verifier si la situation (ou une proche) est deja documentee avant de repartir de zero.
 - "Pourquoi cette architecture a ete choisie ?", "Comment X et Y sont-ils relies ?" (usage historique, toujours valide).
-
-**Exception** : demandes purement mecaniques sans concept projet (corriger une faute de frappe, lancer une commande, committer) -- pas de recherche, n'apporterait rien.
+- Toute autre demande, meme une correction mineure ou une question courte -- consulter d'abord.
 
 Ne pas l'utiliser pour "que fait le code aujourd'hui" (reponse : lire le code / Serena) ni pour "qu'est-ce qu'il reste a faire" (reponse : PLATFORM_TASKS.md). Consulter Graphiti EN PREMIER pour un concept (nom + resume + relations), puis suivre la reference TASK-XXX vers PLATFORM_TASKS.md/ERRORS_LESSONS.md seulement pour le detail technique fin -- c'est le but explicite de la refonte (sauver du temps/tokens plutot que lire de grandes portions de PLATFORM_TASKS.md).
 
