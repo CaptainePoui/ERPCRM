@@ -1210,6 +1210,10 @@ Dépend de : TASK-017, TASK-019 (déjà faits).
 
 Éléments jamais exposés dans le portail (confirmé) : trunks, routes sortantes, E911, sécurité, config fournisseur.
 
+**Correction (2026-09-11, même soir)** : l'onglet "Gestion téléphonique" côté portail n'apparaissait que si `can_manage_telephony` était cochée — bug de bundling, alors que côté admin (`ContactDetail.jsx`, groupe "TÉLÉPHONIE — GESTIONNAIRE") les 5 permissions sont déjà totalement indépendantes depuis le départ (pas touché ce soir, déjà correct). Corrigé : l'onglet apparaît dès qu'AU MOINS UNE des 5 est cochée ; chaque sous-onglet (Postes/IVR/Groupes/Historique) reste gated par SA permission précise, indépendamment des autres — un client avec seulement `can_view_company_cdr` voit l'onglet avec juste l'Historique, sans besoin de `can_manage_telephony`.
+
+**Écart trouvé en corrigeant, pas résolu** : `can_manage_audio_prompts` existe comme permission (admin ET modèle PortalUser) mais n'a AUCUN effet côté portail — aucun sous-onglet "Prompts/musique d'attente" construit ce soir. Si un client a cette case cochée, rien ne s'affiche pour lui — même anti-pattern "faux fonctionnel" déjà trouvé ailleurs dans le projet (FraudRule, Webhooks...). Pas corrigé maintenant (gestion de fichiers audio = scope non demandé ce soir), à reprendre séparément.
+
 **Idée connexe loggée séparément** : verrou similaire sur les Tickets (un tech ouvre = verrouillé en édition pour les autres, consultable en lecture) — voir `TASK-006.4`, pas construit ici (module différent).
 Fichiers : backend/app/models/telephony_lock.py (nouveau), backend/app/core/telephony_lock.py (nouveau), backend/app/core/sipv_client.py, backend/app/api/v1/endpoints/portal.py, backend/app/api/v1/endpoints/companies.py, backend/alembic/versions/910b7c27fa10_telephony_lock_table.py (nouveau), frontend/src/pages/Portal.jsx.
 

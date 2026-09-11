@@ -86,8 +86,15 @@ const TABS_MAP = {
   can_view_tickets: { label: 'Tickets', key: 'tickets' },
   can_view_equipment: { label: 'Équipements', key: 'equipment' },
   can_view_own_extension: { label: 'Mon poste', key: 'extension' },
-  can_manage_telephony: { label: 'Gestion téléphonique', key: 'telephony' },
 }
+
+// L'onglet "Gestion téléphonique" ne dépend PAS d'une seule case -- chaque
+// capacité (postes/IVR/groupes/prompts/CDR) est une permission totalement
+// indépendante (voir ContactDetail.jsx, groupe "TÉLÉPHONIE — GESTIONNAIRE").
+// L'onglet apparaît si AU MOINS UNE est cochée ; à l'intérieur, chaque
+// sous-onglet ne s'affiche que si SA permission précise est cochée -- jamais
+// besoin de can_manage_telephony pour voir seulement le CDR, par exemple.
+const TELEPHONY_MANAGER_PERMS = ['can_manage_telephony', 'can_manage_ivr', 'can_manage_groups', 'can_manage_audio_prompts', 'can_view_company_cdr']
 
 // TASK-S056 : mêmes 4 champs granulaires que ContactDetail.jsx (admin), même
 // comportement tri-état (coché/décoché/indéterminé = hérite du défaut compagnie)
@@ -141,6 +148,9 @@ const STATUS_COLOR = {
 function PortalDashboard({ session, onLogout }) {
   const perms = session.permissions || {}
   const tabs = Object.entries(TABS_MAP).filter(([key]) => perms[key]).map(([, v]) => v)
+  if (TELEPHONY_MANAGER_PERMS.some(k => perms[k])) {
+    tabs.push({ label: 'Gestion téléphonique', key: 'telephony' })
+  }
   const [tab, setTab] = useState(tabs[0]?.key || '')
   const [data, setData] = useState({})
   const [loading, setLoading] = useState(false)
