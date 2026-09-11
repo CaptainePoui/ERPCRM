@@ -438,6 +438,24 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-023.33 — Un `try/except` partagé entre deux appels a effacé une liste entière à cause d'un échec sur le second appel
+
+**Date** : 2026-09-11
+
+**On croyait** : que grouper `list_extensions()` (données principales) et `tenant_registrations()` (statut en direct, secondaire) dans un seul bloc `try/except httpx.HTTPError: return []` était un raccourci sans conséquence.
+
+**Preuve** : incident réel signalé par Philippe en urgence — plus aucun poste affiché sur la fiche compagnie, alors que les 4 postes existaient réellement dans la base SIPV (vérifié par requête directe avant de conclure) et que `list_extensions()` seul retournait les 4 correctement. Le service SIPV de statut d'enregistrement (`tenant_registrations`) retournait 503 pour ce tenant à chaque appel — l'exception levée par ce SECOND appel, dans le même bloc `try`, effaçait le résultat du PREMIER appel déjà réussi.
+
+**Cause réelle** : un `try/except` partagé entre un appel critique (données principales, doit s'afficher même dégradé) et un appel secondaire (statut en direct, acceptable de manquer) fait dépendre la disponibilité de la donnée principale de la fiabilité de la donnée secondaire — alors que `contacts.py` (même besoin fonctionnel, poste lié à un contact) avait déjà le bon pattern avec deux blocs séparés.
+
+**Correction** : deux `try/except` distincts — l'appel secondaire retombe sur une valeur par défaut sûre (`regs = []`, statut "non enregistré") sans jamais affecter le résultat de l'appel principal.
+
+**Leçon (à ne pas refaire)** : quand un endpoint combine une donnée CRITIQUE (doit s'afficher même incomplète) et une donnée SECONDAIRE/enrichissante (acceptable de manquer), ne jamais les mettre dans le même bloc `try/except` — un échec de la secondaire ne doit jamais pouvoir effacer la principale. Vérifier ce pattern spécifiquement quand deux appels SIPV successifs alimentent la même réponse.
+
+**Suite (2026-09-11, même soir)** : la cause racine du 503 laissée "à surveiller" ci-dessus est bel et bien revenue — Philippe a signalé les postes 102/103 affichés rouges (non enregistrés) dans ERPCRM alors que réellement enregistrés et fonctionnels sur les vrais téléphones (appel externe réussi avec le 102 en preuve). Root-cause réel trouvé dans `ESLClient` (SIPV `core/esl.py`) : `is_connected` n'est qu'un booléen mis à jour par `connect()`/`disconnect()`, jamais par un échec d'écriture/lecture — une connexion TCP morte en silence reste donc "connectée" pour toujours et `get_esl()` ne reconnecte plus jamais tout seul. Fix + preuve en conditions réelles : voir TASK-S020.4 dans `PLATFORM_TASKS.md`.
+
+---
+
 ## TASK-024 — Paramètre FastAPI multipart déclaré comme query au lieu de `Form(...)`
 
 **Date** : voir TASK-024
@@ -803,3 +821,19 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : 2e redémarrage.
 
 **Leçon (à ne pas refaire)** : quand un changement de champ touche plusieurs fichiers liés (modèle ET schéma Pydantic), ne redémarrer qu'UNE SEULE FOIS après avoir terminé TOUTES les modifications liées — un redémarrage intermédiaire laisse une fenêtre d'incohérence.
+
+---
+
+## TASK-S020.4 — `unload mod_event_socket` sur FreeSWITCH en prod pour simuler une coupure ESL a coupé tout le canal de contrôle, y compris l'accès pour le recharger
+
+**Date** : 2026-09-11
+
+**On croyait** : que décharger `mod_event_socket` via `fs_cli -x "unload mod_event_socket"` simulerait proprement, côté client (`sipv-backend-tls`), une connexion ESL morte en silence — sans affecter la téléphonie elle-même (SIP/RTP gérés par `mod_sofia`, module distinct).
+
+**Preuve** : après l'`unload`, `fs_cli` lui-même ne pouvait plus se connecter (`Error Connecting []`) — le seul canal de contrôle ESL disponible venait de disparaître, y compris pour son propre outil de rechargement (`load mod_event_socket` nécessite lui aussi une connexion ESL). Seule option restante pour restaurer le contrôle : `systemctl restart freeswitch` (redémarrage complet, pas seulement le module).
+
+**Cause réelle** : `mod_event_socket` est à la fois le sujet du test ET le seul canal pour l'administrer à distance — le décharger revient à couper la branche sur laquelle on est assis. Un simple socket TCP client tué (`ss -K`, tenté d'abord mais non supporté par le noyau ici) aurait isolé le test sans ce risque.
+
+**Correction** : `systemctl restart freeswitch` exécuté immédiatement pour restaurer le contrôle — vérifié dans les logs (`mod_event_socket` rechargé à 19:23:23, aucune trace d'appel actif interrompu). A servi, au final, de test encore plus réaliste que prévu (vraie coupure FreeSWITCH) : le correctif TASK-S020.4 a été validé dessus — reconnexion automatique confirmée sans redémarrage manuel du service SIPV.
+
+**Leçon (à ne pas refaire)** : ne jamais décharger/redémarrer le module qui EST le canal de contrôle utilisé pour l'administrer — sur un service en production avec du trafic réel, tester une coupure de connexion applicative par un moyen qui n'affecte QUE cette connexion précise (socket client ciblé, firewall temporaire sur le port précis), jamais le service qui la sert des deux côtés à la fois.

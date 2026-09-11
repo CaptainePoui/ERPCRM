@@ -2140,6 +2140,19 @@ Fichiers : `backend/app/core/sipv_client.py`, `models/telephony.py`,
 `api/v1/endpoints/telephony.py`, `alembic/versions/b9c0d1e2f3a4_did_after_message.py`,
 `frontend/src/pages/CompanyDetail.jsx`.
 
+### TASK-023.33 [x] Bug critique — un échec du statut d'enregistrement effaçait toute la liste des postes
+Date de demande : 2026-09-11 (signalé en urgence par Philippe — "je n'ai plus les postes 100-101-102-103")
+Date(s) de travail : 2026-09-11
+
+Incident réel : plus aucun poste affiché sur la fiche Simple IP inc. -> Téléphonie -> Postes. Vérifié avant de conclure quoi que ce soit (pas supposé une perte de données) : les 4 postes (100-103) existaient bel et bien dans la vraie base SIPV, actifs, intacts. `sipv_client.list_extensions()` appelé directement retournait aussi les 4 correctement.
+
+**Cause réelle** : `GET /companies/{id}/sip-extensions` (`companies.py`) appelait `list_extensions()` PUIS `tenant_registrations()` (statut d'enregistrement en direct, BLF) dans le MÊME bloc `try/except httpx.HTTPError: return []` — quand `tenant_registrations()` échouait (503 côté SIPV, cause distincte — voir ci-dessous), l'exception effaçait aussi les extensions déjà récupérées avec succès juste avant. `contacts.py` (même besoin, poste lié à un contact) avait déjà le bon pattern — deux blocs `try/except` séparés — ce bug n'existait que sur l'endpoint compagnie.
+
+**Correctif** : deux blocs `try/except` distincts — un échec de `tenant_registrations()` retombe sur `regs = []` (statut "non enregistré" par défaut pour chaque poste) sans jamais toucher à la liste des postes elle-même. Vérifié de bout en bout avec un vrai appel HTTP authentifié après redéploiement : les 4 postes reviennent correctement.
+
+**Cause du 503 sous-jacent (registrations), résolue séparément (même soir)** : la connexion ESL détenue par le processus `sipv-backend` en cours d'exécution était figée/périmée — vérifié en testant une connexion ESL fraîche directement en Python sur SIPV (`get_esl()` + `show_registrations()` + `show_channels()`), qui fonctionnait instantanément, alors que l'API en service échouait systématiquement. Corrigé par un redémarrage de `sipv-backend.service` (API seulement, jamais FreeSWITCH lui-même — aucun appel en cours affecté). Confirmé après coup : `registered`/`call_state` répondent correctement pour les 4 postes (tous `false`/`idle`, cohérent — aucun vrai téléphone connecté dessus actuellement). Cause racine de la connexion figée elle-même pas investiguée plus loin (aucune reconnexion automatique visible dans le code pour ce client ESL spécifique, contrairement au "MOH hold tracker" qui a sa propre logique de reconnexion) — à surveiller si ça revient.
+Fichiers : `backend/app/api/v1/endpoints/companies.py`.
+
 ---
 
 ## TASK-024 [ERPCRM] [x] Onglet Photos d'installation sur la fiche compagnie
@@ -4626,6 +4639,10 @@ Dépend de : TASK-S020 (ESL), TASK-S020.1 (IP publique/privée par registration)
 #### TASK-S020.3 [x] Statut d'appel en direct (en ligne / sonne) par poste
 *(anciennement TASK-S023.7)*
 `_parse_channel_states()` : parse `show channels as json`, classe `ringing` (RINGING/EARLY) ou `active` (ACTIVE/HELD) — valeurs confirmées par un vrai appel de test. `_lookup_call_state()` matche par sous-chaîne (les champs FreeSWITCH contiennent souvent un suffixe). `RegistrationOut.call_state` ajouté. Testé en direct sans faux positif.
+
+#### TASK-S020.4 [x] Reconnexion automatique sur connexion ESL figée (postes 102/103 affichés rouge alors que réellement enregistrés)
+**Date de demande** : 2026-09-11. **Date de travail** : 2026-09-11.
+`ESLClient.is_connected` ne reflétait qu'un booléen mis à jour par `connect()`/`disconnect()` — quand le socket TCP mourait en silence (FreeSWITCH redémarré, coupure réseau, pas de FIN/RST propre), `_connected` restait `True` indéfiniment et `get_esl()` ne redéclenchait donc jamais de reconnexion ; chaque appel suivant échouait en 503 jusqu'à un redémarrage manuel du service. Corrigé : `_send()` capture toute exception d'écriture/lecture et marque explicitement `self._connected = False` avant de relancer, pour que le PROCHAIN `get_esl()` reconnecte automatiquement. Vérifié en conditions réelles : coupure ESL provoquée par un vrai redémarrage FreeSWITCH pendant que `sipv-backend-tls.service` restait actif (aucun redémarrage manuel du service SIPV) — 1er appel après coupure échoue (503, détection), 2e appel immédiatement après réussit tout seul et retourne les 4 postes de Simple IP inc. correctement enregistrés (100/101/102/103). Fichier : `sipv/backend/app/core/esl.py` (`ESLClient._send`). Service redémarré : `sipv-backend-tls.service` (port 8022, celui réellement appelé par ERPCRM — distinct de `sipv-backend.service` port 8020, à ne pas confondre à l'avenir).
 
 ### TASK-S021 [SIPV] [x] mod_xml_curl endpoint
 **Classification: CURRENT**
