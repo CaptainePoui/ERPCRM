@@ -398,6 +398,20 @@ Classification: HISTORICAL
 
 **Description (table) :** Commandes fournisseurs — PO + lignes
 
+### TASK-008.1 [x] Fusion navigation avec Web orders (TASK-009) sous un seul onglet "Commandes"
+Date de demande : 2026-09-11
+Date(s) de travail : 2026-09-11
+
+Philippe a remarqué que "Commandes" (fournisseurs) et "Web orders" (Ecom) étaient deux entrées de nav séparées alors que ce sont conceptuellement "une commande" des deux côtés — proposé de fusionner. Vérifié avant de coder (`ecom.py`/`purchase_order.py`) : les deux modèles restent bien distincts et NE DOIVENT PAS être fusionnés en données — flux d'argent opposés (Ecom = le client achète chez Simple IP, prix de vente ; Commandes fournisseurs = Simple IP achète chez un fournisseur, prix coûtant, parfois dropshippé). Confirmé par Philippe une fois la distinction expliquée. Décision finale : fusion en **navigation seulement**, un onglet "Commandes" avec deux sous-onglets (Fournisseurs par défaut, Web) — sans toucher aux modèles/données.
+
+**Fait** :
+- `frontend/src/pages/Commandes.jsx` (nouveau) — sélecteur d'onglets (`?tab=fournisseurs`/`?tab=web`, même patron que `Admin.jsx`), réutilise tel quel `PurchaseOrders`/`EcomOrderList` (aucune réécriture des composants existants).
+- `Layout.jsx` — 2 entrées nav (`/purchase-orders`, `/ecom-orders`) remplacées par 1 (`/commandes`).
+- `App.jsx` — route `/commandes` ajoutée ; `/purchase-orders` et `/ecom-orders` (listes) deviennent des redirections (`<Navigate>`) vers `/commandes?tab=...` — les pages détail (`/purchase-orders/:id`, `/ecom-orders/:id`) et tous leurs liens "retour" existants restent inchangés, la redirection les gère de façon transparente.
+
+Besoin réel identifié en discutant (pas construit dans cette entrée, à reprendre séparément) : savoir QUI a précisément commandé (pas juste quelle Compagnie) — Ecom n'a que du texte libre (`customer_name`/`email`), pas de lien vers un Contact précis ; Commandes fournisseurs n'a aucun champ "commandé par" (utilisateur interne) si plusieurs employés Simple IP peuvent créer un bon de commande.
+Fichiers : frontend/src/pages/Commandes.jsx (nouveau), frontend/src/components/Layout.jsx, frontend/src/App.jsx.
+
 ---
 
 ## TASK-009 [ERPCRM] [x] Web orders — commandes boutique ecom
@@ -406,6 +420,8 @@ Classification: HISTORICAL
 *(Entrée sans section dédiée dans TASKERPCRM.md — seule trace : une ligne dans le tableau récapitulatif "Complétées", module-clé `ecom orders`. Reproduite telle quelle, aucun détail supplémentaire disponible dans la source.)*
 
 **Description (table) :** Web orders — commandes boutique ecom
+
+*(Voir TASK-008.1 pour la fusion navigation avec Commandes fournisseurs sous un seul onglet "Commandes" — données restées distinctes, seule la présentation a changé.)*
 
 ---
 

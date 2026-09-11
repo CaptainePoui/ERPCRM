@@ -15,14 +15,14 @@ import Devis from './pages/Devis'
 import DevisDetail from './pages/DevisDetail'
 import Tickets from './pages/Tickets'
 import TicketDetail from './pages/TicketDetail'
-import PurchaseOrders from './pages/PurchaseOrders'
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail'
+import Commandes from './pages/Commandes'
 import Admin from './pages/Admin'
 import Portal from './pages/Portal'
 import Shop from './pages/Shop'
 import RDV from './pages/RDV'
 import Privacy from './pages/Privacy'
-import { EcomOrderList, EcomOrderDetail } from './pages/EcomOrders'
+import { EcomOrderDetail } from './pages/EcomOrders'
 import Settings from './pages/Settings'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
@@ -66,10 +66,11 @@ function InternalApp() {
         <Route path="/devis/:id" element={<DevisDetail />} />
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
-        <Route path="/purchase-orders" element={<PurchaseOrders />} />
+        <Route path="/commandes" element={<Commandes />} />
+        <Route path="/purchase-orders" element={<Navigate to="/commandes?tab=fournisseurs" replace />} />
         <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
         <Route path="/admin" element={<Admin />} />
-        <Route path="/ecom-orders" element={<EcomOrderList />} />
+        <Route path="/ecom-orders" element={<Navigate to="/commandes?tab=web" replace />} />
         <Route path="/ecom-orders/:id" element={<EcomOrderDetail />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/employees" element={<Employees />} />
