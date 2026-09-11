@@ -475,16 +475,19 @@ function ExtensionTab({ ext, perms, onSaved }) {
 // ecriture -- une erreur 423 revient avec un message clair (qui detient le
 // verrou, delai estime) affiche tel quel a l'utilisateur.
 
+// "audio" utilise anyPerm (3 capacites independantes -- gerer/ecouter/generer,
+// voir TASK-020 -- le sous-onglet apparait des qu'UNE des trois est cochee,
+// chaque section a l'interieur reste gated individuellement).
 const TELEPHONY_SUBTABS = [
   { key: 'extensions', label: 'Postes', perm: 'can_manage_telephony' },
   { key: 'ivr', label: 'IVR', perm: 'can_manage_ivr' },
   { key: 'groups', label: 'Groupes', perm: 'can_manage_groups' },
-  { key: 'audio', label: 'Audio', perm: 'can_manage_audio_prompts' },
+  { key: 'audio', label: 'Audio', anyPerm: ['can_manage_audio_prompts', 'can_listen_audio_prompts', 'can_generate_voice_prompts'] },
   { key: 'cdr', label: 'Historique', perm: 'can_view_company_cdr' },
 ]
 
 function TelephonyManagementTab({ perms }) {
-  const available = TELEPHONY_SUBTABS.filter(t => perms[t.perm])
+  const available = TELEPHONY_SUBTABS.filter(t => t.anyPerm ? t.anyPerm.some(k => perms[k]) : perms[t.perm])
   const [sub, setSub] = useState(available[0]?.key || '')
   if (available.length === 0) return null
   return (
@@ -497,7 +500,7 @@ function TelephonyManagementTab({ perms }) {
       {sub === 'extensions' && <TelephonyExtensionsPanel />}
       {sub === 'ivr' && <TelephonyIvrPanel />}
       {sub === 'groups' && <TelephonyGroupsPanel />}
-      {sub === 'audio' && <TelephonyAudioPanel />}
+      {sub === 'audio' && <TelephonyAudioPanel perms={perms} />}
       {sub === 'cdr' && <TelephonyCdrPanel />}
     </div>
   )
@@ -780,7 +783,7 @@ function NewGroupModal({ type, title, onClose, onCreated, setError }) {
   )
 }
 
-function TelephonyAudioPanel() {
+function TelephonyAudioPanel({ perms }) {
   const [prompts, setPrompts] = useState([])
   const [moh, setMoh] = useState([])
   const [loading, setLoading] = useState(true)
@@ -788,6 +791,7 @@ function TelephonyAudioPanel() {
   const [showUploadPrompt, setShowUploadPrompt] = useState(false)
   const [showUploadMoh, setShowUploadMoh] = useState(false)
   const [renaming, setRenaming] = useState(null)
+  const portalToken = localStorage.getItem('portal_token')
 
   function load() {
     setLoading(true)
@@ -836,18 +840,27 @@ function TelephonyAudioPanel() {
     <div>
       <LockNotice error={error} />
       <h4 style={{ fontSize: 14, marginBottom: 8 }}>Phrases / annonces</h4>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadPrompt(true)}>+ Téléverser une phrase</button>
-      </div>
+      {perms.can_manage_audio_prompts && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadPrompt(true)}>+ Téléverser une phrase</button>
+        </div>
+      )}
       <table className="portal-table" style={{ marginBottom: 24 }}>
         <thead><tr><th>Nom</th><th></th></tr></thead>
         <tbody>
           {prompts.map(p => (
             <tr key={p.id}>
               <td>{p.name}</td>
-              <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setRenaming(p)}>Renommer</button>
-                <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => deletePrompt(p.id)}>Supprimer</button>
+              <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {perms.can_listen_audio_prompts && (
+                  <audio controls src={`/api/v1/portal/telephony/prompts/${p.id}/file?token=${encodeURIComponent(portalToken)}`} style={{ height: 28, maxWidth: 180 }} />
+                )}
+                {perms.can_manage_audio_prompts && (
+                  <>
+                    <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setRenaming(p)}>Renommer</button>
+                    <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => deletePrompt(p.id)}>Supprimer</button>
+                  </>
+                )}
               </td>
             </tr>
           ))}
@@ -855,10 +868,14 @@ function TelephonyAudioPanel() {
         </tbody>
       </table>
 
-      <h4 style={{ fontSize: 14, marginBottom: 8 }}>Musique d'attente</h4>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
-        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadMoh(true)}>+ Téléverser un fichier</button>
-      </div>
+      {perms.can_generate_voice_prompts && <VoiceGenerateSection onGenerated={load} setError={setError} portalToken={portalToken} />}
+
+      <h4 style={{ fontSize: 14, marginBottom: 8, marginTop: 24 }}>Musique d'attente</h4>
+      {perms.can_manage_audio_prompts && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadMoh(true)}>+ Téléverser un fichier</button>
+        </div>
+      )}
       <table className="portal-table">
         <thead><tr><th>Nom</th><th>Portée</th><th></th></tr></thead>
         <tbody>
@@ -866,8 +883,11 @@ function TelephonyAudioPanel() {
             <tr key={m.id}>
               <td>{m.name}</td>
               <td style={{ fontSize: 12, color: '#6B7280' }}>{m.tenant_id ? 'Votre compagnie' : 'Partagée (Simple IP)'}</td>
-              <td style={{ textAlign: 'right' }}>
-                {m.tenant_id && (
+              <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {perms.can_listen_audio_prompts && (
+                  <audio controls src={`/api/v1/portal/telephony/moh/${m.id}/file?token=${encodeURIComponent(portalToken)}`} style={{ height: 28, maxWidth: 180 }} />
+                )}
+                {perms.can_manage_audio_prompts && m.tenant_id && (
                   <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => deleteMoh(m.id)}>Supprimer</button>
                 )}
               </td>
@@ -900,6 +920,95 @@ function TelephonyAudioPanel() {
         <UploadAudioModal title="Téléverser un fichier de musique d'attente" path="/v1/portal/telephony/moh"
           onClose={() => setShowUploadMoh(false)} onUploaded={() => { setShowUploadMoh(false); load() }} setError={setError} />
       )}
+    </div>
+  )
+}
+
+// Generation vocale (IA) -- meme UX que TelephonyTab.jsx cote interne (filtre
+// langue/genre, previsualisation <audio> live, puis "Creer la phrase" qui
+// genere et envoie directement a SIPV comme nouvelle phrase du tenant).
+function VoiceGenerateSection({ onGenerated, setError, portalToken }) {
+  const [genForm, setGenForm] = useState({ name: '', text: '', voiceId: '' })
+  const [voices, setVoices] = useState([])
+  const [langFilter, setLangFilter] = useState('fr')
+  const [genderFilter, setGenderFilter] = useState('all')
+  const [generating, setGenerating] = useState(false)
+
+  useEffect(() => {
+    portalApi.get('/v1/portal/telephony/voicebox/voices').then(r => setVoices(r.data)).catch(() => setVoices([]))
+  }, [])
+
+  const languages = [...new Set(voices.map(v => v.language))].sort()
+  const filteredVoices = voices.filter(v => v.language === langFilter && (genderFilter === 'all' || v.gender === genderFilter))
+  const selectedVoice = voices.find(v => v.voice_id === genForm.voiceId)
+
+  function selectLanguage(lang) { setLangFilter(lang); setGenForm(p => ({ ...p, voiceId: '' })) }
+  function selectGender(g) { setGenderFilter(g); setGenForm(p => ({ ...p, voiceId: '' })) }
+
+  async function generate() {
+    if (!genForm.name.trim() || !genForm.text.trim() || !genForm.voiceId) return
+    setGenerating(true)
+    setError('')
+    try {
+      await portalApi.post('/v1/portal/telephony/prompts/generate', {
+        name: genForm.name.trim(), text: genForm.text.trim(), voice_id: genForm.voiceId, language: langFilter,
+      })
+      setGenForm({ name: '', text: '', voiceId: genForm.voiceId })
+      onGenerated()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la génération')
+    } finally { setGenerating(false) }
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 24 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Générer par voix (synthèse vocale IA)</div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
+          <label>Nom</label>
+          <input value={genForm.name} onChange={e => setGenForm(p => ({ ...p, name: e.target.value }))} placeholder="ex: Accueil général" />
+        </div>
+        <div className="form-group" style={{ width: 130, marginBottom: 0 }}>
+          <label>Langue</label>
+          <select value={langFilter} onChange={e => selectLanguage(e.target.value)}>
+            {languages.map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>Genre</label>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, paddingTop: 6 }}>
+            {[['all', 'Tout'], ['female', 'Femme'], ['male', 'Homme']].map(([val, label]) => (
+              <label key={val} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                <input type="checkbox" checked={genderFilter === val} onChange={() => selectGender(val)} />
+                {label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
+          <label>Voix</label>
+          <select value={genForm.voiceId} onChange={e => setGenForm(p => ({ ...p, voiceId: e.target.value }))}>
+            <option value="">Choisir une voix...</option>
+            {filteredVoices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
+          </select>
+          {filteredVoices.length === 0 && voices.length > 0 && (
+            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Aucune voix pour ce filtre.</div>
+          )}
+        </div>
+        {selectedVoice && (
+          <audio controls preload="none" style={{ height: 32 }} src={`/api/v1/portal/telephony/voicebox/preview?${new URLSearchParams({
+            text: `Bonjour, je suis ${selectedVoice.name}, une des voix de Simple IP.`,
+            voice_id: genForm.voiceId, language: langFilter, token: portalToken,
+          }).toString()}`} />
+        )}
+        <button className="btn-primary" style={{ fontSize: 12, padding: '7px 14px' }} disabled={generating || !genForm.name.trim() || !genForm.text.trim() || !genForm.voiceId} onClick={generate}>
+          {generating ? 'Génération...' : 'Créer la phrase'}
+        </button>
+      </div>
+      <div className="form-group" style={{ marginBottom: 0 }}>
+        <label>Texte à lire</label>
+        <textarea rows={3} value={genForm.text} onChange={e => setGenForm(p => ({ ...p, text: e.target.value }))} placeholder="Le texte de la phrase à créer" />
+      </div>
     </div>
   )
 }

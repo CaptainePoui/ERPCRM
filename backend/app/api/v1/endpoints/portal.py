@@ -1,7 +1,7 @@
 import uuid
 import httpx
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -9,7 +9,7 @@ from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
-from app.core import sipv_client
+from app.core import sipv_client, voicebox_client
 from app.core.telephony_lock import acquire_telephony_lock
 from app.models.portal import PortalUser
 from app.models.invoice import Invoice
@@ -22,6 +22,7 @@ from app.models.user import User
 
 router = APIRouter()
 portal_oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/portal/login")
+portal_oauth2_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/portal/login", auto_error=False)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -42,7 +43,7 @@ TELEPHONY_PERM_FIELDS = [
     "can_view_own_extension", "can_edit_extension_name", "can_edit_call_forward",
     "can_edit_dnd", "can_edit_voicemail", "can_edit_call_plan", "can_view_own_cdr", "can_view_voicemail_messages",
     "can_receive_alerts", "can_manage_telephony", "can_manage_ivr", "can_manage_groups",
-    "can_manage_audio_prompts", "can_view_company_cdr",
+    "can_manage_audio_prompts", "can_listen_audio_prompts", "can_generate_voice_prompts", "can_view_company_cdr",
 ]
 
 
@@ -70,6 +71,8 @@ class PortalUserOut(BaseModel):
     can_manage_ivr: bool
     can_manage_groups: bool
     can_manage_audio_prompts: bool
+    can_listen_audio_prompts: bool
+    can_generate_voice_prompts: bool
     can_view_company_cdr: bool
     notes: str | None
     created_at: datetime
@@ -98,6 +101,8 @@ class PortalUserCreate(BaseModel):
     can_manage_ivr: bool = False
     can_manage_groups: bool = False
     can_manage_audio_prompts: bool = False
+    can_listen_audio_prompts: bool = False
+    can_generate_voice_prompts: bool = False
     can_view_company_cdr: bool = False
     notes: str | None = None
 
@@ -123,6 +128,8 @@ class PortalUserUpdate(BaseModel):
     can_manage_ivr: bool | None = None
     can_manage_groups: bool | None = None
     can_manage_audio_prompts: bool | None = None
+    can_listen_audio_prompts: bool | None = None
+    can_generate_voice_prompts: bool | None = None
     can_view_company_cdr: bool | None = None
     notes: str | None = None
 
@@ -155,6 +162,32 @@ async def get_portal_user(token: str = Depends(portal_oauth2), db: AsyncSession 
         user_id = payload.get("sub")
     except JWTError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token portail invalide")
+    result = await db.execute(select(PortalUser).where(PortalUser.id == user_id))
+    u = result.scalar_one_or_none()
+    if not u or not u.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Accès portail refusé")
+    return u
+
+
+async def get_portal_user_media(
+    token_header: str | None = Depends(portal_oauth2_optional), token: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> PortalUser:
+    """Comme get_portal_user, mais accepte aussi le token en query param
+    (?token=...) -- necessaire pour les balises <audio src="..."> natives,
+    qui ne peuvent pas envoyer d'en-tete Authorization. Utilise UNIQUEMENT
+    pour servir/generer de l'audio en lecture (jamais pour muter des donnees
+    -- meme convention que get_current_user_media, auth.py)."""
+    real_token = token_header or token
+    if not real_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Non authentifié")
+    try:
+        payload = decode_token(real_token)
+        if payload.get("type") != "portal":
+            raise JWTError()
+        user_id = payload.get("sub")
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
     result = await db.execute(select(PortalUser).where(PortalUser.id == user_id))
     u = result.scalar_one_or_none()
     if not u or not u.is_active:
@@ -645,6 +678,88 @@ async def telephony_delete_prompt(prompt_id: str, u: PortalUser = Depends(get_po
         raise HTTPException(status_code=502, detail="SIPV injoignable")
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/telephony/prompts/{prompt_id}/file")
+async def telephony_prompt_file(prompt_id: str, u: PortalUser = Depends(get_portal_user_media)):
+    if not u.can_listen_audio_prompts:
+        raise HTTPException(status_code=403, detail="Écoute audio non autorisée")
+    try:
+        content, filename = await sipv_client.download_prompt(prompt_id)
+        return Response(content=content, media_type="audio/wav", headers={"Content-Disposition": f'inline; filename="{filename}"'})
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Fichier introuvable")
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/telephony/moh/{moh_id}/file")
+async def telephony_moh_file(moh_id: str, u: PortalUser = Depends(get_portal_user_media)):
+    if not u.can_listen_audio_prompts:
+        raise HTTPException(status_code=403, detail="Écoute audio non autorisée")
+    try:
+        content, filename = await sipv_client.download_moh(moh_id)
+        return Response(content=content, media_type="audio/wav", headers={"Content-Disposition": f'inline; filename="{filename}"'})
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 404:
+            raise HTTPException(status_code=404, detail="Fichier introuvable")
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# Voicebox (synthese vocale) -- permission distincte can_generate_voice_prompts,
+# separee de can_manage_audio_prompts (upload/suppression de fichiers) et de
+# can_listen_audio_prompts (ecoute) -- 3 capacites independantes, demande
+# explicite de Philippe ("leur checkbox bien sur").
+@router.get("/telephony/voicebox/voices")
+async def telephony_voicebox_voices(u: PortalUser = Depends(get_portal_user)):
+    if not u.can_generate_voice_prompts:
+        raise HTTPException(status_code=403, detail="Génération vocale non autorisée")
+    try:
+        return await voicebox_client.list_voices()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Voicebox injoignable : {e}")
+
+
+@router.get("/telephony/voicebox/preview")
+async def telephony_voicebox_preview(text: str, voice_id: str, language: str = "fr", u: PortalUser = Depends(get_portal_user_media)):
+    if not u.can_generate_voice_prompts:
+        raise HTTPException(status_code=403, detail="Génération vocale non autorisée")
+    try:
+        content, _filename = await voicebox_client.generate(text, voice_id, language)
+    except (TimeoutError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Voicebox injoignable : {e}")
+    return Response(content=content, media_type="audio/wav")
+
+
+class TelephonyGeneratePrompt(BaseModel):
+    name: str
+    text: str
+    voice_id: str
+    language: str = "fr"
+
+
+@router.post("/telephony/prompts/generate", status_code=status.HTTP_201_CREATED)
+async def telephony_generate_prompt(payload: TelephonyGeneratePrompt, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_generate_voice_prompts:
+        raise HTTPException(status_code=403, detail="Génération vocale non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        content, filename = await voicebox_client.generate(payload.text, payload.voice_id, payload.language)
+    except (TimeoutError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Voicebox injoignable : {e}")
+    try:
+        return await sipv_client.upload_prompt(tenant_id, payload.name, filename, content, "audio/wav")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
 
 
 @router.get("/telephony/moh")

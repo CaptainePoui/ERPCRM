@@ -37,6 +37,8 @@ class PortalUser(Base):
     can_manage_ivr: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage_groups: Mapped[bool] = mapped_column(Boolean, default=False)
     can_manage_audio_prompts: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_listen_audio_prompts: Mapped[bool] = mapped_column(Boolean, default=False)
+    can_generate_voice_prompts: Mapped[bool] = mapped_column(Boolean, default=False)
     can_view_company_cdr: Mapped[bool] = mapped_column(Boolean, default=False)
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
