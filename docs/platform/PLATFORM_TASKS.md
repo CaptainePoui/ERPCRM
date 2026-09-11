@@ -323,6 +323,12 @@ les deux sections s'empilent en pleine largeur, Description juste sous
 Informations.
 Fichier : frontend/src/pages/TicketDetail.jsx (commit 3d85c91).
 
+### TASK-006.4 [ ] Verrou d'édition sur un Ticket ouvert par un technicien
+Date de demande : 2026-09-11 (idée venue en discutant du verrou téléphonie, TASK-020)
+Date(s) de travail : aucune, backlog
+
+Idée de Philippe : quand un technicien ouvre/travaille un Ticket, celui-ci devient verrouillé en ÉDITION pour les autres techniciens tant qu'il reste ouvert avec ce technicien — évite que 2 techs travaillent sur le même ticket en même temps et s'écrasent. Reste toujours consultable en LECTURE SEULE par un autre tech (ex: un client appelle pour un suivi, l'autre tech doit pouvoir voir où en est le premier sans pouvoir modifier). Même esprit que le verrou téléphonie (TASK-020) mais un module différent (Ticket, pas Téléphonie) — pas construit dans TASK-020, backlog séparé. Questions ouvertes à trancher avant design : timeout d'inactivité (même 30 min que téléphonie, ou différent — un ticket peut rester ouvert longtemps pendant un vrai appel) ; comment un tech voit que c'est verrouillé et par qui ; libération explicite (fermer l'onglet suffit, ou bouton explicite) ?
+
 ### TASK-006.3 [x] Ticket — le chrono démarre à l'ouverture de la page, pas à la création
 Date de demande : 2026-08-29 (rattrapé rétroactivement depuis git log, non inscrit au moment du commit)
 Date(s) de travail : 2026-08-29
@@ -1173,24 +1179,39 @@ api/v1/endpoints/portal.py, frontend/src/pages/Portal.jsx, Admin.jsx.
 
 ---
 
-## TASK-020 [ERPCRM] [ ] Portail "Gestion téléphonique"
+## TASK-020 [ERPCRM] [~] Portail "Gestion téléphonique"
 Classification: CURRENT
+Date de demande : 2026-09-10 (choisi dans une liste d'options backlog proposée) — portée précisée/révisée le 2026-09-11
+Date(s) de travail : 2026-09-11
 
-Lien TASKSIPV : TASK-S029, TASK-S030, TASK-S031.
-Dépend de : TASK-017, TASK-019.
-But : ajouter onglet "Gestion téléphonique" visible si can_manage_telephony = true.
-Travail requis backend (portal.py) :
-- GET /api/v1/portal/telephony/extensions → liste postes du tenant
-- PATCH /api/v1/portal/telephony/extensions/{id} → modifier nom/voicemail/renvoi
-- GET/POST/PATCH /api/v1/portal/telephony/ivr → si can_manage_ivr
-- GET/POST/PATCH /api/v1/portal/telephony/groups → si can_manage_groups
-- GET /api/v1/portal/telephony/cdr → CDR compagnie si can_view_company_cdr
-- POST /api/v1/portal/telephony/session → créer session gestionnaire (lock)
-- DELETE /api/v1/portal/telephony/session → libérer session gestionnaire
-- POST /api/v1/portal/telephony/temp-code → générer code temporaire (can_manage_telephony)
-Éléments jamais exposés dans portail : trunks, routes sortantes, E911, sécurité, config fournisseur.
-Validation serveur : chaque endpoint vérifie la permission correspondante + session lock.
-Fichiers : backend/app/api/v1/endpoints/portal.py, frontend/src/pages/Portal.jsx.
+Lien TASKSIPV : TASK-S029. (TASK-S030/S031 — session gestionnaire lock / code temporaire — abandonnées, voir plus bas : le verrou vit côté ERPCRM, pas SIPV, et le code temporaire a été explicitement retiré du design.)
+Dépend de : TASK-017, TASK-019 (déjà faits).
+
+**Design revu en discutant (2026-09-11), différent du plan d'origine** :
+- Pas de "session gestionnaire" avec bouton explicite créer/libérer, ni de code temporaire (Philippe a retiré cette idée). À la place : un **verrou d'édition implicite par compagnie**, vérifié automatiquement à CHAQUE écriture (pas de clic "démarrer une session").
+- Règle du verrou : premier arrivé/premier servi ENTRE PAIRS du même type (tech vs tech, client vs client) — le 2e est bloqué (HTTP 423, message clair avec le nom du détenteur) tant que le 1er n'a pas relâché ou que son inactivité dépasse 30 min (glissant). Un TECH préempte toujours un verrou détenu par un CLIENT (priorité instantanée), jamais l'inverse.
+- Le verrou vit **côté ERPCRM** (nouveau modèle `TelephonyLock`, une ligne par compagnie) — pas de nouvelle table SIPV (TASK-S030/S031 abandonnées) puisque c'est ERPCRM qui héberge le portail et les comptes internes.
+
+**Fait** :
+- `backend/app/models/telephony_lock.py` (nouveau) — `TelephonyLock` (company_id unique, holder_type/id/label, acquired_at, last_activity_at). Migration `910b7c27fa10`.
+- `backend/app/core/telephony_lock.py` (nouveau) — `acquire_telephony_lock()`/`release_telephony_lock()`, logique premier-arrivé + préemption tech. **Testé fonctionnellement en direct contre la vraie DB** (5 scénarios : acquisition libre, blocage tech-vs-tech, blocage tech-vs-client, libération, préemption tech-sur-client) — tous confirmés.
+- `backend/app/core/sipv_client.py` — ajout des fonctions manquantes `create_ivr`/`update_ivr`/`delete_ivr`/`create_queue`/`delete_queue` (l'IVR/Queues n'avaient que la lecture ; vérifié que SIPV expose déjà tout le CRUD côté serveur, `api/v1/endpoints/ivr.py`, juste jamais branché côté ERPCRM avant ce soir).
+- `backend/app/api/v1/endpoints/portal.py` — nouvelle section "Gestion téléphonique" : `GET/PATCH extensions`, `GET/POST/PATCH ivr`, `GET/POST/PATCH ring-groups`, `GET/POST/PATCH paging-groups`, `GET queues` (lecture seule), `GET cdr` (compagnie complète) — chaque écriture passe par `acquire_telephony_lock`.
+- `backend/app/api/v1/endpoints/companies.py` — verrou câblé sur les écritures internes qui **chevauchent** ce que le portail peut aussi toucher : ring-groups (create/update/delete), paging-groups (create/update/delete), extension actif/inactif. Trunks/serveurs/backup/horaires/templates délibérément **non touchés** — le portail n'y accède jamais, donc aucun risque réel de conflit.
+- `frontend/src/pages/Portal.jsx` — nouvel onglet "Gestion téléphonique" (sous-onglets Postes/IVR/Groupes/Historique selon permission), modaux de création IVR (avec options de menu)/groupes, édition inline des postes. Erreur 423 affichée telle quelle (message du serveur, qui détient le verrou).
+- Build + déploiement backend et frontend confirmés (services redémarrés, routes vérifiées via `/openapi.json`).
+
+**Non fait / limites connues, à ne pas confondre avec "terminé"** :
+- Verrou **pas câblé** sur les écritures d'extension dans `contacts.py` (create/update/delete de poste) — company_id pas directement disponible dans ces fonctions (résolu via le contact), aurait demandé plus de temps pour le faire proprement sans risquer une régression sur du code existant qui fonctionne. Un poste peut donc encore être modifié depuis `ContactDetail.jsx` sans respecter le verrou.
+- Verrou pas câblé sur les sous-ressources (membres de groupe, étapes de failover) — seulement sur la ressource parente (créer/modifier/supprimer un groupe).
+- Files d'attente (Queues) : lecture seule dans le portail, pas de création/édition (pas demandé explicitement pour cette entrée).
+- Suppression d'un IVR : fonction proxy ajoutée (`delete_ivr`) mais pas exposée comme endpoint portail (pas dans la demande initiale).
+- Non testé visuellement dans un vrai navigateur avec un vrai compte portail par Claude (pas d'identifiants) — Philippe à confirmer en utilisation réelle demain.
+
+Éléments jamais exposés dans le portail (confirmé) : trunks, routes sortantes, E911, sécurité, config fournisseur.
+
+**Idée connexe loggée séparément** : verrou similaire sur les Tickets (un tech ouvre = verrouillé en édition pour les autres, consultable en lecture) — voir `TASK-006.4`, pas construit ici (module différent).
+Fichiers : backend/app/models/telephony_lock.py (nouveau), backend/app/core/telephony_lock.py (nouveau), backend/app/core/sipv_client.py, backend/app/api/v1/endpoints/portal.py, backend/app/api/v1/endpoints/companies.py, backend/alembic/versions/910b7c27fa10_telephony_lock_table.py (nouveau), frontend/src/pages/Portal.jsx.
 
 ---
 

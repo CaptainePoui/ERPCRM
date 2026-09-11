@@ -571,11 +571,50 @@ async def list_ivrs(tenant_id: str) -> list[dict]:
         return resp.json()
 
 
+async def create_ivr(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/tenant/{tenant_id}", json=fields, headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def update_ivr(ivr_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.put(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/{ivr_id}", json=fields, headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_ivr(ivr_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/ivr/{ivr_id}", headers=_headers())
+        resp.raise_for_status()
+
+
 async def list_queues(tenant_id: str) -> list[dict]:
     async with _client() as client:
         resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/ivr/queues/tenant/{tenant_id}", headers=_headers())
         resp.raise_for_status()
         return resp.json()
+
+
+async def create_queue(tenant_id: str, **fields) -> dict:
+    async with _client() as client:
+        resp = await client.post(
+            f"{settings.SIPV_API_URL}/api/v1/ivr/queues/tenant/{tenant_id}", json=fields, headers=_headers(),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def delete_queue(queue_id: str) -> None:
+    async with _client() as client:
+        resp = await client.delete(f"{settings.SIPV_API_URL}/api/v1/ivr/queues/{queue_id}", headers=_headers())
+        resp.raise_for_status()
 
 
 async def list_ring_groups(tenant_id: str) -> list[dict]:

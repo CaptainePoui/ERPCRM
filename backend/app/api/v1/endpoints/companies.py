@@ -11,6 +11,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
+from app.core.telephony_lock import acquire_telephony_lock
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.entity import Entity, EntityType
 from app.models.company import Company
@@ -765,7 +766,8 @@ async def list_company_ring_groups(company_id: uuid.UUID, db: AsyncSession = Dep
 
 
 @router.post("/{company_id}/ring-groups", status_code=status.HTTP_201_CREATED)
-async def create_company_ring_group(company_id: uuid.UUID, payload: RingGroupPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_company_ring_group(company_id: uuid.UUID, payload: RingGroupPayload, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     tenant_id = await _company_tenant_id(company_id, db)
     try:
         return await sipv_client.create_ring_group(tenant_id, members=[], **payload.model_dump(mode="json"))
@@ -774,7 +776,8 @@ async def create_company_ring_group(company_id: uuid.UUID, payload: RingGroupPay
 
 
 @router.put("/{company_id}/ring-groups/{rg_id}")
-async def update_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, payload: RingGroupUpdatePayload, _: User = Depends(get_current_user)):
+async def update_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, payload: RingGroupUpdatePayload, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     try:
         return await sipv_client.update_ring_group(str(rg_id), **payload.model_dump(mode="json", exclude_unset=True))
     except httpx.HTTPError:
@@ -782,7 +785,8 @@ async def update_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, pay
 
 
 @router.delete("/{company_id}/ring-groups/{rg_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, _: User = Depends(get_current_user)):
+async def delete_company_ring_group(company_id: uuid.UUID, rg_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     try:
         await sipv_client.delete_ring_group(str(rg_id))
     except httpx.HTTPError:
@@ -912,9 +916,10 @@ class ExtensionActivePayload(BaseModel):
 
 
 @router.put("/{company_id}/extensions/{extension_id}/active")
-async def update_extension_active(company_id: uuid.UUID, extension_id: uuid.UUID, payload: ExtensionActivePayload, _: User = Depends(get_current_user)):
+async def update_extension_active(company_id: uuid.UUID, extension_id: uuid.UUID, payload: ExtensionActivePayload, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """Active/desactive un poste -- meme principe que la case a cocher Actif
     d'un DID (TASK-023.31), demande Philippe 2026-08-07."""
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     try:
         return await sipv_client.update_extension(str(extension_id), is_active=payload.is_active)
     except httpx.HTTPError:
@@ -1010,7 +1015,8 @@ async def list_company_paging_groups(company_id: uuid.UUID, db: AsyncSession = D
 
 
 @router.post("/{company_id}/paging-groups", status_code=status.HTTP_201_CREATED)
-async def create_company_paging_group(company_id: uuid.UUID, payload: PagingGroupPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_company_paging_group(company_id: uuid.UUID, payload: PagingGroupPayload, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     tenant_id = await _company_tenant_id(company_id, db)
     try:
         return await sipv_client.create_paging_group(tenant_id, **payload.model_dump(mode="json"))
@@ -1019,7 +1025,8 @@ async def create_company_paging_group(company_id: uuid.UUID, payload: PagingGrou
 
 
 @router.put("/{company_id}/paging-groups/{pg_id}")
-async def update_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, payload: PagingGroupUpdatePayload, _: User = Depends(get_current_user)):
+async def update_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, payload: PagingGroupUpdatePayload, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     try:
         return await sipv_client.update_paging_group(str(pg_id), **payload.model_dump(mode="json", exclude_unset=True))
     except httpx.HTTPError:
@@ -1027,7 +1034,8 @@ async def update_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, p
 
 
 @router.delete("/{company_id}/paging-groups/{pg_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, _: User = Depends(get_current_user)):
+async def delete_company_paging_group(company_id: uuid.UUID, pg_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    await acquire_telephony_lock(db, company_id, "tech", user.id, user.full_name)
     try:
         await sipv_client.delete_paging_group(str(pg_id))
     except httpx.HTTPError:

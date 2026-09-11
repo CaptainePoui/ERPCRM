@@ -10,11 +10,13 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
 from app.core import sipv_client
+from app.core.telephony_lock import acquire_telephony_lock
 from app.models.portal import PortalUser
 from app.models.invoice import Invoice
 from app.models.ticket import Ticket
 from app.models.equipment import Equipment
 from app.models.contact import Contact
+from app.models.company import Company
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
 
@@ -343,6 +345,253 @@ async def portal_cdr(page: int = 1, u: PortalUser = Depends(get_portal_user), db
     ext = await _portal_own_extension(u, db)
     try:
         return await sipv_client.list_cdr_for_extension(ext["tenant_id"], ext["extension"], page=page)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+# ── Portal "Gestion téléphonique" (TASK-020) ────────────────────────────────
+# Gated par permission granulaire (can_manage_telephony/ivr/groups,
+# can_view_company_cdr). JAMAIS exposé dans le portail : trunks, routes
+# sortantes, E911, sécurité, config fournisseur. Verrou télephonie
+# (core/telephony_lock.py) appliqué avant chaque écriture -- premier
+# arrivé/premier servi entre pairs (client vs client), un tech préempte
+# toujours un verrou détenu par un client (voir PLATFORM_TASKS.md TASK-020).
+
+async def _company_tenant_id_portal(u: PortalUser, db: AsyncSession) -> str:
+    company = await db.get(Company, u.company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        raise HTTPException(status_code=400, detail="Aucun tenant SIPV actif pour cette compagnie")
+    return str(company.sipv_tenant_id)
+
+
+TELEPHONY_EXT_FIELDS = NAME_FIELDS | FORWARD_FIELDS | VOICEMAIL_FIELDS
+
+
+class TelephonyExtensionUpdate(BaseModel):
+    name: str | None = None
+    forward_immediate_enabled: bool | None = None
+    forward_immediate_destination_type: str | None = None
+    forward_immediate_destination: str | None = None
+    forward_busy_enabled: bool | None = None
+    forward_busy_destination_type: str | None = None
+    forward_busy_destination: str | None = None
+    forward_no_answer_enabled: bool | None = None
+    forward_no_answer_destination_type: str | None = None
+    forward_no_answer_destination: str | None = None
+    forward_no_answer_delay_seconds: int | None = None
+    forward_offline_enabled: bool | None = None
+    forward_offline_destination_type: str | None = None
+    forward_offline_destination: str | None = None
+    voicemail_enabled: bool | None = None
+    voicemail_email: str | None = None
+
+
+@router.get("/telephony/extensions")
+async def telephony_extensions(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_telephony:
+        raise HTTPException(status_code=403, detail="Gestion téléphonique non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_extensions(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.patch("/telephony/extensions/{extension_id}")
+async def update_telephony_extension(extension_id: str, payload: TelephonyExtensionUpdate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_telephony:
+        raise HTTPException(status_code=403, detail="Gestion téléphonique non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    data = payload.model_dump(exclude_unset=True)
+    try:
+        return await sipv_client.update_extension(extension_id, **data)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+# IVR -- memes champs que IVRCreate/IVRUpdate cote SIPV (ivr.py), voir aussi
+# companies.py qui n'a que le GET aujourd'hui (create/update jamais exposes
+# cote admin non plus avant TASK-020).
+class TelephonyIvrOption(BaseModel):
+    digit: str
+    label: str | None = None
+    destination_type: str
+    destination: str
+
+class TelephonyIvrCreate(BaseModel):
+    name: str
+    description: str | None = None
+    greeting_text: str | None = None
+    greeting_prompt_id: uuid.UUID | None = None
+    timeout_seconds: int = 10
+    max_retries: int = 3
+    invalid_destination: str | None = None
+    timeout_destination: str | None = None
+    options: list[TelephonyIvrOption] = []
+
+class TelephonyIvrUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    greeting_text: str | None = None
+    greeting_prompt_id: uuid.UUID | None = None
+    timeout_seconds: int | None = None
+    max_retries: int | None = None
+    invalid_destination: str | None = None
+    timeout_destination: str | None = None
+    is_active: bool | None = None
+
+
+@router.get("/telephony/ivr")
+async def telephony_list_ivr(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_ivr:
+        raise HTTPException(status_code=403, detail="Gestion IVR non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_ivrs(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.post("/telephony/ivr", status_code=status.HTTP_201_CREATED)
+async def telephony_create_ivr(payload: TelephonyIvrCreate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_ivr:
+        raise HTTPException(status_code=403, detail="Gestion IVR non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.create_ivr(tenant_id, **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.patch("/telephony/ivr/{ivr_id}")
+async def telephony_update_ivr(ivr_id: str, payload: TelephonyIvrUpdate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_ivr:
+        raise HTTPException(status_code=403, detail="Gestion IVR non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        return await sipv_client.update_ivr(ivr_id, **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+# Groupes -- ring-groups (sonnerie) + paging-groups (interphonie), memes champs
+# que companies.py (RingGroupPayload/PagingGroupPayload) -- non reutilises tels
+# quels (modeles locaux a chaque fichier, convention deja en place dans ce
+# projet, voir Mon poste plus haut qui duplique aussi ses propres champs).
+class TelephonyRingGroupCreate(BaseModel):
+    name: str
+    extension: str
+    ring_strategy: str = "simultaneous"
+    ring_time: int = 20
+    no_answer_destination: str | None = None
+    confirm_before_answer: bool = False
+
+class TelephonyRingGroupUpdate(BaseModel):
+    name: str | None = None
+    ring_strategy: str | None = None
+    ring_time: int | None = None
+    no_answer_destination: str | None = None
+    is_active: bool | None = None
+    confirm_before_answer: bool | None = None
+
+
+@router.get("/telephony/ring-groups")
+async def telephony_list_ring_groups(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_ring_groups(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.post("/telephony/ring-groups", status_code=status.HTTP_201_CREATED)
+async def telephony_create_ring_group(payload: TelephonyRingGroupCreate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.create_ring_group(tenant_id, members=[], **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.patch("/telephony/ring-groups/{rg_id}")
+async def telephony_update_ring_group(rg_id: str, payload: TelephonyRingGroupUpdate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        return await sipv_client.update_ring_group(rg_id, **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+class TelephonyPagingGroupCreate(BaseModel):
+    name: str
+    extension: str
+    mode: str = "unidirectional"
+
+class TelephonyPagingGroupUpdate(BaseModel):
+    name: str | None = None
+    extension: str | None = None
+    mode: str | None = None
+    is_active: bool | None = None
+
+
+@router.get("/telephony/paging-groups")
+async def telephony_list_paging_groups(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_paging_groups(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.post("/telephony/paging-groups", status_code=status.HTTP_201_CREATED)
+async def telephony_create_paging_group(payload: TelephonyPagingGroupCreate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.create_paging_group(tenant_id, **payload.model_dump(mode="json"))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+@router.patch("/telephony/paging-groups/{pg_id}")
+async def telephony_update_paging_group(pg_id: str, payload: TelephonyPagingGroupUpdate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        return await sipv_client.update_paging_group(pg_id, **payload.model_dump(mode="json", exclude_unset=True))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+# Files d'attente -- lecture seule dans le portail (creation/edition reste un
+# geste technique interne pour l'instant, TASK-020 ne demande que la visibilite).
+@router.get("/telephony/queues")
+async def telephony_list_queues(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_groups:
+        raise HTTPException(status_code=403, detail="Gestion des groupes non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_queues(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.get("/telephony/cdr")
+async def telephony_company_cdr(page: int = 1, extension: str | None = None, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_view_company_cdr:
+        raise HTTPException(status_code=403, detail="Accès à l'historique d'appels de la compagnie non autorisé")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_cdr(tenant_id, page=page, extension=extension)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
 

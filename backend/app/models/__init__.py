@@ -18,6 +18,7 @@ from app.models.equipment import Equipment
 from app.models.telephony import DID, Extension
 from app.models.purchase_order import PurchaseOrder, PurchaseOrderLine
 from app.models.portal import PortalUser
+from app.models.telephony_lock import TelephonyLock
 from app.models.ecom import EcomOrder, EcomOrderLine
 from app.models.task import Task, TaskReminder
 from app.models.installation_photo import InstallationPhoto

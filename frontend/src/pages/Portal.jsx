@@ -86,6 +86,7 @@ const TABS_MAP = {
   can_view_tickets: { label: 'Tickets', key: 'tickets' },
   can_view_equipment: { label: 'Équipements', key: 'equipment' },
   can_view_own_extension: { label: 'Mon poste', key: 'extension' },
+  can_manage_telephony: { label: 'Gestion téléphonique', key: 'telephony' },
 }
 
 // TASK-S056 : mêmes 4 champs granulaires que ContactDetail.jsx (admin), même
@@ -146,7 +147,7 @@ function PortalDashboard({ session, onLogout }) {
   const [showNewTicket, setShowNewTicket] = useState(false)
 
   useEffect(() => {
-    if (!tab) return
+    if (!tab || tab === 'telephony') return // Gestion téléphonique gère ses propres sous-onglets/fetch
     setLoading(true)
     portalApi.get(`/v1/portal/${tab}`)
       .then(r => setData(p => ({ ...p, [tab]: r.data })))
@@ -223,6 +224,8 @@ function PortalDashboard({ session, onLogout }) {
           <ExtensionTab ext={data.extension} perms={perms}
             onSaved={updated => setData(p => ({ ...p, extension: updated }))} />
         )}
+
+        {tab === 'telephony' && <TelephonyManagementTab perms={perms} />}
 
         {!loading && tab === 'equipment' && (
           <table className="portal-table">
@@ -442,6 +445,341 @@ function ExtensionTab({ ext, perms, onSaved }) {
         </OptionSection>
       )}
     </div>
+  )
+}
+
+// ── Gestion téléphonique (TASK-020) ─────────────────────────────────────────
+// Verrou telephonie (backend, core/telephony_lock.py) applique a chaque
+// ecriture -- une erreur 423 revient avec un message clair (qui detient le
+// verrou, delai estime) affiche tel quel a l'utilisateur.
+
+const TELEPHONY_SUBTABS = [
+  { key: 'extensions', label: 'Postes', perm: 'can_manage_telephony' },
+  { key: 'ivr', label: 'IVR', perm: 'can_manage_ivr' },
+  { key: 'groups', label: 'Groupes', perm: 'can_manage_groups' },
+  { key: 'cdr', label: 'Historique', perm: 'can_view_company_cdr' },
+]
+
+function TelephonyManagementTab({ perms }) {
+  const available = TELEPHONY_SUBTABS.filter(t => perms[t.perm])
+  const [sub, setSub] = useState(available[0]?.key || '')
+  if (available.length === 0) return null
+  return (
+    <div>
+      <div className="portal-tabs" style={{ marginBottom: 16 }}>
+        {available.map(t => (
+          <button key={t.key} className={`portal-tab${sub === t.key ? ' active' : ''}`} onClick={() => setSub(t.key)}>{t.label}</button>
+        ))}
+      </div>
+      {sub === 'extensions' && <TelephonyExtensionsPanel />}
+      {sub === 'ivr' && <TelephonyIvrPanel />}
+      {sub === 'groups' && <TelephonyGroupsPanel />}
+      {sub === 'cdr' && <TelephonyCdrPanel />}
+    </div>
+  )
+}
+
+function LockNotice({ error }) {
+  if (!error) return null
+  return <div className="portal-error" style={{ marginBottom: 10 }}>{error}</div>
+}
+
+function TelephonyExtensionsPanel() {
+  const [exts, setExts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(null)
+  const [error, setError] = useState('')
+
+  function load() {
+    setLoading(true)
+    portalApi.get('/v1/portal/telephony/extensions').then(r => setExts(r.data)).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  async function save() {
+    setError('')
+    try {
+      await portalApi.patch(`/v1/portal/telephony/extensions/${editing.id}`, {
+        name: editing.name, voicemail_enabled: editing.voicemail_enabled, voicemail_email: editing.voicemail_email || null,
+      })
+      setEditing(null)
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de l\'enregistrement')
+    }
+  }
+
+  if (loading) return <div className="loading">Chargement...</div>
+  return (
+    <div>
+      <LockNotice error={error} />
+      <table className="portal-table">
+        <thead><tr><th>Poste</th><th>Nom</th><th>Messagerie</th><th></th></tr></thead>
+        <tbody>
+          {exts.map(e => (
+            <tr key={e.id}>
+              <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{e.extension}</td>
+              <td>{e.name}</td>
+              <td style={{ fontSize: 12, color: e.voicemail_enabled ? '#059669' : '#9CA3AF' }}>{e.voicemail_enabled ? 'Activée' : 'Désactivée'}</td>
+              <td><button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEditing(e)}>Modifier</button></td>
+            </tr>
+          ))}
+          {exts.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun poste.</td></tr>}
+        </tbody>
+      </table>
+      {editing && (
+        <div className="modal-overlay">
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Poste {editing.extension}</h3>
+            <div className="form-group"><label>Nom</label>
+              <input value={editing.name || ''} onChange={e => setEditing(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!!editing.voicemail_enabled}
+                onChange={e => setEditing(p => ({ ...p, voicemail_enabled: e.target.checked }))} />
+              Messagerie vocale activée
+            </label>
+            <div className="form-group"><label>Courriel messagerie</label>
+              <input type="email" value={editing.voicemail_email || ''} onChange={e => setEditing(p => ({ ...p, voicemail_email: e.target.value }))} />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setEditing(null)}>Annuler</button>
+              <button className="btn-primary" onClick={save}>Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TelephonyIvrPanel() {
+  const [ivrs, setIvrs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showNew, setShowNew] = useState(false)
+  const [error, setError] = useState('')
+
+  function load() {
+    setLoading(true)
+    portalApi.get('/v1/portal/telephony/ivr').then(r => setIvrs(r.data)).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  async function toggleActive(ivr) {
+    setError('')
+    try {
+      await portalApi.patch(`/v1/portal/telephony/ivr/${ivr.id}`, { is_active: !ivr.is_active })
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec')
+    }
+  }
+
+  if (loading) return <div className="loading">Chargement...</div>
+  return (
+    <div>
+      <LockNotice error={error} />
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button className="btn-primary" style={{ fontSize: 13 }} onClick={() => setShowNew(true)}>+ Nouveau IVR</button>
+      </div>
+      <table className="portal-table">
+        <thead><tr><th>Nom</th><th>Options</th><th>Statut</th><th></th></tr></thead>
+        <tbody>
+          {ivrs.map(i => (
+            <tr key={i.id}>
+              <td style={{ fontWeight: 600 }}>{i.name}</td>
+              <td style={{ fontSize: 13, color: '#6B7280' }}>{(i.options || []).length} choix</td>
+              <td style={{ fontSize: 12, color: i.is_active ? '#059669' : '#9CA3AF' }}>{i.is_active ? 'Actif' : 'Inactif'}</td>
+              <td><button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => toggleActive(i)}>{i.is_active ? 'Désactiver' : 'Activer'}</button></td>
+            </tr>
+          ))}
+          {ivrs.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun IVR.</td></tr>}
+        </tbody>
+      </table>
+      {showNew && <NewIvrModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} setError={setError} />}
+    </div>
+  )
+}
+
+function NewIvrModal({ onClose, onCreated, setError }) {
+  const [name, setName] = useState('')
+  const [greeting, setGreeting] = useState('')
+  const [timeoutSec, setTimeoutSec] = useState(10)
+  const [options, setOptions] = useState([{ digit: '', destination_type: 'extension', destination: '' }])
+  const [saving, setSaving] = useState(false)
+
+  function updateOpt(i, field, val) {
+    setOptions(p => p.map((o, idx) => idx === i ? { ...o, [field]: val } : o))
+  }
+
+  async function save() {
+    setSaving(true)
+    setError('')
+    try {
+      await portalApi.post('/v1/portal/telephony/ivr', {
+        name, greeting_text: greeting || null, timeout_seconds: timeoutSec,
+        options: options.filter(o => o.digit && o.destination),
+      })
+      onCreated()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la création')
+      onClose()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 480 }}>
+        <h3 className="modal-title">Nouveau menu IVR</h3>
+        <div className="form-group"><label>Nom *</label><input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
+        <div className="form-group"><label>Message d'accueil (texte)</label><textarea value={greeting} onChange={e => setGreeting(e.target.value)} rows={2} /></div>
+        <div className="form-group"><label>Délai avant relance (secondes)</label><input type="number" value={timeoutSec} onChange={e => setTimeoutSec(parseInt(e.target.value, 10) || 10)} style={{ width: 80 }} /></div>
+        <div className="form-group">
+          <label>Choix du menu</label>
+          {options.map((o, i) => (
+            <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+              <input placeholder="Touche" value={o.digit} onChange={e => updateOpt(i, 'digit', e.target.value)} style={{ width: 50 }} />
+              <select value={o.destination_type} onChange={e => updateOpt(i, 'destination_type', e.target.value)} style={{ fontSize: 13 }}>
+                {FORWARD_DEST_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <input placeholder="Destination" value={o.destination} onChange={e => updateOpt(i, 'destination', e.target.value)} style={{ flex: 1 }} />
+            </div>
+          ))}
+          <button type="button" className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setOptions(p => [...p, { digit: '', destination_type: 'extension', destination: '' }])}>+ Ajouter un choix</button>
+        </div>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={saving || !name.trim()} onClick={save}>{saving ? '...' : 'Créer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TelephonyGroupsPanel() {
+  const [ring, setRing] = useState([])
+  const [paging, setPaging] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showNewRing, setShowNewRing] = useState(false)
+  const [showNewPaging, setShowNewPaging] = useState(false)
+
+  function load() {
+    setLoading(true)
+    Promise.all([
+      portalApi.get('/v1/portal/telephony/ring-groups'),
+      portalApi.get('/v1/portal/telephony/paging-groups'),
+    ]).then(([r1, r2]) => { setRing(r1.data); setPaging(r2.data) }).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  if (loading) return <div className="loading">Chargement...</div>
+  return (
+    <div>
+      <LockNotice error={error} />
+      <h4 style={{ fontSize: 14, marginBottom: 8 }}>Groupes d'appel</h4>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowNewRing(true)}>+ Nouveau groupe</button>
+      </div>
+      <table className="portal-table" style={{ marginBottom: 24 }}>
+        <thead><tr><th>Nom</th><th>Poste</th><th>Stratégie</th><th>Statut</th></tr></thead>
+        <tbody>
+          {ring.map(g => (
+            <tr key={g.id}>
+              <td style={{ fontWeight: 600 }}>{g.name}</td>
+              <td style={{ fontFamily: 'monospace' }}>{g.extension}</td>
+              <td style={{ fontSize: 13, color: '#6B7280' }}>{g.ring_strategy}</td>
+              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : '#9CA3AF' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
+            </tr>
+          ))}
+          {ring.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun groupe d'appel.</td></tr>}
+        </tbody>
+      </table>
+
+      <h4 style={{ fontSize: 14, marginBottom: 8 }}>Interphonie</h4>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowNewPaging(true)}>+ Nouveau groupe</button>
+      </div>
+      <table className="portal-table">
+        <thead><tr><th>Nom</th><th>Poste</th><th>Mode</th><th>Statut</th></tr></thead>
+        <tbody>
+          {paging.map(g => (
+            <tr key={g.id}>
+              <td style={{ fontWeight: 600 }}>{g.name}</td>
+              <td style={{ fontFamily: 'monospace' }}>{g.extension}</td>
+              <td style={{ fontSize: 13, color: '#6B7280' }}>{g.mode}</td>
+              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : '#9CA3AF' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
+            </tr>
+          ))}
+          {paging.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun groupe d'interphonie.</td></tr>}
+        </tbody>
+      </table>
+
+      {showNewRing && <NewGroupModal type="ring" title="Nouveau groupe d'appel" onClose={() => setShowNewRing(false)}
+        onCreated={() => { setShowNewRing(false); load() }} setError={setError} />}
+      {showNewPaging && <NewGroupModal type="paging" title="Nouveau groupe d'interphonie" onClose={() => setShowNewPaging(false)}
+        onCreated={() => { setShowNewPaging(false); load() }} setError={setError} />}
+    </div>
+  )
+}
+
+function NewGroupModal({ type, title, onClose, onCreated, setError }) {
+  const [name, setName] = useState('')
+  const [extension, setExtension] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    setSaving(true)
+    setError('')
+    try {
+      const path = type === 'ring' ? '/v1/portal/telephony/ring-groups' : '/v1/portal/telephony/paging-groups'
+      await portalApi.post(path, { name, extension })
+      onCreated()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la création')
+      onClose()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">{title}</h3>
+        <div className="form-group"><label>Nom *</label><input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
+        <div className="form-group"><label>Numéro de poste *</label><input value={extension} onChange={e => setExtension(e.target.value)} /></div>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={saving || !name.trim() || !extension.trim()} onClick={save}>{saving ? '...' : 'Créer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TelephonyCdrPanel() {
+  const [cdr, setCdr] = useState(null)
+  const [loading, setLoading] = useState(true)
+  useEffect(() => {
+    portalApi.get('/v1/portal/telephony/cdr').then(r => setCdr(r.data)).finally(() => setLoading(false))
+  }, [])
+  if (loading) return <div className="loading">Chargement...</div>
+  const items = cdr?.items || []
+  return (
+    <table className="portal-table">
+      <thead><tr><th>Date</th><th>De</th><th>Vers</th><th>Durée</th><th>Direction</th></tr></thead>
+      <tbody>
+        {items.map(c => (
+          <tr key={c.id}>
+            <td style={{ fontSize: 13 }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : '—'}</td>
+            <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.src || '—'}</td>
+            <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.dst || '—'}</td>
+            <td style={{ fontSize: 13 }}>{c.billsec != null ? `${c.billsec}s` : '—'}</td>
+            <td style={{ fontSize: 12, color: '#6B7280' }}>{c.direction || '—'}</td>
+          </tr>
+        ))}
+        {items.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun appel.</td></tr>}
+      </tbody>
+    </table>
   )
 }
 
