@@ -79,6 +79,18 @@ const portalApi = {
     const token = localStorage.getItem('portal_token')
     return api.patch(path, data, { headers: { Authorization: `Bearer ${token}` } })
   },
+  async put(path, data) {
+    const token = localStorage.getItem('portal_token')
+    return api.put(path, data, { headers: { Authorization: `Bearer ${token}` } })
+  },
+  async delete(path) {
+    const token = localStorage.getItem('portal_token')
+    return api.delete(path, { headers: { Authorization: `Bearer ${token}` } })
+  },
+  async postForm(path, formData) {
+    const token = localStorage.getItem('portal_token')
+    return api.post(path, formData, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 const TABS_MAP = {
@@ -467,6 +479,7 @@ const TELEPHONY_SUBTABS = [
   { key: 'extensions', label: 'Postes', perm: 'can_manage_telephony' },
   { key: 'ivr', label: 'IVR', perm: 'can_manage_ivr' },
   { key: 'groups', label: 'Groupes', perm: 'can_manage_groups' },
+  { key: 'audio', label: 'Audio', perm: 'can_manage_audio_prompts' },
   { key: 'cdr', label: 'Historique', perm: 'can_view_company_cdr' },
 ]
 
@@ -484,6 +497,7 @@ function TelephonyManagementTab({ perms }) {
       {sub === 'extensions' && <TelephonyExtensionsPanel />}
       {sub === 'ivr' && <TelephonyIvrPanel />}
       {sub === 'groups' && <TelephonyGroupsPanel />}
+      {sub === 'audio' && <TelephonyAudioPanel />}
       {sub === 'cdr' && <TelephonyCdrPanel />}
     </div>
   )
@@ -760,6 +774,168 @@ function NewGroupModal({ type, title, onClose, onCreated, setError }) {
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
           <button className="btn-primary" disabled={saving || !name.trim() || !extension.trim()} onClick={save}>{saving ? '...' : 'Créer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function TelephonyAudioPanel() {
+  const [prompts, setPrompts] = useState([])
+  const [moh, setMoh] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [showUploadPrompt, setShowUploadPrompt] = useState(false)
+  const [showUploadMoh, setShowUploadMoh] = useState(false)
+  const [renaming, setRenaming] = useState(null)
+
+  function load() {
+    setLoading(true)
+    Promise.all([
+      portalApi.get('/v1/portal/telephony/prompts'),
+      portalApi.get('/v1/portal/telephony/moh'),
+    ]).then(([r1, r2]) => { setPrompts(r1.data); setMoh(r2.data) }).finally(() => setLoading(false))
+  }
+  useEffect(load, [])
+
+  async function deletePrompt(id) {
+    if (!confirm('Supprimer cette phrase ?')) return
+    setError('')
+    try {
+      await portalApi.delete(`/v1/portal/telephony/prompts/${id}`)
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la suppression (peut-être encore utilisée par un IVR)')
+    }
+  }
+
+  async function saveRename() {
+    setError('')
+    try {
+      await portalApi.patch(`/v1/portal/telephony/prompts/${renaming.id}`, { name: renaming.name })
+      setRenaming(null)
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec')
+    }
+  }
+
+  async function deleteMoh(id) {
+    if (!confirm('Supprimer ce fichier de musique d\'attente ?')) return
+    setError('')
+    try {
+      await portalApi.delete(`/v1/portal/telephony/moh/${id}`)
+      load()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la suppression')
+    }
+  }
+
+  if (loading) return <div className="loading">Chargement...</div>
+  return (
+    <div>
+      <LockNotice error={error} />
+      <h4 style={{ fontSize: 14, marginBottom: 8 }}>Phrases / annonces</h4>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadPrompt(true)}>+ Téléverser une phrase</button>
+      </div>
+      <table className="portal-table" style={{ marginBottom: 24 }}>
+        <thead><tr><th>Nom</th><th></th></tr></thead>
+        <tbody>
+          {prompts.map(p => (
+            <tr key={p.id}>
+              <td>{p.name}</td>
+              <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setRenaming(p)}>Renommer</button>
+                <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => deletePrompt(p.id)}>Supprimer</button>
+              </td>
+            </tr>
+          ))}
+          {prompts.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucune phrase.</td></tr>}
+        </tbody>
+      </table>
+
+      <h4 style={{ fontSize: 14, marginBottom: 8 }}>Musique d'attente</h4>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 8 }}>
+        <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowUploadMoh(true)}>+ Téléverser un fichier</button>
+      </div>
+      <table className="portal-table">
+        <thead><tr><th>Nom</th><th>Portée</th><th></th></tr></thead>
+        <tbody>
+          {moh.map(m => (
+            <tr key={m.id}>
+              <td>{m.name}</td>
+              <td style={{ fontSize: 12, color: '#6B7280' }}>{m.tenant_id ? 'Votre compagnie' : 'Partagée (Simple IP)'}</td>
+              <td style={{ textAlign: 'right' }}>
+                {m.tenant_id && (
+                  <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => deleteMoh(m.id)}>Supprimer</button>
+                )}
+              </td>
+            </tr>
+          ))}
+          {moh.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun fichier.</td></tr>}
+        </tbody>
+      </table>
+
+      {renaming && (
+        <div className="modal-overlay">
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <h3 className="modal-title">Renommer la phrase</h3>
+            <div className="form-group"><label>Nom</label>
+              <input value={renaming.name} onChange={e => setRenaming(p => ({ ...p, name: e.target.value }))} autoFocus />
+            </div>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={() => setRenaming(null)}>Annuler</button>
+              <button className="btn-primary" onClick={saveRename}>Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUploadPrompt && (
+        <UploadAudioModal title="Téléverser une phrase" path="/v1/portal/telephony/prompts"
+          onClose={() => setShowUploadPrompt(false)} onUploaded={() => { setShowUploadPrompt(false); load() }} setError={setError} />
+      )}
+      {showUploadMoh && (
+        <UploadAudioModal title="Téléverser un fichier de musique d'attente" path="/v1/portal/telephony/moh"
+          onClose={() => setShowUploadMoh(false)} onUploaded={() => { setShowUploadMoh(false); load() }} setError={setError} />
+      )}
+    </div>
+  )
+}
+
+function UploadAudioModal({ title, path, onClose, onUploaded, setError }) {
+  const [name, setName] = useState('')
+  const [file, setFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+
+  async function save() {
+    if (!file || !name.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      const fd = new FormData()
+      fd.append('name', name)
+      fd.append('file', file)
+      await portalApi.postForm(path, fd)
+      onUploaded()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec du téléversement')
+      onClose()
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">{title}</h3>
+        <div className="form-group"><label>Nom *</label><input value={name} onChange={e => setName(e.target.value)} autoFocus /></div>
+        <div className="form-group"><label>Fichier audio *</label>
+          <input type="file" accept="audio/*" onChange={e => setFile(e.target.files?.[0] || null)} />
+        </div>
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={saving || !file || !name.trim()} onClick={save}>{saving ? '...' : 'Téléverser'}</button>
         </div>
       </div>
     </div>

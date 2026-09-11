@@ -1,7 +1,7 @@
 import uuid
 import httpx
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -581,6 +581,139 @@ async def telephony_list_queues(u: PortalUser = Depends(get_portal_user), db: As
     tenant_id = await _company_tenant_id_portal(u, db)
     try:
         return await sipv_client.list_queues(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+# Prompts (phrases/annonces) + MOH (musique d'attente) -- meme permission
+# can_manage_audio_prompts pour les deux, regroupees sous le meme sous-onglet
+# "Audio" cote portail (meme libelle admin : "Gérer les messages audio /
+# musique d'attente", ContactDetail.jsx).
+
+@router.get("/telephony/prompts")
+async def telephony_list_prompts(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_prompts(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.post("/telephony/prompts", status_code=status.HTTP_201_CREATED)
+async def telephony_upload_prompt(
+    name: str = Form(...), file: UploadFile = File(...),
+    u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db),
+):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        content = await file.read()
+        return await sipv_client.upload_prompt(tenant_id, name, file.filename or "phrase.wav", content, file.content_type)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+class TelephonyPromptRename(BaseModel):
+    name: str
+
+
+@router.patch("/telephony/prompts/{prompt_id}")
+async def telephony_rename_prompt(prompt_id: str, payload: TelephonyPromptRename, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        return await sipv_client.rename_prompt(prompt_id, payload.name.strip())
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.delete("/telephony/prompts/{prompt_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def telephony_delete_prompt(prompt_id: str, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        await sipv_client.delete_prompt(prompt_id)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 400:
+            raise HTTPException(status_code=400, detail=e.response.json().get("detail", "Phrase encore utilisée"))
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+@router.get("/telephony/moh")
+async def telephony_list_moh(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.list_available_moh(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.post("/telephony/moh", status_code=status.HTTP_201_CREATED)
+async def telephony_upload_moh(
+    name: str = Form(...), file: UploadFile = File(...),
+    u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db),
+):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        content = await file.read()
+        return await sipv_client.upload_moh(name, file.filename or "moh.wav", content, file.content_type, tenant_id=tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.delete("/telephony/moh/{moh_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def telephony_delete_moh(moh_id: str, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    # Securite : un client ne peut supprimer QUE ses propres fichiers MOH dedies
+    # (tenant_id == sa compagnie) -- jamais un fichier global partage entre tenants.
+    try:
+        items = await sipv_client.list_available_moh(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    target = next((it for it in items if str(it.get("id")) == moh_id), None)
+    if not target or str(target.get("tenant_id")) != tenant_id:
+        raise HTTPException(status_code=403, detail="Ce fichier n'appartient pas à votre compagnie")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    try:
+        await sipv_client.delete_moh(moh_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.get("/telephony/moh-selection")
+async def telephony_get_moh_selection(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.get_moh_selection(tenant_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
+@router.put("/telephony/moh-selection")
+async def telephony_set_moh_selection(items: list[dict], u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_manage_audio_prompts:
+        raise HTTPException(status_code=403, detail="Gestion audio non autorisée")
+    await acquire_telephony_lock(db, u.company_id, "client", u.id, u.full_name)
+    tenant_id = await _company_tenant_id_portal(u, db)
+    try:
+        return await sipv_client.set_moh_selection(tenant_id, items)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
 
