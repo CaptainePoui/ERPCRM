@@ -1220,6 +1220,10 @@ Dépend de : TASK-017, TASK-019 (déjà faits).
 - `GET /telephony/voicebox/voices`, `GET /telephony/voicebox/preview`, `POST /telephony/prompts/generate` — gated `can_generate_voice_prompts`, même UX que `TelephonyTab.jsx` côté interne (filtre langue/genre, prévisualisation `<audio>` live avant de créer).
 - Sous-onglet "Audio" du portail : visible dès qu'AU MOINS UNE des 3 permissions (gérer/écouter/générer) est cochée — chaque section à l'intérieur (upload/suppression, lecteur `<audio>`, générateur IA) reste gated indépendamment par SA permission précise.
 
+**Précision de Philippe (même soir) — deux points distincts, pas la bibliothèque de phrases** :
+1. **Écoute des messages vocaux reçus ("Mon poste")** — vérifié dans le vrai système avant de construire : **trou d'infrastructure réel, pas juste une permission à activer**. Table `voicemail_messages` (SIPV, Postgres) vide (0 ligne), aucun code Python ne la remplit, et la config FreeSWITCH (`voicemail.conf.xml`) a `storage-dir`/`odbc-dsn` commentés — les enregistrements existent quelque part sur le disque FreeSWITCH (stockage par défaut du module) mais rien ne les liste ni ne les sert. Nécessiterait soit d'activer le mode Realtime FreeSWITCH (touche la config live de production), soit un scanner de fichiers — **pas construit ce soir**, décision à prendre séparément avant d'y toucher (risque sur un service de messagerie vocale déjà utilisé par de vrais clients).
+2. **Message d'accueil par texte + IA ("Mon poste")** — celui-là **construit** (contrairement à la bibliothèque de phrases, réservée à Gestion téléphonique) : réutilise `can_edit_voicemail` (déjà existant, pas de nouvelle case — demande explicite "actif de base"). `POST /extension/voicemail-greeting/generate` (texte, voix, type d'accueil absence/occupé/nom) → génère via Voicebox → envoie directement comme message d'accueil réel via `upload_voicemail_greeting` (déjà existant côté SIPV, jamais branché avant). Accès à la liste des voix élargi (`can_generate_voice_prompts` OU `can_edit_voicemail`, les deux contextes en ont besoin).
+
 **Idée connexe loggée séparément** : verrou similaire sur les Tickets (un tech ouvre = verrouillé en édition pour les autres, consultable en lecture) — voir `TASK-006.4`, pas construit ici (module différent).
 Fichiers : backend/app/models/telephony_lock.py (nouveau), backend/app/core/telephony_lock.py (nouveau), backend/app/core/sipv_client.py, backend/app/api/v1/endpoints/portal.py, backend/app/api/v1/endpoints/companies.py, backend/alembic/versions/910b7c27fa10_telephony_lock_table.py (nouveau), frontend/src/pages/Portal.jsx.
 
@@ -5166,3 +5170,20 @@ Réplication côté SIPV de la règle "Graphiti EN PREMIER sur toute demande, sa
 
 **Autre écart trouvé en le faisant, corrigé sur demande de Philippe** : `CLAUDE.md` de SIPV référençait encore "Lire `TASKSIPV.md` EN PREMIER" alors que côté ERPCRM cette règle a été remplacée par `PLATFORM_TASKS.md` (source unifiée) depuis la migration Phase O — jamais propagé côté SIPV. Corrigé (référence `PLATFORM_TASKS.md`, section SIPV, avec note sur l'accès cross-dépôt via SSH ; `TASKSIPV.md` explicitement marqué comme archive).
 Fichiers (sur SIPV, dépôt distinct) : CLAUDE.md, .claude/skills/graphiti-knowledge/SKILL.md, .gitignore, scripts/{graphiti_queue_fact.py, push_graphiti_queue.py}. Côté ERPCRM : `~/.ssh/authorized_keys` (nouvelle clé).
+
+---
+
+## TASK-S063 [SIPV] [ ] Messages vocaux reçus jamais réellement stockés/accessibles
+Date de demande : 2026-09-11 (trouvé en construisant TASK-020, écoute des messages vocaux côté portail)
+Date(s) de travail : 2026-09-11 (diagnostic seulement, rien construit)
+
+Philippe voulait activer l'écoute des messages vocaux reçus dans le portail ("Mon poste", permission déjà existante `can_view_voicemail_messages`, jamais vérifiée nulle part jusqu'ici). Vérifié avant de construire (jamais supposé) :
+- Table `voicemail_messages` (Postgres SIPV) — **0 ligne**, requête directe confirmée.
+- Aucun code Python (backend SIPV) ne remplit `VoicemailMessage.recording_path` — grep exhaustif, seule la déclaration du modèle existe.
+- `/usr/local/freeswitch/conf/autoload_configs/voicemail.conf.xml` — `storage-dir` ET `odbc-dsn` **commentés** (config par défaut) : `mod_voicemail` n'est ni en mode Realtime (base de données) ni configuré pour un chemin de stockage explicite. Les fichiers audio existent forcément quelque part (stockage par défaut du module) mais rien dans le code ne les localise, ne les liste, ni ne les sert.
+
+**Reste à faire** (backlog, décision à prendre avant de construire — touche un service en production utilisé par de vrais clients) :
+- Option A : activer le mode Realtime FreeSWITCH (`odbc-dsn` vers la DB Postgres existante) pour que `mod_voicemail` peuple `voicemail_messages` automatiquement — plus propre, mais modifie la config live de tous les tenants.
+- Option B : scanner le répertoire de stockage par défaut du module (à localiser précisément) pour découvrir les fichiers sans toucher à la config FreeSWITCH — moins invasif, mais plus fragile (dépend de la structure de dossiers interne du module).
+- Dans les deux cas : nouvel endpoint SIPV pour servir le fichier audio d'un message (n'existe pas, seul `GET /{vm_id}/greetings/{type}` existe pour le message d'accueil sortant, pas pour les messages reçus).
+Fichiers concernés (pas touchés) : `/usr/local/freeswitch/conf/autoload_configs/voicemail.conf.xml`, `backend/app/models/voicemail.py`, `backend/app/api/v1/endpoints/voicemail.py` (SIPV).

@@ -382,6 +382,44 @@ async def portal_cdr(page: int = 1, u: PortalUser = Depends(get_portal_user), db
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
 
 
+class VoicemailGreetingGenerate(BaseModel):
+    text: str
+    voice_id: str
+    language: str = "fr"
+    greeting_type: str = "unavailable"  # unavailable | busy | name
+
+
+@router.post("/extension/voicemail-greeting/generate")
+async def generate_voicemail_greeting(payload: VoicemailGreetingGenerate, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """Message d'accueil de boite vocale par texte + IA (Voicebox) -- reutilise
+    can_edit_voicemail (deja la permission Mon poste pour gerer sa messagerie),
+    pas une nouvelle case separee : demande explicite de Philippe, actif de
+    base des que la gestion de messagerie l'est. Distinct de can_generate_voice_prompts
+    (bibliotheque de phrases partagee, cote Gestion telephonique)."""
+    if not u.can_edit_voicemail:
+        raise HTTPException(status_code=403, detail="Gestion de la messagerie vocale non autorisée")
+    if payload.greeting_type not in {"unavailable", "busy", "name"}:
+        raise HTTPException(status_code=400, detail="Type de message invalide")
+    ext = await _portal_own_extension(u, db)
+    try:
+        voicemails = await sipv_client.list_voicemails(ext["tenant_id"])
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    vm = next((v for v in voicemails if str(v.get("extension_id")) == str(ext["id"])), None)
+    if not vm:
+        raise HTTPException(status_code=404, detail="Aucune boîte vocale associée à votre poste")
+    try:
+        content, filename = await voicebox_client.generate(payload.text, payload.voice_id, payload.language)
+    except (TimeoutError, RuntimeError) as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Voicebox injoignable : {e}")
+    try:
+        return await sipv_client.upload_voicemail_greeting(vm["id"], payload.greeting_type, filename, content, "audio/wav")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+
+
 # ── Portal "Gestion téléphonique" (TASK-020) ────────────────────────────────
 # Gated par permission granulaire (can_manage_telephony/ivr/groups,
 # can_view_company_cdr). JAMAIS exposé dans le portail : trunks, routes
@@ -716,7 +754,10 @@ async def telephony_moh_file(moh_id: str, u: PortalUser = Depends(get_portal_use
 # explicite de Philippe ("leur checkbox bien sur").
 @router.get("/telephony/voicebox/voices")
 async def telephony_voicebox_voices(u: PortalUser = Depends(get_portal_user)):
-    if not u.can_generate_voice_prompts:
+    # Liste informative seule (pas de generation) -- accessible aux deux
+    # contextes qui en ont besoin : Gestion telephonique (IVR/phrases) ET
+    # Mon poste (message d'accueil de boite vocale).
+    if not (u.can_generate_voice_prompts or u.can_edit_voicemail):
         raise HTTPException(status_code=403, detail="Génération vocale non autorisée")
     try:
         return await voicebox_client.list_voices()
@@ -726,7 +767,7 @@ async def telephony_voicebox_voices(u: PortalUser = Depends(get_portal_user)):
 
 @router.get("/telephony/voicebox/preview")
 async def telephony_voicebox_preview(text: str, voice_id: str, language: str = "fr", u: PortalUser = Depends(get_portal_user_media)):
-    if not u.can_generate_voice_prompts:
+    if not (u.can_generate_voice_prompts or u.can_edit_voicemail):
         raise HTTPException(status_code=403, detail="Génération vocale non autorisée")
     try:
         content, _filename = await voicebox_client.generate(text, voice_id, language)

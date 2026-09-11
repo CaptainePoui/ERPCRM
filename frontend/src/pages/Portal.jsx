@@ -416,6 +416,7 @@ function ExtensionTab({ ext, perms, onSaved }) {
               <small style={{ color: '#6B7280' }}>Lié au courriel de votre fiche contact.</small>
             )}
           </div>
+          <VoicemailGreetingGenerator />
         </OptionSection>
       )}
 
@@ -1075,6 +1076,84 @@ function TelephonyCdrPanel() {
         {items.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun appel.</td></tr>}
       </tbody>
     </table>
+  )
+}
+
+// Message d'accueil de boîte vocale par texte + IA (TASK-020, Mon poste) --
+// reutilise can_edit_voicemail, pas une case separee (demande explicite,
+// actif de base des que la gestion de messagerie l'est).
+function VoicemailGreetingGenerator() {
+  const [voices, setVoices] = useState([])
+  const [langFilter, setLangFilter] = useState('fr')
+  const [genderFilter, setGenderFilter] = useState('all')
+  const [voiceId, setVoiceId] = useState('')
+  const [text, setText] = useState('')
+  const [greetingType, setGreetingType] = useState('unavailable')
+  const [generating, setGenerating] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [error, setError] = useState('')
+  const portalToken = localStorage.getItem('portal_token')
+
+  useEffect(() => {
+    portalApi.get('/v1/portal/telephony/voicebox/voices').then(r => setVoices(r.data)).catch(() => setVoices([]))
+  }, [])
+
+  const languages = [...new Set(voices.map(v => v.language))].sort()
+  const filteredVoices = voices.filter(v => v.language === langFilter && (genderFilter === 'all' || v.gender === genderFilter))
+  const selectedVoice = voices.find(v => v.voice_id === voiceId)
+
+  async function generate() {
+    if (!text.trim() || !voiceId) return
+    setGenerating(true)
+    setError('')
+    setMsg('')
+    try {
+      await portalApi.post('/v1/portal/extension/voicemail-greeting/generate', {
+        text: text.trim(), voice_id: voiceId, language: langFilter, greeting_type: greetingType,
+      })
+      setMsg('✓ Message d\'accueil mis à jour')
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Échec de la génération')
+    } finally { setGenerating(false) }
+  }
+
+  if (voices.length === 0) return null
+  return (
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #F3F4F6' }}>
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Message d'accueil par synthèse vocale (IA)</div>
+      {error && <div className="portal-error" style={{ marginBottom: 8 }}>{error}</div>}
+      {msg && <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>{msg}</div>}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <select value={greetingType} onChange={e => setGreetingType(e.target.value)} style={{ fontSize: 13 }}>
+          <option value="unavailable">Absence</option>
+          <option value="busy">Occupé</option>
+          <option value="name">Nom annoncé</option>
+        </select>
+        <select value={langFilter} onChange={e => { setLangFilter(e.target.value); setVoiceId('') }} style={{ fontSize: 13 }}>
+          {languages.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <select value={genderFilter} onChange={e => { setGenderFilter(e.target.value); setVoiceId('') }} style={{ fontSize: 13 }}>
+          <option value="all">Tout genre</option>
+          <option value="female">Femme</option>
+          <option value="male">Homme</option>
+        </select>
+        <select value={voiceId} onChange={e => setVoiceId(e.target.value)} style={{ fontSize: 13 }}>
+          <option value="">Choisir une voix...</option>
+          {filteredVoices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
+        </select>
+        {selectedVoice && (
+          <audio controls preload="none" style={{ height: 30 }} src={`/api/v1/portal/telephony/voicebox/preview?${new URLSearchParams({
+            text: `Bonjour, je suis ${selectedVoice.name}.`, voice_id: voiceId, language: langFilter, token: portalToken,
+          }).toString()}`} />
+        )}
+      </div>
+      <div className="form-group" style={{ marginBottom: 8 }}>
+        <textarea rows={2} value={text} onChange={e => setText(e.target.value)} placeholder="Texte de votre message d'accueil..." />
+      </div>
+      <button className="btn-primary" style={{ fontSize: 12, padding: '6px 12px' }} disabled={generating || !text.trim() || !voiceId} onClick={generate}>
+        {generating ? 'Génération...' : 'Enregistrer ce message'}
+      </button>
+    </div>
   )
 }
 
