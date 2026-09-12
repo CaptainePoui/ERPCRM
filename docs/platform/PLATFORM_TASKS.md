@@ -2153,6 +2153,13 @@ Incident réel : plus aucun poste affiché sur la fiche Simple IP inc. -> Télé
 **Cause du 503 sous-jacent (registrations), résolue séparément (même soir)** : la connexion ESL détenue par le processus `sipv-backend` en cours d'exécution était figée/périmée — vérifié en testant une connexion ESL fraîche directement en Python sur SIPV (`get_esl()` + `show_registrations()` + `show_channels()`), qui fonctionnait instantanément, alors que l'API en service échouait systématiquement. Corrigé par un redémarrage de `sipv-backend.service` (API seulement, jamais FreeSWITCH lui-même — aucun appel en cours affecté). Confirmé après coup : `registered`/`call_state` répondent correctement pour les 4 postes (tous `false`/`idle`, cohérent — aucun vrai téléphone connecté dessus actuellement). Cause racine de la connexion figée elle-même pas investiguée plus loin (aucune reconnexion automatique visible dans le code pour ce client ESL spécifique, contrairement au "MOH hold tracker" qui a sa propre logique de reconnexion) — à surveiller si ça revient.
 Fichiers : `backend/app/api/v1/endpoints/companies.py`.
 
+### TASK-023.34 [x] Dot d'enregistrement SIP dans l'onglet Contacts de la fiche compagnie
+Date de demande : 2026-09-11 (Philippe : "je le voie dans le contact mais pas dans les contact de la compagnie"). Date de travail : 2026-09-12.
+
+Contexte vérifié avant tout code : Philippe pensait que les postes SIP de test (100-103, Simple IP inc.) n'étaient pas liés à des contacts. Vérifié faux — les 4 sont bel et bien liés de bout en bout (`sip_extensions.erpcrm_contact_id` → `contacts` → `contact_companies` avec `is_active=true`), et le backend `GET /companies/{id}` les retournait déjà correctement (reproduit directement en Python : 5 contacts retournés dont les 4 postes de test). Ce qui manquait réellement : `ContactsTab` (onglet Contacts de `CompanyDetail.jsx`) n'affichait aucun indicateur d'enregistrement, contrairement à `ContactDetail.jsx` qui l'a déjà (dot vert/rouge + 📞/🔔).
+
+**Correctif** : `ContactsTab` appelle maintenant `GET /companies/{id}/sip-extensions` (endpoint déjà existant et durci par TASK-023.33 le soir même — aucun nouvel endpoint backend nécessaire), construit une map `contact_id -> extension` via `erpcrm_contact_id`, et affiche le même dot que `ContactDetail.jsx` à côté du nom de chaque contact concerné. Poll toutes les 5s, même pattern que la fiche contact individuelle. Fichiers : `frontend/src/pages/CompanyDetail.jsx` (`ContactsTab`).
+
 ---
 
 ## TASK-024 [ERPCRM] [x] Onglet Photos d'installation sur la fiche compagnie

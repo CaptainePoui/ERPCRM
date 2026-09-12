@@ -506,7 +506,7 @@ export default function CompanyDetail({ isNew }) {
               </div>
             )}
 
-            {tab === 1 && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} />}
+            {tab === 1 && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {tab === 2 && <TicketsTab companyId={id} />}
             {tab === 3 && <InventaireTab companyId={id} />}
             {tab === 4 && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}
@@ -662,7 +662,7 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
 }
 
 // ── Contacts ──────────────────────────────────────────────────────────────────
-function ContactsTab({ companyId, companyName, contacts, functions, onRefresh }) {
+function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, sipvEnabled }) {
   const [linking, setLinking] = useState(false)
   const [creatingNew, setCreatingNew] = useState(false)
   const [allContacts, setAllContacts] = useState([])
@@ -670,11 +670,30 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh })
   const [saving, setSaving] = useState(false)
   const [editingEmail, setEditingEmail] = useState(null) // contact_id being edited
   const [emailDraft, setEmailDraft] = useState('')
+  const [extByContactId, setExtByContactId] = useState({})
   const navigate = useNavigate()
 
   useEffect(() => {
     if (linking) api.get('/v1/contacts').then(r => setAllContacts(r.data))
   }, [linking])
+
+  // Statut d'enregistrement SIP par contact (meme dot que ContactDetail.jsx) --
+  // un seul appel groupe (deja durci TASK-023.33) au lieu d'un appel par poste.
+  useEffect(() => {
+    if (!sipvEnabled) return
+    function loadExts() {
+      api.get(`/v1/companies/${companyId}/sip-extensions`).then(r => {
+        const map = {}
+        for (const ext of r.data) {
+          if (ext.erpcrm_contact_id) map[ext.erpcrm_contact_id] = ext
+        }
+        setExtByContactId(map)
+      })
+    }
+    loadExts()
+    const timer = setInterval(loadExts, 5000)
+    return () => clearInterval(timer)
+  }, [companyId, sipvEnabled])
 
   function afterContactCreated(contact) {
     setAllContacts(prev => [...prev, contact])
@@ -720,6 +739,18 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh })
             <button className="contact-name-link" onClick={() => navigate(`/contacts/${c.contact_id}?fromCompanyId=${companyId}&fromCompanyName=${encodeURIComponent(companyName || '')}&fromTab=contacts`)}>
               {c.first_name} {c.last_name}
             </button>
+            {extByContactId[c.contact_id] && (
+              <span title={extByContactId[c.contact_id].registered ? 'En ligne (enregistré)' : 'Hors ligne'} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 6, fontSize: 12,
+              }}>
+                <span style={{
+                  display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+                  background: extByContactId[c.contact_id].registered ? '#22C55E' : '#EF4444',
+                }} />
+                {extByContactId[c.contact_id].call_state === 'active' && <span title="Appel en cours" style={{ color: '#DC2626' }}>📞</span>}
+                {extByContactId[c.contact_id].call_state === 'ringing' && <span title="Sonne" style={{ color: '#D97706' }}>🔔</span>}
+              </span>
+            )}
             {c.is_primary && <span className="primary-badge">Principal</span>}
             {c.functions.length > 0 && <div className="contact-fns">{c.functions.join(' · ')}</div>}
             <div className="contact-email-row">
