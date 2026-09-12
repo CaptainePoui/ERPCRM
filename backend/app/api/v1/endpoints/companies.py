@@ -328,9 +328,12 @@ async def get_company_sip_extensions(company_id: uuid.UUID, db: AsyncSession = D
         return []
     try:
         extensions = await sipv_client.list_extensions(str(company.sipv_tenant_id))
-        regs = await sipv_client.tenant_registrations(str(company.sipv_tenant_id))
     except httpx.HTTPError:
         return []
+    try:
+        regs = await sipv_client.tenant_registrations(str(company.sipv_tenant_id))
+    except httpx.HTTPError:
+        regs = []  # statut en direct indisponible -- ne doit jamais effacer la liste des postes
     reg_by_username = {r["username"]: r for r in regs}
     for ext in extensions:
         reg = reg_by_username.get(ext["username"])
