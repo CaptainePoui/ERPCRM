@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Form, File, UploadFile, Response
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from decimal import Decimal
+from sqlalchemy import select, func
+from app.models.client_payment import ClientPayment, PaymentAllocation
+from app.models.payment import PaymentMethod
 from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -224,14 +227,199 @@ async def portal_me(u: PortalUser = Depends(get_portal_user)):
 @router.get("/invoices")
 async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
     if not u.can_view_invoices:
-        raise HTTPException(status_code=403, detail="Accès factures non autorisé")
+        raise HTTPException(status_code=403, detail="Acces factures non autorise")
     result = await db.execute(
-        select(Invoice).where(Invoice.company_id == u.company_id).order_by(Invoice.created_at.desc())
+        select(Invoice)
+        .where(Invoice.company_id == u.company_id, Invoice.status != "brouillon")
+        .order_by(Invoice.created_at.desc())
     )
     invs = result.scalars().all()
-    return [{"id": str(i.id), "invoice_number": i.invoice_number, "status": i.status,
-             "total_ttc": float(i.total_ttc or 0), "due_date": i.due_date, "created_at": i.created_at}
-            for i in invs]
+
+    out = []
+    for i in invs:
+        r_conf = await db.execute(
+            select(func.sum(PaymentAllocation.amount_allocated))
+            .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
+            .where(PaymentAllocation.invoice_id == i.id, ClientPayment.status == "confirmed")
+        )
+        confirmed = float(r_conf.scalar() or 0)
+
+        r_pend = await db.execute(
+            select(func.sum(PaymentAllocation.amount_allocated))
+            .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
+            .where(PaymentAllocation.invoice_id == i.id, ClientPayment.status.in_(["pending", "processing"]))
+        )
+        pending = float(r_pend.scalar() or 0)
+
+        total = float(i.total or 0)
+        out.append({
+            "id": str(i.id),
+            "invoice_number": i.number,
+            "status": i.status,
+            "total_ttc": total,
+            "due_date": str(i.due_date) if i.due_date else None,
+            "created_at": i.created_at.isoformat() if i.created_at else None,
+            "confirmed_paid": confirmed,
+            "pending_paid": pending,
+            "balance": max(0.0, round(total - confirmed, 2)),
+        })
+    return out
+
+
+@router.get("/payment-methods")
+async def portal_payment_methods(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_view_invoices:
+        raise HTTPException(status_code=403, detail="Acces non autorise")
+    result = await db.execute(
+        select(PaymentMethod)
+        .where(PaymentMethod.is_active == True, PaymentMethod.code.in_(["interac", "virement"]))
+        .order_by(PaymentMethod.name)
+    )
+    methods = result.scalars().all()
+    return [{"code": m.code, "name": m.name} for m in methods]
+
+
+@router.post("/payment-request")
+async def portal_payment_request(body: dict, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """Le client declare avoir effectue un paiement -- cree un ClientPayment pending.
+    Ne marque JAMAIS les factures comme payees.
+    Body: { method_code, allocations: [{invoice_id, amount}], notes? }
+    """
+    if not u.can_view_invoices:
+        raise HTTPException(status_code=403, detail="Acces non autorise")
+
+    method_code = body.get("method_code", "interac")
+    allocations_in = body.get("allocations", [])
+    notes = body.get("notes", "")
+
+    if not allocations_in:
+        raise HTTPException(status_code=400, detail="Au moins une facture requise")
+
+    # Valider et charger les factures -- verification company isolation
+    total = Decimal("0.00")
+    checked = []
+    for alloc in allocations_in:
+        inv_id = uuid.UUID(alloc["invoice_id"])
+        inv = await db.get(Invoice, inv_id)
+        if not inv or inv.company_id != u.company_id:
+            raise HTTPException(status_code=404, detail=f"Facture {inv_id} introuvable")
+        if inv.status == "annulee":
+            raise HTTPException(status_code=400, detail=f"Facture {inv.number} est annulee")
+        amt = Decimal(str(alloc["amount"]))
+        if amt <= 0:
+            raise HTTPException(status_code=400, detail="Montant invalide")
+        total += amt
+        checked.append({"invoice": inv, "amount": amt})
+
+    # Verifier que les methodes portail sont actives
+    method_result = await db.execute(
+        select(PaymentMethod).where(PaymentMethod.code == method_code, PaymentMethod.is_active == True)
+    )
+    method = method_result.scalar_one_or_none()
+    if not method:
+        raise HTTPException(status_code=400, detail="Mode de paiement non disponible")
+
+    # Generer reference unique PAY-YYYY-NNNN
+    from datetime import date
+    year = date.today().year
+    r_count = await db.execute(
+        select(func.count()).where(ClientPayment.reference.like(f"PAY-{year}-%"))
+    )
+    n = (r_count.scalar() or 0) + 1
+    reference = f"PAY-{year}-{n:04d}"
+
+    cp = ClientPayment(
+        company_id=u.company_id,
+        status="pending",
+        source="portal",
+        method_code=method.code,
+        method_name=method.name,
+        amount=total,
+        reference=reference,
+        portal_notes=notes or None,
+    )
+    db.add(cp)
+    await db.flush()
+
+    for item in checked:
+        db.add(PaymentAllocation(
+            payment_id=cp.id,
+            invoice_id=item["invoice"].id,
+            amount_allocated=item["amount"],
+        ))
+
+    await db.commit()
+    await db.refresh(cp)
+
+    return {
+        "id": str(cp.id),
+        "reference": reference,
+        "amount": float(total),
+        "method_name": method.name,
+        "status": "pending",
+        "instructions": _payment_instructions(method.code, float(total), reference),
+    }
+
+
+def _payment_instructions(method_code: str, amount: float, reference: str) -> str:
+    if method_code == "interac":
+        return (
+            f"Envoyez {amount:.2f} $ par Interac a l'adresse configuree. "
+            f"Inscrivez la reference <strong>{reference}</strong> dans le champ message."
+        )
+    elif method_code == "virement":
+        return (
+            f"Effectuez un virement de {amount:.2f} $ a notre compte. "
+            f"Utilisez la reference <strong>{reference}</strong> comme description."
+        )
+    return f"Reference de paiement : {reference}"
+
+
+@router.get("/payment-requests")
+async def portal_payment_requests(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """Liste les demandes de paiement portail en attente ou recentes pour cette compagnie."""
+    if not u.can_view_invoices:
+        raise HTTPException(status_code=403, detail="Acces non autorise")
+    from sqlalchemy.orm import selectinload
+    result = await db.execute(
+        select(ClientPayment)
+        .where(ClientPayment.company_id == u.company_id, ClientPayment.source == "portal")
+        .options(selectinload(ClientPayment.allocations))
+        .order_by(ClientPayment.created_at.desc())
+        .limit(50)
+    )
+    payments = result.scalars().all()
+    out = []
+    for cp in payments:
+        out.append({
+            "id": str(cp.id),
+            "reference": cp.reference,
+            "amount": float(cp.amount),
+            "method_name": cp.method_name,
+            "status": cp.status,
+            "created_at": cp.created_at.isoformat() if cp.created_at else None,
+            "invoice_numbers": [],  # populated below without extra query
+            "allocations": [{"invoice_id": str(a.invoice_id), "amount": float(a.amount_allocated)} for a in cp.allocations],
+        })
+    return out
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+async def portal_invoice_pdf(invoice_id: uuid.UUID, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """Telecharger le PDF d'une facture -- isolation stricte par compagnie."""
+    if not u.can_view_invoices:
+        raise HTTPException(status_code=403, detail="Acces non autorise")
+    inv = await db.get(Invoice, invoice_id)
+    if not inv or inv.company_id != u.company_id:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    from app.core.invoice_pdf import generate_invoice_pdf
+    pdf_bytes = await generate_invoice_pdf(invoice_id, db)
+    filename = f"facture-{inv.number}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 @router.get("/tickets")
 async def portal_tickets(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):

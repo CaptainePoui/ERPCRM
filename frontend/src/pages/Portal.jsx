@@ -28,6 +28,229 @@ export default function Portal() {
   return <PortalDashboard session={session} onLogout={handleLogout} />
 }
 
+// ── InvoicesTab ──────────────────────────────────────────────────────────────
+
+function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
+  const [selected, setSelected] = useState({})  // { invoice_id: amount }
+  const [paymentRequests, setPaymentRequests] = useState(null)
+  const [methods, setMethods] = useState([])
+  const [methodCode, setMethodCode] = useState('interac')
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    Promise.all([
+      portalApi.get('/v1/portal/payment-methods'),
+      portalApi.get('/v1/portal/payment-requests'),
+    ]).then(([m, r]) => {
+      setMethods(m.data)
+      setPaymentRequests(r.data)
+      if (m.data.length > 0) setMethodCode(m.data[0].code)
+    }).catch(() => {})
+  }, [])
+
+  function toggleInvoice(inv) {
+    setSelected(prev => {
+      const next = { ...prev }
+      if (next[inv.id]) {
+        delete next[inv.id]
+      } else {
+        next[inv.id] = inv.balance > 0 ? inv.balance : inv.total_ttc
+      }
+      return next
+    })
+  }
+
+  function selectAll() {
+    const next = {}
+    invoices.filter(i => i.balance > 0.01).forEach(i => { next[i.id] = i.balance })
+    setSelected(next)
+  }
+
+  const selectedTotal = Object.values(selected).reduce((s, v) => s + v, 0)
+  const selectedCount = Object.keys(selected).length
+
+  async function submitPaymentRequest() {
+    if (selectedCount === 0) return
+    setSubmitting(true)
+    setError('')
+    setResult(null)
+    try {
+      const r = await portalApi.post('/v1/portal/payment-request', {
+        method_code: methodCode,
+        allocations: Object.entries(selected).map(([invoice_id, amount]) => ({ invoice_id, amount })),
+      })
+      setResult(r.data)
+      setSelected({})
+      // Rafraichir la liste et les demandes
+      const [inv, req] = await Promise.all([
+        portalApi.get('/v1/portal/invoices'),
+        portalApi.get('/v1/portal/payment-requests'),
+      ])
+      onRefresh()
+      setPaymentRequests(req.data)
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Erreur lors de la demande')
+    } finally { setSubmitting(false) }
+  }
+
+  function downloadPdf(invId, invNumber) {
+    const token = localStorage.getItem('portal_token')
+    const a = document.createElement('a')
+    a.href = `/api/v1/portal/invoices/${invId}/pdf`
+    a.download = `facture-${invNumber}.pdf`
+    // Fetch with auth header and create blob URL
+    fetch(`/api/v1/portal/invoices/${invId}/pdf`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.blob())
+      .then(blob => {
+        const url = URL.createObjectURL(blob)
+        a.href = url
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+      })
+  }
+
+  const pendingPRs = (paymentRequests || []).filter(p => ['pending', 'processing'].includes(p.status))
+
+  return (
+    <div>
+      {/* Demandes en attente */}
+      {pendingPRs.length > 0 && (
+        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 16px', marginBottom: 18 }}>
+          <strong style={{ color: '#1D4ED8', fontSize: 14 }}>Paiements en attente de confirmation</strong>
+          {pendingPRs.map(pr => (
+            <div key={pr.id} style={{ marginTop: 8, fontSize: 13, color: '#1E40AF' }}>
+              <strong>{pr.reference}</strong> &mdash; {fmt(pr.amount)} par {pr.method_name}
+              <span style={{ color: '#6B7280', marginLeft: 8 }}>Soumis le {pr.created_at ? new Date(pr.created_at).toLocaleDateString('fr-CA') : ''}</span>
+            </div>
+          ))}
+          <p style={{ marginTop: 8, fontSize: 12, color: '#6B7280' }}>
+            Ces paiements sont en attente de traitement. Vos factures seront mises à jour dès confirmation.
+          </p>
+        </div>
+      )}
+
+      {/* Liste des factures */}
+      <table className="portal-table">
+        <thead>
+          <tr>
+            <th style={{ width: 32 }}></th>
+            <th>Numéro</th>
+            <th>Statut</th>
+            <th style={{ textAlign: 'right' }}>Total</th>
+            <th style={{ textAlign: 'right' }}>Solde</th>
+            <th>Échéance</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {invoices.map(inv => {
+            const isSelectable = inv.balance > 0.01
+            const isSelected = !!selected[inv.id]
+            return (
+              <tr key={inv.id} style={{ opacity: isSelectable ? 1 : 0.6 }}>
+                <td>
+                  {isSelectable && (
+                    <input type="checkbox" checked={isSelected} onChange={() => toggleInvoice(inv)}
+                      style={{ cursor: 'pointer' }} />
+                  )}
+                </td>
+                <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</td>
+                <td>
+                  <span style={{ color: STATUS_COLOR[inv.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>
+                    {STATUS_FR[inv.status] || inv.status}
+                  </span>
+                  {inv.pending_paid > 0 && (
+                    <span style={{ color: '#2563EB', fontSize: 11, marginLeft: 6 }}>
+                      ({fmt(inv.pending_paid)} en attente)
+                    </span>
+                  )}
+                </td>
+                <td style={{ fontFamily: 'monospace', textAlign: 'right' }}>{fmt(inv.total_ttc)}</td>
+                <td style={{ fontFamily: 'monospace', textAlign: 'right',
+                  color: inv.balance > 0.01 ? '#DC2626' : '#059669', fontWeight: 600 }}>
+                  {fmt(inv.balance)}
+                </td>
+                <td style={{ color: '#6B7280', fontSize: 13 }}>{fmtDate(inv.due_date)}</td>
+                <td>
+                  <button
+                    onClick={() => downloadPdf(inv.id, inv.invoice_number)}
+                    style={{ background: 'none', border: '1px solid #E5E7EB', borderRadius: 4,
+                      padding: '2px 8px', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}
+                    title="Télécharger PDF"
+                  >PDF</button>
+                </td>
+              </tr>
+            )
+          })}
+          {invoices.length === 0 && (
+            <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucune facture.</td></tr>
+          )}
+        </tbody>
+      </table>
+
+      {/* Panneau de paiement */}
+      {invoices.some(i => i.balance > 0.01) && (
+        <div style={{ marginTop: 20, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '16px 20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+            <strong style={{ fontSize: 15 }}>Effectuer un paiement</strong>
+            <button onClick={selectAll} style={{ fontSize: 12, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+              Tout sélectionner
+            </button>
+          </div>
+
+          {selectedCount > 0 && (
+            <div style={{ marginBottom: 12, padding: '10px 14px', background: '#EFF6FF', borderRadius: 6, fontSize: 14 }}>
+              <span><strong>{selectedCount}</strong> facture{selectedCount > 1 ? 's' : ''} sélectionnée{selectedCount > 1 ? 's' : ''}</span>
+              <span style={{ float: 'right', fontWeight: 700, color: '#1D4ED8' }}>{fmt(selectedTotal)}</span>
+            </div>
+          )}
+
+          {methods.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 13, color: '#6B7280', display: 'block', marginBottom: 4 }}>Mode de paiement</label>
+              <select value={methodCode} onChange={e => setMethodCode(e.target.value)}
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 14 }}>
+                {methods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}
+              </select>
+            </div>
+          )}
+
+          {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+
+          {result && (
+            <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 6, padding: '12px 16px', marginBottom: 12 }}>
+              <strong style={{ color: '#065F46', display: 'block', marginBottom: 6 }}>
+                Demande enregistrée &mdash; Référence : {result.reference}
+              </strong>
+              <span style={{ fontSize: 13, color: '#047857' }} dangerouslySetInnerHTML={{ __html: result.instructions }} />
+            </div>
+          )}
+
+          <button
+            onClick={submitPaymentRequest}
+            disabled={selectedCount === 0 || submitting}
+            style={{ background: selectedCount > 0 ? 'var(--brand)' : '#E5E7EB',
+              color: selectedCount > 0 ? '#fff' : '#9CA3AF',
+              border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 14,
+              fontWeight: 600, cursor: selectedCount > 0 ? 'pointer' : 'not-allowed' }}
+          >
+            {submitting ? 'Envoi...' : "J'ai effectué le paiement"}
+          </button>
+          <p style={{ marginTop: 8, fontSize: 11, color: '#9CA3AF' }}>
+            Ce bouton enregistre votre déclaration. Vos factures seront marquées payées après confirmation et rapprochement bancaire.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── PortalLogin ────────────────────────────────────────────────────────────────
+
 // ── Login ─────────────────────────────────────────────────────────────────────
 
 function PortalLogin({ onLogin }) {
@@ -152,7 +375,7 @@ const STATUS_FR = {
   actif: 'Actif', inactif: 'Inactif', hors_service: 'Hors service',
 }
 const STATUS_COLOR = {
-  payee: '#059669', en_retard: '#DC2626', envoyee: 'var(--brand)', brouillon: '#6B7280', annulee: '#9CA3AF',
+  payee: '#059669', partiellement_payee: '#D97706', en_retard: '#DC2626', envoyee: 'var(--brand)', brouillon: '#6B7280', annulee: '#9CA3AF', pending: '#2563EB',
   ouvert: 'var(--brand)', en_cours: '#D97706', resolu: '#059669', ferme: '#9CA3AF', en_attente: '#7C3AED',
   actif: '#059669', inactif: '#9CA3AF', hors_service: '#DC2626',
 }
@@ -200,22 +423,17 @@ function PortalDashboard({ session, onLogout }) {
         {loading && <div className="loading" style={{ padding: '24px 0' }}>Chargement...</div>}
 
         {!loading && tab === 'invoices' && (
-          <div>
-            <table className="portal-table">
-              <thead><tr><th>Numéro</th><th>Statut</th><th>Total</th><th>Échéance</th></tr></thead>
-              <tbody>
-                {(data.invoices || []).map(inv => (
-                  <tr key={inv.id}>
-                    <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</td>
-                    <td><span style={{ color: STATUS_COLOR[inv.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>{STATUS_FR[inv.status] || inv.status}</span></td>
-                    <td style={{ fontFamily: 'monospace' }}>{fmt(inv.total_ttc)}</td>
-                    <td style={{ color: '#6B7280', fontSize: 13 }}>{fmtDate(inv.due_date)}</td>
-                  </tr>
-                ))}
-                {(data.invoices || []).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucune facture.</td></tr>}
-              </tbody>
-            </table>
-          </div>
+          <InvoicesTab
+            invoices={data.invoices || []}
+            onRefresh={() => {
+              setLoading(true)
+              portalApi.get('/v1/portal/invoices')
+                .then(r => setData(p => ({ ...p, invoices: r.data })))
+                .finally(() => setLoading(false))
+            }}
+            fmt={fmt}
+            fmtDate={fmtDate}
+          />
         )}
 
         {!loading && tab === 'tickets' && (

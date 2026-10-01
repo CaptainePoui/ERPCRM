@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -7,7 +8,8 @@ from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
-from app.models.payment import Payment, PaymentMethod
+from app.models.payment import PaymentMethod
+from app.models.client_payment import ClientPayment, PaymentAllocation
 from app.models.invoice import Invoice
 from app.models.user import User
 
@@ -26,6 +28,7 @@ class PaymentMethodOut(BaseModel):
 
 
 class PaymentOut(BaseModel):
+    """Vue d'un encaissement dans le contexte d'une facture (retro-compat frontend)."""
     id: uuid.UUID
     invoice_id: uuid.UUID
     method_code: str
@@ -34,11 +37,13 @@ class PaymentOut(BaseModel):
     discount_rate: float
     discount_amount: float
     net_amount: float
-    paid_at: date
+    paid_at: date | None
     notes: str | None
     transaction_ref: str | None
     card_last4: str | None
-    model_config = {"from_attributes": True}
+    status: str
+    source: str
+    reference: str | None
 
 
 class PaymentCreate(BaseModel):
@@ -54,6 +59,83 @@ class PaymentMethodUpdate(BaseModel):
     name: str | None = None
     discount_rate: float | None = None
     is_active: bool | None = None
+
+
+class AllocationIn(BaseModel):
+    invoice_id: uuid.UUID
+    amount: float
+
+
+class MultiPaymentCreate(BaseModel):
+    """Creation d'un paiement couvrant plusieurs factures (portail ou interne)."""
+    method_code: str
+    allocations: list[AllocationIn]  # >= 1 entrees
+    source: str = "manual"
+    status: str = "confirmed"
+    notes: str | None = None
+    portal_notes: str | None = None
+    card_token: str | None = None
+    card_last4: str | None = None
+    received_at: date | None = None
+    generate_reference: bool = False
+
+
+async def _next_reference(db: AsyncSession) -> str:
+    year = date.today().year
+    r = await db.execute(
+        select(func.count()).where(ClientPayment.reference.like(f"PAY-{year}-%"))
+    )
+    n = (r.scalar() or 0) + 1
+    return f"PAY-{year}-{n:04d}"
+
+
+def _payment_out(cp: ClientPayment, invoice_id: uuid.UUID) -> PaymentOut:
+    """Formatte un ClientPayment dans la vue d'une facture specifique."""
+    alloc = next((a for a in cp.allocations if a.invoice_id == invoice_id), None)
+    net = float(alloc.amount_allocated) if alloc else float(cp.amount)
+    method = next((a for a in cp.allocations), None)
+    return PaymentOut(
+        id=cp.id,
+        invoice_id=invoice_id,
+        method_code=cp.method_code,
+        method_name=cp.method_name,
+        amount=net,
+        discount_rate=0.0,
+        discount_amount=0.0,
+        net_amount=net,
+        paid_at=cp.received_at,
+        notes=cp.notes,
+        transaction_ref=cp.transaction_ref,
+        card_last4=cp.card_last4,
+        status=cp.status,
+        source=cp.source,
+        reference=cp.reference,
+    )
+
+
+async def _recalculate_invoice_status(invoice_id: uuid.UUID, db: AsyncSession) -> None:
+    """Recalcule le statut d'une facture selon les encaissements confirmes."""
+    inv = await db.get(Invoice, invoice_id)
+    if not inv or inv.status == "annulee":
+        return
+
+    r = await db.execute(
+        select(func.sum(PaymentAllocation.amount_allocated))
+        .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
+        .where(
+            PaymentAllocation.invoice_id == invoice_id,
+            ClientPayment.status == "confirmed",
+        )
+    )
+    confirmed_total = r.scalar() or Decimal("0.00")
+
+    if confirmed_total >= inv.total:
+        inv.status = "payee"
+    elif confirmed_total > 0:
+        inv.status = "partiellement_payee"
+    elif inv.status in ("payee", "partiellement_payee"):
+        # Paiement annule -- repasse a envoyee ou en_retard selon date
+        inv.status = "envoyee"
 
 
 # ── Payment Methods ───────────────────────────────────────────────────────────
@@ -77,67 +159,172 @@ async def update_method(method_id: uuid.UUID, payload: PaymentMethodUpdate, db: 
     return method
 
 
-# ── Payments ──────────────────────────────────────────────────────────────────
+# ── Payments (vue par facture, retro-compat frontend) ────────────────────────
 
 @router.get("/invoice/{invoice_id}", response_model=list[PaymentOut])
 async def list_payments(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     result = await db.execute(
-        select(Payment).where(Payment.invoice_id == invoice_id).order_by(Payment.paid_at.desc())
+        select(ClientPayment)
+        .join(PaymentAllocation, PaymentAllocation.payment_id == ClientPayment.id)
+        .where(PaymentAllocation.invoice_id == invoice_id)
+        .options(selectinload(ClientPayment.allocations))
+        .order_by(ClientPayment.created_at.desc())
     )
-    return result.scalars().all()
+    payments = result.scalars().unique().all()
+    return [_payment_out(cp, invoice_id) for cp in payments]
 
 
 @router.post("/invoice/{invoice_id}", response_model=PaymentOut, status_code=status.HTTP_201_CREATED)
 async def add_payment(invoice_id: uuid.UUID, payload: PaymentCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Encaissement simple sur une seule facture (usage interne / InvoiceDetail)."""
     inv = await db.get(Invoice, invoice_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Facture introuvable")
-    if inv.status in ("annulee",):
-        raise HTTPException(status_code=400, detail="Impossible d'encaisser une facture annulée")
+    if inv.status == "annulee":
+        raise HTTPException(status_code=400, detail="Impossible d'encaisser une facture annulee")
 
     method_result = await db.execute(select(PaymentMethod).where(PaymentMethod.code == payload.method_code))
     method = method_result.scalar_one_or_none()
     if not method:
         raise HTTPException(status_code=404, detail="Mode de paiement introuvable")
 
-    discount_rate = method.discount_rate
-    discount_amount = round(payload.amount * discount_rate / 100, 2)
-    net_amount = round(payload.amount - discount_amount, 2)
-
-    payment = Payment(
-        invoice_id=invoice_id,
+    amount = Decimal(str(payload.amount))
+    cp = ClientPayment(
+        company_id=inv.company_id,
+        status="confirmed",
+        source="manual",
         method_code=method.code,
         method_name=method.name,
-        amount=payload.amount,
-        discount_rate=discount_rate,
-        discount_amount=discount_amount,
-        net_amount=net_amount,
-        paid_at=payload.paid_at or date.today(),
+        amount=amount,
         notes=payload.notes,
         card_token=payload.card_token,
         card_last4=payload.card_last4,
+        received_at=payload.paid_at or date.today(),
     )
-    db.add(payment)
+    db.add(cp)
     await db.flush()
 
-    # Calculer total encaissé et marquer payée si soldée
-    total_paid_result = await db.execute(
-        select(func.sum(Payment.net_amount)).where(Payment.invoice_id == invoice_id)
+    alloc = PaymentAllocation(
+        payment_id=cp.id,
+        invoice_id=invoice_id,
+        amount_allocated=amount,
     )
-    total_paid = total_paid_result.scalar() or 0
-    if total_paid >= inv.total and inv.status not in ("payee",):
-        inv.status = "payee"
+    db.add(alloc)
+    await db.flush()
+
+    await _recalculate_invoice_status(invoice_id, db)
+    await db.commit()
+    await db.refresh(cp)
+    await db.refresh(alloc)
+
+    return _payment_out(cp, invoice_id)
+
+
+@router.post("/multi", response_model=list[PaymentOut], status_code=status.HTTP_201_CREATED)
+async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Encaissement couvrant plusieurs factures (portail ou interne)."""
+    if not payload.allocations:
+        raise HTTPException(status_code=400, detail="Au moins une allocation requise")
+
+    method_result = await db.execute(select(PaymentMethod).where(PaymentMethod.code == payload.method_code))
+    method = method_result.scalar_one_or_none()
+    if not method:
+        raise HTTPException(status_code=404, detail="Mode de paiement introuvable")
+
+    total = Decimal(str(sum(a.amount for a in payload.allocations)))
+    reference = await _next_reference(db) if payload.generate_reference else None
+
+    # Valider que toutes les factures existent et appartiennent a la meme compagnie
+    company_id = None
+    for alloc_in in payload.allocations:
+        inv = await db.get(Invoice, alloc_in.invoice_id)
+        if not inv:
+            raise HTTPException(status_code=404, detail=f"Facture {alloc_in.invoice_id} introuvable")
+        if inv.status == "annulee":
+            raise HTTPException(status_code=400, detail=f"Facture {alloc_in.invoice_id} annulee")
+        if company_id is None:
+            company_id = inv.company_id
+        elif company_id != inv.company_id:
+            raise HTTPException(status_code=400, detail="Toutes les factures doivent appartenir a la meme compagnie")
+
+    cp = ClientPayment(
+        company_id=company_id,
+        status=payload.status,
+        source=payload.source,
+        method_code=method.code,
+        method_name=method.name,
+        amount=total,
+        reference=reference,
+        notes=payload.notes,
+        portal_notes=payload.portal_notes,
+        card_token=payload.card_token,
+        card_last4=payload.card_last4,
+        received_at=payload.received_at or (date.today() if payload.status == "confirmed" else None),
+    )
+    db.add(cp)
+    await db.flush()
+
+    invoice_ids = []
+    for alloc_in in payload.allocations:
+        alloc = PaymentAllocation(
+            payment_id=cp.id,
+            invoice_id=alloc_in.invoice_id,
+            amount_allocated=Decimal(str(alloc_in.amount)),
+        )
+        db.add(alloc)
+        invoice_ids.append(alloc_in.invoice_id)
+    await db.flush()
+
+    if payload.status == "confirmed":
+        for iid in invoice_ids:
+            await _recalculate_invoice_status(iid, db)
 
     await db.commit()
-    await db.refresh(payment)
-    return payment
+    await db.refresh(cp)
+    return [_payment_out(cp, iid) for iid in invoice_ids]
+
+
+@router.patch("/{payment_id}/confirm", response_model=PaymentOut)
+async def confirm_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Confirme un paiement en attente (pending -> confirmed) et met a jour les factures."""
+    result = await db.execute(
+        select(ClientPayment)
+        .where(ClientPayment.id == payment_id)
+        .options(selectinload(ClientPayment.allocations))
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    if cp.status == "confirmed":
+        raise HTTPException(status_code=400, detail="Deja confirme")
+
+    cp.status = "confirmed"
+    cp.received_at = cp.received_at or date.today()
+    for alloc in cp.allocations:
+        await _recalculate_invoice_status(alloc.invoice_id, db)
+
+    await db.commit()
+    await db.refresh(cp)
+    first_inv = cp.allocations[0].invoice_id if cp.allocations else None
+    return _payment_out(cp, first_inv or cp.id)
 
 
 @router.delete("/{payment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(Payment).options(selectinload(Payment.invoice)).where(Payment.id == payment_id))
-    payment = result.scalar_one_or_none()
-    if not payment:
+    result = await db.execute(
+        select(ClientPayment)
+        .where(ClientPayment.id == payment_id)
+        .options(selectinload(ClientPayment.allocations))
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
         raise HTTPException(status_code=404, detail="Paiement introuvable")
-    await db.delete(payment)
+
+    invoice_ids = [a.invoice_id for a in cp.allocations]
+    await db.delete(cp)
+    await db.flush()
+
+    for iid in invoice_ids:
+        await _recalculate_invoice_status(iid, db)
+
     await db.commit()

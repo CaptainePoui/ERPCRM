@@ -304,6 +304,59 @@ Fichiers touchés :
   préremplit le courriel depuis le contact principal de la compagnie), ligne
   "Courriel ouvert" dépliable.
 
+> **Régularisation (2026-10-01)** : TASK-005.2 à TASK-005.6 ci-dessous ont été réalisées le 2026-09-29 par une session Claude lancée par erreur sur SIPV depuis `/home/sipv` (sans le CLAUDE.md ERPCRM ni Graphiti). Elle les avait notées dans `TASKERPCRM.md` (archive) sous les numéros TASK-039 à TASK-043, déjà pris ici par d'autres tâches (TASK-039 = Graphe de connaissance 3D, TASK-040 = Outillage Graphiti, TASK-041 = Journal de conversation). Correspondance : ancien TASK-039 → TASK-005.2, TASK-040 → TASK-005.3, TASK-041 → TASK-005.4, TASK-042 → TASK-005.5, TASK-043 → TASK-005.6. Code relu et vérifié en place le 2026-10-01 (routes exposées par le backend, migrations à `b1c2d3e4f5g6`, build frontend du 2026-09-29 servi). Voir `ERRORS_LESSONS.md` TASK-005.4.
+
+### TASK-005.2 [x] Fix — accès aux factures depuis le portail client (HTTP 500)
+Date de demande : 2026-09-29
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+
+`GET /api/v1/portal/invoices` utilisait deux attributs inexistants sur `Invoice` (`i.invoice_number` → `i.number`, `i.total_ttc` → `i.total`) : AttributeError, toute consultation des factures dans le portail renvoyait 500. Les clés JSON (`invoice_number`, `total_ttc`) sont conservées pour `Portal.jsx`.
+Fichiers : `backend/app/api/v1/endpoints/portal.py`. Migration : aucune.
+
+### TASK-005.3 [x] Montants en décimal exact (Float → Numeric)
+Date de demande : 2026-09-29
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+
+Tous les montants étaient en FLOAT8 (arrondis imprécis). Passés en `Numeric` : taux TPS/TVQ et `discount_rate` en `Numeric(7,4)`, montants (`subtotal`, `tps_amount`, `tvq_amount`, `total`, `unit_price`, `line_total`, montants de `payments`) en `Numeric(14,2)`, `InvoiceLine.qty` en `Numeric(12,4)`. Schémas Pydantic et frontend inchangés (Decimal → JSON float).
+Fichiers : `backend/app/models/invoice.py`, `backend/app/models/payment.py`. Migration Alembic : `a0b1c2d3e4f5` (revises `9ea99349c01f`). Données au moment de la migration : 1 facture, 2 lignes, 0 paiement.
+Note : le diff de `invoice.py` a aussi retiré des accents et raccourci des commentaires sans lien avec la demande (ex. référence TASK-S010.4 sur la succursale) — signalé, non corrigé.
+
+### TASK-005.4 [~] Moteur de paiements multi-factures (ClientPayment + PaymentAllocation)
+Date de demande : 2026-09-29
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+
+Remplace « 1 paiement = 1 facture » par :
+- `ClientPayment` : encaissement lié à une compagnie ; statut `pending|processing|confirmed|rejected|refunded|cancelled` ; source `portal|manual|bank_import|interac_email|gateway` (valeurs prévues, seules `manual` et `portal` sont produites par le code) ; référence unique `PAY-AAAA-NNNN` ; champs gateway réservés.
+- `PaymentAllocation` : répartition d'un encaissement sur une ou plusieurs factures (`amount_allocated`).
+- Statut de facture recalculé depuis les allocations **confirmées** seulement : total atteint → `payee`, partiel → `partiellement_payee` (nouveau statut), plus rien → `envoyee`.
+- Endpoints (`/api/v1/payments`) : `GET/POST /invoice/{id}` (compatibles avec `InvoiceDetail.jsx`), `POST /multi`, `PATCH /{id}/confirm`, `DELETE /{id}`. L'ancienne table `payments` est conservée (0 ligne).
+
+Fichiers : `backend/app/models/client_payment.py` (nouveau), `backend/app/models/__init__.py`, `backend/app/api/v1/endpoints/payments.py`. Migration Alembic : `b1c2d3e4f5g6` (revises `a0b1c2d3e4f5`).
+
+**Reste (défauts trouvés à la relecture du 2026-10-01, non corrigés — aucun paiement en base à cette date)** :
+1. **Escompte par mode de paiement perdu** : l'ancien code appliquait `PaymentMethod.discount_rate` (montant net après rabais) ; le nouveau enregistre le montant brut avec rabais 0, alors que le modal d'encaissement de `InvoiceDetail.jsx` affiche toujours « Rabais X % → Net ». Sans effet aujourd'hui (tous les taux à 0 en base), régression dès qu'un taux est réglé.
+2. **L'admin compte les paiements en attente comme encaissés** : `GET /payments/invoice/{id}` renvoie aussi les `pending` déclarés par le client au portail, et `InvoiceDetail.jsx` les additionne dans « Total encaissé » et « Solde restant » sans afficher le statut.
+3. **Aucun écran admin pour confirmer/rejeter un paiement en attente** : `PATCH /payments/{id}/confirm` existe mais rien ne l'appelle ; un paiement déclaré au portail reste en attente indéfiniment.
+4. **Référence PAY-AAAA-NNNN calculée par comptage + 1** (`payments.py` et `portal.py`) : après une suppression, le prochain numéro peut retomber sur une référence existante → violation d'unicité (HTTP 500) ; aussi exposé à deux demandes simultanées.
+
+### TASK-005.5 [x] Génération PDF des factures (WeasyPrint)
+Date de demande : 2026-09-29
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+
+`backend/app/core/invoice_pdf.py` : PDF format lettre avec bandeau PAYÉE / PARTIELLEMENT PAYÉE / EN ATTENTE, lignes, TPS/TVQ, section paiements. Coordonnées du vendeur lues dans les paramètres (`pdf_seller_name`, `pdf_seller_address`, `pdf_seller_tps`, `pdf_seller_tvq`, `pdf_seller_phone`, `pdf_seller_email`, défaut « Simple IP inc. »). Route `GET /api/v1/invoices/{id}/pdf`.
+Dépendances ajoutées au venv : weasyprint 70.0 (+ fonttools, Pillow, pydyf, tinycss2, tinyhtml5, cssselect2, pyphen).
+Fichiers : `backend/app/core/invoice_pdf.py` (nouveau), `backend/app/api/v1/endpoints/invoices.py`.
+À faire : renseigner les clés `pdf_seller_*` (aucune mention dans le frontend — vérifier si l'écran Paramètres permet de les saisir).
+
+### TASK-005.6 [x] Portail client — onglet Factures complet (solde, PDF, déclaration de paiement)
+Date de demande : 2026-09-29
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+
+Backend (`portal.py`) : `GET /portal/invoices` (factures hors brouillon avec `confirmed_paid`, `pending_paid`, `balance`), `GET /portal/payment-methods` (interac/virement actifs), `POST /portal/payment-request` (crée un `ClientPayment` `pending` source `portal` avec référence et instructions — ne marque **jamais** une facture payée), `GET /portal/payment-requests`, `GET /portal/invoices/{id}/pdf` (isolation stricte par compagnie).
+Frontend (`Portal.jsx`) : composant `InvoicesTab` — colonne Solde, montants en attente en bleu, sélection multiple des factures avec solde, choix du mode, bouton « J'ai effectué le paiement », référence + instructions, bandeau des paiements en attente, téléchargement PDF. Build vite OK.
+Fichiers : `backend/app/api/v1/endpoints/portal.py`, `frontend/src/pages/Portal.jsx`.
+Limites : le texte « Vos factures seront marquées payées après confirmation et rapprochement bancaire » n'a aucun rapprochement bancaire derrière (n'existe pas, voir TASK-005.4 point 3) ; `payment-request` n'empêche pas de déclarer plus que le solde ni de viser une facture brouillon ; alertes de retard 15/30 jours évoquées par la session d'origine (« TASK-054 », numéro jamais créé) — non faites, non numérotées.
+
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche

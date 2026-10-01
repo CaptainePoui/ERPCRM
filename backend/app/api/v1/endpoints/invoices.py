@@ -1,7 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta
 from dateutil.relativedelta import relativedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
@@ -472,3 +472,20 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     await db.commit()
     next_inv = await _get_inv(next_inv.id, db)
     return await _build_out(next_inv, db)
+
+
+@router.get("/{invoice_id}/pdf")
+async def download_invoice_pdf(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Genere et retourne le PDF d'une facture (avec etat de paiement courant)."""
+    from app.core.invoice_pdf import generate_invoice_pdf
+    try:
+        pdf_bytes = await generate_invoice_pdf(invoice_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    inv = await db.get(Invoice, invoice_id)
+    filename = f"facture-{inv.number}.pdf" if inv else f"facture-{invoice_id}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

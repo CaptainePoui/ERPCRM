@@ -837,3 +837,19 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : `systemctl restart freeswitch` exécuté immédiatement pour restaurer le contrôle — vérifié dans les logs (`mod_event_socket` rechargé à 19:23:23, aucune trace d'appel actif interrompu). A servi, au final, de test encore plus réaliste que prévu (vraie coupure FreeSWITCH) : le correctif TASK-S020.4 a été validé dessus — reconnexion automatique confirmée sans redémarrage manuel du service SIPV.
 
 **Leçon (à ne pas refaire)** : ne jamais décharger/redémarrer le module qui EST le canal de contrôle utilisé pour l'administrer — sur un service en production avec du trafic réel, tester une coupure de connexion applicative par un moyen qui n'affecte QUE cette connexion précise (socket client ciblé, firewall temporaire sur le port précis), jamais le service qui la sert des deux côtés à la fois.
+
+---
+
+## TASK-005.4 — Travail ERPCRM (paiements) fait depuis une session Claude lancée sur SIPV dans `/home/sipv` : mauvais fichier de tâches, numéros en collision, rien dans Graphiti, rien de commité
+
+**Date** : travail 2026-09-29, découvert et régularisé 2026-10-01
+
+**On croyait** : qu'une session Claude ouverte sur le serveur SIPV pouvait faire du travail ERPCRM par SSH en respectant les mêmes conventions qu'une session ERPCRM.
+
+**Preuve** : la transcription (`/home/sipv/.claude/projects/-home-sipv/d4527add-....jsonl`) montre `cwd=/home/sipv` — ni le CLAUDE.md ERPCRM, ni même celui de SIPV (`/home/sipv/sipv/CLAUDE.md`, sous-dossier jamais chargé en remontant), ni la mémoire du projet, ni le MCP Graphiti. Résultat : TASK-039 à TASK-043 écrites dans `TASKERPCRM.md` (archive depuis la Phase O) avec des numéros déjà pris dans PLATFORM_TASKS.md, aucune consultation ni écriture Graphiti, code et migrations appliqués en production mais jamais commités. La session n'a pas été coupée (mise en veille soupçonnée au départ) : elle a fini le travail puis est passée à un autre sujet.
+
+**Cause réelle** : le répertoire de lancement détermine quelles règles une session voit (même piège que `feedback_claude_code_session_root_scope`, cette fois côté SIPV et pour du travail ERPCRM). Une session sans règles applique d'anciennes conventions sans le savoir.
+
+**Correction** : renumérotées TASK-005.2 à TASK-005.6 (module Factures) dans PLATFORM_TASKS.md avec la correspondance, code relu (4 défauts trouvés et listés dans TASK-005.4, non corrigés sans GO), Graphiti mis à jour, commit.
+
+**Leçon (à ne pas refaire)** : tout travail ERPCRM se fait dans une session lancée depuis `/home/simpleip/erpcrm` ; tout travail SIPV depuis `/home/sipv/sipv`, jamais depuis `/home/sipv`. Décision de Philippe (2026-10-01) : ne plus lancer Claude sur SIPV, tout lancer depuis ERPCRM.
