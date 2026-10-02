@@ -59,6 +59,16 @@ Photos comme Journal, Journal retombait sur Général (slug 'undefined'
 introuvable). Ajouté le slug manquant, 9 entrées alignées 1-pour-1.
 Fichier : frontend/src/pages/CompanyDetail.jsx (commit a978bba).
 
+### TASK-002.2 [x] Fiche compagnie — vue d'ensemble financière (Général) et onglet Transactions
+Date de demande : 2026-10-02 (Philippe : « dans compagnie j'aimerais une vue d'ensemble dans le général avec son solde, ses retards (s'il en a), optimiser cet onglet, et un nouvel onglet de transactions où on voit les factures et les avoirs » ; GO « sans les paiements mais je veux voir quelle facture est payée et laquelle ne l'est pas »)
+Date(s) de travail : 2026-10-02
+
+- API `GET /v1/companies/{id}/finance` : résumé (solde dû, en retard + nombre + plus vieux retard en jours, avoirs disponibles, facturé et payé de l'année fiscale — début selon `fiscal_year_start_month` —, dernier paiement) + liste des factures et avoirs avec payé/appliqué, reste, part réglée par avoir. Montant réglé = paiements confirmés + avoirs appliqués (`settled_amounts`, TASK-005.10).
+- Général : rangée de cartes en haut (Solde dû et En retard ouvrent Transactions filtré ; En retard et Avoirs disponibles n'apparaissent que s'il y a lieu). Écran réorganisé en 2 colonnes (Identification + Taxes | Adresses + Coordonnées) ; NEQ, secteur, actionnariat, employés, chiffre d'affaires et site web dans la section repliable « Détails de l'entreprise » (toujours modifiables, aucun champ retiré).
+- Nouvel onglet Transactions (2e onglet, slug `transactions`) : factures + avoirs par date, état de paiement lisible (Payée, Créditée, Partiellement payée, Non payée, En retard, Avoir ouvert/appliqué ; « dont avoir x $ » si réglée en partie par avoir), filtres Tout / Non payées / Payées / En retard / Avoirs, totaux sur les factures seulement (un avoir appliqué est déjà dans le « Payé » de sa facture). Les paiements ne sont pas listés (décision de Philippe).
+- Le rendu des onglets se fait par slug (plus par index) : ajouter un onglet ne décale plus les autres (cf. TASK-002.1).
+Fichiers : backend/app/api/v1/endpoints/companies.py, frontend/src/pages/CompanyDetail.jsx, frontend/src/pages/CompanyDetail.css.
+
 ---
 
 ## TASK-003 [ERPCRM] [x] Contacts — liste, fiche, multi-compagnies, + Ticket / + Facture / + Tâche

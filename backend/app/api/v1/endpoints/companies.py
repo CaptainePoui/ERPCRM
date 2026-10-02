@@ -1438,3 +1438,80 @@ async def deactivate_company_site(company_id: uuid.UUID, site_id: uuid.UUID, db:
     await _sync_site_if_sipv(company_id, site.id, _site_sync_fields(site, is_active=False), db)
     site.is_active = False
     await db.commit()
+
+
+# ── Vue financiere (TASK-002.2) ──────────────────────────────────────────────
+
+@router.get("/{company_id}/finance")
+async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Vue d'ensemble (solde, retard, avoirs disponibles, annee fiscale, dernier paiement) et
+    transactions (factures + avoirs) de la compagnie. Montant regle = paiements confirmes + avoirs
+    appliques, meme calcul que le statut des factures (settled_amounts)."""
+    from decimal import Decimal
+    from sqlalchemy import func
+    from app.models.invoice import Invoice
+    from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation
+    from app.api.v1.endpoints.payments import settled_amounts
+    from app.api.v1.endpoints.settings import get_setting
+
+    if not await db.get(Company, company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    invs = (await db.execute(select(Invoice).where(Invoice.company_id == company_id)
+                             .order_by(Invoice.issue_date.desc(), Invoice.number.desc()))).scalars().all()
+    ids = [i.id for i in invs]
+    settled = await settled_amounts(db, ids)
+    applied = dict((await db.execute(
+        select(CreditAllocation.credit_invoice_id, func.sum(CreditAllocation.amount))
+        .where(CreditAllocation.credit_invoice_id.in_(ids)).group_by(CreditAllocation.credit_invoice_id))).all()) if ids else {}
+    credited = dict((await db.execute(
+        select(CreditAllocation.invoice_id, func.sum(CreditAllocation.amount))
+        .where(CreditAllocation.invoice_id.in_(ids)).group_by(CreditAllocation.invoice_id))).all()) if ids else {}
+
+    today = date.today()
+    month = int(await get_setting(db, "fiscal_year_start_month") or 1)
+    fy_start = date(today.year if today.month >= month else today.year - 1, month, 1)
+    zero = Decimal("0.00")
+    balance_due = overdue = credits_available = billed_fy = zero
+    overdue_count, oldest_days = 0, 0
+    rows = []
+    for i in invs:
+        is_credit = i.credit_of_id is not None
+        live = i.status not in ("brouillon", "annulee")
+        if is_credit:
+            paid = Decimal(applied.get(i.id) or 0)          # montant deja applique
+            remaining = (abs(i.total) - paid) if live else zero
+            if live:
+                credits_available += remaining
+        else:
+            paid = settled.get(i.id, zero)
+            remaining = max(zero, i.total - paid) if live else zero
+            if live and remaining > 0:
+                balance_due += remaining
+                if i.due_date and i.due_date < today:
+                    overdue += remaining
+                    overdue_count += 1
+                    oldest_days = max(oldest_days, (today - i.due_date).days)
+        if live and i.issue_date >= fy_start:
+            billed_fy += i.total
+        rows.append({"id": str(i.id), "kind": "credit" if is_credit else "invoice", "number": i.number,
+                     "issue_date": i.issue_date, "due_date": i.due_date, "status": i.status,
+                     "total": float(i.total), "paid": float(paid),
+                     "credited": float(credited.get(i.id) or 0) if not is_credit else 0.0, "remaining": float(remaining),
+                     "overdue": (not is_credit and live and remaining > 0 and bool(i.due_date and i.due_date < today)),
+                     "site_label": i.site_label_snapshot})
+
+    paid_fy = (await db.execute(
+        select(func.sum(ClientPayment.amount)).where(ClientPayment.company_id == company_id,
+            ClientPayment.status == "confirmed", ClientPayment.received_at >= fy_start))).scalar() or zero
+    last = (await db.execute(
+        select(ClientPayment).where(ClientPayment.company_id == company_id, ClientPayment.status == "confirmed")
+        .order_by(ClientPayment.received_at.desc()).limit(1))).scalar_one_or_none()
+    return {
+        "summary": {
+            "balance_due": float(balance_due), "overdue": float(overdue), "overdue_count": overdue_count,
+            "oldest_overdue_days": oldest_days, "credits_available": float(credits_available),
+            "fiscal_year_start": fy_start, "billed_fiscal_year": float(billed_fy), "paid_fiscal_year": float(paid_fy),
+            "last_payment": {"date": last.received_at, "amount": float(last.amount), "method": last.method_name} if last else None,
+        },
+        "transactions": rows,
+    }

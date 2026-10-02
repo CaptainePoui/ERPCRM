@@ -262,3 +262,23 @@
 .text-faint { color: #9CA3AF; }
 .text-sm { font-size: 13px; }
 .text-xs { font-size: 12px; }
+
+/* ── Vue d'ensemble financiere + Transactions (TASK-002.2) ── */
+.cd-fin-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.cd-fin-card { border: 1px solid #E5E7EB; border-radius: 10px; padding: 12px 14px; background: #fff; }
+.cd-fin-card.clickable { cursor: pointer; }
+.cd-fin-card.clickable:hover { border-color: var(--brand); }
+.cd-fin-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #9CA3AF; }
+.cd-fin-value { font-size: 20px; font-weight: 700; margin-top: 4px; color: #111827; }
+.cd-fin-sub { font-size: 12px; color: #6B7280; margin-top: 2px; }
+.cd-general-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.cd-one-col { grid-template-columns: 1fr; }
+@media (max-width: 900px) { .cd-general-cols { grid-template-columns: 1fr; gap: 16px; } }
+.cd-tx-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cd-tx-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: #9CA3AF; padding: 8px 10px; border-bottom: 1px solid #E5E7EB; }
+.cd-tx-table td { padding: 9px 10px; border-bottom: 1px solid #F3F4F6; }
+.cd-tx-table tfoot td { font-weight: 700; border-top: 2px solid #E5E7EB; border-bottom: none; font-size: 13px; }
+.cd-tx-row { cursor: pointer; }
+.cd-tx-row:hover { background: #F9FAFB; }
+.cd-tx-badge { font-size: 11px; font-weight: 600; border: 1px solid; border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
+.cd-tx-credit { font-size: 10px; font-weight: 700; background: #FEF3C7; color: #92400E; border-radius: 4px; padding: 1px 5px; margin-right: 6px; }

@@ -13,8 +13,8 @@ import CdrReportsSection from '../components/CdrReportsSection'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 
-const TABS = ['Général', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
+const TABS = ['Général', 'Transactions', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'transactions', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -267,6 +267,152 @@ function NewCompanyForm({ managers, statuses, onCreated }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
+// ── Vue financiere et transactions (TASK-002.2) ──────────────────────────────
+// Montants calcules par GET /companies/{id}/finance : regle = paiements confirmes + avoirs appliques.
+function money(v) {
+  return Number(v || 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' })
+}
+function fmtD(d) {
+  return d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-CA') : '—'
+}
+
+function FinanceOverview({ companyId, onOpen }) {
+  const [f, setF] = useState(null)
+  useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setF(r.data.summary)) }, [companyId])
+  if (!f) return null
+  const card = (label, value, sub, opts = {}) => (
+    <div className={`cd-fin-card${opts.onClick ? ' clickable' : ''}`} onClick={opts.onClick}
+      style={opts.alert ? { borderColor: '#FCA5A5', background: '#FEF2F2' } : undefined}>
+      <div className="cd-fin-label">{label}</div>
+      <div className="cd-fin-value" style={opts.color ? { color: opts.color } : undefined}>{value}</div>
+      {sub && <div className="cd-fin-sub">{sub}</div>}
+    </div>
+  )
+  const fy = new Date(f.fiscal_year_start + 'T00:00:00').getFullYear()
+  return (
+    <div className="cd-fin-row">
+      {card('Solde dû', money(f.balance_due), f.balance_due > 0 ? 'Voir les factures ouvertes' : 'Rien à recevoir',
+        { color: f.balance_due > 0 ? '#111827' : '#059669', onClick: () => onOpen('ouvertes') })}
+      {f.overdue > 0 && card('En retard', money(f.overdue),
+        `${f.overdue_count} facture${f.overdue_count > 1 ? 's' : ''} · la plus vieille : ${f.oldest_overdue_days} j`,
+        { color: '#DC2626', alert: true, onClick: () => onOpen('retard') })}
+      {f.credits_available > 0 && card('Avoirs disponibles', money(f.credits_available), 'À appliquer sur ses factures',
+        { color: '#D97706', onClick: () => onOpen('avoirs') })}
+      {card(`Facturé ${fy}-${fy + 1}`, money(f.billed_fiscal_year), `Payé : ${money(f.paid_fiscal_year)} · net des avoirs`)}
+      {card('Dernier paiement', f.last_payment ? money(f.last_payment.amount) : '—',
+        f.last_payment ? `${fmtD(f.last_payment.date)} · ${f.last_payment.method}` : 'Aucun paiement')}
+    </div>
+  )
+}
+
+function CompanyDetailsSection({ c, saveField }) {
+  const fields = [c.neq, c.industry, c.shareholder_type, c.employee_count, c.annual_revenue, c.website]
+  const filled = fields.filter(v => v !== null && v !== undefined && v !== '').length
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div className="ifield-section-title" style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => setOpen(!open)}>
+        {open ? '▾' : '▸'} Détails de l'entreprise <span style={{ textTransform: 'none', fontWeight: 400 }}>({filled}/{fields.length} remplis)</span>
+      </div>
+      {open && (
+        <div className="ifields-grid">
+          <InlineField label="NEQ" value={c.neq} onSave={v => saveField('neq', v)} />
+          <InlineField label="Secteur d'activité" value={c.industry} onSave={v => saveField('industry', v)} />
+          <InlineField label="Type d'actionnariat" value={c.shareholder_type} onSave={v => saveField('shareholder_type', v)} />
+          <InlineField label="Nombre d'employés" value={c.employee_count != null ? String(c.employee_count) : ''} type="number" onSave={v => saveField('employee_count', v ? Number(v) : null)} />
+          <InlineField label="Chiffre d'affaires ($)" value={c.annual_revenue != null ? String(c.annual_revenue) : ''} type="number" onSave={v => saveField('annual_revenue', v ? Number(v) : null)} />
+          <InlineField label="Site web" value={c.website} onSave={v => saveField('website', v)} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Statut de paiement lisible : on voit d'un coup d'oeil ce qui est paye ou non
+function payState(t) {
+  if (t.status === 'brouillon') return { label: 'Brouillon', color: '#6B7280' }
+  if (t.status === 'annulee') return { label: 'Annulée', color: '#9CA3AF' }
+  if (t.kind === 'credit') return t.remaining > 0.005 ? { label: 'Avoir ouvert', color: '#D97706' } : { label: 'Avoir appliqué', color: '#059669' }
+  if (t.remaining <= 0.005) return { label: t.credited >= t.total - 0.005 ? 'Créditée' : 'Payée', color: '#059669' }
+  if (t.overdue) return { label: t.paid > 0 ? 'En retard (partielle)' : 'En retard', color: '#DC2626' }
+  if (t.paid > 0) return { label: 'Partiellement payée', color: '#D97706' }
+  return { label: 'Non payée', color: 'var(--brand)' }
+}
+
+const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payées'], ['retard', 'En retard'], ['avoirs', 'Avoirs']]
+
+function TransactionsTab({ companyId, filter, setFilter }) {
+  const navigate = useNavigate()
+  const [rows, setRows] = useState(null)
+  useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions)) }, [companyId])
+  if (!rows) return <div className="loading">Chargement...</div>
+  const live = t => t.status !== 'brouillon' && t.status !== 'annulee'
+  const shown = rows.filter(t => {
+    if (filter === 'ouvertes') return t.kind === 'invoice' && live(t) && t.remaining > 0.005
+    if (filter === 'payees') return t.kind === 'invoice' && live(t) && t.remaining <= 0.005
+    if (filter === 'retard') return t.overdue
+    if (filter === 'avoirs') return t.kind === 'credit'
+    return true
+  })
+  // Totaux sur les factures seulement : un avoir applique est deja compte dans le « Payé » de sa facture
+  const invs = shown.filter(t => live(t) && t.kind === 'invoice')
+  const sum = k => invs.reduce((s, t) => s + t[k], 0)
+  return (
+    <div>
+      <div className="filter-tabs" style={{ marginBottom: 12 }}>
+        {TX_FILTERS.map(([v, l]) => (
+          <button key={v} className={`filter-tab${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>{l}</button>
+        ))}
+      </div>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="cd-tx-table">
+          <thead>
+            <tr>
+              <th>Date</th><th>Numéro</th><th>Paiement</th><th>Échéance</th>
+              <th style={{ textAlign: 'right' }}>Total</th>
+              <th style={{ textAlign: 'right' }}>Payé / appliqué</th>
+              <th style={{ textAlign: 'right' }}>Reste</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map(t => {
+              const st = payState(t)
+              return (
+                <tr key={t.id} onClick={() => navigate(`/invoices/${t.id}`)} className="cd-tx-row">
+                  <td style={{ whiteSpace: 'nowrap' }}>{fmtD(t.issue_date)}</td>
+                  <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
+                    {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}{t.number}
+                    {t.site_label && <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400 }}>{t.site_label}</div>}
+                  </td>
+                  <td>
+                    <span className="cd-tx-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
+                    {t.credited > 0 && t.credited < t.total - 0.005 && <div style={{ fontSize: 11, color: '#9CA3AF' }}>dont avoir {money(t.credited)}</div>}
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap', color: t.overdue ? '#DC2626' : undefined }}>{t.kind === 'credit' ? '—' : fmtD(t.due_date)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(t.total)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: '#6B7280' }}>{money(t.paid)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: t.remaining > 0.005 ? (t.overdue ? '#DC2626' : '#111827') : '#9CA3AF' }}>{money(t.remaining)}</td>
+                </tr>
+              )
+            })}
+            {shown.length === 0 && <tr><td colSpan={7} className="empty-tab">Aucune transaction</td></tr>}
+          </tbody>
+          {shown.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={4}>Total des {invs.length} facture{invs.length > 1 ? 's' : ''} (avoirs compris dans « Payé », brouillons et annulées exclus)</td>
+                <td style={{ textAlign: 'right' }}>{money(sum('total'))}</td>
+                <td style={{ textAlign: 'right' }}>{money(sum('paid'))}</td>
+                <td style={{ textAlign: 'right' }}>{money(sum('remaining'))}</td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+      </div>
+    </div>
+  )
+}
+
 export default function CompanyDetail({ isNew }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -277,6 +423,8 @@ export default function CompanyDetail({ isNew }) {
     setTabState(i)
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); return next }, { replace: true })
   }
+  const slug = TAB_SLUGS[tab]
+  const [txFilter, setTxFilter] = useState('')   // filtre de l'onglet Transactions (ouvert depuis la vue d'ensemble)
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(!isNew)
   const [statuses, setStatuses] = useState([])
@@ -444,60 +592,62 @@ export default function CompanyDetail({ isNew }) {
           <NewCompanyForm managers={managers} statuses={statuses} />
         ) : (
           <>
-            {tab === 0 && (
+            {slug === 'general' && (
               <div>
-                <div className="ifield-section-title">Identification</div>
-                <div className="ifields-grid">
-                  <div className="ifield-full">
-                    <div className="ifield-label">Statuts</div>
-                    <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
-                      apiPath="/v1/companies" />
+                <FinanceOverview companyId={id} onOpen={f => { setTxFilter(f); setTab(TAB_SLUGS.indexOf('transactions')) }} />
+                <div className="cd-general-cols">
+                  <div>
+                    <div className="ifield-section-title">Identification</div>
+                    <div className="ifields-grid cd-one-col">
+                      <div className="ifield-full">
+                        <div className="ifield-label">Statuts</div>
+                        <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
+                          apiPath="/v1/companies" />
+                      </div>
+                      <InlineField label="Nom de compagnie" value={c.name} onSave={v => saveField('name', v)} />
+                      <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
+                      <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
+                      <div className="ifield">
+                        <div className="ifield-label">Tenant téléphonique SIPV</div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={c.sipv_enabled}
+                            onChange={e => setConfirmSipv(e.target.checked)}
+                          />
+                          {c.sipv_enabled
+                            ? <span style={{ color: '#059669', fontWeight: 600 }}>Actif</span>
+                            : <span style={{ color: '#9CA3AF' }}>Inactif</span>}
+                        </label>
+                      </div>
+                      <InlineField label="Gestionnaire interne"
+                        value={c.internal_manager_id || ''}
+                        display={c.internal_manager?.full_name || null}
+                        options={[{ value: '', label: '— Aucun —' }, ...managers.map(m => ({ value: m.id, label: m.full_name }))]}
+                        onSave={v => saveField('internal_manager_id', v || null)} />
+                      <VendorField company={c} contacts={allContacts} onSave={saveVendor} />
+                      <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
+                    </div>
+                    <div className="ifield-section-title" style={{ marginTop: 24 }}>Taxes</div>
+                    <div className="tax-checks">
+                      <label className="tax-check">
+                        <input type="checkbox" checked={c.is_taxable} onChange={e => saveField('is_taxable', e.target.checked)} />
+                        <span>TPS <em>5% — Canada</em></span>
+                      </label>
+                      <label className="tax-check">
+                        <input type="checkbox" checked={c.tvq_applicable} onChange={e => saveField('tvq_applicable', e.target.checked)} />
+                        <span>TVQ <em>9,975% — Québec</em></span>
+                      </label>
+                    </div>
                   </div>
-                  <InlineField label="Nom de compagnie" value={c.name} onSave={v => saveField('name', v)} />
-                  <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
-                  <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
-                  <div className="ifield">
-                    <div className="ifield-label">Tenant téléphonique SIPV</div>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={c.sipv_enabled}
-                        onChange={e => setConfirmSipv(e.target.checked)}
-                      />
-                      {c.sipv_enabled
-                        ? <span style={{ color: '#059669', fontWeight: 600 }}>Actif</span>
-                        : <span style={{ color: '#9CA3AF' }}>Inactif</span>}
-                    </label>
+                  <div>
+                    <div className="ifield-section-title">Adresses</div>
+                    <AddressesSection entityId={id} company={c} onRefresh={load} />
+                    <div className="ifield-section-title" style={{ marginTop: 24 }}>Coordonnées</div>
+                    <CommunicationsSection entityId={id} company={c} onRefresh={load} />
                   </div>
-                  <InlineField label="NEQ" value={c.neq} onSave={v => saveField('neq', v)} />
-                  <InlineField label="Gestionnaire interne"
-                    value={c.internal_manager_id || ''}
-                    display={c.internal_manager?.full_name || null}
-                    options={[{ value: '', label: '— Aucun —' }, ...managers.map(m => ({ value: m.id, label: m.full_name }))]}
-                    onSave={v => saveField('internal_manager_id', v || null)} />
-                  <InlineField label="Secteur d'activité" value={c.industry} onSave={v => saveField('industry', v)} />
-                  <InlineField label="Type d'actionnariat" value={c.shareholder_type} onSave={v => saveField('shareholder_type', v)} />
-                  <InlineField label="Nombre d'employés" value={c.employee_count != null ? String(c.employee_count) : ''} type="number" onSave={v => saveField('employee_count', v ? Number(v) : null)} />
-                  <InlineField label="Chiffre d'affaires ($)" value={c.annual_revenue != null ? String(c.annual_revenue) : ''} type="number" onSave={v => saveField('annual_revenue', v ? Number(v) : null)} />
-                  <InlineField label="Site web" value={c.website} onSave={v => saveField('website', v)} />
-                  <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
-                  <VendorField company={c} contacts={allContacts} onSave={saveVendor} />
                 </div>
-                <div className="ifield-section-title" style={{ marginTop: 24 }}>Taxes</div>
-                <div className="tax-checks">
-                  <label className="tax-check">
-                    <input type="checkbox" checked={c.is_taxable} onChange={e => saveField('is_taxable', e.target.checked)} />
-                    <span>TPS <em>5% — Canada</em></span>
-                  </label>
-                  <label className="tax-check">
-                    <input type="checkbox" checked={c.tvq_applicable} onChange={e => saveField('tvq_applicable', e.target.checked)} />
-                    <span>TVQ <em>9,975% — Québec</em></span>
-                  </label>
-                </div>
-                <div className="ifield-section-title" style={{ marginTop: 24 }}>Adresses</div>
-                <AddressesSection entityId={id} company={c} onRefresh={load} />
-                <div className="ifield-section-title" style={{ marginTop: 24 }}>Coordonnées</div>
-                <CommunicationsSection entityId={id} company={c} onRefresh={load} />
+                <CompanyDetailsSection c={c} saveField={saveField} />
                 <E911AddressesSection companyId={id} />
                 <div className="record-meta">
                   Créé le {new Date(c.created_at).toLocaleString('fr-CA')}
@@ -506,19 +656,20 @@ export default function CompanyDetail({ isNew }) {
               </div>
             )}
 
-            {tab === 1 && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
-            {tab === 2 && <TicketsTab companyId={id} />}
-            {tab === 3 && <InventaireTab companyId={id} />}
-            {tab === 4 && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}
-            {tab === 5 && (
+            {slug === 'transactions' && <TransactionsTab companyId={id} filter={txFilter} setFilter={setTxFilter} />}
+            {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
+            {slug === 'tickets' && <TicketsTab companyId={id} />}
+            {slug === 'inventaire' && <InventaireTab companyId={id} />}
+            {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}
+            {slug === 'cdr' && (
               <>
                 <CdrSection companyId={id} />
                 <CdrReportsSection companyId={id} />
               </>
             )}
-            {tab === 6 && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
-            {tab === 7 && <PhotosTab companyId={id} />}
-            {tab === 8 && <JournalFeed entityId={id} />}
+            {slug === 'taches' && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
+            {slug === 'photos' && <PhotosTab companyId={id} />}
+            {slug === 'journal' && <JournalFeed entityId={id} />}
           </>
         )}
       </div>
