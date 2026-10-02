@@ -384,8 +384,6 @@ export default function InvoiceDetail() {
                 <th>Date</th>
                 <th>Mode</th>
                 <th style={{ textAlign: 'right' }}>Montant</th>
-                <th style={{ textAlign: 'right' }}>Rabais</th>
-                <th style={{ textAlign: 'right' }}>Net</th>
                 <th>Statut</th>
                 <th style={{ width: 40 }}></th>
               </tr>
@@ -395,8 +393,6 @@ export default function InvoiceDetail() {
                 <tr key={p.id} style={p.status === 'confirmed' ? undefined : { color: '#6B7280' }}>
                   <td>{p.paid_at ? new Date(p.paid_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
                   <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}{p.reference ? ` · ${p.reference}` : ''}</td>
-                  <td style={{ textAlign: 'right' }}>{fmt(p.amount)}</td>
-                  <td style={{ textAlign: 'right', color: '#059669' }}>{p.discount_rate > 0 ? `-${fmt(p.discount_amount)} (${p.discount_rate}%)` : '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_amount)}</td>
                   <td>
                     <span style={{ fontSize: 12, fontWeight: 600, color: PAYMENT_STATUS[p.status]?.color || '#6B7280' }}>{PAYMENT_STATUS[p.status]?.label || p.status}</span>
@@ -411,7 +407,7 @@ export default function InvoiceDetail() {
                 </tr>
               ))}
               {payments.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucun paiement</td></tr>
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucun paiement</td></tr>
               )}
             </tbody>
           </table>
@@ -550,11 +546,8 @@ function AddPaymentModal({ methods, invoiceTotal, amountPaid, onClose, onSave })
   const [saving, setSaving] = useState(false)
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  const selectedMethod = methods.find(m => m.code === form.method_code)
-  const discountRate = selectedMethod?.discount_rate || 0
+  // Rabais par mode de paiement aboli (Philippe, 2026-10-02) : le montant encaisse est le montant paye
   const amount = parseFloat(form.amount) || 0
-  const discountAmt = Math.round(amount * discountRate) / 100
-  const netAmt = amount - discountAmt
 
   async function save() {
     if (!form.method_code || amount <= 0) return
@@ -573,18 +566,13 @@ function AddPaymentModal({ methods, invoiceTotal, amountPaid, onClose, onSave })
         <div className="form-group">
           <label>Mode de paiement</label>
           <select value={form.method_code} onChange={e => f('method_code', e.target.value)} autoFocus>
-            {methods.map(m => <option key={m.code} value={m.code}>{m.name}{m.discount_rate > 0 ? ` (rabais ${m.discount_rate}%)` : ''}</option>)}
+            {methods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}
           </select>
         </div>
         <div className="form-group">
           <label>Montant ({fmtC(remaining)} restant)</label>
           <input type="number" step="0.01" value={form.amount} onChange={e => f('amount', e.target.value)} />
         </div>
-        {discountRate > 0 && (
-          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '8px 12px', fontSize: 13, color: '#065F46' }}>
-            Rabais {discountRate}% : -{fmtC(discountAmt)} → Net : {fmtC(netAmt)}
-          </div>
-        )}
         {(form.method_code === 'carte_credit' || form.method_code === 'elavon' || form.method_code === 'authorizenet') && (
           <div className="form-group">
             <label>4 derniers chiffres</label>

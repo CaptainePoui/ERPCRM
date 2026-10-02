@@ -948,7 +948,7 @@ function PaymentMethodsPanel() {
 
   function startEdit(m) {
     setEditing(m.id)
-    setEditForm({ name: m.name, discount_rate: m.discount_rate, is_active: m.is_active })
+    setEditForm({ name: m.name, is_active: m.is_active })
   }
 
   async function saveEdit(id) {
@@ -966,11 +966,11 @@ function PaymentMethodsPanel() {
   return (
     <div>
       <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
-        Configurez les modes de paiement disponibles et leur taux de rabais automatique.
+        Configurez les modes de paiement disponibles.
       </p>
       <table className="adm-table">
         <thead>
-          <tr>{['Code', 'Nom', 'Rabais (%)', 'Actif', ''].map(h => <th key={h}>{h}</th>)}</tr>
+          <tr>{['Code', 'Nom', 'Actif', ''].map(h => <th key={h}>{h}</th>)}</tr>
         </thead>
         <tbody>
           {methods.map(m => (
@@ -981,13 +981,6 @@ function PaymentMethodsPanel() {
                   <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
                     style={{ border: '1px solid #D1D5DB', borderRadius: 4, padding: '4px 8px', fontSize: 14 }} />
                 ) : m.name}
-              </td>
-              <td style={{ textAlign: 'center' }}>
-                {editing === m.id ? (
-                  <input type="number" min="0" max="100" step="0.1" value={editForm.discount_rate}
-                    onChange={e => setEditForm(p => ({ ...p, discount_rate: parseFloat(e.target.value) }))}
-                    style={{ width: 70, border: '1px solid #D1D5DB', borderRadius: 4, padding: '4px 8px', textAlign: 'center', fontSize: 14 }} />
-                ) : `${m.discount_rate}%`}
               </td>
               <td style={{ textAlign: 'center' }}>
                 {editing === m.id ? (

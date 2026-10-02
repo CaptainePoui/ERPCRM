@@ -322,7 +322,7 @@ Fichiers : `backend/app/models/invoice.py`, `backend/app/models/payment.py`. Mig
 Correctif (2026-10-01, trouvé en testant TASK-005.4) : `_recalc` dans `invoices.py` mettait `0.0` (float) pour une taxe désactivée puis l'additionnait au sous-total `Decimal` → `TypeError`, HTTP 500 sur toute modification d'une facture sans TPS ou sans TVQ (changement de statut, lignes). Corrigé : tout ramené en `Decimal`.
 Note : le diff de `invoice.py` a aussi retiré des accents et raccourci des commentaires sans lien avec la demande (ex. référence TASK-S010.4 sur la succursale) — signalé, non corrigé.
 
-### TASK-005.4 [~] Moteur de paiements multi-factures (ClientPayment + PaymentAllocation)
+### TASK-005.4 [x] Moteur de paiements multi-factures (ClientPayment + PaymentAllocation)
 Date de demande : 2026-09-29 ; correction des défauts demandée 2026-10-01
 Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01 ; défauts 2-4 corrigés 2026-10-01
 
@@ -335,7 +335,7 @@ Remplace « 1 paiement = 1 facture » par :
 Fichiers : `backend/app/models/client_payment.py` (nouveau), `backend/app/models/__init__.py`, `backend/app/api/v1/endpoints/payments.py`. Migration Alembic : `b1c2d3e4f5g6` (revises `a0b1c2d3e4f5`).
 
 **Défauts trouvés à la relecture du 2026-10-01** (aucun paiement en base à cette date) :
-1. **[ ] Escompte par mode de paiement perdu** — non corrigé, en attente de décision (voir plus bas) : l'ancien code appliquait `PaymentMethod.discount_rate` (montant net après rabais) ; le nouveau enregistre le montant brut avec rabais 0, alors que le modal d'encaissement de `InvoiceDetail.jsx` affiche toujours « Rabais X % → Net ». Sans effet aujourd'hui (tous les taux à 0 en base), régression dès qu'un taux est réglé.
+1. **[x] Escompte par mode de paiement perdu** — réglé le 2026-10-02 par décision de Philippe : rabais par mode de paiement **aboli** pour l'instant (trop complexe ; le but était d'inciter à Interac / dépôt direct, mais Elavon coûte presque rien). Retiré du modal d'encaissement, du tableau des paiements (`InvoiceDetail.jsx`) et de l'écran Admin des modes de paiement ; colonne `discount_rate` gardée en base (0 partout) : l'ancien code appliquait `PaymentMethod.discount_rate` (montant net après rabais) ; le nouveau enregistre le montant brut avec rabais 0, alors que le modal d'encaissement de `InvoiceDetail.jsx` affiche toujours « Rabais X % → Net ». Sans effet aujourd'hui (tous les taux à 0 en base), régression dès qu'un taux est réglé.
 2. **[x] L'admin compte les paiements en attente comme encaissés** : `GET /payments/invoice/{id}` renvoie aussi les `pending` déclarés par le client au portail, et `InvoiceDetail.jsx` les additionne dans « Total encaissé » et « Solde restant » sans afficher le statut.
 3. **[x] Aucun écran admin pour confirmer/rejeter un paiement en attente** : `PATCH /payments/{id}/confirm` existe mais rien ne l'appelle ; un paiement déclaré au portail reste en attente indéfiniment.
 4. **[x] Référence PAY-AAAA-NNNN calculée par comptage + 1** (`payments.py` et `portal.py`) : après une suppression, le prochain numéro peut retomber sur une référence existante → violation d'unicité (HTTP 500) ; aussi exposé à deux demandes simultanées.
@@ -349,7 +349,7 @@ Fichiers : `backend/app/models/client_payment.py` (nouveau), `backend/app/models
 - Preuve HTTP (facture de test 100 $ créée puis supprimée, base revenue à 1 facture / 0 paiement) : 2 pending → PAY-2026-0001/0002 ; confirm 0001 → facture `partiellement_payee` ; reject 0002 → `rejected`, facture inchangée ; reject d'un confirmé → 400 ; suppression de 0001 puis nouvelle demande → PAY-2026-0003 (l'ancien comptage donnait 0002 = collision) ; 3 créations simultanées → 201 ×3, 0004/0005/0006 distinctes ; encaissement manuel → 201. Le chemin portail (`/portal/payment-request`) appelle la même fonction mais n'a pas été appelé en HTTP (aucun utilisateur portail en base).
 
 **Reste** :
-- Point 1 (escompte) : restaurer l'ancien comportement exige de stocker taux et montant d'escompte sur l'encaissement → migration (colonnes sur `client_payments`), plus une décision de sens (l'ancien code comptait le **net** dans le solde de la facture : un rabais de 2 % laissait 2 % à payer). En attente de Philippe.
+- Point 1 (escompte) : réglé — rabais aboli (2026-10-02).
 - Défaut antérieur trouvé en testant, hors paiements (présent depuis le commit initial) : `POST /invoices/{id}/lines` enregistre un total qui n'inclut pas la ligne qu'on vient d'ajouter (`_get_inv` relit une collection `lines` déjà en mémoire) ; le total se corrige au recalcul suivant. Non corrigé.
 
 ### TASK-005.5 [x] Génération PDF des factures (WeasyPrint)
@@ -357,7 +357,7 @@ Date de demande : 2026-09-29
 Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
 
 `backend/app/core/invoice_pdf.py` : PDF format lettre avec bandeau PAYÉE / PARTIELLEMENT PAYÉE / EN ATTENTE, lignes, TPS/TVQ, section paiements. Coordonnées du vendeur lues dans les paramètres (`pdf_seller_name`, `pdf_seller_address`, `pdf_seller_tps`, `pdf_seller_tvq`, `pdf_seller_phone`, `pdf_seller_email`, défaut « Simple IP inc. »). Route `GET /api/v1/invoices/{id}/pdf`.
-Dépendances ajoutées au venv : weasyprint 70.0 (+ fonttools, Pillow, pydyf, tinycss2, tinyhtml5, cssselect2, pyphen).
+Dépendances ajoutées au venv : weasyprint 70.0 (+ fonttools 4.66, Pillow 12.3, pydyf 0.12, tinycss2 1.5, tinyhtml5 2.1, cssselect2 0.10, pyphen 0.18 ; roues cp314 compatibles Python 3.14). Dépendances système requises : libpango 1.57 et libcairo 1.18 (déjà présentes sur le serveur). Détail fusionné le 2026-10-02 depuis l'ancienne entrée TASK-042 de `TASKERPCRM.md`, retirée (doublon).
 Fichiers : `backend/app/core/invoice_pdf.py` (nouveau), `backend/app/api/v1/endpoints/invoices.py`.
 À faire : renseigner les clés `pdf_seller_*` (aucune mention dans le frontend — vérifier si l'écran Paramètres permet de les saisir).
 
@@ -1427,6 +1427,14 @@ api/v1/endpoints/invoices.py, api/v1/endpoints/catalogue.py, main.py,
 frontend/src/pages/CompanyDetail.jsx, frontend/src/pages/Recurrence.jsx (nouveau),
 frontend/src/components/Layout.jsx, frontend/src/components/Icons.jsx, App.jsx.
 
+
+### TASK-021.1 [ ] Factures périodiques : date de fin + import des profils Zoho
+Date de demande : 2026-10-02 (Philippe : « j'ajoute les factures périodiques pour que tu les remplisses, ils ont tous une date de début de facturation et l'option de fin (une date) »)
+Date(s) de travail : (aucune — décisions en attente)
+
+Fichier `/home/simpleip/Simple_IP/factures_zoho/Facture_périodique.csv` : 36 profils (24 actifs, 11 expirés avec date de fin, 1 inactif), mensuels sauf D'Astous (6 mois) et Heka & Luna (3 mois) ; 88 lignes actives, toutes taxables.
+Constat du modèle ERPCRM (`CompanyRecurringBilling`) : date de début, fréquence, actif ; pas de date de fin ; une seule récurrence par compagnie (contrainte unique, utilisée par l'activation SIPV, les événements de facturation SIPV et contacts.py — 6 endroits) ; génération manuelle (bouton), aucun envoi automatique → pas de double facturation avec Zoho à l'import ; `first_invoice_generated` (TASK-033) doublerait les lignes de la première facture générée si on ne le met pas à vrai pour des profils déjà facturés dans Zoho.
+Points à trancher : Maison Le Passeur a 2 profils actifs (Le Passeur + Oxygène, succursale) → plusieurs récurrences par compagnie (avec succursale) ou fusion ; sort des 12 profils expirés / inactifs (plusieurs clients n'existent plus comme compagnies).
 ---
 
 ## TASK-022 [ERPCRM] [x] Checkbox tenant SIPV sur fiche compagnie
@@ -5464,9 +5472,10 @@ Données Zoho fournies le 2026-10-02 dans `/home/simpleip/Simple_IP/factures_zoh
 
 **Fait le 2026-10-02 — menu regroupé Ventes / Achats (demandes de Philippe : « rassemble dans Ventes », « pas Clients », « sous-menus horizontaux avec les factures comme page d'accueil », bons de commande dans Achats)** :
 - `Layout.jsx` : groupes `GROUPS` — une entrée « Ventes » (→ Factures) et « Achats » (→ Factures fournisseurs) dans le menu de gauche ; sous-menus en onglets horizontaux en haut de page (`GroupTabs`, CSS `.group-tabs`), onglet actif aussi sur les fiches de détail (`/invoices/:id`, `/devis/:id`, `/purchase-orders/:id`). Compagnies reste au menu principal ; Devis, Factures, Récurrence n'y sont plus (dans Ventes).
-- Ventes : Devis, Factures d'acompte (structure), Factures, Factures périodiques (= Récurrence), Liens de paiement (structure, passerelle Elavon/Authorize.Net requise), Paiements reçus (nouveau : liste de tous les encaissements, `GET /api/v1/payments`, filtres confirmés / en attente / pas encore vus en banque / rejetés, recherche), Factures d'avoir (factures avec `credit_of_id`, `Invoices.jsx creditsOnly`).
+- Ventes : Devis, Factures d'acompte (structure), Factures, Factures périodiques (= Récurrence), Paiements reçus (nouveau : liste de tous les encaissements, `GET /api/v1/payments`, filtres confirmés / en attente / pas encore vus en banque / rejetés, recherche), Factures d'avoir (factures avec `credit_of_id`, `Invoices.jsx creditsOnly`).
 - Achats : Fournisseurs, Dépenses, Dépenses périodiques, Factures fournisseurs, Factures fournisseurs périodiques, Paiements effectués, Avoirs fournisseur — pages de structure (`pages/Purchases.jsx`, colonnes de la future liste) ; Bons de commande (`/purchases/orders`, déplacés depuis Commandes ; `/purchase-orders` redirige). Commandes ne garde que les commandes web.
 - Vérifié en captures (Ventes, Paiements reçus 724 / 171 096,85 $ confirmés, Factures d'avoir, Achats, Bons de commande, mobile), aucune erreur console.
+- « Liens de paiement » retiré du menu Ventes le 2026-10-02 (Philippe ne s'en sert pas ; le cycle paiement → Paiements reçus → factures existe déjà via le portail). Idée gardée pour plus tard : bouton « Payer par carte » dans le portail client, sur chaque facture (compte marchand en ligne Elavon ou Authorize.Net requis).
 - Reste (prochaine étape) : modèle de données Achats (fournisseurs, dépenses, factures fournisseurs, paiements groupés, avoirs, récurrences) + import des 3 fichiers Zoho + CTI/RTI dans la déclaration TPS/TVQ.
 ---
 
