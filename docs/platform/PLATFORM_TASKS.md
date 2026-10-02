@@ -319,11 +319,12 @@ Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
 
 Tous les montants étaient en FLOAT8 (arrondis imprécis). Passés en `Numeric` : taux TPS/TVQ et `discount_rate` en `Numeric(7,4)`, montants (`subtotal`, `tps_amount`, `tvq_amount`, `total`, `unit_price`, `line_total`, montants de `payments`) en `Numeric(14,2)`, `InvoiceLine.qty` en `Numeric(12,4)`. Schémas Pydantic et frontend inchangés (Decimal → JSON float).
 Fichiers : `backend/app/models/invoice.py`, `backend/app/models/payment.py`. Migration Alembic : `a0b1c2d3e4f5` (revises `9ea99349c01f`). Données au moment de la migration : 1 facture, 2 lignes, 0 paiement.
+Correctif (2026-10-01, trouvé en testant TASK-005.4) : `_recalc` dans `invoices.py` mettait `0.0` (float) pour une taxe désactivée puis l'additionnait au sous-total `Decimal` → `TypeError`, HTTP 500 sur toute modification d'une facture sans TPS ou sans TVQ (changement de statut, lignes). Corrigé : tout ramené en `Decimal`.
 Note : le diff de `invoice.py` a aussi retiré des accents et raccourci des commentaires sans lien avec la demande (ex. référence TASK-S010.4 sur la succursale) — signalé, non corrigé.
 
 ### TASK-005.4 [~] Moteur de paiements multi-factures (ClientPayment + PaymentAllocation)
-Date de demande : 2026-09-29
-Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01
+Date de demande : 2026-09-29 ; correction des défauts demandée 2026-10-01
+Date(s) de travail : 2026-09-29 ; régularisé 2026-10-01 ; défauts 2-4 corrigés 2026-10-01
 
 Remplace « 1 paiement = 1 facture » par :
 - `ClientPayment` : encaissement lié à une compagnie ; statut `pending|processing|confirmed|rejected|refunded|cancelled` ; source `portal|manual|bank_import|interac_email|gateway` (valeurs prévues, seules `manual` et `portal` sont produites par le code) ; référence unique `PAY-AAAA-NNNN` ; champs gateway réservés.
@@ -333,11 +334,23 @@ Remplace « 1 paiement = 1 facture » par :
 
 Fichiers : `backend/app/models/client_payment.py` (nouveau), `backend/app/models/__init__.py`, `backend/app/api/v1/endpoints/payments.py`. Migration Alembic : `b1c2d3e4f5g6` (revises `a0b1c2d3e4f5`).
 
-**Reste (défauts trouvés à la relecture du 2026-10-01, non corrigés — aucun paiement en base à cette date)** :
-1. **Escompte par mode de paiement perdu** : l'ancien code appliquait `PaymentMethod.discount_rate` (montant net après rabais) ; le nouveau enregistre le montant brut avec rabais 0, alors que le modal d'encaissement de `InvoiceDetail.jsx` affiche toujours « Rabais X % → Net ». Sans effet aujourd'hui (tous les taux à 0 en base), régression dès qu'un taux est réglé.
-2. **L'admin compte les paiements en attente comme encaissés** : `GET /payments/invoice/{id}` renvoie aussi les `pending` déclarés par le client au portail, et `InvoiceDetail.jsx` les additionne dans « Total encaissé » et « Solde restant » sans afficher le statut.
-3. **Aucun écran admin pour confirmer/rejeter un paiement en attente** : `PATCH /payments/{id}/confirm` existe mais rien ne l'appelle ; un paiement déclaré au portail reste en attente indéfiniment.
-4. **Référence PAY-AAAA-NNNN calculée par comptage + 1** (`payments.py` et `portal.py`) : après une suppression, le prochain numéro peut retomber sur une référence existante → violation d'unicité (HTTP 500) ; aussi exposé à deux demandes simultanées.
+**Défauts trouvés à la relecture du 2026-10-01** (aucun paiement en base à cette date) :
+1. **[ ] Escompte par mode de paiement perdu** — non corrigé, en attente de décision (voir plus bas) : l'ancien code appliquait `PaymentMethod.discount_rate` (montant net après rabais) ; le nouveau enregistre le montant brut avec rabais 0, alors que le modal d'encaissement de `InvoiceDetail.jsx` affiche toujours « Rabais X % → Net ». Sans effet aujourd'hui (tous les taux à 0 en base), régression dès qu'un taux est réglé.
+2. **[x] L'admin compte les paiements en attente comme encaissés** : `GET /payments/invoice/{id}` renvoie aussi les `pending` déclarés par le client au portail, et `InvoiceDetail.jsx` les additionne dans « Total encaissé » et « Solde restant » sans afficher le statut.
+3. **[x] Aucun écran admin pour confirmer/rejeter un paiement en attente** : `PATCH /payments/{id}/confirm` existe mais rien ne l'appelle ; un paiement déclaré au portail reste en attente indéfiniment.
+4. **[x] Référence PAY-AAAA-NNNN calculée par comptage + 1** (`payments.py` et `portal.py`) : après une suppression, le prochain numéro peut retomber sur une référence existante → violation d'unicité (HTTP 500) ; aussi exposé à deux demandes simultanées.
+
+**Corrections du 2026-10-01** :
+- Point 2 : `InvoiceDetail.jsx` — colonne Statut (En attente / Confirmé / Rejeté…) et référence PAY ; « Total encaissé » et « Solde restant » (et le restant proposé dans le modal d'encaissement) ne comptent que les paiements `confirmed` ; ligne « En attente de confirmation » séparée.
+- Point 3 : nouveau `PATCH /payments/{id}/reject` (pending/processing → `rejected`, 400 sinon) ; boutons Confirmer / Rejeter sur chaque paiement en attente dans `InvoiceDetail.jsx` (avec rappel que l'action vaut pour toutes les factures couvertes). Aucun nouveau statut (`rejected` existait déjà). Pas de file globale « paiements à confirmer » : l'admin les voit facture par facture.
+- Point 4 : `next_payment_reference()` dans `payments.py`, réutilisée par `portal.py` — plus grand numéro de l'année + 1 sous verrou consultatif PostgreSQL (`pg_advisory_xact_lock`), sans migration.
+- Trouvé en testant : `POST /payments/multi` renvoyait HTTP 500 **après** le commit (accès paresseux à `allocations` → MissingGreenlet) — le paiement était créé mais l'appelant recevait une erreur. Même risque dans `add_payment`/confirm : rechargement commun `_reload_payment()`.
+- `weasyprint==70.0` ajouté à `backend/requirements.txt` (TASK-005.5 ; ses dépendances ne sont pas épinglées).
+- Preuve HTTP (facture de test 100 $ créée puis supprimée, base revenue à 1 facture / 0 paiement) : 2 pending → PAY-2026-0001/0002 ; confirm 0001 → facture `partiellement_payee` ; reject 0002 → `rejected`, facture inchangée ; reject d'un confirmé → 400 ; suppression de 0001 puis nouvelle demande → PAY-2026-0003 (l'ancien comptage donnait 0002 = collision) ; 3 créations simultanées → 201 ×3, 0004/0005/0006 distinctes ; encaissement manuel → 201. Le chemin portail (`/portal/payment-request`) appelle la même fonction mais n'a pas été appelé en HTTP (aucun utilisateur portail en base).
+
+**Reste** :
+- Point 1 (escompte) : restaurer l'ancien comportement exige de stocker taux et montant d'escompte sur l'encaissement → migration (colonnes sur `client_payments`), plus une décision de sens (l'ancien code comptait le **net** dans le solde de la facture : un rabais de 2 % laissait 2 % à payer). En attente de Philippe.
+- Défaut antérieur trouvé en testant, hors paiements (présent depuis le commit initial) : `POST /invoices/{id}/lines` enregistre un total qui n'inclut pas la ligne qu'on vient d'ajouter (`_get_inv` relit une collection `lines` déjà en mémoire) ; le total se corrige au recalcul suivant. Non corrigé.
 
 ### TASK-005.5 [x] Génération PDF des factures (WeasyPrint)
 Date de demande : 2026-09-29
@@ -357,6 +370,38 @@ Frontend (`Portal.jsx`) : composant `InvoicesTab` — colonne Solde, montants en
 Fichiers : `backend/app/api/v1/endpoints/portal.py`, `frontend/src/pages/Portal.jsx`.
 Limites : le texte « Vos factures seront marquées payées après confirmation et rapprochement bancaire » n'a aucun rapprochement bancaire derrière (n'existe pas, voir TASK-005.4 point 3) ; `payment-request` n'empêche pas de déclarer plus que le solde ni de viser une facture brouillon ; alertes de retard 15/30 jours évoquées par la session d'origine (« TASK-054 », numéro jamais créé) — non faites, non numérotées.
 
+
+### TASK-005.7 [x] Import des factures Zoho Books + compagnies complétées
+Date de demande : 2026-10-01 (Philippe : factures téléchargées de Zoho, « ajuste les clients aussi avec leur adresse et autres infos »)
+Date(s) de travail : 2026-10-01 / 2026-10-02
+
+Source : 4 exports CSV Zoho « Factures » (une ligne par article, 122 colonnes) dans `/home/simpleip/Simple_IP/factures_zoho/`, du 2024-09-22 au 2026-10-01 : 776 factures, 45 clients. Script ponctuel `backend/import_zoho_invoices.py` (essai à blanc par défaut, `--apply` pour écrire, une seule transaction, relançable : une facture déjà présente est ignorée) ; rapport des identifiants créés : `/home/simpleip/Simple_IP/factures_zoho/import_report.json`.
+- Correspondance client Zoho → compagnie validée avec Philippe ligne par ligne (table `CUSTOMER_MAP` du script) : 22 sûres, 4 probables confirmées (Houle Gendron → Houle Avocat, LS Services Comptables → Ls Comptable, Centre de santé cardiovasculaire → Centre Cardio, Rubi Group → Rubi Canada), Construction Nationale = Patio Desing (changement de nom : fiche renommée « Construction Nationale », ancien nom en note interne), Oxygene = succursale de Maison Le Passeur (factures sur Le Passeur, « Oxygene » + adresse dans `site_label_snapshot`/`site_address_snapshot` ; pas de vraie succursale car elle exige un tenant SIPV), 17 compagnies créées.
+- Fiches : adresse de facturation (province normalisée QC, code postal en majuscules), téléphone, mobile, courriel — seulement les champs vides, Simple IP inc. jamais modifiée. Vérifié avant : seule Simple IP a SIPV actif (déjà une succursale principale), donc aucune adresse 911 générée côté SIPV par `ensure_primary_site`.
+- Factures : numéros Zoho conservés (INV-…), lignes d'articles, TPS 5 % sur la base taxable et TVQ = taxes − TPS (Zoho : groupe « Québec » 14,975 %). Statut : Draft → brouillon, sinon calculé comme le moteur de TASK-005.4 (payé = Total − Balance). Le payé Zoho devient un encaissement confirmé par facture (source `zoho_import`, mode « Historique Zoho Books », date = dernière date de paiement Zoho) — le détail des paiements Zoho n'est pas dans l'export.
+- Résultat : 49 compagnies, 693 payées (167 387,43 $ = Zoho), 25 partiellement payées (dont les 22 Physotech à 4,60 $ dû — écart volontaire, troc), 23 en retard, 20 envoyées, 15 brouillons, 714 encaissements (168 704,37 $). Solde dû total 7 743,91 $ = solde Zoho au cent près.
+- Correctif découvert à l'affichage (oubli de TASK-005.4) : `Invoices.jsx`, `InvoiceDetail.jsx` et `Portal.jsx` ne connaissaient pas le statut `partiellement_payee` (affiché « Brouillon » dans la liste) — étiquette « Partielle » / « Partiellement payée », filtre « Partielle », pas de transition manuelle ; numéro de facture sans retour à la ligne.
+- Risque levé par TASK-005.9 (taxe par ligne, arrondi demie vers le haut) — historique : 173 factures importées mélangent lignes taxables et non taxables (Zoho taxe ligne par ligne, ERPCRM taxe toute la facture ou rien). Toute modification par `PUT /invoices/{id}` (y compris un changement de statut depuis la fiche) relance `_recalc` et changerait leur total (écart max 14,27 $), dont 15 brouillons modifiables. Correctif proposé à Philippe : taxe par ligne (`InvoiceLine.is_taxable`, migration).
+- Non fait : les 10 factures dont le dépôt est déjà en banque (Hamak, PAD, SST, Oxygene, Maison Le Passeur, MRST, Remorques 125, 3 Interac) restent ouvertes jusqu'à la fonction d'attribution de TASK-042 ; Audacie gardée pour tester les modes de correspondance.
+
+### TASK-005.8 [ ] Factures — remettre en brouillon + état « pas transmise au client »
+Date de demande : 2026-10-02 (Philippe)
+Date(s) de travail : (aucune — à préciser)
+
+Demande : dans Zoho, une facture jamais envoyée par courriel au client passe quand même « En retard » (cas des factures de Les Entreprises CNJ, qui « devraient être en brouillon »). Dans ERPCRM : (1) pouvoir remettre une facture en brouillon ; (2) un terme distinct pour une facture dont le PDF n'a pas rejoint le client — terme à trouver. Philippe n'aime plus Zoho mais plusieurs choses y sont bien montées.
+Points à trancher avec lui : terme ; état de transmission séparé du statut de paiement ou non ; sort des factures CNJ importées (troc, réglées par 2 machines). Contrainte : ne pas modifier les factures importées par `PUT /invoices` tant que la taxe par ligne n'existe pas (voir TASK-005.7, risque `_recalc`).
+Précisions du 2026-10-02 : Philippe voulait mettre les factures en « troc » hors des rapports de taxe et d'impôt — signalé que le troc est taxable au Canada/Québec (vente à la juste valeur marchande, TPS/TVQ et revenu ; à confirmer avec son comptable) : les factures CNJ déjà déclarées sont correctes. Proposé : mode de paiement « Troc » (règle la facture sans argent, la garde dans les ventes), le fournisseur en troc facture ses biens/services à Simple IP (taxes récupérables CTI/RTI). Principe de Philippe retenu : une facture passée dans une déclaration ne s'efface plus, elle ne peut qu'être créditée → « remettre en brouillon » seulement avant la période déclarée (date de verrouillage de période à prévoir).
+
+### TASK-005.9 [x] Taxe par ligne + arrondi des taxes au cent (demie vers le haut)
+Date de demande : 2026-10-02 (Philippe : « fais la taxe par ligne »)
+Date(s) de travail : 2026-10-02
+
+- `InvoiceLine.is_taxable` (défaut vrai) — migration `e4f5a6b7c8d9` (revises `d3e4f5a6b7c8`), testée up/down/up. `_recalc` (invoices.py) : TPS/TVQ calculées sur les seules lignes taxables.
+- Bug trouvé en vérifiant contre Zoho : `round()` de Python arrondit une demie au pair (1 cent de moins sur certaines factures). Zoho arrondit chaque taxe au cent, demie vers le haut, sur la base taxable totale (règle vérifiée sur les 776 factures). Nouveau `_money()` (ROUND_HALF_UP) pour les taxes, le total et les totaux de ligne ; utilisé aussi par la facturation récurrente ; la facturation d'un ticket (tickets.py), qui recopiait son propre calcul (taux fixes, arrondi au pair, sans taxe par ligne), appelle maintenant `_recalc`.
+- API : `is_taxable` dans les lignes (lecture, ajout, modification) ; copié par « Créer un avoir » et « Générer la prochaine facture récurrente ». PDF : « (non taxable) » après la description. Frontend `InvoiceDetail.jsx` : colonne « Taxable » (case à cocher sur un brouillon, Oui/Non sinon), case dans l'ajout et la modification d'une ligne.
+- Données : 174 lignes importées de Zoho marquées non taxables (selon la colonne « Item Tax » de l'export) et répartition TPS/TVQ recalée sur 149 factures, totaux inchangés (176 636,98 $). Vérifié : pour les 776 factures importées, le recalcul retombe exactement sur le total Zoho → le risque `_recalc` de TASK-005.7 est levé.
+- Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
+- Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche
@@ -2212,6 +2257,18 @@ Date de demande : 2026-09-11 (Philippe : "je le voie dans le contact mais pas da
 Contexte vérifié avant tout code : Philippe pensait que les postes SIP de test (100-103, Simple IP inc.) n'étaient pas liés à des contacts. Vérifié faux — les 4 sont bel et bien liés de bout en bout (`sip_extensions.erpcrm_contact_id` → `contacts` → `contact_companies` avec `is_active=true`), et le backend `GET /companies/{id}` les retournait déjà correctement (reproduit directement en Python : 5 contacts retournés dont les 4 postes de test). Ce qui manquait réellement : `ContactsTab` (onglet Contacts de `CompanyDetail.jsx`) n'affichait aucun indicateur d'enregistrement, contrairement à `ContactDetail.jsx` qui l'a déjà (dot vert/rouge + 📞/🔔).
 
 **Correctif** : `ContactsTab` appelle maintenant `GET /companies/{id}/sip-extensions` (endpoint déjà existant et durci par TASK-023.33 le soir même — aucun nouvel endpoint backend nécessaire), construit une map `contact_id -> extension` via `erpcrm_contact_id`, et affiche le même dot que `ContactDetail.jsx` à côté du nom de chaque contact concerné. Poll toutes les 5s, même pattern que la fiche contact individuelle. Fichiers : `frontend/src/pages/CompanyDetail.jsx` (`ContactsTab`).
+
+### TASK-023.35 [x] Succursales sans téléphonie SIPV (ERPCRM d'abord)
+Date de demande : 2026-10-02 (Philippe : « arrange-moi ça, c'est un ERPCRM en premier » — Oxygene, succursale de Maison Le Passeur, client sans SIPV)
+Date(s) de travail : 2026-10-02
+
+Avant : créer/modifier/désactiver une succursale exigeait un tenant SIPV (`_company_tenant_id` → 400), car chaque succursale était d'abord créée comme adresse 911 (E911Address) côté SIPV. Un client sans téléphonie ne pouvait donc pas avoir de succursale, même pour la facturation.
+Maintenant (`backend/app/api/v1/endpoints/companies.py`) :
+- `_sync_site_if_sipv()` : avec un tenant SIPV actif, copie 911 bloquante comme avant (rien d'écrit si SIPV échoue) ; sans SIPV, succursale purement ERPCRM (`sipv_e911_address_id` vide).
+- Activation de la téléphonie (`toggle_sipv_tenant`) : les succursales encore sans copie 911 sont envoyées à SIPV dans la même opération (bloquant ; `sync_site` côté SIPV est un « crée ou met à jour » par `erpcrm_site_id`).
+- Inchangé : assignation 911 d'un poste (refuse une succursale sans copie 911 — impossible pour une compagnie SIPV après ce correctif), `ensure_primary_site` (seulement compagnies SIPV), UI (section Succursales de l'onglet Général déjà affichée pour toutes les compagnies).
+- Preuve : succursale « Oxygene » créée et modifiée sous Maison Le Passeur (201/200, sans lien 911) ; succursale principale de Simple IP renvoyée sans changement → 200, lien 911 identique. Non testé en réel : l'activation SIPV d'une compagnie qui a déjà des succursales (aurait créé un vrai tenant).
+- Données : les 26 factures Zoho « Oxygene » (TASK-005.7) rattachées à la succursale (`site_id` + adresse figée) par script ORM, sans passer par `PUT /invoices` (qui recalcule les taxes) — totaux vérifiés inchangés ; note provisoire retirée de la fiche Maison Le Passeur.
 
 ---
 
@@ -5227,6 +5284,80 @@ Date(s) de travail : 2026-09-01
 
 Convertit les transcriptions JSONL que Claude Code écrit déjà (`~/.claude/projects/-home-simpleip-erpcrm/*.jsonl`) en un journal texte lisible et cumulatif, `docs/platform/CONVERSATION_LOG.md` (gitignored — mot-pour-mot des sessions, peut contenir des secrets tapés dans le chat, jamais commité). Rien n'est résumé/reformulé : messages utilisateur et réponses texte recopiés tels quels ; les appels d'outils sont réduits à une ligne datée (Lu/Créé/Modifié/Exécuté/...), pas leur contenu brut. Tourne via cron (`* * * * *`, déjà installé et actif — voir `crontab -l`), idempotent par offset (`tools/logging/.conversation_log_state.json`, gitignored). Scopé à ce serveur uniquement — DashV16/SIPV ont besoin de leur propre copie tournant sur leur propre machine (jamais de miroir de code entre projets, voir `feedback_sipv_must_stay_autonomous`).
 Fichier : tools/logging/sync_conversation_log.py.
+
+---
+
+## TASK-042 [ERPCRM] [~] Banque — comptes bancaires, flux de transactions, rapprochement automatique des encaissements
+Date de demande : 2026-10-01
+Date(s) de travail : 2026-10-01 (page Aperçu bancaire, fiche de compte : interface et options ; import de relevés)
+
+Demande de Philippe (2026-10-01, 3 captures de l'écran Banque de Zoho Books comme modèle) :
+1. **Aperçu bancaire** (menu Banque), précisé le 2026-10-01 (analyse détaillée de la 1re capture) :
+   - En-tête avec les actions générales : Relevés bancaires, Ajouter une banque ou une carte de crédit, Gérer les règles de transaction, menu Plus.
+   - Grand panneau : sélecteur « Tous les comptes ▼ » (ou un seul compte), sélecteur de période modifiable (« 30 derniers jours ▼ ») ; indicateurs icône + titre + valeur (Espèces disponibles, Solde bancaire) ; indicateur « Transactions non classées » avec lien « Classer maintenant » (raccourci vers le traitement) ; graphique temporel des soldes (une série par indicateur, grille, légende), repliable (« Masquer le graphique »).
+   - Section « Comptes actifs ▼ » en tableau : Détails du compte | Non classé | Chèques en attente | Montant en banque | Montant dans ERPCRM, loupe de recherche ; chaque ligne a un bouton chevron pour ouvrir/agir.
+   - Compte interne (ex. Petite caisse) : même liste, sans synchronisation.
+   - Compte bancaire connecté : icône banque, nom en lien, voyant vert de connexion active, numéro masqué (xxxx1234), « Mis à jour le : date », nombre de non classées en couleur.
+   - Ignorer « Fonds non déposés ». Référence fonctionnelle et visuelle, pas une copie pixel par pixel.
+2. **Fiche d'un compte — Transactions non classées** : lignes reçues de la banque (date, description du relevé, dépôt/retrait) que le rapprochement automatique n'a pas su associer (nouveau payeur, nouveau type de transfert…), à classer à la main.
+3. **Fiche d'un compte — Toutes les transactions** : historique avec type (paiement de client + nom du client, dépense…), statut (mis en correspondance / classé / ajouté manuellement), dépôts, retraits, solde courant.
+But : une connexion bancaire « plus efficace » qui associe automatiquement les dépôts aux paiements/factures (`ClientPayment` de TASK-005.4).
+
+Décisions ouvertes (rien n'est codé) :
+- Source des transactions : agrégateur bancaire (API), import de relevés OFX/CSV, courriels Interac, ou une combinaison.
+- Périmètre : seulement les dépôts ↔ encaissements clients, ou aussi le classement des dépenses (= plan comptable, que ERPCRM n'a pas).
+- ERPCRM remplace-t-il Zoho Books pour la banque, ou les deux coexistent-ils ?
+- Lien avec TASK-005.4 point 1 (escompte/frais par mode de paiement) : les dépôts Elavon sont nets de frais.
+
+**Fait le 2026-10-01 — page Aperçu bancaire (interface et options, consigne de Philippe : « on bâtit l'interface et les options, pas les chiffres »)** :
+- Backend : modèle `BankAccount` (`bank_accounts` : type `bank|credit_card|petty_cash`, nom, institution, 4 derniers chiffres, notes, `feed_connected`, `last_synced_at`, `is_active` — un compte se désactive, ne se supprime jamais). Endpoints `/api/v1/bank/accounts` : GET (`include_inactive`), POST, PUT (modification + désactivation/réactivation). Migration Alembic `c2d3e4f5a6b7` (revises `b1c2d3e4f5g6`), testée up/down/up.
+- Frontend : `pages/Bank.jsx`, route `/bank`, entrée « Banque » dans le menu (après Récurrence), icônes ajoutées dans `Icons.jsx`, dépendance `recharts` ajoutée.
+  - En-tête : Relevés bancaires, Ajouter une banque ou une carte de crédit, Gérer les règles de transaction, Plus (Ajouter une petite caisse, Afficher les comptes inactifs).
+  - Panneau : sélecteur Tous les comptes / un compte, période (7/30/90 jours, 12 mois), indicateurs Espèces disponibles / Solde bancaire / Transactions non classées + « Classer maintenant › » (inactif jusqu'à la fiche de compte), graphique temporel 2 séries repliable.
+  - Comptes : filtre actifs/inactifs/tous, colonnes Détails du compte | Non classé | Chèques en attente | Montant en banque | Montant dans ERPCRM, loupe de recherche (nom, institution, 4 chiffres), chevron par ligne (Modifier, Désactiver/Réactiver) ; icône par type, voyant vert si connexion active, xxxx1234 + « Mis à jour le », petite caisse sans ligne de connexion.
+  - Modal compte (création/modification) ; modals Relevés bancaires et Règles de transaction : structure seulement (import et nouvelle règle désactivés).
+  - Tous les montants, compteurs et le graphique affichent un état vide (« — », « Aucune donnée pour cette période ») : aucune source de transactions branchée.
+- Preuve : endpoints testés en HTTP (création, validations type/4 chiffres → 422, modification, désactivation, filtre) ; rendu vérifié par capture headless desktop et mobile 390 px ; création et désactivation depuis l'interface vérifiées par interception des requêtes (POST/PUT corrects, sans écriture en base). Le compte de test HTTP a été retiré par un `DELETE` SQL direct (aucun endpoint de suppression, voulu) — seule ligne touchée, créée par le test.
+
+**Fait le 2026-10-01 — fiche d'un compte (captures 2 et 3, interface et options, GO de Philippe)** — frontend seulement, aucune table ni migration :
+- `pages/BankAccountDetail.jsx`, route `/bank/:id` ; ouverte par le clic sur le nom du compte dans l'aperçu (ou « Ouvrir le compte » du chevron) ; « Classer maintenant › » de l'aperçu devient actif → onglet Non classées du compte choisi, sinon du premier compte bancaire/carte actif.
+- En-tête : nom du compte avec menu ▼ pour changer de compte, voyant de connexion, « Numéro de compte : xxxx1228 · institution » ; boutons Relevés bancaires (compte présélectionné), Catégorisation rapide (grisé), Ajouter une transaction ▼ (Dépôts : paiement de client, dépôt, virement entrant ; Retraits : dépense, paiement de fournisseur, virement sortant — grisés), Enregistrer un dépôt (grisé), engrenage (modification du compte), ✕ (retour à l'aperçu).
+- Montant dans ERPCRM, Montant en banque, Dernière date de flux ; « Dernière actualisation le… » + « Actualiser les flux » (inactif).
+- Onglets (dans l'URL `?tab=`) : Tableau de bord (solde, dépôts et retraits de la période, période modifiable, graphique une courbe) ; Transactions non classées (Tout / Reconnu, interrupteur Correspondance & sélection multiple, Exclu, colonnes case / Date / Détails du relevé / Dépôts / Retraits, loupe, pagination 50/100/200) ; Toutes les transactions avec filtre ▼ (toutes, dépôts, retraits, mises en correspondance, classées, ajoutées manuellement), colonnes Date / N° de référence / Type / Statut / Dépôts / Retraits / Solde actuel, loupe, pagination.
+- Petite caisse : pas d'onglet Non classées, pas de montant en banque, de flux ni de relevés.
+- Composants partagés exportés depuis `Bank.jsx` (menus, indicateurs, graphique `BalanceChart`, modals) plutôt que dupliqués.
+- Preuve : captures headless (comptes simulés dans le navigateur, aucune écriture en base) des 3 onglets, du menu Ajouter une transaction, de la petite caisse et du mobile 390 px ; navigation vérifiée (Classer maintenant → `/bank/<id>?tab=unclassified`, changement de compte, ✕ → `/bank`, clic sur le nom → fiche) ; aucune erreur console.
+
+**Fait le 2026-10-01 — import de relevés bancaires (demande de Philippe : « construit l'import », compte BMO Entreprise xxxx1228)** :
+- Lecteur `backend/app/core/bank_statement_parser.py` : OFX/QFX/QBO (SGML 1.x et XML 2.x : FITID, LEDGERBAL, ACCTID) et CSV (délimiteur détecté, en-tête cherché dans les 15 premières lignes, colonnes FR/EN date / description / montant signé ou débit+crédit, dates AAAAMMJJ, AAAA-MM-JJ, JJ/MM/AAAA ou MM/JJ/AAAA selon le fichier, montants 1 234,56 / 1,234.56 / (12.00)). Message d'erreur affiché tel quel, avec l'en-tête lu si les colonnes ne sont pas reconnues.
+- Doublons : clé FITID, sinon empreinte date + montant + description + rang d'apparition (deux lignes identiques le même jour restent distinctes ; un relevé qui chevauche le précédent retombe sur les mêmes clés). Contrainte unique (compte, clé).
+- Tables `bank_statement_imports` (historique, solde du relevé, fichier original conservé dans `backend/storage/bank_statements/`, hors du dossier public `/uploads`, ajouté à `.gitignore`) et `bank_transactions` (montant signé, statut `unclassified|excluded`). Migration `d3e4f5a6b7c8` (revises `c2d3e4f5a6b7`), testée up/down/up.
+- Endpoints : `POST /bank/accounts/{id}/statements` (`dry_run=true` = aperçu sans écriture, `false` = import des seules nouvelles lignes ; avertit si le numéro du fichier ne finit pas par les 4 chiffres du compte), `GET /bank/accounts/{id}/statements`, `DELETE /bank/statements/{id}` (annule un import tant que ses lignes ne sont pas traitées), `GET /bank/accounts/{id}/transactions`. `GET /bank/accounts` renvoie aussi `unclassified_count`, `bank_balance` (solde du dernier relevé OFX), `last_feed_date`.
+- Frontend : modal Relevés bancaires fonctionnel (choix du fichier → aperçu → « Importer N transactions », historique avec Annuler) ; aperçu : Solde bancaire, compteur de non classées, colonnes Non classé (lien vers le compte) et Montant en banque ; fiche : Montant en banque, Dernière date de flux, onglet Non classées avec les vraies lignes (recherche, tri par date, sélection, pagination).
+- Preuve : lecteur testé sur 5 fichiers d'exemple (OFX SGML style BMO, OFX XML, CSV style BMO avec ligne de titre et deux lignes identiques, CSV français débit/crédit JJ/MM/AAAA, CSV invalide) ; HTTP : aperçu, import, réimport → 3 doublons / 400, compteurs, historique, annulation ; navigateur de bout en bout (fichier → aperçu → import → aperçu et fiche mis à jour → annulation). Base et dossier de stockage revenus à zéro après chaque test (annulation par l'endpoint, sans SQL).
+- Premier vrai import par Philippe (2026-10-01) : `transactions SIP 1 ans.csv`, BMO Entreprise, 365 lignes du 2025-10-01 au 2026-10-01, montants et dates corrects. Format BMO réel : ligne de titre `Simple IP inc.,SIMPLE IP INC,0006-00701-0601228,CAD`, puis `Date,Description,Référence,Autres détails,Contrepartie,Transit émetteur,Débit,Crédit,Solde total` (dates AAAA-MM-JJ, trié du plus récent au plus ancien, 32 lignes de frais à 0,00 $).
+- Correctif le même jour : le lecteur ignorait « Autres détails » (nom du payeur/bénéficiaire, ex. ELAVON MRCH SVC, PAD DESIGN AVANCE — indispensable au futur rapprochement), « Solde total » et le numéro de compte de la ligne de titre. Maintenant : « Autres détails » → bénéficiaire, solde du relevé = solde courant de la ligne la plus récente (21 082,87 $ au 2026-10-01), numéro de compte lu (vérification xxxx1228 active). Vérifié en aperçu sur le fichier conservé (aucune écriture) ; les clés de doublon ne changent pas. Les 365 lignes déjà importées n'avaient pas le bénéficiaire.
+- Lignes à 0,00 $ ignorées à l'import (avis de frais nuls, aucun argent à classer), comptées dans l'aperçu (« N lignes à 0,00 $ ignorées ») — GO de Philippe.
+- Avec son GO (« fait le, arrange tout ça »), le 2026-10-01 : fichier original copié en lieu sûr (empreinte vérifiée), import annulé par l'endpoint, puis fichier réimporté → 333 lignes (32 lignes à zéro ignorées), 259 avec bénéficiaire, solde 21 082,87 $ au 2026-10-01, numéro de compte concordant. Rendu de la fiche vérifié en capture.
+
+**Fait le 2026-10-01 — graphique entrées / sorties / solde (demande de Philippe : voir l'évolution de l'année, choix jour, semaine, 2 semaines, mois, semestre, année, année imposable)** :
+- Décision avec Philippe : le choix est un regroupement ; chaque regroupement affiche un nombre fixe de périodes (jour = 30, semaine = 12, 2 semaines = 13, mois = 12, semestre = 6, année = 5, année imposable = 5) se terminant à la période en cours, flèches ‹ › pour reculer. Semaine = lundi ; 2 semaines = paires fixes depuis le lundi 2024-01-01 ; semestre = janv.-juin / juil.-déc.
+- Année imposable : nouveau paramètre `fiscal_year_start_month` (défaut 1 = janvier ; Simple IP inc. = 7, exercice du 1er juillet au 30 juin, confirmé par Philippe), modifiable dans Paramètres (« Début de l'exercice financier »), validé 1 à 12.
+- Backend : `backend/app/core/bank_chart.py` (périodes, libellés, solde reconstitué à toute date à partir du solde du dernier relevé : solde − mouvements postérieurs + mouvements après la date du relevé ; inconnu avant la première ligne importée) ; `GET /api/v1/bank/chart?granularity=&offset=&account_id=` (sans compte : comptes bancaires actifs, hors cartes de crédit et petite caisse, comme le Solde bancaire ; lignes exclues non comptées).
+- Frontend : composant `BankChart` (barres Entrées vertes, Sorties rouges, courbe Solde sur un 2e axe, info-bulle en $) dans l'aperçu (suit le sélecteur Tous les comptes / un compte, l'ancien sélecteur « 30 derniers jours » retiré) et dans le Tableau de bord du compte (Entrées / Sorties de la période = totaux de la plage affichée) ; regroupement mémorisé dans le navigateur.
+- Preuve : soldes calculés identiques à la colonne « Solde total » du fichier BMO (20 949,84 $ le 2026-09-29, 16 478,05 $ le 2026-08-31, 20 340,97 $ le 2026-07-31) ; regroupement invalide → 400, mois 13 → 422 ; captures mois / année imposable / jour / semaine / semaine précédente / fiche, aucune erreur console.
+- Limite : les données importées commencent le 2025-10-01, donc l'exercice 2025-2026 est incomplet (juillet à septembre 2025 manquants) tant qu'un relevé plus ancien n'est pas importé.
+
+**Demande de Philippe (2026-10-01) — attribuer un paiement (transactions non classées), non codé** :
+1. Cliquer sur une transaction → recherche des factures les plus probables.
+2. Attribuer la transaction à une entreprise → liste de toutes les factures de cette entreprise avec l'indication payée / non payée.
+3. Cliquer sur le bénéficiaire → l'attribuer à une compagnie → appliqué automatiquement aux prochaines transactions de ce bénéficiaire.
+Question ouverte en parallèle : cases à cocher de l'onglet Non classées (aucune action groupée aujourd'hui) — proposé : barre « Exclure la sélection » / « Restaurer ».
+Constat au 2026-10-01 : 32 compagnies dans ERPCRM, dont plusieurs bénéficiaires du relevé sous un nom différent (« PATIO DESIGN MONTREA » ↔ « Patio Desing », « CRYSTAL » ↔ « Mc Crystal », « SSTCONSTRUCTION » ↔ « SST CONSTRUCTION 2016 INC ») ; 1 seule facture (brouillon), 0 encaissement — les factures de la dernière année sont dans Zoho Books.
+
+**Demande de Philippe (2026-10-02) — dépenses (retraits), non codé** : comme dans Zoho, une dépense doit pouvoir être saisie « hors taxes » (taxes ajoutées) ou « taxes incluses » (le montant payé est le total ; TPS/TVQ extraites à rebours, le total exact au cent), avec le choix des taxes réellement payées (parfois une seule selon le fournisseur / l'endroit de la commande). Par défaut, TPS et TVQ cochées toutes les deux (c'est rare d'en retirer une) — Philippe ne veut pas avoir à les sélectionner à chaque dépense. Ventes : toujours TPS + TVQ, rien à changer. ERPCRM n'a pas encore de module Dépenses — à concevoir avec le classement des retraits bancaires.
+
+**Prochaine étape** : attribution des paiements (ci-dessus), après décisions de Philippe.
 
 ---
 
