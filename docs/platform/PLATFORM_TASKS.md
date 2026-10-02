@@ -2365,6 +2365,16 @@ Testé : redémarrage backend propre (401 sur endpoint protégé sans token = se
 up), fichiers frontend transformés sans erreur par Vite (`GET .../Devis.jsx` →
 200, pas d'overlay d'erreur).
 
+
+### TASK-025.1 [x] Devis alignés sur les factures : décimal exact, taxe par ligne, arrondi demie vers le haut
+Date de demande : 2026-10-02 (Philippe : « arrange les devis aussi »)
+Date(s) de travail : 2026-10-02
+
+- Migration `b7c8d9e0f1a2` (revises `a6b7c8d9e0f1`) : `devis` et `devis_lines` Float → Numeric (taux 7,4 ; montants 14,2 ; quantité 12,4) + `devis_lines.is_taxable` ; 0 devis en base ; testée up/down/up.
+- `devis.py` : `_recalc` = même calcul que les factures (TASK-005.9) via `_money` d'`invoices.py` ; `is_taxable` dans les lignes (lecture, ajout, modification).
+- `DevisDetail.jsx` : colonne « Taxable » (case sur un brouillon, Oui/Non sinon), case dans l'ajout et la modification d'une ligne.
+- Preuve HTTP : devis test 100 $ taxable + 50 $ non taxable → 150,00 / 5,00 / 9,98 / 164,98 $ (identique aux factures), supprimé ensuite.
+- Constat : aucune conversion automatique devis → facture n'existe (`invoice_id` jamais rempli par le code).
 ---
 
 ## TASK-026 [ERPCRM] [~] Prise de RDV en ligne

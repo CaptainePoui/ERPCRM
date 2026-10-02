@@ -198,6 +198,7 @@ export default function DevisDetail() {
               <th>Description</th>
               <th style={{ textAlign: 'right', width: 80 }}>Qté</th>
               <th style={{ textAlign: 'right', width: 120 }}>Prix unit.</th>
+              <th style={{ textAlign: 'center', width: 80 }} title="TPS/TVQ appliquées à cette ligne">Taxable</th>
               <th style={{ textAlign: 'right', width: 120 }}>Total</th>
               {editable && <th style={{ width: 60 }}></th>}
             </tr>
@@ -215,6 +216,12 @@ export default function DevisDetail() {
                       <td onClick={() => editable && setEditingLine(line.id)}>{line.description}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{line.qty}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{fmt(line.unit_price)}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {editable
+                          ? <input type="checkbox" checked={line.is_taxable !== false} title="TPS/TVQ sur cette ligne"
+                              onChange={async e => { const r = await api.put(`/v1/devis/${id}/lines/${line.id}`, { is_taxable: e.target.checked }); setD(r.data) }} />
+                          : <span style={{ fontSize: 12, color: line.is_taxable === false ? '#D97706' : '#9CA3AF' }}>{line.is_taxable === false ? 'Non' : 'Oui'}</span>}
+                      </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(line.line_total)}</td>
                       {editable && <td style={{ textAlign: 'center' }}><button className="inv-del-btn" onClick={() => deleteLine(line.id)}>✕</button></td>}
                     </>
@@ -222,7 +229,7 @@ export default function DevisDetail() {
               </tr>
             ))}
             {d.lines.length === 0 && (
-              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
+              <tr><td colSpan={editable ? 6 : 5} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
             )}
           </tbody>
         </table>
@@ -313,15 +320,17 @@ function EditLineRow({ line, onSave, onCancel }) {
   const [desc, setDesc] = useState(line.description)
   const [qty, setQty] = useState(line.qty)
   const [price, setPrice] = useState(line.unit_price)
+  const [taxable, setTaxable] = useState(line.is_taxable !== false)
 
   return (
     <>
       <td><input value={desc} onChange={e => setDesc(e.target.value)} className="inv-inline-input" autoFocus /></td>
       <td><input type="number" value={qty} onChange={e => setQty(parseFloat(e.target.value) || 0)} className="inv-inline-input" style={{ textAlign: 'right' }} /></td>
       <td><input type="number" step="0.01" value={price} onChange={e => setPrice(parseFloat(e.target.value) || 0)} className="inv-inline-input" style={{ textAlign: 'right' }} /></td>
+      <td style={{ textAlign: 'center' }}><input type="checkbox" checked={taxable} onChange={e => setTaxable(e.target.checked)} title="TPS/TVQ sur cette ligne" /></td>
       <td style={{ textAlign: 'right', fontWeight: 600 }}>{new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(qty * price)}</td>
       <td style={{ display: 'flex', gap: 4 }}>
-        <button className="ifield-save" onClick={() => onSave({ description: desc, qty, unit_price: price })}>✓</button>
+        <button className="ifield-save" onClick={() => onSave({ description: desc, qty, unit_price: price, is_taxable: taxable })}>✓</button>
         <button className="ifield-cancel" onClick={onCancel}>✕</button>
       </td>
     </>
@@ -331,13 +340,13 @@ function EditLineRow({ line, onSave, onCancel }) {
 function AddLineModal({ catalogue, onClose, onSave }) {
   const [mode, setMode] = useState('catalogue')
   const [selectedItem, setSelectedItem] = useState(null)
-  const [form, setForm] = useState({ description: '', qty: 1, unit_price: 0 })
+  const [form, setForm] = useState({ description: '', qty: 1, unit_price: 0, is_taxable: true })
   const [saving, setSaving] = useState(false)
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   function pickItem(item) {
     setSelectedItem(item)
-    setForm({ description: item.name, qty: 1, unit_price: item.price })
+    setForm(p => ({ ...p, description: item.name, qty: 1, unit_price: item.price }))
   }
 
   async function save() {
@@ -349,6 +358,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
         description: form.description,
         qty: form.qty,
         unit_price: form.unit_price,
+        is_taxable: form.is_taxable,
       })
     } finally { setSaving(false) }
   }
@@ -394,6 +404,10 @@ function AddLineModal({ catalogue, onClose, onSave }) {
                 <input type="number" step="0.01" value={form.unit_price} onChange={e => f('unit_price', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={form.is_taxable} onChange={e => f('is_taxable', e.target.checked)} />
+              Taxable (TPS/TVQ)
+            </label>
             <div style={{ textAlign: 'right', fontWeight: 600, color: '#111827' }}>
               Total : {new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(form.qty * form.unit_price)}
             </div>

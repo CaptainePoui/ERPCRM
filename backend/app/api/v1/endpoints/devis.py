@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -6,6 +7,7 @@ from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.core.database import get_db
+from app.api.v1.endpoints.invoices import _money
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.devis import Devis, DevisLine
 from app.models.company import Company
@@ -27,6 +29,7 @@ class LineOut(BaseModel):
     unit_price: float
     line_total: float
     sort_order: int
+    is_taxable: bool = True
     model_config = {"from_attributes": True}
 
 
@@ -91,6 +94,7 @@ class LineCreate(BaseModel):
     qty: float = 1.0
     unit_price: float = 0.0
     sort_order: int = 0
+    is_taxable: bool = True
 
 
 class LineUpdate(BaseModel):
@@ -98,6 +102,7 @@ class LineUpdate(BaseModel):
     qty: float | None = None
     unit_price: float | None = None
     sort_order: int | None = None
+    is_taxable: bool | None = None
 
 
 class SendDevisPayload(BaseModel):
@@ -116,10 +121,13 @@ async def _next_number(db: AsyncSession) -> str:
 
 
 def _recalc(d: Devis) -> None:
-    d.subtotal = sum(l.line_total for l in d.lines)
-    d.tps_amount = round(d.subtotal * d.tps_rate / 100, 2) if d.apply_tps else 0.0
-    d.tvq_amount = round(d.subtotal * d.tvq_rate / 100, 2) if d.apply_tvq else 0.0
-    d.total = round(d.subtotal + d.tps_amount + d.tvq_amount, 2)
+    """Meme calcul que les factures (TASK-005.9) : taxes sur les lignes taxables seulement,
+    arrondi au cent demie vers le haut."""
+    d.subtotal = sum((Decimal(str(l.line_total)) for l in d.lines), Decimal("0.00"))
+    taxable = sum((Decimal(str(l.line_total)) for l in d.lines if l.is_taxable is not False), Decimal("0.00"))
+    d.tps_amount = _money(taxable * Decimal(str(d.tps_rate)) / 100) if d.apply_tps else Decimal("0.00")
+    d.tvq_amount = _money(taxable * Decimal(str(d.tvq_rate)) / 100) if d.apply_tvq else Decimal("0.00")
+    d.total = _money(d.subtotal + d.tps_amount + d.tvq_amount)
 
 
 async def _build_out(d: Devis, db: AsyncSession) -> DevisOut:
@@ -268,7 +276,8 @@ async def add_line(devis_id: uuid.UUID, payload: LineCreate, db: AsyncSession = 
         description=payload.description,
         qty=payload.qty,
         unit_price=payload.unit_price,
-        line_total=round(payload.qty * payload.unit_price, 2),
+        line_total=_money(Decimal(str(payload.qty)) * Decimal(str(payload.unit_price))),
+        is_taxable=payload.is_taxable,
         sort_order=payload.sort_order or len(d.lines),
     )
     db.add(line)
@@ -288,7 +297,7 @@ async def update_line(devis_id: uuid.UUID, line_id: uuid.UUID, payload: LineUpda
         raise HTTPException(status_code=404, detail="Ligne introuvable")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(line, field, value)
-    line.line_total = round(line.qty * line.unit_price, 2)
+    line.line_total = _money(Decimal(str(line.qty)) * Decimal(str(line.unit_price)))
     _recalc(d)
     await db.commit()
     d = await _get_devis(devis_id, db)
