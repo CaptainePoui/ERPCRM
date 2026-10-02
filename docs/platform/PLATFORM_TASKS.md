@@ -429,7 +429,7 @@ Réalisé (2026-10-02) :
 - Import `backend/import_zoho_credits.py` (essai à blanc puis --apply, sauvegarde des tables avant : /home/simpleip/backups/erpcrm_avant_avoirs_20261002_1753.sql) : 152 avoirs CN-xxxxx (4 705,81 $ sur 160 factures) ; les 141 avoirs appliqués seulement sur des factures antérieures à ERPCRM sont ignorés. Encaissements « Historique Zoho » corrigés : 14 diminués, 146 supprimés (ils n'étaient que des avoirs). Taxes des avoirs : lignes de la facture copiées si avoir total, sinon base hors taxes retrouvée pour que base + TPS + TVQ = montant Zoho exact.
 - MGB : CN-00297 importé à 1 069,95 $ taxes incluses (930,59 + 46,53 + 92,83), entièrement appliqué sur INV-111428 → solde 0 $, plus de crédit fantôme de 160,23 $.
 - Taxes : les avoirs entrent dans la déclaration (TASK-043) de leur trimestre. Trimestre ouvert juil.–sept. 2026 : −56,53 $ TPS, −112,76 $ TVQ (dont CN-00297). Les trimestres déjà déclarés (≤ 2026-06-30) l'avaient été depuis Zoho, avoirs compris : ERPCRM concorde maintenant.
-- Reste à vérifier avec Philippe : CN-00208 (ABC Gestion parasitaire, 462,66 $, INV-111654) figure dans sa liste mais n'est appliqué nulle part dans l'export (remboursé ?).
+- CN-00208 (ABC Gestion parasitaire, 462,66 $, INV-111654) : dans la liste de Philippe mais appliqué nulle part dans l'export. Réponse de Philippe (2026-10-02) : ABC n'est plus client, probablement un bricolage dans Zoho pour ramener un solde à 0 — on le garde tel quel pour l'instant (non importé). À revoir le jour où les factures plus anciennes seront importées dans ERPCRM (les 141 avoirs hors périmètre aussi : le script import_zoho_credits.py est relançable et les prendra alors).
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche
