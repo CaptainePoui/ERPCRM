@@ -29,6 +29,7 @@ import Tasks from './pages/Tasks'
 import Server from './pages/Server'
 import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
+import Taxes from './pages/Taxes'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -81,6 +82,7 @@ function InternalApp() {
         <Route path="/server" element={<Server />} />
         <Route path="/bank" element={<Bank />} />
         <Route path="/bank/:id" element={<BankAccountDetail />} />
+        <Route path="/taxes" element={<Taxes />} />
       </Routes>
     </Layout>
   )

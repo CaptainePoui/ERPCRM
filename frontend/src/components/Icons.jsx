@@ -194,3 +194,13 @@ export function IconChevronDown(props) {
     </svg>
   )
 }
+
+export function IconPercent(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M19 5 5 19" />
+      <circle cx="7" cy="7" r="2.5" />
+      <circle cx="17" cy="17" r="2.5" />
+    </svg>
+  )
+}

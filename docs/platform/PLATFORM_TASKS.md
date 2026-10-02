@@ -5379,11 +5379,22 @@ Constat au 2026-10-01 : 32 compagnies dans ERPCRM, dont plusieurs bénéficiaire
 
 ---
 
-## TASK-043 [ERPCRM] [ ] Impôts et formulaires (onglet, inspiré de Zoho Books)
+## TASK-043 [ERPCRM] [~] Impôts et formulaires (onglet, inspiré de Zoho Books)
 Date de demande : 2026-10-02
-Date(s) de travail : (aucune)
+Date(s) de travail : 2026-10-02
 
 Demande de Philippe : un onglet « Impôts et formulaires » avec ses menus, comme dans Zoho : Déclaration de TPS/TVQ & de la TVQ ; Ajustements fiscaux ; Paiements de taxe ; Feuillets T4A/T5018. Lié : TASK-005.8 (« Taxes déclarées jusqu'au », rappels de déclaration), TASK-005.9 (taxes par ligne), futur module Dépenses de TASK-042 (taxes payées récupérables : CTI/RTI).
+
+**Fait le 2026-10-02 (GO de Philippe ; libellé corrigé : « Déclaration de TPS/TVQ » ; fréquence mensuelle / trimestrielle / annuelle, trimestrielle par défaut)** :
+- Backend `backend/app/api/v1/endpoints/taxes.py` (`/api/v1/taxes`), modèles `TaxAdjustment` / `TaxPayment` (`backend/app/models/tax.py`), migration `a6b7c8d9e0f1` (revises `f5a6b7c8d9e0`), testée up/down/up. Défaut du paramètre `tax_filing_frequency` passé à « trimestrielle ».
+- Déclaration de TPS/TVQ : périodes alignées sur l'exercice (en cours + 7 précédentes), état Déclarée (≤ « Taxes déclarées jusqu'au ») / À produire / En cours, échéance ; par période : ventes hors taxes, TPS et TVQ perçues = somme des factures émises datées dans la période (hors brouillons et annulées, avoirs soustraits), + ajustements datés dans la période, − paiements de la période → solde ; liste des factures ; « Marquer comme déclarée » avance `tax_lock_date` à la fin de la période et ferme la tâche de rappel (refusé si la période n'est pas finie ou déjà déclarée).
+- Ajustements fiscaux : CRUD (date → période, catégorie CTI/RTI · créance irrécouvrable · correction · autre, montants TPS/TVQ signés) ; refusés dans une période déclarée. Tant qu'il n'y a pas de module Dépenses, les CTI/RTI se saisissent ici en négatif.
+- Paiements de taxe : CRUD (période, date, TPS, TVQ, mode, référence ; remboursement en négatif), montants proposés = solde de la période.
+- Feuillets T4A/T5018 : structure seulement (année, tableaux vides, « Générer » désactivé) — nécessite le module Dépenses (paiements aux fournisseurs et sous-traitants).
+- Frontend `pages/Taxes.jsx` (route `/taxes`, menu « Impôts et formulaires » après Banque, icône %), menu latéral des 4 sections (`?section=`).
+- Chiffres au 2026-10-02 : juillet–septembre 2026 (à produire, échéance 2026-10-31) : 77 factures, ventes 13 605,62 $, TPS 679,87 $, TVQ 1 355,95 $. Les périodes déjà déclarées affichent un solde tant que les paiements passés ne sont pas inscrits.
+- Preuve HTTP : ajustement −10 / −19,95 dans juil.–sept. → taxe nette 669,87 / 1 336,00 ; ajustement dans une période déclarée → 400 ; catégorie invalide → 400 ; paiement 300 $ → solde 1 705,87 ; déclarer une période non terminée ou déjà déclarée → 400 ; données de test supprimées (0 ajustement, 0 paiement, verrou inchangé au 2026-06-30). Captures desktop, fenêtres, mobile ; aucune erreur console.
+- Reste : CTI/RTI calculés et feuillets T4A/T5018 → module Dépenses.
 ---
 
 ## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture

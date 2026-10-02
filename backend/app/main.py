@@ -12,6 +12,7 @@ from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
 from app.api.v1.endpoints import bank
+from app.api.v1.endpoints import taxes
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
@@ -87,6 +88,7 @@ app.include_router(server_router.router, prefix="/api/v1/server", tags=["server"
 app.include_router(backup_router.router, prefix="/api/v1/backup", tags=["backup"])
 app.include_router(knowledge_graph.router, prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
 app.include_router(bank.router, prefix="/api/v1/bank", tags=["bank"])
+app.include_router(taxes.router, prefix="/api/v1/taxes", tags=["taxes"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 
 

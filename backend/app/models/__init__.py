@@ -30,3 +30,4 @@ from app.models.recurring_billing import CompanyRecurringBilling, RecurringBilli
 from app.models.backup import CloudBackupConnection, BackupCycle, BackupRunLog
 from app.models.cdr_report import CdrReportSchedule, CdrReportRunLog
 from app.models.bank_account import BankAccount, BankStatementImport, BankTransaction, BankPayeeRule
+from app.models.tax import TaxAdjustment, TaxPayment

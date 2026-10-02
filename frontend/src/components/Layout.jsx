@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import {
   IconBuilding, IconUser, IconPackage, IconReceipt, IconTicket, IconFileText,
-  IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank,
+  IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank, IconPercent,
 } from './Icons'
 import './Layout.css'
 
@@ -16,6 +16,7 @@ const NAV = [
   { to: '/invoices',  label: 'Factures',   Icon: IconReceipt },
   { to: '/recurrence',       label: 'Récurrence', Icon: IconRefresh },
   { to: '/bank',             label: 'Banque',     Icon: IconBank },
+  { to: '/taxes',            label: 'Impôts et formulaires', Icon: IconPercent },
   { to: '/commandes',        label: 'Commandes',  Icon: IconClipboard },
   { to: '/employees',        label: 'Employés',   Icon: IconUsers },
   { to: '/tasks',            label: 'Tâches',     Icon: IconCheck },

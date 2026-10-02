@@ -27,7 +27,7 @@ DEFAULTS = {
     # une facture datee avant ne peut plus etre supprimee ni remise en brouillon (seulement creditee)
     "tax_lock_date": "",
     # Rappels de declaration TPS/TVQ (core/tax_reminders.py) : vide = desactive
-    "tax_filing_frequency": "",      # mensuelle | trimestrielle | annuelle
+    "tax_filing_frequency": "trimestrielle",  # mensuelle | trimestrielle | annuelle (vide = pas de rappel)
     "tax_reminder_user_id": "",      # utilisateur qui recoit la tache et les rappels
 }
 
