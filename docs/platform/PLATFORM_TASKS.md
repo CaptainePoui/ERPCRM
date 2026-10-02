@@ -5283,6 +5283,62 @@ Date(s) de travail : 2026-09-10
 En testant le nouveau réflexe d'écriture (TASK-040.14), fait trouvé légèrement inexact sur le nœud PendingChange : référençait TASK-S017 comme sujet actif, alors que TASK-S017 est classé LEGACY-ASTERISK et le vrai backlog ouvert est TASK-S023. En corrigeant, Philippe a objecté au langage "NE JAMAIS RÉACTIVER" dans PLATFORM_TASKS.md — pas une règle que j'ai inventée (déjà présente depuis la réorg Phase O), mais formulée comme un interdit de principe alors que c'est un fait technique (commit.py écrit dans des tables Asterisk ps_endpoints/ps_auths/ps_aors, inexistantes depuis le passage à FreeSWITCH — code incompatible avec le stack actuel, pas une interdiction). Reformulé des deux côtés (PLATFORM_TASKS.md et le fait Graphiti correspondant). Passe de vérification faite sur tout PLATFORM_TASKS.md/ERRORS_LESSONS.md pour d'autres occurrences similaires ("jamais"/"toujours" en classification) — aucune autre trouvée, le reste sont soit des états factuels ("jamais construit"), soit des résumés historiques, soit des règles délibérées de Philippe déjà voulues (ex. jamais supprimer un tenant) — rien d'autre à adoucir.
 Fichiers : docs/platform/PLATFORM_TASKS.md (ligne TASK-S017), fait Graphiti `SIPV CONTAINS PendingChange`.
 
+### TASK-040.16 [x] Ouvrir Graphiti au LAN — HTTP 421 bloquait toute VM externe (DashV16)
+Date de demande : 2026-09-14 (brancher DashV16 sur Graphiti)
+Date(s) de travail : 2026-09-20
+
+Objectif : connecter la VM DashV16 (192.168.1.101) au même Graphiti unifié que ERPCRM/SIPV (`group_id="platform"`), via MCP HTTP direct sur le LAN (`http://192.168.1.9:8000/mcp/`), sans SSH.
+
+Bloqué par un `HTTP 421 Invalid Host header` dès qu'une requête arrivait avec `Host: 192.168.1.9:8000` au lieu de `localhost`/`127.0.0.1`. Cause : `FastMCP()` (bibliothèque `mcp` officielle) est construit sans paramètre `host` dans `graphiti_mcp_server.py`, retombe sur son défaut interne `"127.0.0.1"`, ce qui active une protection anti-DNS-rebinding avec `allowed_hosts` limité à `localhost`/`127.0.0.1` — indépendamment de `config.server.host="0.0.0.0"` réglé par ailleurs (jamais synchronisé avec la whitelist).
+
+**Correctif déjà préparé le 2026-09-02 (voir CONVERSATION_LOG dans `docs/platform/`), jamais déployé jusqu'ici** — 18 jours sans trace dans PLATFORM_TASKS.md, redécouvert de zéro par la session DashV16 le 2026-09-20 (voir Leçon dans ERRORS_LESSONS.md TASK-040.16). Déployé aujourd'hui :
+1. Converti le fichier complet déjà prêt (`tools/knowledge/graphiti/patches/graphiti_mcp_server.py`) en patch numéroté `graphiti-build/patches/0003-mcp-allowed-hosts-lan.patch` (règle explicitement `mcp.settings.transport_security` via une variable d'env `MCP_ALLOWED_HOSTS`, défaut = localhost seul si absente).
+2. Ajouté `MCP_ALLOWED_HOSTS=127.0.0.1:*,localhost:*,[::1]:*,192.168.1.9:8000` dans `.env`/`.env.example`.
+3. Rebuild de l'image `graphiti-mcp-standalone:v0.29.3-021d3a5` via `graphiti-build/build.sh` (tarball upstream verrouillé par commit + SHA256, patches 0001/0002/0003 appliqués).
+4. Vérifié qu'aucune ingestion n'était active (pas de lock, pas d'écriture récente dans les logs) avant `docker compose up -d graphiti-mcp`.
+
+Vérifié après coup (pas juste supposé) : handshake MCP complet réussi sur `Host: 192.168.1.9:8000` (`POST /mcp` → 200, `serverInfo: Graphiti Agent Memory v1.30.0`) ; un `Host` non autorisé (`totally-invalid-host-xyz`) reçoit toujours `421 Invalid Host header` — la protection reste active pour tout ce qui n'est pas explicitement listé, ce n'est pas un contournement qui désactive la sécurité.
+
+Effet de bord connu (voir TASK-040.8) : le restart du conteneur casse la connexion MCP de toute session Claude Code déjà connectée à `graphiti-platform` — reconnexion manuelle (`/mcp` → Reconnect) nécessaire pour ces sessions-là.
+
+Fichiers : `tools/knowledge/graphiti/graphiti-build/patches/0003-mcp-allowed-hosts-lan.patch`, `tools/knowledge/graphiti/.env`, `tools/knowledge/graphiti/.env.example`.
+
+### TASK-040.17 [x] Nettoyage de 2 dumps mécaniques (`add_memory`) — `delete_episode` a effacé 3 nœuds hub non prévus (SIPV, ERPCRM, Contacts), reconstruits partiellement
+Date de demande : 2026-09-20 (Philippe a repéré un nœud "Philippe" suspect en consultant le graphe)
+Date(s) de travail : 2026-09-20, 2026-09-21
+
+Deux épisodes (`add_memory`, extraction automatique sur texte brut, contraire à la méthode retenue depuis TASK-040.5) ont pollué le graphe : 2026-09-11 (TASK-S020.4/bug ESL, 16 nœuds junk dont un doublon "Philippe" distinct de "Captaine") et 2026-09-12 (TASK-023.34/dot SIP, 5 nœuds junk nommés par fichier — `ContactDetail.jsx`, `CompanyDetail.jsx`, `ContactsTab`, `TelephonyTab.jsx` — jamais rattachés à aucun nœud réel). Scope confirmé exhaustif par recherche de tout nœud de type "Document" sur tout le graphe (aucun autre épisode concerné).
+
+**GO explicite obtenu de Philippe avant suppression.** `delete_episode` (`Graphiti.remove_episode`) exécuté sur les 2 épisodes — mais contrairement à sa documentation ("preserve les entités/faits aussi supportés par d'autres épisodes"), la cascade a supprimé en plus **3 nœuds hub majeurs, chacun avec des dizaines de faits légitimes construits depuis le 2026-09-04** : `SIPV`, `ERPCRM`, `Contacts`. Détecté immédiatement après coup par vérification systématique (`list_node_facts.py` sur ces 3 noms → 0 relation, puis confirmé par UUID direct dans Neo4j). Aucun backup Neo4j disponible pour une restauration point-in-time.
+
+**Réparation** : 15 faits reconstruits via `fast_write.py`, un par un (jamais en lot en arrière-plan — un premier essai en lot de 8 appels chaînés a déclenché un OOM kill, probablement le rechargement répété du reranker BGE ~2,3 Go), à partir des faits exacts déjà lus dans cette même session (recherches précédentes, pas de reconstruction approximative) : `Simple IP CONTAINS ERPCRM`, 7 `ERPCRM CONTAINS <module>`, 5 `SIPV CONTAINS <module>`, `SIPV RELATES_TO Synchronisation`, `Contacts SYNCS_WITH SIPV`, `Portail SYNCS_WITH SIPV`, et 6 faits `<module> RELATES_TO/HAS Contacts`. Vérifié après coup (`list_node_facts.py`) : SIPV 8 relations, ERPCRM 8 relations, Contacts 9 relations, toutes correctement formées.
+
+**Suite (même session, 2026-09-21)** : scan complet demandé par Philippe pour combler l'écart entre la reconstruction initiale (17 faits) et l'état documenté par la passe du 2026-09-10 (`graphiti_deep_pass.md`, 63/63 nœuds audités, seule vraie source de vérité sur l'état visé). Corrigé une erreur de reconstruction (fait "Portail HAS Contacts" créé par erreur — dupliquait en fait "Compagnies HAS Portail", jamais touché par la suppression — supprimé via `delete_entity_edge`). Complété via lecture du vrai code (grep des FK `contact_id`/`company_id` dans `backend/app/models/*.py`) : `Compagnies RELATES_TO Contacts` (vendor_id), `Taches RELATES_TO Contacts`, `Compagnies HAS Taches`. Pour SIPV, genèses des 23 modules manquants trouvées via l'agent `sipv-researcher` (lecture directe de `TASKSIPV.md`/`PLATFORM_TASKS.md` côté SIPV, jamais devinées) : SecuriteSIPV, Serveur_SIPV, Provisioning, Queues, RingGroups, Voicemail, Horaires, Routes, CDR, E911, Enregistrements, Fax, IVR, MOH, PendingChange, Webhooks, AudioPrompts, Boutons, Interception, PagingGroups, Tarifs (pas de genèse dédiée, fusionné dans TASK-S009/CDR), SMS (pas de genèse dédiée, fusionné dans TASK-S013/Fax), ParkingLots (modèle de base TASK-S007, fonctionnel seulement depuis TASK-S061 -- les deux cités). Ajouté aussi `ERPCRM RELATES_TO Claude` et `SIPV RELATES_TO Claude` (perdus car Claude référence ces deux nœuds directement, pas seulement via Captaine).
+
+**Suite 2 (même session)** : Philippe a explicitement refusé "reconstruction solide" comme critère d'arrêt -- reprise de l'investigation par lecture de code réelle jusqu'à épuisement raisonnable des pistes, pas arrêt à un pourcentage. Vérifié que les relations fines inter-modules (Extensions, DIDs, RingGroups, etc.) n'avaient jamais été touchées par l'incident (degrés identiques à la passe du 2026-09-10 -- confirmé, pas supposé). L'écart restant sur SIPV n'était donc pas dans les modules mais dans des faits SYSTÈME jamais capturés avant : agent `sipv-researcher` dépêché sur le vrai dépôt SIPV (SSH, jamais deviné), a trouvé et vérifié sur disque ET à l'exécution (`systemctl`, `fs_cli`) 5 faits d'architecture réels absents du graphe depuis toujours (pas juste depuis l'incident) : mécanisme `mod_xml_curl` (dialplan/directory FreeSWITCH généré dynamiquement, jamais statique), Kamailio/RTPengine (RTPengine chargé mais désactivé du chemin actif depuis TASK-S058), canal TLS+CA privée+clé API SIPV↔ERPCRM (port 8022 dédié, pas de mTLS client-cert complet -- corrige une supposition imprécise), mapping Tenant SIPV↔Compagnie ERPCRM (account_number = tenant_id Asterisk), relais OAuth du backup cloud SIPV via le domaine public d'ERPCRM. Écrits avec citations exactes (fichier + ligne quand pertinent).
+
+**Suite 3 (même session)** : Philippe a rejeté "écart résiduel acceptable" comme conclusion ("criss pourquoi je dois me repeter... on ne peut pas couper"). Reprise par une méthode systématique plutôt que de la lecture ponctuelle : comparer la liste EXHAUSTIVE de tous les fichiers `backend/app/models/*.py` (ERPCRM, lu directement) et `backend/app/models/*.py` (SIPV, via agent `sipv-researcher` sur le vrai dépôt) contre les nœuds Graphiti existants. Cette méthode a trouvé **5 vrais modules jamais documentés dans Graphiti, même avant l'incident** :
+- `Statuts` (Status/EntityStatus, étiquettes many-to-many sur Compagnie ou Contact) -- pas de genèse dédiée.
+- `Canaux_Communication` (CommunicationChannel, email/phone/mobile/fax multiples par Entité) -- pas de genèse dédiée.
+- `Ouvertures_Email` (EmailOpen, pixel de tracking, append-only). Genèse : TASK-006.1.
+- `Parametres` (AppSetting, clé/valeur). Genèse : TASK-013.
+- `Audit_SIPV` (AuditLog SIPV, snapshot avant/après par action admin) -- **nommé délibérément différent du nœud `Journal` existant** (qui est le journal ERPCRM/entity_log, un système totalement distinct) pour éviter une fusion à tort entre deux concepts proches mais réellement séparés (SIPV reste autonome). Genèse : TASK-S026. Vérifié après coup qu'aucune fusion n'a eu lieu (`Journal` toujours à 3 relations, inchangé).
+
+Côté SIPV, l'agent a aussi confirmé explicitement que plusieurs candidats N'étaient PAS des concepts distincts (pas ajoutés) : les gabarits de provisioning (`GlobalTemplate`/`TenantTemplate`/`TenantModelTemplate`) sont un sous-mécanisme de `Provisioning`, et `Holiday` un sous-mécanisme de `Horaires` -- décision explicite, pas un oubli.
+
+**État final vérifié (`list_node_facts.py`)** : **ERPCRM 33 (visé 28, dépassé de 5 faits réels nouveaux)**, **Compagnies 27 (visé 24, dépassé)**, **Contacts 12/12 -- parité exacte**, SIPV 38 (visé 43 -- écart résiduel de 5, contre 11 au départ). L'écart SIPV restant n'est plus explicable par un modèle de code non-mappé (vérifié fichier par fichier des deux côtés) -- le résidu est probablement des liens de provenance techniques (`MENTIONS`, pas de vrais faits) ou du contenu dont la formulation exacte ne peut être retrouvée sans le contenu original supprimé (aucun backup Neo4j).
+
+Fichiers : aucun (écriture Graphiti seulement, pas de fichier repo).
+
+### TASK-040.19 [x] Deux règles de travail ajoutées : relire le diff + délégation limitée aux recherches en lecture seule
+Date de demande : 2026-09-30
+Date(s) de travail : 2026-09-30
+
+Philippe a soumis une recette vue en vidéo (« ne fais jamais le travail toi-même, délègue toujours à des sub-agents », routage de modèles, contexte minimal par sub-agent, résumé en 3 lignes, relire le diff). Analyse : la délégation systématique avec contexte minimal et résumés de 3 lignes contredit les règles existantes (zéro supposition, vérifier l'intégration réelle) et les incidents déjà vécus par manque de contexte — rejetée. Retenu sur accord de Philippe : (1) relire le diff complet avant de conclure, (2) déléguer seulement les recherches larges en lecture seule.
+
+Ajoutées dans CLAUDE.md (Règles absolues) et dans Graphiti (2 faits `Captaine -[EXPECTS]-> Claude`, rattachés au nœud Claude, lui-même relié à ERPCRM/SIPV/DashV16).
+Fichiers : CLAUDE.md.
+
 ---
 
 ## TASK-041 [TOOLING] [x] Journal de conversation Claude Code -- ERPCRM

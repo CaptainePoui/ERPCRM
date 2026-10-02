@@ -138,6 +138,8 @@ pages/
 - Ne pas modifier un module existant sans demande explicite
 - Graphiti EN PREMIER pour TOUTE demande, sans exception (nouvelle fonctionnalité, bug, décision d'approche, nouveau TASK-XXX, question, correction mineure — pas juste "où on est rendu")
 - Alimenter Graphiti (nœuds/liens, `fast_write.py`) après toute tâche non-triviale qui crée ou rend périmé un concept/une dépendance — vérifier avant (doublon ?) et après (relecture) — voir skills `documentation-sync`/`graphiti-knowledge`
+- Relire le diff complet (`git diff`) avant de conclure qu'une modification est terminée — en plus de la preuve réelle (HTTP, dialplan, etc.), jamais à la place
+- Déléguer à un sub-agent de recherche (Explore, `erpcrm-researcher`, `sipv-researcher`) SEULEMENT les recherches larges en lecture seule dont seule la conclusion compte — l'écriture, les décisions et la vérification restent dans la session principale, avec le contexte complet (jamais de délégation systématique ni de « contexte minimal »)
 
 ## Convention PLATFORM_TASKS.md
 - TASK-XXX = création initiale d'un module ERPCRM (ex: TASK-015 = Module Tâches) ; TASK-SXXX = création initiale d'un module SIPV.

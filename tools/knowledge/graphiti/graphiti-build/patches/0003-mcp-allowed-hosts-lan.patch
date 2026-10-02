@@ -1,0 +1,40 @@
+--- a/mcp_server/src/graphiti_mcp_server.py	2026-09-20 14:24:14.114904441 +0000
++++ b/mcp_server/src/graphiti_mcp_server.py	2026-09-20 14:24:14.117582448 +0000
+@@ -20,6 +20,7 @@
+ from graphiti_core.search.search_filters import SearchFilters
+ from graphiti_core.utils.maintenance.graph_data_operations import clear_data
+ from mcp.server.fastmcp import FastMCP
++from mcp.server.transport_security import TransportSecuritySettings
+ from pydantic import BaseModel
+ from starlette.responses import JSONResponse
+ 
+@@ -1237,6 +1238,29 @@
+     if config.server.port:
+         mcp.settings.port = config.server.port
+ 
++    # PATCH Simple IP Platform (2026-09-02) : FastMCP.__init__ decide d'activer la
++    # protection anti-DNS-rebinding en se basant sur le parametre `host` passe a SON
++    # PROPRE constructeur (par defaut "127.0.0.1", jamais renseigne ligne ~176 dans ce
++    # fichier) -- PAS sur `config.server.host`/mcp.settings.host regle ci-dessus. Resultat
++    # sans ce patch : la protection s'active quand meme (car "127.0.0.1" par defaut), avec
++    # allowed_hosts=["127.0.0.1:*", ...] uniquement -- toute requete dont l'en-tete Host ne
++    # correspond pas a localhost recoit HTTP 421 "Invalid Host header", meme si le serveur
++    # ecoute reellement sur 0.0.0.0 (verifie : DashV16 192.168.1.101 -> 192.168.1.9:8000
++    # rejete tant que ce patch n'etait pas applique). Corrige ici en reglant explicitement
++    # mcp.settings.transport_security avec la liste d'hotes autorises (env MCP_ALLOWED_HOSTS,
++    # CSV, defaut = localhost seulement -- ne jamais retirer 127.0.0.1/localhost du defaut).
++    _allowed_hosts_env = os.environ.get(
++        'MCP_ALLOWED_HOSTS', '127.0.0.1:*,localhost:*,[::1]:*'
++    )
++    _allowed_hosts = [h.strip() for h in _allowed_hosts_env.split(',') if h.strip()]
++    mcp.settings.transport_security = TransportSecuritySettings(
++        enable_dns_rebinding_protection=True,
++        allowed_hosts=_allowed_hosts,
++        allowed_origins=[f'http://{h}' for h in _allowed_hosts]
++        + [f'https://{h}' for h in _allowed_hosts],
++    )
++    logger.info(f'transport_security.allowed_hosts = {_allowed_hosts}')
++
+     # Return MCP configuration for transport
+     return config.server
+ 

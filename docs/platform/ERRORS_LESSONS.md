@@ -840,6 +840,54 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-040.16 — Correctif Graphiti prêt depuis 18 jours, jamais déployé ni tracé — redécouvert de zéro par une autre session
+
+**Date** : préparé 2026-09-02, redécouvert et déployé 2026-09-20
+
+**On croyait** : qu'un correctif technique complet et fonctionnel (fichier `graphiti_mcp_server.py` patché réglant `transport_security.allowed_hosts`, préparé le 2026-09-02 suite à un diagnostic déjà exhaustif du HTTP 421) constituait, à lui seul, une trace suffisante — il documentait précisément la cause et la solution dans ses propres commentaires.
+
+**Preuve** : le fichier corrigé existait bien (`tools/knowledge/graphiti/patches/graphiti_mcp_server.py`, daté du 2026-09-02) mais n'a jamais été converti en patch de build réel (`graphiti-build/patches/*.patch`), jamais appliqué à l'image en service, et surtout **aucune entrée PLATFORM_TASKS.md/ERRORS_LESSONS.md ne pointait vers son existence**. Résultat : le 2026-09-20, la session DashV16 a retombé sur exactement le même symptôme (421 sur `Host: 192.168.1.9:8000`) et a dû relancer un diagnostic complet à partir de zéro (inspection de `mcp/server/fastmcp/server.py`, repérage de `TransportSecuritySettings`) avant qu'on découvre, en creusant côté ERPCRM, que le travail avait déjà été fait 18 jours plus tôt.
+
+**Cause réelle** : un correctif préparé "au cas où" (ou en attente d'un moment sûr pour le déployer, ici une ingestion en cours qu'on ne voulait pas interrompre — voir `feedback_no_graphiti_restart_during_ingestion`) n'a de valeur que s'il est à la fois (a) intégré au vrai mécanisme de déploiement (ici : les `.patch` numérotés que `build.sh` applique, pas un fichier complet à part) et (b) référencé dans PLATFORM_TASKS.md dès sa préparation — pas seulement une fois déployé. Un correctif "prêt mais en attente" est un état de travail réel qui se perd comme n'importe quel autre si personne ne l'écrit quelque part de cherchable.
+
+**Correction** : converti en `graphiti-build/patches/0003-mcp-allowed-hosts-lan.patch`, `MCP_ALLOWED_HOSTS` ajouté à `.env`/`.env.example`, image reconstruite et déployée (voir PLATFORM_TASKS.md TASK-040.16). Vérifié après coup avec un vrai handshake MCP (pas juste un curl GET superficiel — un GET nu redirige en 307 avant même la validation d'hôte, ce qui aurait donné un faux sentiment de vérification) : hôte LAN autorisé → 200 + handshake complet, hôte non listé → toujours 421, la protection reste réelle.
+
+**Leçon (à ne pas refaire)** : un correctif prêt-mais-non-déployé doit être tracé dans PLATFORM_TASKS.md (même sous statut "en attente", pas seulement `[x]` une fois fait) dès sa préparation, pas seulement après coup — sinon son existence dépend uniquement de la mémoire de la session qui l'a écrit. Et pour vérifier une correction de validation HTTP (Host header, auth, etc.), toujours reproduire l'échange protocolaire réel (ici : POST JSON-RPC `initialize` avec les bons en-têtes `Accept`), jamais un GET nu dont la réponse (redirect, 404...) peut masquer complètement la couche qu'on cherche à tester.
+
+---
+
+## TASK-040.17 — `delete_episode` a effacé 3 nœuds hub (SIPV, ERPCRM, Contacts) malgré sa documentation, aucun backup disponible
+
+**Date** : 2026-09-20/21
+
+**On croyait** : que `delete_episode` (`Graphiti.remove_episode`), dont la documentation dit explicitement "entities and facts that were created solely by this episode are removed along with it, while entities and facts also supported by other episodes are preserved", ne toucherait QUE les ~21 nœuds réellement créés par les 2 épisodes `add_memory` fautifs (2026-09-11 ESL, 2026-09-12 dot SIP) — les nœuds pré-existants qu'ils avaient seulement mentionnés (SIPV, ERPCRM), avec des dizaines d'autres faits/épisodes de support chacun, semblaient évidemment protégés par cette garantie documentée.
+
+**Preuve** : immédiatement après les deux `delete_episode`, une vérification systématique (`list_node_facts.py`, requête Cypher directe, pas une recherche sémantique) a montré `SIPV`, `ERPCRM` ET `Contacts` (aucun des trois n'était censé être concerné) à **0 relation** — puis confirmé par recherche directe par UUID dans Neo4j : les nœuds n'existaient tout simplement plus, ni par UUID ni par nom. Étendue vérifiée par comptage complet des noms de nœuds restants (60 sur le graphe) contre l'attendu — exactement ces 3 nœuds manquaient, rien d'autre.
+
+**Cause réelle** : le comportement réel de cascade de `graphiti-core` (`remove_episode`) ne correspond pas à sa documentation telle qu'exposée par le serveur MCP — au minimum pour des nœuds mentionnés par l'épisode supprimé mais dont le support par d'autres épisodes n'a peut-être pas été correctement recompté. Pas testé au préalable sur un cas non-critique avant de l'exécuter sur les vraies données de production. Aucun backup Neo4j (pas de volume sauvegardé, pas de dump) n'existait pour permettre une restauration point-in-time — la seule voie de récupération était la reconstruction manuelle à partir de ce qui avait déjà été lu dans la session en cours.
+
+**Correction** : reconstruction de 15 faits via `fast_write.py` (un par un, jamais en lot — un lot de 8 appels chaînés en arrière-plan a lui-même causé un OOM kill du script, probablement le rechargement répété du reranker BGE ~2,3 Go par appel) à partir des faits exacts déjà consultés dans la même session (jamais reconstruits de mémoire approximative). Vérifié après coup : SIPV/ERPCRM/Contacts recréés avec 8/8/9 relations respectivement, toutes correctement formées (voir PLATFORM_TASKS.md TASK-040.17). Reconstruction explicitement incomplète — un passage en profondeur (`graphiti_deep_pass.md`) reste à faire pour retrouver tout fait non recouvré.
+
+**Leçon (à ne pas refaire)** : ne jamais faire confiance à la documentation d'un outil de suppression en cascade sur des données de production sans l'avoir testé au préalable sur un cas isolé et vérifié le résultat réel — surtout sans backup disponible. Avant toute suppression irréversible touchant un graphe/une base partagée : (1) vérifier qu'un mécanisme de sauvegarde/restauration existe, sinon le signaler explicitement AVANT d'agir, pas après ; (2) après l'action, vérifier l'état RÉEL de tout ce qui aurait pu être affecté (pas seulement les éléments visés), par comptage total si possible, pas juste un échantillon ; (3) ne jamais lancer plusieurs écritures Graphiti en parallèle/en lot arrière-plan (charge mémoire du reranker/embedder par appel) — toujours séquentiel, un appel a la fois, comme déjà documenté pour l'écriture (voir skill `graphiti-knowledge`) mais visiblement pas assez insisté pour la suppression.
+
+---
+
+## TASK-040.18 — Leçon du 2026-09-10 (deux couches : hub + dépendances réelles) jamais extraite en règle, presque reproduite telle quelle par la session DashV16
+
+**Date** : leçon originale 2026-09-10 (TASK-040.13), presque répétée le 2026-09-24
+
+**On croyait** : que connaître l'historique d'un incident (avoir lu/vécu TASK-040.13 : "63/63 nœuds audités, 22 liens SIPV manquants" -- le graphe SIPV n'avait que des liens vers le hub SIPV, jamais entre les modules eux-mêmes) suffisait pour appliquer spontanément la même vigilance en briefant une autre session (DashV16) sur la même tâche.
+
+**Preuve** : en rédigeant le prompt pour que la session DashV16 construise ses propres nœuds Graphiti, l'instruction donnée insistait uniquement sur la richesse du TEXTE de chaque fait (suite à une demande explicite de Philippe de ne pas ménager les tokens) -- rien sur la nécessité de câbler aussi des arêtes RÉELLES entre les concepts eux-mêmes. Résultat : la session DashV16 a construit 37 nœuds, chacun avec un texte riche et exact, mais TOUS reliés uniquement au hub (`DashV16 CONTAINS X`) -- une étoile avec des feuilles bavardes, exactement le même défaut structurel que SIPV avant le 2026-09-10, découvert cette fois par Philippe en consultant le résultat, pas par une vérification proactive de ma part.
+
+**Cause réelle** : la leçon du 2026-09-10 n'existait que comme un journal d'incident (TASK-040.13 dans PLATFORM_TASKS.md, qui décrit CE QUI a été trouvé et corrigé une fois) -- jamais extraite comme règle générale active dans la skill `graphiti-knowledge` (le document que je consulte réellement avant d'agir sur Graphiti). Une connaissance narrative ("je me souviens de cette histoire") n'est pas la même chose qu'une règle opérationnelle ("je dois vérifier ça avant chaque nouvelle construction de graphe") -- la première se perd facilement dans une longue session chargée, la seconde non.
+
+**Correction** : ajout d'une section explicite dans `.claude/skills/graphiti-knowledge/SKILL.md` formalisant la règle des deux couches (hub + dépendances réelles entre concepts), avec le vocabulaire de relations à privilégier (`RELATES_TO`/`HAS`/`CONTAINS`/`DEPENDS_ON`/`USES`, la nuance précise dans le texte du fait plutôt qu'un nouveau nom de relation inventé à chaque fois) pour rester cohérent sur tout le graphe unifié (Captaine/ERPCRM/SIPV/DashV16).
+
+**Leçon (à ne pas refaire)** : une leçon apprise sur un incident doit être extraite en RÈGLE GÉNÉRALE dans un document activement consulté (une skill, pas seulement un journal de tâches) dès qu'elle est susceptible de se reproduire sur un autre système/session -- surtout avant de briefer une autre session (Dash, un futur Claude, etc.) sur une tâche similaire. Se fier à sa propre mémoire narrative de l'incident, même récent et bien compris, n'est pas suffisant pour garantir qu'elle sera appliquée au bon moment.
+
+---
+
 ## TASK-005.4 — Travail ERPCRM (paiements) fait depuis une session Claude lancée sur SIPV dans `/home/sipv` : mauvais fichier de tâches, numéros en collision, rien dans Graphiti, rien de commité
 
 **Date** : travail 2026-09-29, découvert et régularisé 2026-10-01

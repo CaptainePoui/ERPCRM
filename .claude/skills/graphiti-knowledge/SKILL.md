@@ -43,6 +43,18 @@ Ne pas l'utiliser pour "que fait le code aujourd'hui" (reponse : lire le code / 
 
 **Jamais de dump mecanique** -- un vrai concept avec un vrai "pourquoi", pas une liste de champs FK generee automatiquement. Voir TASK-040.5 pour l'incident qui a impose cette regle, et `docs/platform/graphiti_deep_pass.md` pour la methode complete (audit noeud par noeud, un a la fois, verification double) utilisee pour combler les trous existants -- reutilisable pour tout futur rattrapage.
 
+## DEUX COUCHES obligatoires -- hub ET dependances reelles entre concepts (regle a appliquer DES LE DEBUT, pas apres coup)
+
+Un graphe qui relie chaque concept SEULEMENT a son hub (`ERPCRM CONTAINS X`, `SIPV CONTAINS X`, `DashV16 CONTAINS X`) est une etoile avec des feuilles bavardes, pas un graphe de dependances -- on ne peut jamais repondre a "qu'est-ce qui depend de X" sans relire le texte de chaque noeud un par un. Ca defait exactement le but de Graphiti (eviter de re-scanner le projet).
+
+Les deux couches, TOUJOURS ensemble, jamais l'une sans l'autre :
+1. **Rattachement au hub** (deja documente ci-dessus) -- chaque concept relie a son systeme parent.
+2. **Dependances reelles ENTRE les concepts eux-memes** -- si le texte d'un fait mentionne qu'un concept en utilise/execute/etend/depend d'un autre, cette relation doit AUSSI exister comme arete traversable entre les deux noeuds, pas seulement comme phrase dans le texte d'un des deux. Cable DANS LE MEME LOT que la creation du noeud, jamais reporte a "plus tard" ou a une passe separee.
+
+**Vocabulaire des relations -- rester sur un petit ensemble constant** : `CONTAINS`, `HAS`, `RELATES_TO`, `DEPENDS_ON`, `SYNCS_WITH`, `USES`. La nuance precise (execute, simule, compose, etend, reutilise) va dans le TEXTE du fait, jamais comme nouveau nom de relation invente au cas par cas -- sinon le vocabulaire diverge d'un projet a l'autre (ERPCRM/SIPV/DashV16) et casse la coherence du meme graphe unifie.
+
+**Origine de cette regle** : trouvee et corrigee une premiere fois le 2026-09-10 sur SIPV (TASK-040.13 : 22 modules relies au hub mais jamais entre eux). Presque repetee a l'identique le 2026-09-24 en briefant la session DashV16 (37 noeuds crees, tous en etoile, aucune arete entre eux) -- voir ERRORS_LESSONS.md TASK-040.18. Cette 2e occurrence est la preuve que la regle doit rester ICI, active et visible, pas seulement dans un journal de taches qu'on ne relit pas avant d'agir.
+
 ## Comment ecrire un fait -- `fast_write.py`, pas `add_memory`/`add_triplet` en session interactive
 
 **`add_triplet` (outil MCP) fonctionne et est fiable** -- une conclusion prematuree du 2026-08-25 ("timeout systematique") a ete corrigee le 2026-09-04 : le materiel CPU-seul est juste lent (~7-8 min par appel, le harnais MCP abandonne parfois a 300s cote client alors que ca continue de traiter reellement cote serveur -- verifier l'activite reelle, `ps aux | grep llama-server`, avant de conclure a un echec). Mais pour la construction/maintenance courante du graphe, preferer **`tools/knowledge/graphiti/scripts/fast_write.py`** : meme resultat (noeud + fait + embeddings corrects, cherchable normalement ensuite), mais quelques SECONDES au lieu de 20-25 minutes, parce qu'il contourne l'etape de resolution/dedup par LLM (c'est Claude qui a deja verifie les noms existants avant d'appeler le script, pas besoin de la refaire cote serveur).
