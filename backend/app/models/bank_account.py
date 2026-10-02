@@ -70,6 +70,28 @@ class BankTransaction(Base):
     fitid: Mapped[str | None] = mapped_column(String(255))
     # Empeche de reimporter deux fois la meme ligne (FITID, sinon date+montant+description+rang)
     dedup_key: Mapped[str] = mapped_column(String(300), nullable=False)
-    # unclassified | excluded (matched / classified viendront avec le rapprochement)
+    # unclassified | matched | excluded
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="unclassified")
+    # Attribution (TASK-042) : compagnie (manuelle ou par regle de beneficiaire) et encaissement lie
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
+    # manual | rule -- une ligne non classee avec une compagnie venant d'une regle = « Reconnu »
+    company_source: Mapped[str | None] = mapped_column(String(10))
+    client_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("client_payments.id", ondelete="SET NULL"))
+    # Vrai si l'encaissement a ete cree par l'attribution (on le supprime en annulant) ;
+    # faux s'il existait deja (paiement declare au portail, historique Zoho) -- on le delie seulement
+    payment_created: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class BankPayeeRule(Base):
+    """Regle « beneficiaire du releve -> compagnie » (mode 3 d'attribution) : appliquee aux
+    lignes non classees existantes et a chaque import ; propose sans jamais confirmer seule."""
+    __tablename__ = "bank_payee_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Beneficiaire normalise (minuscules, sans accents ni ponctuation) -- unique
+    payee_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    payee_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

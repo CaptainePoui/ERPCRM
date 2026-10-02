@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
+import Autocomplete from '../components/Autocomplete'
 import { IconBank, IconCalendar, IconSearch, IconSettings } from '../components/Icons'
 import {
   ACCOUNT_TYPES, C, EMPTY, fmtDate, fmtMoney,
@@ -91,7 +92,215 @@ function Switch({ checked, onChange, label }) {
   )
 }
 
-function UnclassifiedTab({ transactions }) {
+const STATUS_INV = {
+  envoyee: 'Envoyée', en_retard: 'En retard', partiellement_payee: 'Partielle', payee: 'Payée',
+}
+const fmtD = d => d ? fmtDate(d + 'T00:00:00') : EMPTY
+const SOURCE_LABEL = { zoho_import: 'Historique Zoho', portal: 'Déclaré au portail', manual: 'Encaissement manuel', bank_import: 'Banque' }
+
+function useCompanies() {
+  const [companies, setCompanies] = useState([])
+  useEffect(() => { api.get('/v1/companies').then(r => setCompanies(r.data.map(c => ({ id: c.id, label: c.name })))) }, [])
+  return companies
+}
+
+function errText(e) {
+  const d = e.response?.data?.detail
+  return Array.isArray(d) ? d.map(x => x.msg).join(' ; ') : (d || 'Erreur')
+}
+
+// Mode 3 : attribuer le beneficiaire (et les prochaines lignes du meme beneficiaire) a une compagnie
+function PayeeModal({ tx, onClose, onDone }) {
+  const companies = useCompanies()
+  const [company, setCompany] = useState(tx.company_id ? { id: tx.company_id, label: tx.company_name } : null)
+  const [remember, setRemember] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  async function save() {
+    setSaving(true); setError(null)
+    try {
+      await api.put(`/v1/bank/transactions/${tx.id}/company`, { company_id: company?.id || null, remember })
+      await onDone()
+    } catch (e) { setError(errText(e)) } finally { setSaving(false) }
+  }
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ width: 460 }}>
+        <h3 className="modal-title">Bénéficiaire « {tx.payee} »</h3>
+        <Autocomplete label="Compagnie" items={companies} value={company} onSelect={setCompany} openOnFocus autoFocus placeholder="Rechercher une compagnie..." />
+        <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+          Retenir : les autres lignes et les prochains relevés de ce bénéficiaire seront reconnus pour cette compagnie
+        </label>
+        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Enregistrer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Modes 1 et 2 : associer un depot a un paiement existant ou a des factures
+function MatchModal({ tx, onClose, onDone }) {
+  const companies = useCompanies()
+  const [sugg, setSugg] = useState(null)
+  const [methods, setMethods] = useState([])
+  const [method, setMethod] = useState('')
+  const [company, setCompany] = useState(tx.company_id ? { id: tx.company_id, label: tx.company_name } : null)
+  const [invoices, setInvoices] = useState([])
+  const [alloc, setAlloc] = useState({})          // invoice_id -> montant (texte)
+  const [remember, setRemember] = useState(true)
+  const [showPaid, setShowPaid] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => {
+    api.get(`/v1/bank/transactions/${tx.id}/suggestions`).then(r => { setSugg(r.data); setMethod(r.data.method_code) })
+    api.get('/v1/payments/methods').then(r => setMethods(r.data.filter(m => m.is_active)))
+  }, [tx.id])
+  useEffect(() => {
+    setAlloc({})
+    if (!company) { setInvoices([]); return }
+    api.get(`/v1/bank/companies/${company.id}/invoices`).then(r => setInvoices(r.data))
+  }, [company?.id])
+
+  const allocated = Object.values(alloc).reduce((s, v) => s + (parseFloat(v) || 0), 0)
+  const remaining = Math.round((tx.amount - allocated) * 100) / 100
+
+  function toggleInvoice(inv) {
+    setAlloc(a => {
+      const n = { ...a }
+      if (n[inv.id] !== undefined) { delete n[inv.id]; return n }
+      const left = Math.round((tx.amount - Object.values(n).reduce((s, v) => s + (parseFloat(v) || 0), 0)) * 100) / 100
+      n[inv.id] = String(Math.max(0, Math.min(inv.balance, left)).toFixed(2))
+      return n
+    })
+  }
+
+  function pickInvoices(list) {
+    const c = { id: list[0].company_id, label: list[0].company_name }
+    setCompany(c)
+    // les factures de la compagnie se chargent, puis on coche celles proposees
+    api.get(`/v1/bank/companies/${c.id}/invoices`).then(r => {
+      setInvoices(r.data)
+      const n = {}; let left = tx.amount
+      list.forEach(i => { const v = Math.min(i.balance, left); n[i.id] = v.toFixed(2); left -= v })
+      setAlloc(n)
+    })
+  }
+
+  async function submit(body) {
+    setSaving(true); setError(null)
+    try {
+      await api.post(`/v1/bank/transactions/${tx.id}/match`, { remember_payee: remember, ...body })
+      await onDone()
+    } catch (e) { setError(errText(e)) } finally { setSaving(false) }
+  }
+
+  const shown = invoices.filter(i => showPaid || i.balance > 0)
+  const box = { border: `1px solid ${C.border}`, borderRadius: 8, padding: 10 }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ width: 760, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto' }}>
+        <h3 className="modal-title">Associer le dépôt de {fmtMoney(tx.amount)} du {fmtD(tx.posted_date)}</h3>
+        <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>
+
+        {/* Mode 1 : suggestions */}
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Suggestions</div>
+        {!sugg && <div style={{ fontSize: 13, color: C.muted }}>Recherche...</div>}
+        {sugg && !sugg.payments.length && !sugg.invoices.length && !sugg.combos.length && (
+          <div style={{ fontSize: 13, color: C.faint }}>Aucune suggestion — choisissez une compagnie ci-dessous.</div>
+        )}
+        {sugg?.payments.map(p => (
+          <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13 }}>
+              <strong>Paiement déjà enregistré</strong> · {p.company_name} · {fmtMoney(p.amount)} · {SOURCE_LABEL[p.source] || p.source}{p.reference ? ` ${p.reference}` : ''}
+              <div style={{ color: C.muted, fontSize: 12 }}>{p.status === 'pending' ? 'En attente de confirmation' : `Reçu le ${fmtD(p.received_at)}`} · Factures {p.invoice_numbers.join(', ') || EMPTY}</div>
+            </div>
+            <button className="btn-primary" disabled={saving} onClick={() => submit({ client_payment_id: p.id })}>{p.status === 'pending' ? 'Confirmer et lier' : 'Lier'}</button>
+          </div>
+        ))}
+        {sugg?.invoices.map(i => (
+          <div key={i.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13 }}>
+              <strong>{i.number}</strong> · {i.company_name}{i.site_label ? ` (${i.site_label})` : ''} · solde {fmtMoney(i.balance)} {i.exact && <span style={{ color: C.green, fontWeight: 600 }}>· montant exact</span>}
+              <div style={{ color: C.muted, fontSize: 12 }}>Émise le {fmtD(i.issue_date)} · {STATUS_INV[i.status] || i.status}</div>
+            </div>
+            <button className="btn-secondary" onClick={() => pickInvoices([i])}>Choisir</button>
+          </div>
+        ))}
+        {sugg?.combos.map((c, k) => (
+          <div key={k} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13 }}><strong>{c.length} factures</strong> · {c[0].company_name} · {c.map(i => `${i.number} (${fmtMoney(i.balance)})`).join(' + ')}</div>
+            <button className="btn-secondary" onClick={() => pickInvoices(c)}>Choisir</button>
+          </div>
+        ))}
+
+        {/* Mode 2 : compagnie puis factures */}
+        <div style={{ fontWeight: 600, fontSize: 14, marginTop: 6 }}>Ou choisir la compagnie</div>
+        <Autocomplete items={companies} value={company} onSelect={setCompany} openOnFocus placeholder="Rechercher une compagnie..." />
+        {company && (
+          <div style={box}>
+            <label style={{ fontSize: 12, color: C.muted, display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} /> Afficher aussi les factures payées
+            </label>
+            <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <tbody>
+                  {shown.map(i => (
+                    <tr key={i.id} style={{ borderTop: `1px solid ${C.border}`, color: i.balance > 0 ? undefined : C.faint }}>
+                      <td style={{ padding: 4, width: 24 }}><input type="checkbox" disabled={i.balance <= 0} checked={alloc[i.id] !== undefined} onChange={() => toggleInvoice(i)} /></td>
+                      <td style={{ padding: 4, whiteSpace: 'nowrap' }}>{i.number}</td>
+                      <td style={{ padding: 4, whiteSpace: 'nowrap' }}>{fmtD(i.issue_date)}</td>
+                      <td style={{ padding: 4 }}>{STATUS_INV[i.status] || i.status}{i.site_label ? ` · ${i.site_label}` : ''}</td>
+                      <td style={{ padding: 4, textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtMoney(i.total)}</td>
+                      <td style={{ padding: 4, textAlign: 'right', whiteSpace: 'nowrap' }}>solde {fmtMoney(i.balance)}</td>
+                      <td style={{ padding: 4, width: 100 }}>
+                        {alloc[i.id] !== undefined && <input type="number" step="0.01" value={alloc[i.id]} onChange={e => setAlloc(a => ({ ...a, [i.id]: e.target.value }))} style={{ width: 90, textAlign: 'right' }} />}
+                      </td>
+                    </tr>
+                  ))}
+                  {shown.length === 0 && <tr><td colSpan={7} style={{ padding: 10, color: C.faint, textAlign: 'center' }}>Aucune facture {showPaid ? '' : 'avec un solde '}pour cette compagnie</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginTop: 8 }}>
+              <span>Réparti : <strong>{fmtMoney(allocated)}</strong> sur {fmtMoney(tx.amount)}</span>
+              <span style={{ color: remaining < 0 ? C.red : remaining > 0 ? '#D97706' : C.green }}>
+                {remaining < 0 ? 'Dépasse le dépôt' : remaining > 0 ? `Reste ${fmtMoney(remaining)} non réparti (crédit du client)` : 'Montant exact'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap', fontSize: 13 }}>
+          <label>Mode de paiement{' '}
+            <select value={method} onChange={e => setMethod(e.target.value)}>{methods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}</select>
+          </label>
+          {tx.payee && (
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+              Retenir « {tx.payee} » pour cette compagnie
+            </label>
+          )}
+        </div>
+        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={saving || !Object.keys(alloc).length || remaining < 0}
+            onClick={() => submit({ method_code: method, allocations: Object.entries(alloc).map(([invoice_id, v]) => ({ invoice_id, amount: parseFloat(v) || 0 })).filter(a => a.amount > 0) })}>
+            {saving ? '...' : 'Associer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function UnclassifiedTab({ transactions, onChanged }) {
   const [sub, setSub] = useState('all')            // all | recognized
   const [excluded, setExcluded] = useState(false)
   const [multi, setMulti] = useState(false)
@@ -101,31 +310,63 @@ function UnclassifiedTab({ transactions }) {
   const [page, setPage] = useState(0)
   const [desc, setDesc] = useState(true)
   const [selected, setSelected] = useState(new Set())
+  const [matching, setMatching] = useState(null)
+  const [payeeTx, setPayeeTx] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState(null)
 
   const unclassified = transactions.filter(t => t.status === 'unclassified')
-  // « Reconnu » = lignes que le rapprochement automatique propose d'associer -- aucune tant qu'il n'existe pas
-  const base = excluded ? transactions.filter(t => t.status === 'excluded') : sub === 'recognized' ? [] : unclassified
+  const recognized = unclassified.filter(t => t.company_id)
+  const base = excluded ? transactions.filter(t => t.status === 'excluded') : sub === 'recognized' ? recognized : unclassified
   const q = search.trim().toLowerCase()
   const rows = base
-    .filter(t => !q || [t.description, t.payee, t.reference, String(Math.abs(t.amount))].some(v => (v || '').toLowerCase().includes(q)))
+    .filter(t => !q || [t.description, t.payee, t.reference, t.company_name, String(Math.abs(t.amount))].some(v => (v || '').toLowerCase().includes(q)))
     .sort((a, b) => (desc ? -1 : 1) * a.posted_date.localeCompare(b.posted_date))
   const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
   const allChecked = pageRows.length > 0 && pageRows.every(t => selected.has(t.id))
+  const sel = [...selected].filter(id => base.some(t => t.id === id))
   function toggle(id) { setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n }) }
   function toggleAll() { setSelected(s => { const n = new Set(s); pageRows.forEach(t => allChecked ? n.delete(t.id) : n.add(t.id)); return n }) }
+
+  async function bulk(action) {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post('/v1/bank/transactions/bulk', { ids: sel, action })
+      setMsg(`${r.data.done} traitée${r.data.done > 1 ? 's' : ''}${r.data.skipped ? ` · ${r.data.skipped} ignorée${r.data.skipped > 1 ? 's' : ''} (pas de suggestion sûre : ouvrez-les une à une)` : ''}`)
+      setSelected(new Set()); await onChanged()
+    } finally { setBusy(false) }
+  }
+  async function validateOne(t) {
+    const s = t.suggestion
+    await api.post(`/v1/bank/transactions/${t.id}/match`, s.kind === 'payment'
+      ? { client_payment_id: s.id } : { allocations: [{ invoice_id: s.id, amount: s.balance }] })
+    await onChanged()
+  }
+  const reset = () => { setPage(0); setSelected(new Set()); setMsg(null) }
 
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div className="filter-tabs">
-          <button className={`filter-tab${sub === 'all' && !excluded ? ' active' : ''}`} onClick={() => { setSub('all'); setExcluded(false); setPage(0) }}>Tout ({unclassified.length})</button>
-          <button className={`filter-tab${sub === 'recognized' && !excluded ? ' active' : ''}`} onClick={() => { setSub('recognized'); setExcluded(false); setPage(0) }}>Reconnu (0)</button>
+          <button className={`filter-tab${sub === 'all' && !excluded ? ' active' : ''}`} onClick={() => { setSub('all'); setExcluded(false); reset() }}>Tout ({unclassified.length})</button>
+          <button className={`filter-tab${sub === 'recognized' && !excluded ? ' active' : ''}`} onClick={() => { setSub('recognized'); setExcluded(false); reset() }}>Reconnu ({recognized.length})</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <Switch checked={multi} onChange={setMulti} label="Correspondance & sélection multiple" />
-          <button type="button" onClick={() => { setExcluded(e => !e); setPage(0) }} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: excluded ? C.link : C.muted, cursor: 'pointer', fontWeight: excluded ? 600 : 400 }}>Exclu</button>
+          <button type="button" onClick={() => { setExcluded(e => !e); reset() }} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: excluded ? C.link : C.muted, cursor: 'pointer', fontWeight: excluded ? 600 : 400 }}>Exclu ({transactions.filter(t => t.status === 'excluded').length})</button>
         </div>
       </div>
+
+      {(multi || sel.length > 0) && (
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
+          <span>{sel.length} sélectionnée{sel.length > 1 ? 's' : ''}</span>
+          {!excluded && sub === 'recognized' && <button className="btn-primary" disabled={busy || !sel.length} onClick={() => bulk('validate')}>Valider la sélection</button>}
+          {!excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('exclude')}>Exclure</button>}
+          {excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('restore')}>Restaurer</button>}
+          {msg && <span style={{ color: C.muted }}>{msg}</span>}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 720, borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
@@ -142,21 +383,38 @@ function UnclassifiedTab({ transactions }) {
             {pageRows.map(t => (
               <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
                 <td style={{ padding: '10px 8px' }}><input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
-                <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtDate(t.posted_date + 'T00:00:00')}</td>
+                <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>
                   <div>Description : {t.description || EMPTY}</div>
-                  {(t.payee || t.reference) && <div style={{ fontSize: 12, color: C.muted }}>{t.payee ? `Bénéficiaire : ${t.payee}` : ''}{t.payee && t.reference ? ' · ' : ''}{t.reference ? `Réf. : ${t.reference}` : ''}</div>}
+                  {t.payee && (
+                    <div style={{ fontSize: 12, color: C.muted }}>
+                      Bénéficiaire :{' '}
+                      <button type="button" title="Attribuer ce bénéficiaire à une compagnie" onClick={() => setPayeeTx(t)} style={{ background: 'none', border: 'none', padding: 0, color: C.link, cursor: 'pointer', fontSize: 12, textDecoration: 'underline dotted' }}>{t.payee}</button>
+                      {t.reference ? ` · Réf. : ${t.reference}` : ''}
+                    </div>
+                  )}
+                  {!t.payee && t.reference && <div style={{ fontSize: 12, color: C.muted }}>Réf. : {t.reference}</div>}
+                  {t.company_id && (
+                    <div style={{ fontSize: 12, marginTop: 2 }}>
+                      <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
+                      <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
+                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})` : `facture ${t.suggestion.number}`}</span>}
+                    </div>
+                  )}
                 </td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
-                <td />
+                <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  {t.status === 'unclassified' && t.amount > 0 && t.suggestion && <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12, marginRight: 6 }} onClick={() => validateOne(t)}>Valider</button>}
+                  {t.status === 'unclassified' && t.amount > 0 && <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setMatching(t)}>Associer</button>}
+                </td>
               </tr>
             ))}
             {pageRows.length === 0 && (
               <EmptyRow colSpan={6}>
                 {excluded ? 'Aucune transaction exclue.'
                   : q ? 'Aucune transaction ne correspond à la recherche.'
-                  : sub === 'recognized' ? 'Aucune transaction reconnue : le rapprochement automatique n\'existe pas encore.'
+                  : sub === 'recognized' ? 'Aucune transaction reconnue. Cliquez sur un bénéficiaire pour l\'attribuer à une compagnie : ses lignes apparaîtront ici.'
                   : 'Aucune transaction non classée. Importez un relevé (bouton Relevés bancaires) : ses lignes apparaîtront ici.'}
               </EmptyRow>
             )}
@@ -164,36 +422,64 @@ function UnclassifiedTab({ transactions }) {
         </table>
       </div>
       <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
+      {matching && <MatchModal tx={matching} onClose={() => setMatching(null)} onDone={async () => { setMatching(null); await onChanged() }} />}
+      {payeeTx && <PayeeModal tx={payeeTx} onClose={() => setPayeeTx(null)} onDone={async () => { setPayeeTx(null); await onChanged() }} />}
     </div>
   )
 }
 
-function AllTransactionsTab() {
+function AllTransactionsTab({ transactions, filter, onChanged }) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [perPage, setPerPage] = useState(200)
+  const [page, setPage] = useState(0)
+  const q = search.trim().toLowerCase()
+  // « Dans ERPCRM » : les lignes de banque associees a un paiement client
+  const rows = transactions
+    .filter(t => t.status === 'matched')
+    .filter(t => filter === 'withdrawals' ? t.amount < 0 : filter === 'deposits' ? t.amount > 0 : (filter === 'classified' || filter === 'manual') ? false : true)
+    .filter(t => !q || [t.description, t.payee, t.company_name, ...(t.invoice_numbers || []), String(Math.abs(t.amount))].some(v => (v || '').toLowerCase().includes(q)))
+    .sort((a, b) => b.posted_date.localeCompare(a.posted_date))
+  const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
+  async function unmatch(t) {
+    if (!confirm(`Annuler l'association du dépôt de ${fmtMoney(t.amount)} (${t.company_name}) ? ${t.payment_created ? "L'encaissement créé sera supprimé et les factures redeviendront à payer." : "Le paiement existant sera seulement délié."}`)) return
+    await api.post(`/v1/bank/transactions/${t.id}/unmatch`)
+    await onChanged()
+  }
   return (
     <div>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }}>
-              <th style={th}>Date ↕</th>
+              <th style={th}>Date</th>
               <th style={th}>N° de référence</th>
               <th style={th}>Type</th>
               <th style={th}>Statut</th>
               <th style={{ ...th, textAlign: 'right' }}>Dépôts</th>
               <th style={{ ...th, textAlign: 'right' }}>Retraits</th>
-              <th style={{ ...th, textAlign: 'right' }}>Solde actuel</th>
-              <SearchHeader open={searchOpen} setOpen={setSearchOpen} value={search} setValue={setSearch} />
+              <th style={{ ...th, textAlign: 'right' }}>Factures</th>
+              <SearchHeader open={searchOpen} setOpen={setSearchOpen} value={search} setValue={v => { setSearch(v); setPage(0) }} />
             </tr>
           </thead>
           <tbody>
-            <EmptyRow colSpan={8}>Aucune transaction dans ERPCRM pour ce compte.</EmptyRow>
+            {pageRows.map(t => (
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
+                <td style={{ padding: '10px 8px' }}>{t.reference || ''}</td>
+                <td style={{ padding: '10px 8px' }}>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : {t.company_name}</div></td>
+                <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={() => unmatch(t)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
+              </tr>
+            ))}
+            {pageRows.length === 0 && <EmptyRow colSpan={8}>Aucune transaction associée dans ERPCRM pour ce compte.</EmptyRow>}
           </tbody>
         </table>
       </div>
-      <Pagination perPage={perPage} setPerPage={setPerPage} />
+      <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
     </div>
   )
 }
@@ -318,8 +604,8 @@ export default function BankAccountDetail() {
           </Tab>
         </div>
         {tab === 'dashboard' && <DashboardTab key={id} account={account} internal={internal} />}
-        {tab === 'unclassified' && <UnclassifiedTab key={id} transactions={transactions} />}
-        {tab === 'all' && <AllTransactionsTab />}
+        {tab === 'unclassified' && <UnclassifiedTab key={id} transactions={transactions} onChanged={load} />}
+        {tab === 'all' && <AllTransactionsTab transactions={transactions} filter={allFilter} onChanged={load} />}
       </div>
 
       {editing && (

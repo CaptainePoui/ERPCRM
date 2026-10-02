@@ -29,4 +29,4 @@ from app.models.appointment import Appointment
 from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine
 from app.models.backup import CloudBackupConnection, BackupCycle, BackupRunLog
 from app.models.cdr_report import CdrReportSchedule, CdrReportRunLog
-from app.models.bank_account import BankAccount, BankStatementImport, BankTransaction
+from app.models.bank_account import BankAccount, BankStatementImport, BankTransaction, BankPayeeRule

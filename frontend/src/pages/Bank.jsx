@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import api from '../services/api'
+import Autocomplete from '../components/Autocomplete'
 import { IconBank, IconCreditCard, IconCash, IconSearch, IconChevronDown, IconCalendar } from '../components/Icons'
 
 // Onglet Banque (TASK-042) -- interface et options. Aucune source de transactions
@@ -582,28 +583,65 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
   )
 }
 
-// Structure seulement : les regles seront branchees avec le classement des transactions
+// Regles « beneficiaire -> compagnie » (mode 3) : creees en attribuant un beneficiaire
+// depuis une transaction ; ici on les consulte, les change de compagnie ou les supprime.
 export function RulesModal({ onClose }) {
+  const [rules, setRules] = useState(null)
+  const [companies, setCompanies] = useState([])
+  const [editing, setEditing] = useState(null)
+  const [error, setError] = useState(null)
+  async function load() { setRules((await api.get('/v1/bank/rules')).data) }
+  useEffect(() => {
+    load()
+    api.get('/v1/companies').then(r => setCompanies(r.data.map(c => ({ id: c.id, label: c.name }))))
+  }, [])
+  async function change(rule, company) {
+    if (!company) return
+    try { await api.put(`/v1/bank/rules/${rule.id}`, { company_id: company.id }); setEditing(null); await load() }
+    catch (e) { setError(e.response?.data?.detail || 'Erreur') }
+  }
+  async function remove(rule) {
+    if (!confirm(`Supprimer la règle « ${rule.payee} → ${rule.company_name} » ? Les lignes non classées qu'elle reconnaissait ne seront plus attribuées (les associations déjà faites restent).`)) return
+    await api.delete(`/v1/bank/rules/${rule.id}`); await load()
+  }
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 640, maxWidth: '95vw' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 className="modal-title" style={{ margin: 0 }}>Règles de transaction</h3>
-          <button className="btn-primary" disabled title="Disponible à une prochaine étape">+ Nouvelle règle</button>
+      <div className="modal-box" style={{ width: 700, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
+        <h3 className="modal-title" style={{ margin: 0 }}>Règles de transaction</h3>
+        <div style={{ fontSize: 13, color: C.muted }}>
+          Une règle attribue automatiquement les lignes d'un bénéficiaire à une compagnie (onglet « Reconnu ») — elle propose, vous validez.
+          Pour en créer une : cliquez sur le nom d'un bénéficiaire dans les transactions non classées.
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, textTransform: 'uppercase', borderBottom: `1px solid ${C.border}` }}>
-              <th style={{ padding: 8 }}>Nom de la règle</th>
-              <th style={{ padding: 8 }}>S'applique à</th>
-              <th style={{ padding: 8 }}>Conditions</th>
-              <th style={{ padding: 8 }}>Action</th>
+              <th style={{ padding: 8 }}>Bénéficiaire du relevé</th>
+              <th style={{ padding: 8 }}>Compagnie</th>
+              <th style={{ padding: 8, textAlign: 'right' }}>Lignes</th>
+              <th style={{ padding: 8 }}></th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colSpan={4} style={{ textAlign: 'center', color: C.faint, padding: 24 }}>Aucune règle. Les règles classeront automatiquement les transactions reçues de la banque.</td></tr>
+            {rules === null && <tr><td colSpan={4} style={{ padding: 16, color: C.faint, textAlign: 'center' }}>Chargement...</td></tr>}
+            {rules?.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: C.faint, padding: 24 }}>Aucune règle pour l'instant.</td></tr>}
+            {rules?.map(r => (
+              <tr key={r.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: 8 }}>{r.payee}</td>
+                <td style={{ padding: 8, minWidth: 220 }}>
+                  {editing === r.id
+                    ? <Autocomplete items={companies} value={{ id: r.company_id, label: r.company_name }} onSelect={c => change(r, c)} openOnFocus autoFocus />
+                    : r.company_name}
+                </td>
+                <td style={{ padding: 8, textAlign: 'right' }}>{r.transactions}</td>
+                <td style={{ padding: 8, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                  <button type="button" onClick={() => setEditing(editing === r.id ? null : r.id)} style={{ background: 'none', border: 'none', color: C.link, cursor: 'pointer', fontSize: 12 }}>{editing === r.id ? 'Fermer' : 'Modifier'}</button>
+                  <button type="button" onClick={() => remove(r)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12, marginLeft: 8 }}>Supprimer</button>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
+        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Fermer</button>
         </div>

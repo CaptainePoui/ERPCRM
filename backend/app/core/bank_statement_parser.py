@@ -147,9 +147,9 @@ _COLS = {
     "debit":       ["debit", "withdrawal", "withdrawals", "retrait", "retraits", "paiement"],
     "credit":      ["credit", "deposit", "deposits", "depot", "depots"],
     "reference":   ["reference", "ref", "numero de reference", "cheque", "check number", "no"],
-    # BMO Entreprise : « Autres détails » porte le nom du payeur / beneficiaire
+    # BNC (Banque Nationale) : « Autres détails » porte le nom du payeur / beneficiaire
     "payee":       ["autres details", "payee", "beneficiaire", "contrepartie nom", "name", "nom"],
-    # Solde apres chaque ligne (BMO : « Solde total ») -- donne le solde du releve
+    # Solde apres chaque ligne (BNC : « Solde total ») -- donne le solde du releve
     "balance":     ["solde total", "running balance", "solde", "balance"],
 }
 
@@ -202,7 +202,7 @@ def _parse_csv(text: str) -> ParsedStatement:
 
     data = rows[header_idx + 1:]
     st = ParsedStatement(file_format="csv")
-    # Numero de compte dans les lignes de titre au-dessus de l'en-tete (BMO : 0006-00701-0601228)
+    # Numero de compte dans les lignes de titre au-dessus de l'en-tete (BNC : 0006-00701-0601228)
     for r in rows[:header_idx]:
         for c in r:
             if re.fullmatch(r"[\d\- ]+", c.strip()) and len(re.sub(r"\D", "", c)) >= 7:
@@ -238,7 +238,7 @@ def _parse_csv(text: str) -> ParsedStatement:
             balances.append((d, _to_decimal(cell("balance"))))
 
     # Solde du releve = solde courant de la ligne la plus recente. Le fichier peut etre
-    # trie du plus recent au plus ancien (BMO) ou l'inverse : dans un meme jour, la ligne
+    # trie du plus recent au plus ancien (BNC) ou l'inverse : dans un meme jour, la ligne
     # la plus recente est la premiere si l'ordre est decroissant, la derniere sinon.
     if balances:
         descending = balances[0][0] >= balances[-1][0]
