@@ -98,10 +98,10 @@ export default function Invoices({ creditsOnly = false }) {
           <table className="inv-table">
             <thead>
               <tr>
+                <th>Date</th>
                 <th>Numéro</th>
                 <th>Compagnie</th>
                 <th>Statut</th>
-                <th>Date</th>
                 <th>Échéance</th>
                 <th style={{ textAlign: 'right' }}>Total</th>
                 <th>Vu</th>
@@ -113,6 +113,7 @@ export default function Invoices({ creditsOnly = false }) {
                 const s = STATUS_LABELS[inv.status] || STATUS_LABELS.brouillon
                 return (
                   <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
+                    <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.issue_date)}</td>
                     <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
                     <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.site_label_snapshot}</div>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
@@ -121,8 +122,7 @@ export default function Invoices({ creditsOnly = false }) {
                         <span title="Le PDF n'a pas été transmis au client" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#B45309', border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 10, padding: '1px 7px' }}>Non transmise</span>
                       )}
                     </td>
-                    <td>{fmtDate(inv.issue_date)}</td>
-                    <td className={inv.status === 'en_retard' ? 'overdue' : ''}>{fmtDate(inv.due_date)}</td>
+                    <td className={inv.status === 'en_retard' ? 'overdue' : ''} style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.due_date)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(inv.total)}</td>
                     <td style={{ fontSize: 12, color: '#6B7280' }} title={inv.open_count > 1 ? `Ouvert ${inv.open_count} fois` : ''}>
                       {inv.last_opened_at ? `👁 ${fmtOpened(inv.last_opened_at)}` : '—'}

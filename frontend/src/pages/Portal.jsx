@@ -138,6 +138,7 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
         <thead>
           <tr>
             <th style={{ width: 32 }}></th>
+            <th>Date</th>
             <th>Numéro</th>
             <th>Statut</th>
             <th style={{ textAlign: 'right' }}>Total</th>
@@ -158,6 +159,7 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
                       style={{ cursor: 'pointer' }} />
                   )}
                 </td>
+                <td style={{ whiteSpace: 'nowrap' }}>{inv.issue_date || '—'}</td>
                 <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</td>
                 <td>
                   <span style={{ color: STATUS_COLOR[inv.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>

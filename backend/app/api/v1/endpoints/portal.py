@@ -258,6 +258,7 @@ async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSes
             "invoice_number": i.number,
             "status": i.status,
             "total_ttc": total,
+            "issue_date": str(i.issue_date) if i.issue_date else None,
             "due_date": str(i.due_date) if i.due_date else None,
             "created_at": i.created_at.isoformat() if i.created_at else None,
             "confirmed_paid": confirmed,
