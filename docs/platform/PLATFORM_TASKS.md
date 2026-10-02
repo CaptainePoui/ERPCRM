@@ -5395,6 +5395,23 @@ Demande de Philippe : un onglet « Impôts et formulaires » avec ses menus, com
 - Chiffres au 2026-10-02 : juillet–septembre 2026 (à produire, échéance 2026-10-31) : 77 factures, ventes 13 605,62 $, TPS 679,87 $, TVQ 1 355,95 $. Les périodes déjà déclarées affichent un solde tant que les paiements passés ne sont pas inscrits.
 - Preuve HTTP : ajustement −10 / −19,95 dans juil.–sept. → taxe nette 669,87 / 1 336,00 ; ajustement dans une période déclarée → 400 ; catégorie invalide → 400 ; paiement 300 $ → solde 1 705,87 ; déclarer une période non terminée ou déjà déclarée → 400 ; données de test supprimées (0 ajustement, 0 paiement, verrou inchangé au 2026-06-30). Captures desktop, fenêtres, mobile ; aucune erreur console.
 - Reste : CTI/RTI calculés et feuillets T4A/T5018 → module Dépenses.
+
+---
+
+## TASK-044 [ERPCRM] [~] Achats (onglet, inspiré de Zoho Books) — fournisseurs, dépenses, factures fournisseurs
+Date de demande : 2026-10-02
+Date(s) de travail : 2026-10-02 (menu Ventes / Achats, structure)
+
+Demande de Philippe : un onglet « Achats » avec les menus Fournisseurs, Dépenses, Dépenses périodiques, Factures fournisseurs, Factures fournisseurs périodiques, Paiements effectués, Avoirs fournisseur. Existant au 2026-10-02 : seulement les bons de commande fournisseurs (`PurchaseOrder`, fournisseur en texte libre, onglet Commandes) — aucune entité fournisseur, dépense ni facture fournisseur.
+Spécifications déjà données : dépense / facture « hors taxes » ou « taxes incluses », choix des taxes payées (TPS et TVQ cochées par défaut) ; factures fournisseurs payées par lots (un paiement — remboursement de carte de crédit, assurance — couvre plusieurs factures) ; Richard (IP Télécom) et Sylvain (Techni-Express) = commissions sur les clients apportés ; CTI/RTI à alimenter dans la déclaration TPS/TVQ (TASK-043) ; retraits bancaires à associer (TASK-042) ; feuillets T4A/T5018 (TASK-043).
+Données Zoho fournies le 2026-10-02 dans `/home/simpleip/Simple_IP/factures_zoho/` : `Dépenses.csv` (675 dépenses 2020-06 → 2026-09, 206 795 $ ; compte « Taxe » 16 756 $ = versements TPS/TVQ probables), `Facture_fournisseur.csv` (851 factures 2020-05 → 2026-09, 276 656 $, 10 939,64 $ « dus » selon Zoho ; 360 lignes taxes incluses), `Facture_fournisseur_périodique.csv` (13 modèles).
+
+**Fait le 2026-10-02 — menu regroupé Ventes / Achats (demandes de Philippe : « rassemble dans Ventes », « pas Clients », « sous-menus horizontaux avec les factures comme page d'accueil », bons de commande dans Achats)** :
+- `Layout.jsx` : groupes `GROUPS` — une entrée « Ventes » (→ Factures) et « Achats » (→ Factures fournisseurs) dans le menu de gauche ; sous-menus en onglets horizontaux en haut de page (`GroupTabs`, CSS `.group-tabs`), onglet actif aussi sur les fiches de détail (`/invoices/:id`, `/devis/:id`, `/purchase-orders/:id`). Compagnies reste au menu principal ; Devis, Factures, Récurrence n'y sont plus (dans Ventes).
+- Ventes : Devis, Factures d'acompte (structure), Factures, Factures périodiques (= Récurrence), Liens de paiement (structure, passerelle Elavon/Authorize.Net requise), Paiements reçus (nouveau : liste de tous les encaissements, `GET /api/v1/payments`, filtres confirmés / en attente / pas encore vus en banque / rejetés, recherche), Factures d'avoir (factures avec `credit_of_id`, `Invoices.jsx creditsOnly`).
+- Achats : Fournisseurs, Dépenses, Dépenses périodiques, Factures fournisseurs, Factures fournisseurs périodiques, Paiements effectués, Avoirs fournisseur — pages de structure (`pages/Purchases.jsx`, colonnes de la future liste) ; Bons de commande (`/purchases/orders`, déplacés depuis Commandes ; `/purchase-orders` redirige). Commandes ne garde que les commandes web.
+- Vérifié en captures (Ventes, Paiements reçus 724 / 171 096,85 $ confirmés, Factures d'avoir, Achats, Bons de commande, mobile), aucune erreur console.
+- Reste (prochaine étape) : modèle de données Achats (fournisseurs, dépenses, factures fournisseurs, paiements groupés, avoirs, récurrences) + import des 3 fichiers Zoho + CTI/RTI dans la déclaration TPS/TVQ.
 ---
 
 ## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture

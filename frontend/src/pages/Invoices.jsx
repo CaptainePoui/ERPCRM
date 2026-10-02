@@ -22,7 +22,8 @@ const FILTERS = [
   ['en_retard', 'En retard'],
 ]
 
-export default function Invoices() {
+// creditsOnly : menu Ventes > Factures d'avoir (avoirs seulement)
+export default function Invoices({ creditsOnly = false }) {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
@@ -51,7 +52,7 @@ export default function Invoices() {
     } finally { setMarking(false) }
   }
 
-  const filtered = invoices.filter(i =>
+  const filtered = invoices.filter(i => creditsOnly ? !!i.credit_of_id : true).filter(i =>
     i.company_name.toLowerCase().includes(search.toLowerCase()) ||
     i.number.toLowerCase().includes(search.toLowerCase())
   )
@@ -74,8 +75,8 @@ export default function Invoices() {
     <div className="page">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Factures</h1>
-          <p className="page-sub">{invoices.length} facture{invoices.length !== 1 ? 's' : ''}</p>
+          <h1 className="page-title">{creditsOnly ? "Factures d'avoir" : 'Factures'}</h1>
+          <p className="page-sub">{creditsOnly ? `${invoices.filter(i => i.credit_of_id).length} avoir(s) — créés depuis une facture (« Créer un avoir »)` : `${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={markOverdue} disabled={marking} style={{ fontSize: 13 }}>{marking ? '...' : 'Marquer en retard'}</button>

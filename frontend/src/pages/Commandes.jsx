@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import PurchaseOrders from './PurchaseOrders'
 import { EcomOrderList } from './EcomOrders'
 
-const TABS = ['Fournisseurs', 'Web']
-const TAB_SLUGS = ['fournisseurs', 'web']
+// Les bons de commande fournisseurs sont dans Achats > Bons de commande (2026-10-02)
+const TABS = ['Web']
+const TAB_SLUGS = ['web']
 
 export default function Commandes() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -37,8 +37,7 @@ export default function Commandes() {
           >{t}</button>
         ))}
       </div>
-      {tab === 0 && <PurchaseOrders />}
-      {tab === 1 && <EcomOrderList />}
+      {tab === 0 && <EcomOrderList />}
     </div>
   )
 }

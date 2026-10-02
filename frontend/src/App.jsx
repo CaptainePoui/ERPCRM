@@ -30,6 +30,8 @@ import Server from './pages/Server'
 import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
 import Taxes from './pages/Taxes'
+import { SalesPayments, SalesDeposits, SalesPaymentLinks } from './pages/Sales'
+import { PurchaseVendors, PurchaseExpenses, PurchaseRecurringExpenses, PurchaseBills, PurchaseRecurringBills, PurchasePayments, PurchaseCredits, PurchaseOrdersPage } from './pages/Purchases'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -70,7 +72,7 @@ function InternalApp() {
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
         <Route path="/commandes" element={<Commandes />} />
-        <Route path="/purchase-orders" element={<Navigate to="/commandes?tab=fournisseurs" replace />} />
+        <Route path="/purchase-orders" element={<Navigate to="/purchases/orders" replace />} />
         <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/ecom-orders" element={<Navigate to="/commandes?tab=web" replace />} />
@@ -83,6 +85,18 @@ function InternalApp() {
         <Route path="/bank" element={<Bank />} />
         <Route path="/bank/:id" element={<BankAccountDetail />} />
         <Route path="/taxes" element={<Taxes />} />
+        <Route path="/sales/payments" element={<SalesPayments />} />
+        <Route path="/sales/deposits" element={<SalesDeposits />} />
+        <Route path="/sales/payment-links" element={<SalesPaymentLinks />} />
+        <Route path="/sales/credits" element={<Invoices creditsOnly />} />
+        <Route path="/purchases/vendors" element={<PurchaseVendors />} />
+        <Route path="/purchases/expenses" element={<PurchaseExpenses />} />
+        <Route path="/purchases/recurring-expenses" element={<PurchaseRecurringExpenses />} />
+        <Route path="/purchases/bills" element={<PurchaseBills />} />
+        <Route path="/purchases/recurring-bills" element={<PurchaseRecurringBills />} />
+        <Route path="/purchases/payments" element={<PurchasePayments />} />
+        <Route path="/purchases/credits" element={<PurchaseCredits />} />
+        <Route path="/purchases/orders" element={<PurchaseOrdersPage />} />
       </Routes>
     </Layout>
   )

@@ -179,6 +179,31 @@ async def update_method(method_id: uuid.UUID, payload: PaymentMethodUpdate, db: 
     return method
 
 
+# ── Paiements recus (liste globale, menu Ventes) ─────────────────────────────
+
+@router.get("")
+async def list_all_payments(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Tous les encaissements clients, les plus recents d'abord, avec compagnie et factures couvertes."""
+    from app.models.company import Company
+    from app.models.bank_account import BankTransaction
+    rows = (await db.execute(
+        select(ClientPayment, Company.name).join(Company, Company.id == ClientPayment.company_id)
+        .order_by(ClientPayment.received_at.desc().nulls_first(), ClientPayment.created_at.desc())
+    )).all()
+    nums: dict = {}
+    for pid, num in (await db.execute(
+        select(PaymentAllocation.payment_id, Invoice.number).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+    )).all():
+        nums.setdefault(pid, []).append(num)
+    banked = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None)))).scalars().all())
+    return [{
+        "id": str(cp.id), "company_id": str(cp.company_id), "company_name": name, "amount": float(cp.amount),
+        "status": cp.status, "source": cp.source, "method_name": cp.method_name, "reference": cp.reference,
+        "received_at": cp.received_at, "created_at": cp.created_at, "invoice_numbers": sorted(nums.get(cp.id, [])),
+        "bank_matched": cp.id in banked,
+    } for cp, name in rows]
+
+
 # ── Payments (vue par facture, retro-compat frontend) ────────────────────────
 
 @router.get("/invoice/{invoice_id}", response_model=list[PaymentOut])
