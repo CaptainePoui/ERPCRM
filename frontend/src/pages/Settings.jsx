@@ -7,6 +7,7 @@ function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', cur
 
 export default function Settings() {
   const [settings, setSettings] = useState(null)
+  const [users, setUsers] = useState([])
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
   const [inflationPct, setInflationPct] = useState('')
@@ -18,6 +19,7 @@ export default function Settings() {
 
   useEffect(() => {
     api.get('/v1/settings').then(r => setSettings(r.data))
+    api.get('/v1/admin/users').then(r => setUsers(r.data.filter(u => u.is_active !== false))).catch(() => setUsers([]))
   }, [])
 
   async function saveSettings() {
@@ -29,6 +31,8 @@ export default function Settings() {
         commission_rate: parseFloat(settings.commission_rate),
         fiscal_year_start_month: parseInt(settings.fiscal_year_start_month),
         tax_lock_date: settings.tax_lock_date || '',
+        tax_filing_frequency: settings.tax_filing_frequency || '',
+        tax_reminder_user_id: settings.tax_reminder_user_id || '',
       })
       setSettings(r.data)
       setMsg('Paramètres sauvegardés')
@@ -96,6 +100,23 @@ export default function Settings() {
           <div className="form-group" style={{ marginBottom: 0 }}>
             <label title="Une facture datée de cette date ou avant ne peut plus être supprimée ni remise en brouillon — seulement créditée">Taxes déclarées jusqu'au</label>
             <input type="date" value={settings.tax_lock_date || ''} onChange={e => setSettings(p => ({ ...p, tax_lock_date: e.target.value }))} />
+          </div>
+          {/* Rappels de declaration TPS/TVQ : tache + courriels a la fin de chaque periode */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label title="À la fin de chaque période, une tâche « Déclaration TPS/TVQ » est créée avec des rappels par courriel">Déclarations TPS/TVQ</label>
+            <select value={settings.tax_filing_frequency || ''} onChange={e => setSettings(p => ({ ...p, tax_filing_frequency: e.target.value }))}>
+              <option value="">Pas de rappel</option>
+              <option value="mensuelle">Mensuelles</option>
+              <option value="trimestrielle">Trimestrielles</option>
+              <option value="annuelle">Annuelles</option>
+            </select>
+          </div>
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Rappels envoyés à</label>
+            <select value={settings.tax_reminder_user_id || ''} onChange={e => setSettings(p => ({ ...p, tax_reminder_user_id: e.target.value }))}>
+              <option value="">— Choisir —</option>
+              {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+            </select>
           </div>
         </div>
         <button className="btn-primary" onClick={saveSettings} disabled={saving} style={{ marginTop: 16 }}>

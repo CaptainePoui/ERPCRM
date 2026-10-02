@@ -1,5 +1,5 @@
 import math
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field
@@ -26,6 +26,9 @@ DEFAULTS = {
     # TASK-005.8 : fin de la derniere periode de taxes declaree (AAAA-MM-JJ, vide = aucune) --
     # une facture datee avant ne peut plus etre supprimee ni remise en brouillon (seulement creditee)
     "tax_lock_date": "",
+    # Rappels de declaration TPS/TVQ (core/tax_reminders.py) : vide = desactive
+    "tax_filing_frequency": "",      # mensuelle | trimestrielle | annuelle
+    "tax_reminder_user_id": "",      # utilisateur qui recoit la tache et les rappels
 }
 
 
@@ -61,6 +64,8 @@ class SettingsOut(BaseModel):
     ticket_time_confirm_threshold_minutes: int
     fiscal_year_start_month: int
     tax_lock_date: str
+    tax_filing_frequency: str
+    tax_reminder_user_id: str
 
 
 class SettingsIn(BaseModel):
@@ -71,6 +76,8 @@ class SettingsIn(BaseModel):
     ticket_time_confirm_threshold_minutes: int | None = None
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
     tax_lock_date: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    tax_filing_frequency: str | None = Field(default=None, pattern=r"^(|mensuelle|trimestrielle|annuelle)$")
+    tax_reminder_user_id: str | None = None
 
 
 class InflationPayload(BaseModel):
@@ -87,6 +94,8 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         ticket_time_confirm_threshold_minutes=int(await get_setting(db, "ticket_time_confirm_threshold_minutes")),
         fiscal_year_start_month=int(await get_setting(db, "fiscal_year_start_month")),
         tax_lock_date=await get_setting(db, "tax_lock_date"),
+        tax_filing_frequency=await get_setting(db, "tax_filing_frequency"),
+        tax_reminder_user_id=await get_setting(db, "tax_reminder_user_id"),
     )
 
 
@@ -111,6 +120,22 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
     if payload.tax_lock_date is not None:
         await set_setting(db, "tax_lock_date", payload.tax_lock_date)
+        if payload.tax_lock_date:
+            from datetime import date as _date
+            from app.core.tax_reminders import complete_declared_tasks
+            if await complete_declared_tasks(db, _date.fromisoformat(payload.tax_lock_date)):
+                await db.commit()
+    if payload.tax_filing_frequency is not None:
+        await set_setting(db, "tax_filing_frequency", payload.tax_filing_frequency)
+    if payload.tax_reminder_user_id is not None:
+        if payload.tax_reminder_user_id:
+            import uuid as _uuid
+            if not await db.get(User, _uuid.UUID(payload.tax_reminder_user_id)):
+                raise HTTPException(status_code=400, detail="Utilisateur introuvable")
+        await set_setting(db, "tax_reminder_user_id", payload.tax_reminder_user_id)
+    if payload.tax_filing_frequency is not None or payload.tax_reminder_user_id is not None:
+        from app.core.tax_reminders import ensure_tax_filing_tasks
+        await ensure_tax_filing_tasks(db)
     return await get_settings(db)
 
 

@@ -396,6 +396,7 @@ Fait le 2026-10-02 (terme choisi par Philippe : « Non transmise ») :
 - Remettre en brouillon (transition « → Brouillon » depuis Envoyée / En retard) : refusé côté serveur si un paiement confirmé existe ou si la facture est datée dans une période de taxes déclarée.
 - Nouveau paramètre `tax_lock_date` (« Taxes déclarées jusqu'au », Paramètres, vide par défaut) : une facture datée de ce jour ou avant ne peut plus être supprimée ni remise en brouillon, seulement créditée.
 - Données : les 15 factures impayées de Les Entreprises CNJ (2 326,65 $) d'abord marquées « Non transmise » ; corrigé le même jour à la demande de Philippe (certaines sont dans ses déclarations de taxes) : déclarations TPS/TVQ trimestrielles, dernier trimestre déclaré terminé le 2026-06-30 → `tax_lock_date` = 2026-06-30 ; « Non transmise » gardée seulement sur les 2 factures de septembre 2026 (28,30 $), les 13 autres (2 298,35 $, août 2025 à juin 2026) remises à « inconnue » et verrouillées (retour en brouillon refusé, vérifié en HTTP). À mettre à jour à chaque déclaration trimestrielle (prochaine : juillet–septembre 2026, d'ici le 31 octobre).
+- Rappels de déclaration (demande de Philippe 2026-10-02 : « mets-moi des alarmes quand un exercice se finit ») : `backend/app/core/tax_reminders.py`. Paramètres « Déclarations TPS/TVQ » (`tax_filing_frequency` : mensuelle | trimestrielle | annuelle, vide = aucun rappel) et « Rappels envoyés à » (`tax_reminder_user_id`). À la fin de chaque période (alignée sur l'exercice) non couverte par « Taxes déclarées jusqu'au », une tâche « Déclaration TPS/TVQ — période du … au … » (priorité haute) est créée dans le module Tâches, échéance Revenu Québec (dernier jour du mois suivant ; annuelle : 3 mois après), avec 3 rappels courriel (lendemain de la fin de période, 7 jours et 1 jour avant l'échéance) — création vérifiée chaque minute par le poller de rappels, idempotente (clé `link_url`). Avancer « Taxes déclarées jusqu'au » ferme la tâche. Activé pour Simple IP : trimestrielle, Philippe ; tâche juillet–septembre 2026 (échéance 2026-10-31) créée, premier rappel envoyé le 2026-10-02 ; fermeture vérifiée en transaction annulée.
 - Preuve HTTP : facture test créée « non_transmise », envoyée puis remise en brouillon (200), transmission invalide → 400, verrou posé → retour en brouillon refusé (400) puis verrou remis à vide, facture payée → refus (400, reste payée) ; facture test supprimée.
 
 ### TASK-005.9 [x] Taxe par ligne + arrondi des taxes au cent (demie vers le haut)
@@ -5375,6 +5376,14 @@ Constat au 2026-10-01 : 32 compagnies dans ERPCRM, dont plusieurs bénéficiaire
 
 **Prochaine étape** : classement des retraits = module Dépenses (spécification ci-dessus), à concevoir avec Philippe.
 
+
+---
+
+## TASK-043 [ERPCRM] [ ] Impôts et formulaires (onglet, inspiré de Zoho Books)
+Date de demande : 2026-10-02
+Date(s) de travail : (aucune)
+
+Demande de Philippe : un onglet « Impôts et formulaires » avec ses menus, comme dans Zoho : Déclaration de TPS/TVQ & de la TVQ ; Ajustements fiscaux ; Paiements de taxe ; Feuillets T4A/T5018. Lié : TASK-005.8 (« Taxes déclarées jusqu'au », rappels de déclaration), TASK-005.9 (taxes par ligne), futur module Dépenses de TASK-042 (taxes payées récupérables : CTI/RTI).
 ---
 
 ## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture

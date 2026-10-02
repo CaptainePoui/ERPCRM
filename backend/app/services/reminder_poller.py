@@ -34,6 +34,14 @@ def _fire_at_utc(task: Task, reminder: TaskReminder) -> datetime | None:
 
 
 async def _check_once():
+    # Taches de declaration TPS/TVQ des periodes terminees (TASK-005.8) -- avant les rappels,
+    # pour que le rappel « fin de periode » parte dans la meme iteration
+    try:
+        from app.core.tax_reminders import ensure_tax_filing_tasks
+        async with AsyncSessionLocal() as db:
+            await ensure_tax_filing_tasks(db)
+    except Exception:
+        log.exception("Creation des taches de declaration TPS/TVQ echouee")
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(TaskReminder)
