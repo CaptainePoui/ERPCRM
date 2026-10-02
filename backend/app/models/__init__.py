@@ -31,3 +31,4 @@ from app.models.backup import CloudBackupConnection, BackupCycle, BackupRunLog
 from app.models.cdr_report import CdrReportSchedule, CdrReportRunLog
 from app.models.bank_account import BankAccount, BankStatementImport, BankTransaction, BankPayeeRule
 from app.models.tax import TaxAdjustment, TaxPayment
+from app.models.purchases import Vendor, ExpenseCategory, Expense, RecurringExpense, Bill, BillLine, RecurringBill, RecurringBillLine, VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation
