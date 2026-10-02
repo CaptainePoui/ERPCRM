@@ -23,6 +23,9 @@ DEFAULTS = {
     "ticket_time_confirm_threshold_minutes": "30",
     # TASK-042 : mois de debut de l'exercice financier (1 = janvier ; Simple IP inc. = 7, 1er juillet au 30 juin)
     "fiscal_year_start_month": "1",
+    # TASK-005.8 : fin de la derniere periode de taxes declaree (AAAA-MM-JJ, vide = aucune) --
+    # une facture datee avant ne peut plus etre supprimee ni remise en brouillon (seulement creditee)
+    "tax_lock_date": "",
 }
 
 
@@ -57,6 +60,7 @@ class SettingsOut(BaseModel):
     default_vendor_contact_id: str
     ticket_time_confirm_threshold_minutes: int
     fiscal_year_start_month: int
+    tax_lock_date: str
 
 
 class SettingsIn(BaseModel):
@@ -66,6 +70,7 @@ class SettingsIn(BaseModel):
     default_vendor_contact_id: str | None = None
     ticket_time_confirm_threshold_minutes: int | None = None
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
+    tax_lock_date: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
 
 
 class InflationPayload(BaseModel):
@@ -81,6 +86,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         default_vendor_contact_id=await get_setting(db, "default_vendor_contact_id"),
         ticket_time_confirm_threshold_minutes=int(await get_setting(db, "ticket_time_confirm_threshold_minutes")),
         fiscal_year_start_month=int(await get_setting(db, "fiscal_year_start_month")),
+        tax_lock_date=await get_setting(db, "tax_lock_date"),
     )
 
 
@@ -103,6 +109,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "ticket_time_confirm_threshold_minutes", str(payload.ticket_time_confirm_threshold_minutes))
     if payload.fiscal_year_start_month is not None:
         await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
+    if payload.tax_lock_date is not None:
+        await set_setting(db, "tax_lock_date", payload.tax_lock_date)
     return await get_settings(db)
 
 

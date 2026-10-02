@@ -59,6 +59,7 @@ class InvoiceOut(BaseModel):
     site_label_snapshot: str | None
     site_address_snapshot: str | None
     lines: list[LineOut]
+    transmission_status: str | None = None
     last_opened_at: datetime | None = None
     open_count: int = 0
 
@@ -75,6 +76,7 @@ class InvoiceListItem(BaseModel):
     is_recurring: bool
     credit_of_id: uuid.UUID | None
     site_label_snapshot: str | None = None
+    transmission_status: str | None = None
     last_opened_at: datetime | None = None
     open_count: int = 0
 
@@ -103,6 +105,7 @@ class InvoiceUpdate(BaseModel):
     recurrence_next_date: date | None = None
     site_id: uuid.UUID | None = None
     clear_site: bool = False  # distingue "site_id absent du payload" de "retirer la succursale"
+    transmission_status: str | None = None  # non_transmise | courriel | autre (TASK-005.8)
 
 
 class LineCreate(BaseModel):
@@ -149,6 +152,29 @@ def _recalc(inv: Invoice) -> None:
     inv.total = _money(inv.subtotal + inv.tps_amount + inv.tvq_amount)
 
 
+async def _tax_lock_date(db: AsyncSession) -> date | None:
+    """Fin de la derniere periode de taxes declaree (parametre tax_lock_date, vide = aucune)."""
+    from app.api.v1.endpoints.settings import get_setting
+    v = (await get_setting(db, "tax_lock_date") or "").strip()
+    return date.fromisoformat(v) if v else None
+
+
+async def _check_can_revert_to_draft(inv: Invoice, db: AsyncSession) -> None:
+    """Une facture ne revient en brouillon que si rien ne l'a encore « fixee » : aucun paiement
+    confirme et pas datee dans une periode de taxes deja declaree (sinon : avoir)."""
+    from app.models.client_payment import ClientPayment, PaymentAllocation
+    paid = (await db.execute(
+        select(func.count()).select_from(PaymentAllocation)
+        .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
+        .where(PaymentAllocation.invoice_id == inv.id, ClientPayment.status == "confirmed")
+    )).scalar() or 0
+    if paid:
+        raise HTTPException(status_code=400, detail="Cette facture a déjà un paiement confirmé : elle ne peut pas revenir en brouillon")
+    lock = await _tax_lock_date(db)
+    if lock and inv.issue_date <= lock:
+        raise HTTPException(status_code=400, detail=f"Facture datée dans une période de taxes déjà déclarée (jusqu'au {lock}) : elle ne peut plus revenir en brouillon, seulement être créditée")
+
+
 async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
     stats = await get_open_stats(db, "invoice", [inv.id])
     last_opened_at, open_count = stats.get(inv.id, (None, 0))
@@ -176,6 +202,7 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         site_id=inv.site_id,
         site_label_snapshot=inv.site_label_snapshot,
         site_address_snapshot=inv.site_address_snapshot,
+        transmission_status=inv.transmission_status,
         lines=[LineOut.model_validate(l) for l in inv.lines],
         last_opened_at=last_opened_at, open_count=open_count,
     )
@@ -222,6 +249,7 @@ async def list_invoices(
         total=i.total, is_recurring=i.is_recurring,
         credit_of_id=i.credit_of_id,
         site_label_snapshot=i.site_label_snapshot,
+        transmission_status=i.transmission_status,
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
         open_count=open_stats.get(i.id, (None, 0))[1],
     ) for i in invs]
@@ -244,6 +272,7 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
 
     today = date.today()
     inv = Invoice(
+        transmission_status="non_transmise",
         number=await _next_number(db),
         company_id=payload.company_id,
         site_id=payload.site_id,
@@ -291,10 +320,11 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
         lines=[{"description": l.description, "qty": l.qty, "unit_price": l.unit_price, "line_total": l.line_total} for l in inv.lines],
         total=inv.total,
     )
+    inv.transmission_status = "courriel"
     if inv.status == "brouillon":
         inv.status = "envoyee"
-        await db.commit()
-        inv = await _get_inv(invoice_id, db)
+    await db.commit()
+    inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)
 
 
@@ -302,6 +332,10 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
 async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
     updates = payload.model_dump(exclude_unset=True)
+    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre"):
+        raise HTTPException(status_code=400, detail="État de transmission invalide")
+    if updates.get("status") == "brouillon" and inv.status != "brouillon":
+        await _check_can_revert_to_draft(inv, db)
     clear_site = updates.pop("clear_site", False)
     site_id = updates.pop("site_id", None)
     if clear_site:
@@ -328,6 +362,9 @@ async def delete_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_d
     inv = await _get_inv(invoice_id, db)
     if inv.status not in ("brouillon",):
         raise HTTPException(status_code=400, detail="Seules les factures en brouillon peuvent être supprimées")
+    lock = await _tax_lock_date(db)
+    if lock and inv.issue_date <= lock:
+        raise HTTPException(status_code=400, detail=f"Facture datée dans une période de taxes déjà déclarée (jusqu'au {lock}) : elle ne peut plus être supprimée, seulement créditée")
     await db.delete(inv)
     await db.commit()
 

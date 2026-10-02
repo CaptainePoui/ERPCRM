@@ -28,6 +28,7 @@ export default function Settings() {
         labour_round_minutes: parseInt(settings.labour_round_minutes),
         commission_rate: parseFloat(settings.commission_rate),
         fiscal_year_start_month: parseInt(settings.fiscal_year_start_month),
+        tax_lock_date: settings.tax_lock_date || '',
       })
       setSettings(r.data)
       setMsg('Paramètres sauvegardés')
@@ -90,6 +91,11 @@ export default function Settings() {
               {['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
                 .map((m, i) => <option key={i + 1} value={i + 1}>1er {m}</option>)}
             </select>
+          </div>
+          {/* TASK-005.8 : factures de la periode declaree verrouillees (ni brouillon ni suppression) */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label title="Une facture datée de cette date ou avant ne peut plus être supprimée ni remise en brouillon — seulement créditée">Taxes déclarées jusqu'au</label>
+            <input type="date" value={settings.tax_lock_date || ''} onChange={e => setSettings(p => ({ ...p, tax_lock_date: e.target.value }))} />
           </div>
         </div>
         <button className="btn-primary" onClick={saveSettings} disabled={saving} style={{ marginTop: 16 }}>

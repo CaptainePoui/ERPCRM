@@ -15,6 +15,9 @@ class Invoice(Base):
     company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="RESTRICT"), nullable=False)
 
     status: Mapped[str] = mapped_column(String(20), default="brouillon")
+    # TASK-005.8 : transmission au client, separee du statut de paiement.
+    # non_transmise | courriel | autre ; NULL = inconnu (factures importees de Zoho)
+    transmission_status: Mapped[str | None] = mapped_column(String(20))
     # statuts: brouillon envoyee payee partiellement_payee en_retard annulee
 
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)

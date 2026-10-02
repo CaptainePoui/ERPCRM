@@ -114,7 +114,12 @@ export default function Invoices() {
                   <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
                     <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
                     <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.site_label_snapshot}</div>}</td>
-                    <td><span className="inv-badge" style={{ background: s.color }}>{s.label}</span></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      <span className="inv-badge" style={{ background: s.color }}>{s.label}</span>
+                      {inv.transmission_status === 'non_transmise' && inv.status !== 'brouillon' && (
+                        <span title="Le PDF n'a pas été transmis au client" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#B45309', border: '1px solid #FCD34D', background: '#FFFBEB', borderRadius: 10, padding: '1px 7px' }}>Non transmise</span>
+                      )}
+                    </td>
                     <td>{fmtDate(inv.issue_date)}</td>
                     <td className={inv.status === 'en_retard' ? 'overdue' : ''}>{fmtDate(inv.due_date)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(inv.total)}</td>

@@ -15,8 +15,9 @@ const STATUS_LABELS = {
 
 const STATUS_TRANSITIONS = {
   brouillon: ['envoyee', 'annulee'],
-  envoyee:   ['payee', 'en_retard', 'annulee'],
-  en_retard: ['payee', 'annulee'],
+  // « brouillon » : refusé par le serveur si un paiement est confirmé ou si la période de taxes est déclarée (TASK-005.8)
+  envoyee:   ['brouillon', 'payee', 'en_retard', 'annulee'],
+  en_retard: ['brouillon', 'payee', 'annulee'],
   payee:     [],
   // Statut calcule par les paiements (TASK-005.4) : pas de transition manuelle
   partiellement_payee: [],
@@ -113,8 +114,11 @@ export default function InvoiceDetail() {
   }
 
   async function changeStatus(s) {
-    const r = await api.put(`/v1/invoices/${id}`, { status: s })
-    setInv(r.data)
+    if (s === 'brouillon' && !confirm('Remettre cette facture en brouillon ? Elle redevient modifiable et ne compte plus dans les montants dus.')) return
+    try {
+      const r = await api.put(`/v1/invoices/${id}`, { status: s })
+      setInv(r.data)
+    } catch (e) { alert(e.response?.data?.detail || 'Changement de statut impossible') }
   }
 
   async function deleteLine(lineId) {
@@ -210,6 +214,16 @@ export default function InvoiceDetail() {
               <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.credit_of_id}`)}>Voir facture originale</strong>
             </div>
           )}
+          <div className="inv-info-row">
+            <span>Transmission</span>
+            <select value={inv.transmission_status || ''} onChange={e => saveField('transmission_status', e.target.value)}
+              style={{ fontSize: 13, color: inv.transmission_status === 'non_transmise' ? '#B45309' : undefined }}>
+              {!inv.transmission_status && <option value="">Inconnue (importée)</option>}
+              <option value="non_transmise">Non transmise</option>
+              <option value="courriel">Envoyée par courriel</option>
+              <option value="autre">Remise autrement</option>
+            </select>
+          </div>
           <div className="inv-info-row">
             <span>Courriel ouvert</span>
             {inv.last_opened_at ? (
