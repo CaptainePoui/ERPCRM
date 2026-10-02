@@ -409,6 +409,16 @@ Date(s) de travail : 2026-10-02
 - Données : 174 lignes importées de Zoho marquées non taxables (selon la colonne « Item Tax » de l'export) et répartition TPS/TVQ recalée sur 149 factures, totaux inchangés (176 636,98 $). Vérifié : pour les 776 factures importées, le recalcul retombe exactement sur le total Zoho → le risque `_recalc` de TASK-005.7 est levé.
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
+
+### TASK-005.10 [ ] Avoirs clients appliqués aux factures + import des avoirs Zoho (cas MGB Associés)
+Date de demande : 2026-10-02 (Philippe : « MGB ASSOCIÉS INC. ajuste le crédit pour qu'il arrive à 0 $ — il a payé le matériel mais jamais l'installation, j'ai crédité mais j'ai mis 160,23 de trop »)
+Date(s) de travail : (aucune — décision en attente)
+
+Constats :
+- MGB, INV-111428 (2025-01-23, 4 069,71 $) : matériel 2 469,70 $ HT, installation 1 069,95 $ HT. Avoir Zoho CN-00297 (2026-07-01) appliqué 1 069,95 $. Les 160,23 $ de trop = exactement la TPS (53,50) + TVQ (106,73) de 1 069,95 $ : l'avoir a été fait « hors taxes » (1 230,18 $ TTC) alors qu'il fallait 1 069,95 $ taxes incluses → 160,23 $ de crédit inutilisé. Ses 3 factures de frais de retard (92,89 $) ont aussi été fermées par des avoirs (CN-00185, 202, 203).
+- Fichier `Facture_de_factures_d’avoir.csv` : 311 applications d'avoirs (293 avoirs, 2021-08 → 2026-09) — seulement date, n° d'avoir, facture, montant appliqué (ni client, ni taxes, ni lignes). 161 applications (4 705,81 $) touchent des factures importées.
+- Problème d'import (TASK-005.7) : ces factures fermées par avoir ont été importées « payées » par un paiement « Historique Zoho » du montant de l'avoir — faux (ex. MGB INV-111428 « payée » 4 069,71 $ au lieu de 2 999,76 $ payés + 1 069,95 $ crédités). Impact taxes : les avoirs réduisent la TPS/TVQ perçue d'une période ; absents d'ERPCRM, la déclaration de TPS/TVQ (TASK-043) les surestime (ex. CN-00297 en juillet 2026).
+- ERPCRM : un avoir = facture négative (« Créer un avoir »), mais il ne s'applique pas au solde d'une facture (le statut ne compte que les paiements).
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche
