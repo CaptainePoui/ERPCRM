@@ -420,6 +420,15 @@ Date(s) de travail : 2026-10-02
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 
+### TASK-005.11 [x] Retrait des mentions de Zoho dans ERPCRM (encaissements, notes, écrans)
+Date de demande : 2026-10-02 (Philippe, en voyant « Dernier paiement … Historique Zoho Books » sur une fiche compagnie : « je n'aime pas que tu parles de Zoho, j'essaie de m'en débarrasser »)
+Date(s) de travail : 2026-10-02
+
+- Script `backend/clean_import_labels.py` (essai à blanc puis --apply ; sauvegarde /home/simpleip/backups/erpcrm_avant_cn00208_libelles_20261002_2340.sql) : 567 encaissements importés renommés « Paiement antérieur » (code interne `zoho`/source `zoho_import` inchangés), 776 notes de facture « Importée de Zoho Books (statut Zoho : …) » vidées — elles s'imprimaient sur le PDF envoyé au client —, 152 notes d'avoir réécrites « Avoir sur la facture INV-… ».
+- Écrans : libellé de source « Historique Zoho » → « Paiement antérieur » (Ventes › Paiements reçus, fiche de compte bancaire) ; texte d'attente du module Achats sans « Zoho ».
+- Scripts d'import (import_zoho_invoices.py, import_zoho_credits.py) : n'écrivent plus rien de visible qui mentionne Zoho (relance future pour les factures plus anciennes).
+- Non réécrit : le Journal (146 entrées d'historique « … (Importée de Zoho Books) ») — trace d'audit, on ne réécrit pas l'historique.
+
 ### TASK-005.10 [x] Avoirs clients appliqués aux factures + import des avoirs Zoho (cas MGB Associés)
 Date de demande : 2026-10-02 (Philippe : « MGB ASSOCIÉS INC. ajuste le crédit pour qu'il arrive à 0 $ — il a payé le matériel mais jamais l'installation, j'ai crédité mais j'ai mis 160,23 de trop » ; puis « Bâtir l'application des avoirs dans Ventes › Factures d'avoir », avec la liste de ses avoirs Zoho)
 Date(s) de travail : 2026-10-02
@@ -439,7 +448,8 @@ Réalisé (2026-10-02) :
 - Import `backend/import_zoho_credits.py` (essai à blanc puis --apply, sauvegarde des tables avant : /home/simpleip/backups/erpcrm_avant_avoirs_20261002_1753.sql) : 152 avoirs CN-xxxxx (4 705,81 $ sur 160 factures) ; les 141 avoirs appliqués seulement sur des factures antérieures à ERPCRM sont ignorés. Encaissements « Historique Zoho » corrigés : 14 diminués, 146 supprimés (ils n'étaient que des avoirs). Taxes des avoirs : lignes de la facture copiées si avoir total, sinon base hors taxes retrouvée pour que base + TPS + TVQ = montant Zoho exact.
 - MGB : CN-00297 importé à 1 069,95 $ taxes incluses (930,59 + 46,53 + 92,83), entièrement appliqué sur INV-111428 → solde 0 $, plus de crédit fantôme de 160,23 $.
 - Taxes : les avoirs entrent dans la déclaration (TASK-043) de leur trimestre. Trimestre ouvert juil.–sept. 2026 : −56,53 $ TPS, −112,76 $ TVQ (dont CN-00297). Les trimestres déjà déclarés (≤ 2026-06-30) l'avaient été depuis Zoho, avoirs compris : ERPCRM concorde maintenant.
-- CN-00208 (ABC Gestion parasitaire, 462,66 $, INV-111654) : dans la liste de Philippe mais appliqué nulle part dans l'export. Réponse de Philippe (2026-10-02) : ABC n'est plus client, probablement un bricolage dans Zoho pour ramener un solde à 0 — on le garde tel quel pour l'instant (non importé). À revoir le jour où les factures plus anciennes seront importées dans ERPCRM (les 141 avoirs hors périmètre aussi : le script import_zoho_credits.py est relançable et les prendra alors).
+- CN-00208 (ABC Gestion parasitaire, 462,66 $, INV-111654) : absent de l'export des applications, d'abord gardé de côté (on croyait INV-111654 absente d'ERPCRM). Constat ensuite : INV-111654 est dans ERPCRM, « payée » par un faux encaissement de 462,66 $ du 2025-07-04 (qui apparaissait comme dernier paiement d'ABC). Philippe : « je lui avais chargé un mois de trop alors je l'ai crédité ». Ajouté dans `MISSING_APPLICATIONS` d'import_zoho_credits.py et importé (2026-10-02) : avoir 462,66 $ (402,40 + 20,12 + 40,14) appliqué sur INV-111654, faux encaissement supprimé ; dernier paiement d'ABC = 462,66 $ du 2025-06-04. Trimestre juil.–sept. 2025 déjà déclaré avec cet avoir.
+- Défaut corrigé au passage : la copie des lignes d'une facture dans un avoir (« Créer un avoir », invoices.py, et le script d'import) faisait -abs(montant), ce qui rendait négative une ligne de rabais déjà négative (« Cadeau — Bon client » −34,95 $). Désormais : signe inversé. Le contrôle de total du script avait bloqué l'écriture ; les 152 avoirs déjà importés n'étaient pas touchés (contrôle passé).
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche

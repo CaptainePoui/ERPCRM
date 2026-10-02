@@ -474,8 +474,9 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
             catalogue_item_id=line.catalogue_item_id,
             description=line.description,
             qty=line.qty,
-            unit_price=-abs(line.unit_price),
-            line_total=-abs(line.line_total),
+            # Signe inverse (pas -abs) : une ligne de rabais negative redevient positive dans l'avoir
+            unit_price=-line.unit_price,
+            line_total=-line.line_total,
             sort_order=line.sort_order,
             is_taxable=line.is_taxable,
         ))

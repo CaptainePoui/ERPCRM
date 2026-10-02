@@ -44,7 +44,11 @@ from app.models.bank_account import BankTransaction
 from app.api.v1.endpoints.invoices import _recalc
 
 FILE = "/home/simpleip/Simple_IP/factures_zoho/Facture_de_factures_d’avoir.csv"
-TAG = "Importé de Zoho Books"
+# Applications absentes de l'export mais confirmees par Philippe (liste d'avoirs + explication)
+MISSING_APPLICATIONS = [
+    # CN-00208 : ABC Gestion parasitaire, un mois facture en trop (INV-111654) credite le 2025-07-24
+    {"Date": "2025-07-24", "Credit Note Number": "CN-00208", "Invoice Number": "INV-111654", "Amount": "462.66"},
+]
 C = Decimal("0.01")
 
 
@@ -66,6 +70,8 @@ async def main(apply: bool):
     apps: dict = defaultdict(list)
     for r in csv.DictReader(open(FILE, encoding="utf-8-sig")):
         apps[r["Credit Note Number"].strip()].append(r)
+    for r in MISSING_APPLICATIONS:
+        apps[r["Credit Note Number"]].append(r)
 
     problems, created, skipped, out_of_scope = [], 0, 0, 0
     pay_reduced, pay_deleted = 0, 0
@@ -96,7 +102,7 @@ async def main(apply: bool):
             first = targets[0][0]
             credit = Invoice(
                 number=cn, company_id=first.company_id, status="envoyee", issue_date=cn_date, due_date=cn_date,
-                notes=f"{TAG} (avoir {cn} sur {', '.join(t.number for t, _ in targets)}).",
+                notes=f"Avoir sur {'la facture' if len(targets) == 1 else 'les factures'} {', '.join(t.number for t, _ in targets)}.",
                 apply_tps=any(t.tps_amount for t, _ in targets), apply_tvq=any(t.tvq_amount for t, _ in targets),
                 tps_rate=first.tps_rate, tvq_rate=first.tvq_rate, is_recurring=False, credit_of_id=first.id, lines=[],
                 site_label_snapshot=first.site_label_snapshot, site_address_snapshot=first.site_address_snapshot,
@@ -107,7 +113,7 @@ async def main(apply: bool):
             if len(targets) == 1 and total == first.total:
                 for l in first.lines:
                     lines.append(InvoiceLine(invoice_id=credit.id, catalogue_item_id=l.catalogue_item_id, description=l.description,
-                                             qty=l.qty, unit_price=-abs(l.unit_price), line_total=-abs(l.line_total),
+                                             qty=l.qty, unit_price=-l.unit_price, line_total=-l.line_total,
                                              sort_order=l.sort_order, is_taxable=l.is_taxable))
             else:
                 taxed = [(t, a) for t, a in targets if t.tps_amount or t.tvq_amount]
@@ -179,7 +185,7 @@ async def main(apply: bool):
 
     print(f"{created} avoirs {'importés' if apply and not problems else 'prêts'} ({sum(credit_by_invoice.values())} $ sur "
           f"{len(credit_by_invoice)} factures), {skipped} déjà présents, {out_of_scope} hors périmètre (factures antérieures à ERPCRM)")
-    print(f"Encaissements Historique Zoho : {pay_reduced} diminués, {pay_deleted} supprimés (entièrement des avoirs)")
+    print(f"Encaissements antérieurs (source zoho_import) : {pay_reduced} diminués, {pay_deleted} supprimés (entièrement des avoirs)")
     for p in problems:
         print("  PROBLÈME :", p)
     print("ÉCRIT" if apply and not problems else ("RIEN ÉCRIT (problèmes ci-dessus)" if problems else "ESSAI À BLANC — rien n'a été écrit (--apply pour écrire)"))

@@ -87,7 +87,7 @@ RENAME = {"Patio Desing": ("Construction Nationale", "Ancien nom : Patio Design 
 BRANCH_OF = {"Oxygene": "Maison Le Passeur"}
 NEVER_TOUCH = {"Simple IP inc."}
 
-ZOHO_TAG = "Importée de Zoho Books"
+ZOHO_TAG = "import de l'historique de facturation"   # journal seulement ; rien de visible au client (2026-10-02)
 
 
 def dec(v) -> Decimal:
@@ -247,7 +247,7 @@ async def main(apply: bool):
 
             inv = Invoice(
                 number=number, company_id=comp.id, status=status, issue_date=issue, due_date=due,
-                notes=f"{ZOHO_TAG} (statut Zoho : {r['Invoice Status']}).",
+                notes=None,   # la note s'imprime sur le PDF client : rien sur l'origine de l'import
                 apply_tps=tax_total > 0, apply_tvq=tax_total > 0,
                 subtotal=subtotal, tps_amount=tps, tvq_amount=tvq, total=total,
             )
@@ -273,8 +273,8 @@ async def main(apply: bool):
                 received = date.fromisoformat(r["Last Payment Date"]) if r["Last Payment Date"] else issue
                 cp = ClientPayment(
                     company_id=comp.id, status="confirmed", source="zoho_import",
-                    method_code="zoho", method_name="Historique Zoho Books", amount=paid,
-                    received_at=received, notes=f"Paiement historique de la facture {number} ({ZOHO_TAG}).",
+                    method_code="zoho", method_name="Paiement antérieur", amount=paid,
+                    received_at=received, notes=f"Paiement antérieur de la facture {number}.",
                 )
                 db.add(cp)
                 await db.flush()

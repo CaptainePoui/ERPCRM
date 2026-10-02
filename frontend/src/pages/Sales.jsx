@@ -9,7 +9,7 @@ const fmtD = d => d ? fmtDate(d + 'T00:00:00') : EMPTY
 const th = { padding: '10px 8px', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'left' }
 const thR = { ...th, textAlign: 'right' }
 const td = { padding: '10px 8px' }
-const SOURCE = { zoho_import: 'Historique Zoho', portal: 'Déclaré au portail', manual: 'Encaissement manuel', bank_import: 'Banque', gateway: 'Paiement en ligne', interac_email: 'Courriel Interac' }
+const SOURCE = { zoho_import: 'Paiement antérieur', portal: 'Déclaré au portail', manual: 'Encaissement manuel', bank_import: 'Banque', gateway: 'Paiement en ligne', interac_email: 'Courriel Interac' }
 const STATUS = { confirmed: ['Confirmé', '#059669'], pending: ['En attente', '#2563EB'], processing: ['En traitement', '#2563EB'], rejected: ['Rejeté', '#DC2626'], refunded: ['Remboursé', '#6B7280'], cancelled: ['Annulé', '#6B7280'] }
 
 // Page structure (module pas encore construit) : titre, colonnes de la future liste, explication

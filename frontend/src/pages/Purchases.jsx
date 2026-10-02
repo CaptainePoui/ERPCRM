@@ -2,7 +2,7 @@ import { ModulePlaceholder } from './Sales'
 import PurchaseOrders from './PurchaseOrders'
 
 // Menu Achats (TASK-044, 2026-10-02) -- structure ; donnees et import Zoho a l'etape suivante
-const SOON = 'Module Achats en construction — vos données Zoho (dépenses, factures fournisseurs, récurrences) seront importées à l\'étape suivante.'
+const SOON = 'Module Achats en construction — vos dépenses, factures fournisseurs et récurrences existantes seront importées à l\'étape suivante.'
 
 export const PurchaseVendors = () => <ModulePlaceholder title="Fournisseurs" newLabel="+ Nouveau fournisseur" columns={['Nom', 'Courriel', 'Téléphone', 'Factures', 'Dû']} note={SOON} />
 export const PurchaseExpenses = () => <ModulePlaceholder title="Dépenses" newLabel="+ Nouvelle dépense" columns={['Date', 'Compte de dépense', 'Fournisseur', 'Payé par', 'Taxes', 'Montant']} note={SOON} />
