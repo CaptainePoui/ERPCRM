@@ -13,6 +13,14 @@ const STATUS_LABELS = {
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
 
+// Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Fermé = entierement applique
+const CREDIT_STATUS_LABELS = {
+  ...STATUS_LABELS,
+  envoyee: { label: 'Ouvert', color: 'var(--brand)' },
+  payee:   { label: 'Fermé',  color: '#059669' },
+}
+const CREDIT_FILTERS = [['', 'Tous'], ['brouillon', 'Brouillon'], ['envoyee', 'Ouvert'], ['payee', 'Fermé']]
+
 const FILTERS = [
   ['', 'Toutes'],
   ['brouillon', 'Brouillon'],
@@ -76,7 +84,7 @@ export default function Invoices({ creditsOnly = false }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">{creditsOnly ? "Factures d'avoir" : 'Factures'}</h1>
-          <p className="page-sub">{creditsOnly ? `${invoices.filter(i => i.credit_of_id).length} avoir(s) — créés depuis une facture (« Créer un avoir »)` : `${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}</p>
+          <p className="page-sub">{creditsOnly ? `${invoices.filter(i => i.credit_of_id).length} avoir(s) — créer un avoir depuis la facture visée (« Créer un avoir »), puis l'appliquer` : `${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={markOverdue} disabled={marking} style={{ fontSize: 13 }}>{marking ? '...' : 'Marquer en retard'}</button>
@@ -87,7 +95,7 @@ export default function Invoices({ creditsOnly = false }) {
       <div className="page-toolbar" style={{ gap: 10 }}>
         <input className="search-input" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)} />
         <div className="filter-tabs">
-          {FILTERS.map(([val, label]) => (
+          {(creditsOnly ? CREDIT_FILTERS : FILTERS).map(([val, label]) => (
             <button key={val} className={`filter-tab${filter === val ? ' active' : ''}`} onClick={() => setFilter(val)}>{label}</button>
           ))}
         </div>
@@ -110,7 +118,7 @@ export default function Invoices({ creditsOnly = false }) {
             </thead>
             <tbody>
               {filtered.map(inv => {
-                const s = STATUS_LABELS[inv.status] || STATUS_LABELS.brouillon
+                const s = (inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon
                 return (
                   <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.issue_date)}</td>

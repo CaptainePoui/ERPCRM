@@ -69,15 +69,9 @@ async def _get_setting(key: str, default: str, db: AsyncSession) -> str:
 
 
 async def _confirmed_total(invoice_id, db: AsyncSession) -> Decimal:
-    r = await db.execute(
-        select(func.sum(PaymentAllocation.amount_allocated))
-        .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
-        .where(
-            PaymentAllocation.invoice_id == invoice_id,
-            ClientPayment.status == "confirmed",
-        )
-    )
-    return r.scalar() or Decimal("0.00")
+    """Paiements confirmes + avoirs appliques (TASK-005.10)."""
+    from app.api.v1.endpoints.payments import settled_amounts
+    return (await settled_amounts(db, [invoice_id])).get(invoice_id, Decimal("0.00"))
 
 
 async def _pending_total(invoice_id, db: AsyncSession) -> Decimal:

@@ -410,15 +410,26 @@ Date(s) de travail : 2026-10-02
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 
-### TASK-005.10 [ ] Avoirs clients appliqués aux factures + import des avoirs Zoho (cas MGB Associés)
-Date de demande : 2026-10-02 (Philippe : « MGB ASSOCIÉS INC. ajuste le crédit pour qu'il arrive à 0 $ — il a payé le matériel mais jamais l'installation, j'ai crédité mais j'ai mis 160,23 de trop »)
-Date(s) de travail : (aucune — décision en attente)
+### TASK-005.10 [x] Avoirs clients appliqués aux factures + import des avoirs Zoho (cas MGB Associés)
+Date de demande : 2026-10-02 (Philippe : « MGB ASSOCIÉS INC. ajuste le crédit pour qu'il arrive à 0 $ — il a payé le matériel mais jamais l'installation, j'ai crédité mais j'ai mis 160,23 de trop » ; puis « Bâtir l'application des avoirs dans Ventes › Factures d'avoir », avec la liste de ses avoirs Zoho)
+Date(s) de travail : 2026-10-02
 
 Constats :
 - MGB, INV-111428 (2025-01-23, 4 069,71 $) : matériel 2 469,70 $ HT, installation 1 069,95 $ HT. Avoir Zoho CN-00297 (2026-07-01) appliqué 1 069,95 $. Les 160,23 $ de trop = exactement la TPS (53,50) + TVQ (106,73) de 1 069,95 $ : l'avoir a été fait « hors taxes » (1 230,18 $ TTC) alors qu'il fallait 1 069,95 $ taxes incluses → 160,23 $ de crédit inutilisé. Ses 3 factures de frais de retard (92,89 $) ont aussi été fermées par des avoirs (CN-00185, 202, 203).
 - Fichier `Facture_de_factures_d’avoir.csv` : 311 applications d'avoirs (293 avoirs, 2021-08 → 2026-09) — seulement date, n° d'avoir, facture, montant appliqué (ni client, ni taxes, ni lignes). 161 applications (4 705,81 $) touchent des factures importées.
 - Problème d'import (TASK-005.7) : ces factures fermées par avoir ont été importées « payées » par un paiement « Historique Zoho » du montant de l'avoir — faux (ex. MGB INV-111428 « payée » 4 069,71 $ au lieu de 2 999,76 $ payés + 1 069,95 $ crédités). Impact taxes : les avoirs réduisent la TPS/TVQ perçue d'une période ; absents d'ERPCRM, la déclaration de TPS/TVQ (TASK-043) les surestime (ex. CN-00297 en juillet 2026).
 - ERPCRM : un avoir = facture négative (« Créer un avoir »), mais il ne s'applique pas au solde d'une facture (le statut ne compte que les paiements).
+
+Réalisé (2026-10-02) :
+- Table `credit_allocations` (modèle `CreditAllocation` dans models/client_payment.py, migration e0f1a2b3c4d5) : avoir → facture, montant, date d'application.
+- Montant réglé d'une facture = paiements confirmés + avoirs appliqués, calculé à un seul endroit (`settled_amounts()` dans payments.py) et utilisé par le statut des factures, le portail client, le rapprochement bancaire et le PDF.
+- API `/v1/payments` : `GET /credits/open?company_id=` (avoirs du client avec un reste), `GET /credits/{id}` (application), `GET /credits/{id}/candidates` (factures ouvertes du client), `POST /credits/{id}/apply` (une ou plusieurs factures ; refusé si autre client, brouillon/annulée, au-delà du reste de l'avoir ou du solde de la facture), `DELETE /credit-allocations/{id}` (retirer = modifiable). `GET /invoice/{id}` inclut les avoirs appliqués (`kind: "credit"`).
+- Statut d'un avoir : Ouvert (reste à appliquer) / Fermé (entièrement appliqué), recalculé automatiquement. Une facture ou un avoir avec une application ne peut pas revenir en brouillon ni être annulé sans retirer l'application.
+- Écran : sur l'avoir, section « Application de l'avoir » + « Appliquer sur des factures » (pré-rempli des plus anciennes) ; sur la facture, « Paiements et avoirs reçus » + « Appliquer un avoir (x $ disponible) » ; liste Factures d'avoir avec filtres Ouvert/Fermé.
+- Import `backend/import_zoho_credits.py` (essai à blanc puis --apply, sauvegarde des tables avant : /home/simpleip/backups/erpcrm_avant_avoirs_20261002_1753.sql) : 152 avoirs CN-xxxxx (4 705,81 $ sur 160 factures) ; les 141 avoirs appliqués seulement sur des factures antérieures à ERPCRM sont ignorés. Encaissements « Historique Zoho » corrigés : 14 diminués, 146 supprimés (ils n'étaient que des avoirs). Taxes des avoirs : lignes de la facture copiées si avoir total, sinon base hors taxes retrouvée pour que base + TPS + TVQ = montant Zoho exact.
+- MGB : CN-00297 importé à 1 069,95 $ taxes incluses (930,59 + 46,53 + 92,83), entièrement appliqué sur INV-111428 → solde 0 $, plus de crédit fantôme de 160,23 $.
+- Taxes : les avoirs entrent dans la déclaration (TASK-043) de leur trimestre. Trimestre ouvert juil.–sept. 2026 : −56,53 $ TPS, −112,76 $ TVQ (dont CN-00297). Les trimestres déjà déclarés (≤ 2026-06-30) l'avaient été depuis Zoho, avoirs compris : ERPCRM concorde maintenant.
+- Reste à vérifier avec Philippe : CN-00208 (ABC Gestion parasitaire, 462,66 $, INV-111654) figure dans sa liste mais n'est appliqué nulle part dans l'export (remboursé ?).
 ---
 
 ## TASK-006 [ERPCRM] [x] Tickets — statuts, entrées temps, email résumé, + Tâche

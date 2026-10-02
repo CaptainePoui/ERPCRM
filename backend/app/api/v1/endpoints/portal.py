@@ -8,7 +8,7 @@ from decimal import Decimal
 from sqlalchemy import select, func
 from app.models.client_payment import ClientPayment, PaymentAllocation
 from app.models.payment import PaymentMethod
-from app.api.v1.endpoints.payments import next_payment_reference
+from app.api.v1.endpoints.payments import next_payment_reference, settled_amounts
 from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -238,12 +238,8 @@ async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSes
 
     out = []
     for i in invs:
-        r_conf = await db.execute(
-            select(func.sum(PaymentAllocation.amount_allocated))
-            .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
-            .where(PaymentAllocation.invoice_id == i.id, ClientPayment.status == "confirmed")
-        )
-        confirmed = float(r_conf.scalar() or 0)
+        # Paiements confirmes + avoirs appliques (TASK-005.10)
+        confirmed = float((await settled_amounts(db, [i.id])).get(i.id, 0))
 
         r_pend = await db.execute(
             select(func.sum(PaymentAllocation.amount_allocated))

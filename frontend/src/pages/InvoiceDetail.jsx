@@ -24,6 +24,14 @@ const STATUS_TRANSITIONS = {
   annulee:   [],
 }
 
+// Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Fermé une fois tout appliqué
+const CREDIT_STATUS_LABELS = {
+  ...STATUS_LABELS,
+  envoyee: { label: 'Ouvert', color: 'var(--brand)' },
+  payee:   { label: 'Fermé',  color: '#059669' },
+}
+const CREDIT_TRANSITIONS = { brouillon: ['envoyee', 'annulee'], envoyee: ['brouillon', 'annulee'], payee: [], annulee: [] }
+
 const PAYMENT_STATUS = {
   pending:    { label: 'En attente', color: '#2563EB' },
   processing: { label: 'En traitement', color: '#2563EB' },
@@ -65,6 +73,9 @@ export default function InvoiceDetail() {
   const [showOpens, setShowOpens] = useState(false)
   const [opens, setOpens] = useState([])
   const [opensLoading, setOpensLoading] = useState(false)
+  const [creditInfo, setCreditInfo] = useState(null)      // sur un avoir : son application
+  const [openCredits, setOpenCredits] = useState([])      // sur une facture : avoirs du client a appliquer
+  const [showApplyCredit, setShowApplyCredit] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -78,8 +89,28 @@ export default function InvoiceDetail() {
       setPayments(p.data)
       setPaymentMethods(m.data.filter(x => x.is_active))
       setLoading(false)
+      loadCredits(r.data)
     })
   }, [id])
+
+  async function loadCredits(invoice) {
+    if (invoice.credit_of_id) {
+      setCreditInfo((await api.get(`/v1/payments/credits/${invoice.id}`)).data)
+    } else if (invoice.company_id) {
+      setOpenCredits((await api.get('/v1/payments/credits/open', { params: { company_id: invoice.company_id } })).data)
+    }
+  }
+
+  async function removeCreditAllocation(allocId) {
+    if (!confirm("Retirer cette application de l'avoir ? Le montant redevient disponible sur l'avoir et dû sur la facture.")) return
+    try {
+      await api.delete(`/v1/payments/credit-allocations/${allocId}`)
+    } catch (e) { alert(e.response?.data?.detail || 'Retrait impossible'); return }
+    const r = await api.get(`/v1/invoices/${id}`)
+    setInv(r.data)
+    setPayments((await api.get(`/v1/payments/invoice/${id}`)).data)
+    await loadCredits(r.data)
+  }
 
   async function loadPayments() {
     const [r, inv_r] = await Promise.all([
@@ -88,6 +119,7 @@ export default function InvoiceDetail() {
     ])
     setPayments(r.data)
     setInv(inv_r.data)
+    await loadCredits(inv_r.data)
   }
 
   async function deletePayment(pid) {
@@ -168,8 +200,10 @@ export default function InvoiceDetail() {
   const confirmedPaid = payments.filter(p => p.status === 'confirmed').reduce((s, p) => s + p.net_amount, 0)
   const pendingPaid = payments.filter(p => p.status === 'pending' || p.status === 'processing').reduce((s, p) => s + p.net_amount, 0)
 
-  const s = STATUS_LABELS[inv.status] || STATUS_LABELS.brouillon
-  const transitions = STATUS_TRANSITIONS[inv.status] || []
+  const isCredit = !!inv.credit_of_id
+  const labels = isCredit ? CREDIT_STATUS_LABELS : STATUS_LABELS
+  const s = labels[inv.status] || STATUS_LABELS.brouillon
+  const transitions = (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
@@ -192,7 +226,7 @@ export default function InvoiceDetail() {
           <span className="inv-badge" style={{ background: s.color, fontSize: 13, padding: '5px 12px' }}>{s.label}</span>
           {transitions.map(t => (
             <button key={t} className="btn-secondary" onClick={() => changeStatus(t)} style={{ fontSize: 12 }}>
-              → {STATUS_LABELS[t]?.label}
+              → {isCredit && t === 'envoyee' ? 'Émettre' : STATUS_LABELS[t]?.label}
             </button>
           ))}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
@@ -372,11 +406,51 @@ export default function InvoiceDetail() {
       )}
 
       {/* Paiements -- seuls les paiements confirmes comptent dans l'encaisse et le solde */}
-      {inv.status !== 'brouillon' && inv.status !== 'annulee' && (
+      {/* Avoir : sur quelles factures il est applique (TASK-005.10) */}
+      {isCredit && creditInfo && inv.status !== 'brouillon' && inv.status !== 'annulee' && (
         <div className="inv-lines-section" style={{ marginTop: 16 }}>
           <div className="inv-section-title" style={{ marginBottom: 12 }}>
-            Paiements reçus
+            Application de l'avoir
+            {creditInfo.remaining > 0.005 && (
+              <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowApplyCredit(true)}>Appliquer sur des factures</button>
+            )}
+          </div>
+          <table className="inv-lines-table">
+            <thead><tr><th>Date</th><th>Facture</th><th style={{ textAlign: 'right' }}>Montant appliqué</th><th style={{ width: 40 }}></th></tr></thead>
+            <tbody>
+              {creditInfo.allocations.map(a => (
+                <tr key={a.id}>
+                  <td>{a.applied_at ? new Date(a.applied_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
+                  <td><span style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${a.invoice_id}`)}>{a.invoice_number}</span></td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(a.amount)}</td>
+                  <td><button className="inv-del-btn" title="Retirer l'application" onClick={() => removeCreditAllocation(a.id)}>✕</button></td>
+                </tr>
+              ))}
+              {creditInfo.allocations.length === 0 && (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Pas encore appliqué</td></tr>
+              )}
+            </tbody>
+          </table>
+          <div className="inv-totals">
+            <div className="inv-total-row"><span>Total de l'avoir</span><span>{fmt(creditInfo.total)}</span></div>
+            <div className="inv-total-row"><span>Appliqué</span><span>{fmt(creditInfo.applied)}</span></div>
+            <div className="inv-total-row" style={{ color: creditInfo.remaining > 0.005 ? '#D97706' : '#059669' }}>
+              <span>Reste à appliquer</span><span>{fmt(creditInfo.remaining)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!isCredit && inv.status !== 'brouillon' && inv.status !== 'annulee' && (
+        <div className="inv-lines-section" style={{ marginTop: 16 }}>
+          <div className="inv-section-title" style={{ marginBottom: 12 }}>
+            Paiements et avoirs reçus
             <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowAddPayment(true)}>+ Encaisser</button>
+            {openCredits.length > 0 && inv.total - confirmedPaid > 0.005 && (
+              <button className="btn-secondary" style={{ marginLeft: 8, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowApplyCredit(true)}>
+                Appliquer un avoir ({fmt(openCredits.reduce((t, c) => t + c.remaining, 0))} disponible)
+              </button>
+            )}
           </div>
           <table className="inv-lines-table">
             <thead>
@@ -403,7 +477,8 @@ export default function InvoiceDetail() {
                       </span>
                     )}
                   </td>
-                  <td><button className="inv-del-btn" onClick={() => deletePayment(p.id)}>✕</button></td>
+                  <td><button className="inv-del-btn" title={p.kind === 'credit' ? "Retirer l'avoir" : undefined}
+                    onClick={() => p.kind === 'credit' ? removeCreditAllocation(p.id) : deletePayment(p.id)}>✕</button></td>
                 </tr>
               ))}
               {payments.length === 0 && (
@@ -413,7 +488,7 @@ export default function InvoiceDetail() {
           </table>
           {payments.length > 0 && (
             <div className="inv-totals">
-              <div className="inv-total-row"><span>Total encaissé (net)</span><span>{fmt(confirmedPaid)}</span></div>
+              <div className="inv-total-row"><span>Total réglé (paiements + avoirs)</span><span>{fmt(confirmedPaid)}</span></div>
               {pendingPaid > 0 && (
                 <div className="inv-total-row" style={{ color: '#2563EB' }}><span>En attente de confirmation</span><span>{fmt(pendingPaid)}</span></div>
               )}
@@ -446,6 +521,15 @@ export default function InvoiceDetail() {
             await loadPayments()
             setShowAddPayment(false)
           }}
+        />
+      )}
+      {showApplyCredit && (
+        <ApplyCreditModal
+          credit={isCredit ? creditInfo : null}
+          invoice={isCredit ? null : { id: inv.id, number: inv.number, balance: inv.total - confirmedPaid }}
+          openCredits={openCredits}
+          onClose={() => setShowApplyCredit(false)}
+          onSaved={async () => { setShowApplyCredit(false); await loadPayments() }}
         />
       )}
       {showTaskModal && (
@@ -513,6 +597,98 @@ function SendInvoiceModal({ invoiceId, companyId, onClose, onSent }) {
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
           <button className="btn-primary" onClick={send} disabled={sending || !email.trim()}>{sending ? '...' : 'Envoyer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Appliquer un avoir (TASK-005.10) -- deux sens :
+//  - depuis l'avoir (credit) : repartir son reste sur les factures ouvertes du client (plus anciennes d'abord)
+//  - depuis une facture (invoice) : y appliquer un ou plusieurs avoirs ouverts du client
+function ApplyCreditModal({ credit, invoice, openCredits, onClose, onSaved }) {
+  const [rows, setRows] = useState(null)
+  const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10))
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const prefill = (items, budget, key) => items.map(it => {
+      const amt = Math.max(0, Math.min(it[key], budget))
+      budget -= amt
+      return { ...it, amount: amt ? amt.toFixed(2) : '' }
+    })
+    if (credit) {
+      api.get(`/v1/payments/credits/${credit.credit_id}/candidates`).then(r => setRows(prefill(r.data, credit.remaining, 'balance')))
+    } else {
+      setRows(prefill(openCredits, invoice.balance, 'remaining'))
+    }
+  }, [])
+
+  const total = (rows || []).reduce((t, r) => t + (parseFloat(r.amount) || 0), 0)
+  const limit = credit ? credit.remaining : invoice.balance
+
+  async function save() {
+    setError('')
+    if (total <= 0) { setError('Aucun montant à appliquer'); return }
+    if (total > limit + 0.005) { setError(`Maximum ${fmt(limit)}`); return }
+    setSaving(true)
+    try {
+      if (credit) {
+        await api.post(`/v1/payments/credits/${credit.credit_id}/apply`, {
+          applied_at: appliedAt,
+          allocations: rows.filter(r => parseFloat(r.amount) > 0).map(r => ({ invoice_id: r.invoice_id, amount: parseFloat(r.amount) })),
+        })
+      } else {
+        for (const r of rows.filter(r => parseFloat(r.amount) > 0)) {
+          await api.post(`/v1/payments/credits/${r.credit_id}/apply`, {
+            applied_at: appliedAt, allocations: [{ invoice_id: invoice.id, amount: parseFloat(r.amount) }],
+          })
+        }
+      }
+      await onSaved()
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Application impossible')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ maxWidth: 640, width: '100%' }}>
+        <div className="modal-title">{credit ? `Appliquer l'avoir ${credit.number}` : `Appliquer un avoir sur ${invoice.number}`}</div>
+        <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
+          {credit ? `Reste à appliquer : ${fmt(credit.remaining)}` : `Solde de la facture : ${fmt(invoice.balance)}`}
+        </p>
+        {rows === null ? <div className="loading">Chargement...</div> : rows.length === 0 ? (
+          <p style={{ color: '#9CA3AF' }}>{credit ? 'Aucune facture ouverte pour ce client.' : 'Aucun avoir disponible.'}</p>
+        ) : (
+          <table className="inv-lines-table">
+            <thead><tr><th>Date</th><th>{credit ? 'Facture' : 'Avoir'}</th><th style={{ textAlign: 'right' }}>{credit ? 'Solde' : 'Disponible'}</th><th style={{ textAlign: 'right' }}>À appliquer</th></tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.invoice_id || r.credit_id}>
+                  <td>{r.issue_date ? new Date(r.issue_date + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
+                  <td>{r.number}</td>
+                  <td style={{ textAlign: 'right' }}>{fmt(credit ? r.balance : r.remaining)}</td>
+                  <td style={{ textAlign: 'right' }}>
+                    <input type="number" step="0.01" min="0" value={r.amount} style={{ width: 90, textAlign: 'right', boxSizing: 'border-box' }}
+                      onChange={e => setRows(rows.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <div className="form-group" style={{ marginTop: 12 }}>
+          <label>Date d'application</label>
+          <input type="date" value={appliedAt} onChange={e => setAppliedAt(e.target.value)} />
+        </div>
+        <div style={{ fontSize: 13, fontWeight: 600, textAlign: 'right' }}>Total appliqué : {fmt(total)}</div>
+        {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving || !rows?.length}>Appliquer</button>
         </div>
       </div>
     </div>

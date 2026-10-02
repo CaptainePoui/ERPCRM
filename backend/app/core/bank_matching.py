@@ -57,15 +57,9 @@ def guess_method(description: str | None) -> str:
 
 
 async def invoice_balances(db: AsyncSession, invoice_ids: list) -> dict:
-    if not invoice_ids:
-        return {}
-    rows = (await db.execute(
-        select(PaymentAllocation.invoice_id, func.sum(PaymentAllocation.amount_allocated))
-        .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
-        .where(PaymentAllocation.invoice_id.in_(invoice_ids), ClientPayment.status == "confirmed")
-        .group_by(PaymentAllocation.invoice_id)
-    )).all()
-    return {i: p for i, p in rows}
+    """Montant regle (paiements confirmes + avoirs appliques) -- meme source que le statut des factures."""
+    from app.api.v1.endpoints.payments import settled_amounts
+    return await settled_amounts(db, invoice_ids)
 
 
 def invoice_dict(inv: Invoice, paid: Decimal, company_name: str) -> dict:

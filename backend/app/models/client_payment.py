@@ -56,3 +56,16 @@ class PaymentAllocation(Base):
 
     payment: Mapped["ClientPayment"] = relationship("ClientPayment", back_populates="allocations")
     invoice: Mapped["Invoice"] = relationship("Invoice")
+
+
+class CreditAllocation(Base):
+    """Application d'un avoir (facture negative, credit_of_id) sur une facture du meme client
+    (TASK-005.10) : reduit son solde comme un paiement, sans encaissement."""
+    __tablename__ = "credit_allocations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    credit_invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False, index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="RESTRICT"), nullable=False, index=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    applied_at: Mapped[date | None] = mapped_column(Date)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

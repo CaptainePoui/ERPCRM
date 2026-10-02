@@ -162,7 +162,10 @@ async def _tax_lock_date(db: AsyncSession) -> date | None:
 async def _check_can_revert_to_draft(inv: Invoice, db: AsyncSession) -> None:
     """Une facture ne revient en brouillon que si rien ne l'a encore « fixee » : aucun paiement
     confirme et pas datee dans une periode de taxes deja declaree (sinon : avoir)."""
-    from app.models.client_payment import ClientPayment, PaymentAllocation
+    from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation
+    if (await db.execute(select(func.count()).select_from(CreditAllocation).where(
+            (CreditAllocation.invoice_id == inv.id) | (CreditAllocation.credit_invoice_id == inv.id)))).scalar():
+        raise HTTPException(status_code=400, detail="Un avoir est appliqué sur ce document : retirez l'application avant de le remettre en brouillon")
     paid = (await db.execute(
         select(func.count()).select_from(PaymentAllocation)
         .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
@@ -336,6 +339,11 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
         raise HTTPException(status_code=400, detail="État de transmission invalide")
     if updates.get("status") == "brouillon" and inv.status != "brouillon":
         await _check_can_revert_to_draft(inv, db)
+    if updates.get("status") == "annulee" and inv.status != "annulee":
+        from app.models.client_payment import CreditAllocation
+        if (await db.execute(select(func.count()).select_from(CreditAllocation).where(
+                (CreditAllocation.invoice_id == inv.id) | (CreditAllocation.credit_invoice_id == inv.id)))).scalar():
+            raise HTTPException(status_code=400, detail="Un avoir est appliqué sur ce document : retirez l'application avant de l'annuler")
     clear_site = updates.pop("clear_site", False)
     site_id = updates.pop("site_id", None)
     if clear_site:
