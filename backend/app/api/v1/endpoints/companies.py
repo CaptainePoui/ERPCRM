@@ -276,6 +276,15 @@ async def toggle_sipv_tenant(
     if sipv_result.get("tenant_id"):
         company.sipv_tenant_id = uuid.UUID(sipv_result["tenant_id"])
 
+    # Succursales creees avant la telephonie (purement ERPCRM) : copie 911 a l'activation.
+    # Bloquant comme le reste -- si SIPV echoue, rien n'est enregistre (reessayable).
+    if payload.enabled and company.sipv_tenant_id:
+        pending = (await db.execute(
+            select(CompanySite).where(CompanySite.company_id == company_id, CompanySite.sipv_e911_address_id.is_(None))
+        )).scalars().all()
+        for s in pending:
+            s.sipv_e911_address_id = await _sync_site_if_sipv(company_id, s.id, _site_sync_fields(s), db)
+
     _log(db, company_id, current_user, "field_change",
          field_name="sipv_enabled",
          old_value=str(not payload.enabled),
@@ -1341,23 +1350,39 @@ async def list_company_sites(company_id: uuid.UUID, db: AsyncSession = Depends(g
     return [_site_out(s) for s in result.scalars().all()]
 
 
-@router.post("/{company_id}/sites", response_model=SiteOut, status_code=status.HTTP_201_CREATED)
-async def create_company_site(company_id: uuid.UUID, payload: SitePayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    tenant_id = await _company_tenant_id(company_id, db)
-    site_id = uuid.uuid4()
+async def _sync_site_if_sipv(company_id: uuid.UUID, site_id: uuid.UUID, fields: dict, db: AsyncSession) -> uuid.UUID | None:
+    """Copie 911 (E911Address SIPV) d'une succursale, seulement si la compagnie a un
+    tenant SIPV actif -- bloquant dans ce cas (rien d'ecrit si SIPV ne repond pas).
+    Sans SIPV, la succursale reste purement ERPCRM (facturation, multi-site) et sera
+    envoyee au 911 a l'activation du tenant (voir toggle_sipv_tenant). Retourne l'id SIPV ou None."""
+    company = await db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if not company.sipv_enabled or not company.sipv_tenant_id:
+        return None
     try:
-        sipv_result = await sipv_client.sync_site(
-            tenant_id=tenant_id, erpcrm_site_id=str(site_id), label=payload.label,
-            civic_number=payload.civic_number, street_name=payload.street_name, unit=payload.unit,
-            city=payload.city, province=payload.province, postal_code=payload.postal_code,
-            country=payload.country, is_active=True,
+        result = await sipv_client.sync_site(
+            tenant_id=str(company.sipv_tenant_id), erpcrm_site_id=str(site_id), **fields,
         )
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    return uuid.UUID(result["e911_address_id"])
 
-    site = CompanySite(id=site_id, company_id=company_id,
-                       sipv_e911_address_id=uuid.UUID(sipv_result["e911_address_id"]),
-                       **payload.model_dump())
+
+def _site_sync_fields(s, is_active: bool | None = None) -> dict:
+    return {
+        "label": s.label, "civic_number": s.civic_number, "street_name": s.street_name, "unit": s.unit,
+        "city": s.city, "province": s.province, "postal_code": s.postal_code, "country": s.country,
+        "is_active": s.is_active if is_active is None else is_active,
+    }
+
+
+@router.post("/{company_id}/sites", response_model=SiteOut, status_code=status.HTTP_201_CREATED)
+async def create_company_site(company_id: uuid.UUID, payload: SitePayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    site_id = uuid.uuid4()
+    e911_id = await _sync_site_if_sipv(company_id, site_id, _site_sync_fields(payload, is_active=True), db)
+
+    site = CompanySite(id=site_id, company_id=company_id, sipv_e911_address_id=e911_id, **payload.model_dump())
     db.add(site)
     if payload.is_primary:
         await _unset_other_primaries(company_id, site_id, db)
@@ -1372,7 +1397,6 @@ async def update_company_site(company_id: uuid.UUID, site_id: uuid.UUID, payload
     site = await db.get(CompanySite, site_id)
     if not site or site.company_id != company_id:
         raise HTTPException(status_code=404, detail="Succursale introuvable")
-    tenant_id = await _company_tenant_id(company_id, db)
 
     updates = payload.model_dump(exclude_unset=True)
     clear_billing_contact = updates.pop("clear_billing_contact", False)
@@ -1388,10 +1412,9 @@ async def update_company_site(company_id: uuid.UUID, site_id: uuid.UUID, payload
         "postal_code": updates.get("postal_code", site.postal_code),
         "is_active": updates.get("is_active", site.is_active),
     }
-    try:
-        await sipv_client.sync_site(tenant_id=tenant_id, erpcrm_site_id=str(site.id), country=site.country, **merged)
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    e911_id = await _sync_site_if_sipv(company_id, site.id, {"country": site.country, **merged}, db)
+    if e911_id:
+        site.sipv_e911_address_id = e911_id
 
     for k, v in updates.items():
         setattr(site, k, v)
@@ -1412,15 +1435,6 @@ async def deactivate_company_site(company_id: uuid.UUID, site_id: uuid.UUID, db:
     site = await db.get(CompanySite, site_id)
     if not site or site.company_id != company_id:
         raise HTTPException(status_code=404, detail="Succursale introuvable")
-    tenant_id = await _company_tenant_id(company_id, db)
-    try:
-        await sipv_client.sync_site(
-            tenant_id=tenant_id, erpcrm_site_id=str(site.id), label=site.label,
-            civic_number=site.civic_number, street_name=site.street_name, unit=site.unit,
-            city=site.city, province=site.province, postal_code=site.postal_code,
-            country=site.country, is_active=False,
-        )
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    await _sync_site_if_sipv(company_id, site.id, _site_sync_fields(site, is_active=False), db)
     site.is_active = False
     await db.commit()
