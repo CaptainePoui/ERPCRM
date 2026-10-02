@@ -3,7 +3,7 @@ from decimal import Decimal
 from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text, cast, Integer
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -80,13 +80,33 @@ class MultiPaymentCreate(BaseModel):
     generate_reference: bool = False
 
 
-async def _next_reference(db: AsyncSession) -> str:
+async def next_payment_reference(db: AsyncSession) -> str:
+    """Prochaine reference PAY-AAAA-NNNN : plus grand numero de l'annee + 1.
+
+    Le verrou consultatif (relache au commit/rollback de la transaction) serialise
+    deux creations simultanees ; le MAX evite de retomber sur une reference
+    existante apres une suppression (un comptage + 1 le faisait).
+    """
+    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('client_payments.reference'))"))
     year = date.today().year
+    prefix = f"PAY-{year}-"
     r = await db.execute(
-        select(func.count()).where(ClientPayment.reference.like(f"PAY-{year}-%"))
+        select(func.max(cast(func.substr(ClientPayment.reference, len(prefix) + 1), Integer)))
+        .where(ClientPayment.reference.like(f"{prefix}%"))
     )
     n = (r.scalar() or 0) + 1
-    return f"PAY-{year}-{n:04d}"
+    return f"{prefix}{n:04d}"
+
+
+async def _reload_payment(payment_id: uuid.UUID, db: AsyncSession) -> ClientPayment:
+    """Recharge un encaissement avec ses allocations apres commit (un acces paresseux leve MissingGreenlet)."""
+    result = await db.execute(
+        select(ClientPayment)
+        .where(ClientPayment.id == payment_id)
+        .options(selectinload(ClientPayment.allocations))
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
 
 
 def _payment_out(cp: ClientPayment, invoice_id: uuid.UUID) -> PaymentOut:
@@ -214,8 +234,7 @@ async def add_payment(invoice_id: uuid.UUID, payload: PaymentCreate, db: AsyncSe
 
     await _recalculate_invoice_status(invoice_id, db)
     await db.commit()
-    await db.refresh(cp)
-    await db.refresh(alloc)
+    cp = await _reload_payment(cp.id, db)
 
     return _payment_out(cp, invoice_id)
 
@@ -232,7 +251,7 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
         raise HTTPException(status_code=404, detail="Mode de paiement introuvable")
 
     total = Decimal(str(sum(a.amount for a in payload.allocations)))
-    reference = await _next_reference(db) if payload.generate_reference else None
+    reference = await next_payment_reference(db) if payload.generate_reference else None
 
     # Valider que toutes les factures existent et appartiennent a la meme compagnie
     company_id = None
@@ -280,7 +299,7 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
             await _recalculate_invoice_status(iid, db)
 
     await db.commit()
-    await db.refresh(cp)
+    cp = await _reload_payment(cp.id, db)
     return [_payment_out(cp, iid) for iid in invoice_ids]
 
 
@@ -304,7 +323,31 @@ async def confirm_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_
         await _recalculate_invoice_status(alloc.invoice_id, db)
 
     await db.commit()
-    await db.refresh(cp)
+    cp = await _reload_payment(cp.id, db)
+    first_inv = cp.allocations[0].invoice_id if cp.allocations else None
+    return _payment_out(cp, first_inv or cp.id)
+
+
+@router.patch("/{payment_id}/reject", response_model=PaymentOut)
+async def reject_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Rejette un paiement en attente (pending/processing -> rejected), ex. virement jamais recu."""
+    result = await db.execute(
+        select(ClientPayment)
+        .where(ClientPayment.id == payment_id)
+        .options(selectinload(ClientPayment.allocations))
+    )
+    cp = result.scalar_one_or_none()
+    if not cp:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    if cp.status not in ("pending", "processing"):
+        raise HTTPException(status_code=400, detail="Seul un paiement en attente peut etre rejete")
+
+    cp.status = "rejected"
+    for alloc in cp.allocations:
+        await _recalculate_invoice_status(alloc.invoice_id, db)
+
+    await db.commit()
+    cp = await _reload_payment(cp.id, db)
     first_inv = cp.allocations[0].invoice_id if cp.allocations else None
     return _payment_out(cp, first_inv or cp.id)
 

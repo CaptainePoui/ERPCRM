@@ -11,6 +11,7 @@ principe que Invoice.is_recurring déjà existant, mais avec un suivi des
 lignes en dehors du cycle de facturation lui-même.
 """
 import uuid
+from decimal import Decimal
 from datetime import date, datetime, timezone
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, status
@@ -21,7 +22,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.config import settings
 from app.api.v1.endpoints.auth import get_current_user
-from app.api.v1.endpoints.invoices import _next_number, _recalc
+from app.api.v1.endpoints.invoices import _next_number, _recalc, _money
 from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine
 from app.models.catalogue import CatalogueItem
 from app.models.company import Company
@@ -247,7 +248,7 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
             invoice_id=inv.id, catalogue_item_id=line.catalogue_item_id,
             description=_dated_desc(line.description, cycle_start, cycle_end),
             qty=line.qty, unit_price=line.unit_price,
-            line_total=round(line.qty * line.unit_price, 2), sort_order=sort_order,
+            line_total=_money(Decimal(str(line.qty)) * Decimal(str(line.unit_price))), sort_order=sort_order,
         ))
         sort_order += 1
         if is_first_invoice and not line.is_prorata_credit:
@@ -255,7 +256,7 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
                 invoice_id=inv.id, catalogue_item_id=line.catalogue_item_id,
                 description=_dated_desc(f"{line.description} (facturé d'avance)", next_cycle_start, next_cycle_end),
                 qty=line.qty, unit_price=line.unit_price,
-                line_total=round(line.qty * line.unit_price, 2), sort_order=sort_order,
+                line_total=_money(Decimal(str(line.qty)) * Decimal(str(line.unit_price))), sort_order=sort_order,
             ))
             sort_order += 1
     if is_first_invoice:

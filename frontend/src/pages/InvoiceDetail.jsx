@@ -8,6 +8,7 @@ const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
   envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
+  partiellement_payee: { label: 'Partiellement payée', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
@@ -17,7 +18,18 @@ const STATUS_TRANSITIONS = {
   envoyee:   ['payee', 'en_retard', 'annulee'],
   en_retard: ['payee', 'annulee'],
   payee:     [],
+  // Statut calcule par les paiements (TASK-005.4) : pas de transition manuelle
+  partiellement_payee: [],
   annulee:   [],
+}
+
+const PAYMENT_STATUS = {
+  pending:    { label: 'En attente', color: '#2563EB' },
+  processing: { label: 'En traitement', color: '#2563EB' },
+  confirmed:  { label: 'Confirmé', color: '#059669' },
+  rejected:   { label: 'Rejeté', color: '#DC2626' },
+  refunded:   { label: 'Remboursé', color: '#6B7280' },
+  cancelled:  { label: 'Annulé', color: '#6B7280' },
 }
 
 function isPastDue(dueDate) {
@@ -82,6 +94,19 @@ export default function InvoiceDetail() {
     await loadPayments()
   }
 
+  // Un paiement declare au portail peut couvrir plusieurs factures : confirmer/rejeter s'applique a toutes
+  async function confirmPayment(p) {
+    if (!confirm(`Confirmer la réception du paiement ${p.reference || ''} ? (s'applique à toutes les factures qu'il couvre)`)) return
+    await api.patch(`/v1/payments/${p.id}/confirm`)
+    await loadPayments()
+  }
+
+  async function rejectPayment(p) {
+    if (!confirm(`Rejeter le paiement ${p.reference || ''} (jamais reçu) ? (s'applique à toutes les factures qu'il couvre)`)) return
+    await api.patch(`/v1/payments/${p.id}/reject`)
+    await loadPayments()
+  }
+
   async function saveField(field, value) {
     const r = await api.put(`/v1/invoices/${id}`, { [field]: value })
     setInv(r.data)
@@ -135,6 +160,9 @@ export default function InvoiceDetail() {
 
   if (loading) return <div className="page"><div className="loading">Chargement...</div></div>
   if (!inv) return null
+
+  const confirmedPaid = payments.filter(p => p.status === 'confirmed').reduce((s, p) => s + p.net_amount, 0)
+  const pendingPaid = payments.filter(p => p.status === 'pending' || p.status === 'processing').reduce((s, p) => s + p.net_amount, 0)
 
   const s = STATUS_LABELS[inv.status] || STATUS_LABELS.brouillon
   const transitions = STATUS_TRANSITIONS[inv.status] || []
@@ -269,6 +297,7 @@ export default function InvoiceDetail() {
               <th>Description</th>
               <th style={{ textAlign: 'right', width: 80 }}>Qté</th>
               <th style={{ textAlign: 'right', width: 120 }}>Prix unit.</th>
+              <th style={{ textAlign: 'center', width: 80 }} title="TPS/TVQ appliquées à cette ligne">Taxable</th>
               <th style={{ textAlign: 'right', width: 120 }}>Total</th>
               {editable && <th style={{ width: 60 }}></th>}
             </tr>
@@ -290,6 +319,12 @@ export default function InvoiceDetail() {
                       <td onClick={() => editable && setEditingLine(line.id)}>{line.description}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{line.qty}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{fmt(line.unit_price)}</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {editable
+                          ? <input type="checkbox" checked={line.is_taxable !== false} title="TPS/TVQ sur cette ligne"
+                              onChange={async e => { const r = await api.put(`/v1/invoices/${id}/lines/${line.id}`, { is_taxable: e.target.checked }); setInv(r.data) }} />
+                          : <span style={{ fontSize: 12, color: line.is_taxable === false ? '#D97706' : '#9CA3AF' }}>{line.is_taxable === false ? 'Non' : 'Oui'}</span>}
+                      </td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(line.line_total)}</td>
                       {editable && <td style={{ textAlign: 'center' }}><button className="inv-del-btn" onClick={() => deleteLine(line.id)}>✕</button></td>}
                     </>
@@ -297,7 +332,7 @@ export default function InvoiceDetail() {
               </tr>
             ))}
             {inv.lines.length === 0 && (
-              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
+              <tr><td colSpan={editable ? 6 : 5} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
             )}
           </tbody>
         </table>
@@ -322,7 +357,7 @@ export default function InvoiceDetail() {
         />
       )}
 
-      {/* Paiements */}
+      {/* Paiements -- seuls les paiements confirmes comptent dans l'encaisse et le solde */}
       {inv.status !== 'brouillon' && inv.status !== 'annulee' && (
         <div className="inv-lines-section" style={{ marginTop: 16 }}>
           <div className="inv-section-title" style={{ marginBottom: 12 }}>
@@ -337,30 +372,43 @@ export default function InvoiceDetail() {
                 <th style={{ textAlign: 'right' }}>Montant</th>
                 <th style={{ textAlign: 'right' }}>Rabais</th>
                 <th style={{ textAlign: 'right' }}>Net</th>
+                <th>Statut</th>
                 <th style={{ width: 40 }}></th>
               </tr>
             </thead>
             <tbody>
               {payments.map(p => (
-                <tr key={p.id}>
-                  <td>{new Date(p.paid_at + 'T00:00:00').toLocaleDateString('fr-CA')}</td>
-                  <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}</td>
+                <tr key={p.id} style={p.status === 'confirmed' ? undefined : { color: '#6B7280' }}>
+                  <td>{p.paid_at ? new Date(p.paid_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
+                  <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}{p.reference ? ` · ${p.reference}` : ''}</td>
                   <td style={{ textAlign: 'right' }}>{fmt(p.amount)}</td>
                   <td style={{ textAlign: 'right', color: '#059669' }}>{p.discount_rate > 0 ? `-${fmt(p.discount_amount)} (${p.discount_rate}%)` : '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_amount)}</td>
+                  <td>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: PAYMENT_STATUS[p.status]?.color || '#6B7280' }}>{PAYMENT_STATUS[p.status]?.label || p.status}</span>
+                    {(p.status === 'pending' || p.status === 'processing') && (
+                      <span style={{ marginLeft: 8, whiteSpace: 'nowrap' }}>
+                        <button className="btn-primary" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => confirmPayment(p)}>Confirmer</button>
+                        <button className="btn-secondary" style={{ padding: '2px 8px', fontSize: 11, marginLeft: 4 }} onClick={() => rejectPayment(p)}>Rejeter</button>
+                      </span>
+                    )}
+                  </td>
                   <td><button className="inv-del-btn" onClick={() => deletePayment(p.id)}>✕</button></td>
                 </tr>
               ))}
               {payments.length === 0 && (
-                <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucun paiement</td></tr>
+                <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucun paiement</td></tr>
               )}
             </tbody>
           </table>
           {payments.length > 0 && (
             <div className="inv-totals">
-              <div className="inv-total-row"><span>Total encaissé (net)</span><span>{fmt(payments.reduce((s, p) => s + p.net_amount, 0))}</span></div>
-              <div className="inv-total-row" style={{ color: inv.total - payments.reduce((s, p) => s + p.net_amount, 0) > 0.01 ? '#DC2626' : '#059669' }}>
-                <span>Solde restant</span><span>{fmt(Math.max(0, inv.total - payments.reduce((s, p) => s + p.net_amount, 0)))}</span>
+              <div className="inv-total-row"><span>Total encaissé (net)</span><span>{fmt(confirmedPaid)}</span></div>
+              {pendingPaid > 0 && (
+                <div className="inv-total-row" style={{ color: '#2563EB' }}><span>En attente de confirmation</span><span>{fmt(pendingPaid)}</span></div>
+              )}
+              <div className="inv-total-row" style={{ color: inv.total - confirmedPaid > 0.01 ? '#DC2626' : '#059669' }}>
+                <span>Solde restant</span><span>{fmt(Math.max(0, inv.total - confirmedPaid))}</span>
               </div>
             </div>
           )}
@@ -381,7 +429,7 @@ export default function InvoiceDetail() {
         <AddPaymentModal
           methods={paymentMethods}
           invoiceTotal={inv.total}
-          amountPaid={payments.reduce((s, p) => s + p.net_amount, 0)}
+          amountPaid={confirmedPaid}
           onClose={() => setShowAddPayment(false)}
           onSave={async (data) => {
             await api.post(`/v1/payments/invoice/${id}`, data)
@@ -465,15 +513,17 @@ function EditLineRow({ line, onSave, onCancel }) {
   const [desc, setDesc] = useState(line.description)
   const [qty, setQty] = useState(line.qty)
   const [price, setPrice] = useState(line.unit_price)
+  const [taxable, setTaxable] = useState(line.is_taxable !== false)
 
   return (
     <>
       <td><input value={desc} onChange={e => setDesc(e.target.value)} className="inv-inline-input" autoFocus /></td>
       <td><input type="number" value={qty} onChange={e => setQty(parseFloat(e.target.value) || 0)} className="inv-inline-input" style={{ textAlign: 'right' }} /></td>
       <td><input type="number" step="0.01" value={price} onChange={e => setPrice(parseFloat(e.target.value) || 0)} className="inv-inline-input" style={{ textAlign: 'right' }} /></td>
+      <td style={{ textAlign: 'center' }}><input type="checkbox" checked={taxable} onChange={e => setTaxable(e.target.checked)} title="TPS/TVQ sur cette ligne" /></td>
       <td style={{ textAlign: 'right', fontWeight: 600 }}>{new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(qty * price)}</td>
       <td style={{ display: 'flex', gap: 4 }}>
-        <button className="ifield-save" onClick={() => onSave({ description: desc, qty, unit_price: price })}>✓</button>
+        <button className="ifield-save" onClick={() => onSave({ description: desc, qty, unit_price: price, is_taxable: taxable })}>✓</button>
         <button className="ifield-cancel" onClick={onCancel}>✕</button>
       </td>
     </>
@@ -569,13 +619,13 @@ function PricePromptModal({ onClientOnly, onUpdateCatalogue }) {
 function AddLineModal({ catalogue, onClose, onSave }) {
   const [mode, setMode] = useState('catalogue')
   const [selectedItem, setSelectedItem] = useState(null)
-  const [form, setForm] = useState({ description: '', qty: 1, unit_price: 0 })
+  const [form, setForm] = useState({ description: '', qty: 1, unit_price: 0, is_taxable: true })
   const [saving, setSaving] = useState(false)
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   function pickItem(item) {
     setSelectedItem(item)
-    setForm({ description: item.name, qty: 1, unit_price: item.price })
+    setForm(p => ({ ...p, description: item.name, qty: 1, unit_price: item.price }))
   }
 
   async function save() {
@@ -587,6 +637,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
         description: form.description,
         qty: form.qty,
         unit_price: form.unit_price,
+        is_taxable: form.is_taxable,
       })
     } finally { setSaving(false) }
   }
@@ -632,6 +683,10 @@ function AddLineModal({ catalogue, onClose, onSave }) {
                 <input type="number" step="0.01" value={form.unit_price} onChange={e => f('unit_price', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
+              <input type="checkbox" checked={form.is_taxable} onChange={e => f('is_taxable', e.target.checked)} />
+              Taxable (TPS/TVQ)
+            </label>
             <div style={{ textAlign: 'right', fontWeight: 600, color: '#111827' }}>
               Total : {new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(form.qty * form.unit_price)}
             </div>

@@ -611,10 +611,9 @@ async def _generate_invoice(t: Ticket, db: AsyncSession, catalogue_item_id: uuid
 
     # Recalc totals
     await db.refresh(inv, ['lines'])
-    inv.subtotal = sum(l.line_total for l in inv.lines)
-    inv.tps_amount = round(inv.subtotal * 5.0 / 100, 2) if inv.apply_tps else 0.0
-    inv.tvq_amount = round(inv.subtotal * 9.975 / 100, 2) if inv.apply_tvq else 0.0
-    inv.total = round(inv.subtotal + inv.tps_amount + inv.tvq_amount, 2)
+    # Meme calcul que les factures (taxe par ligne, arrondi demie vers le haut -- TASK-005.9)
+    from app.api.v1.endpoints.invoices import _recalc
+    _recalc(inv)
 
     # Le ticket pointe vers la facture la PLUS RECENTE -- voir docstring ci-dessus.
     t.invoice_id = inv.id

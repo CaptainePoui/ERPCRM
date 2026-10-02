@@ -8,6 +8,7 @@ const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
   envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
+  partiellement_payee: { label: 'Partielle', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
@@ -17,6 +18,7 @@ const FILTERS = [
   ['brouillon', 'Brouillon'],
   ['envoyee', 'Envoyée'],
   ['payee', 'Payée'],
+  ['partiellement_payee', 'Partielle'],
   ['en_retard', 'En retard'],
 ]
 
@@ -110,7 +112,7 @@ export default function Invoices() {
                 const s = STATUS_LABELS[inv.status] || STATUS_LABELS.brouillon
                 return (
                   <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
-                    <td className="inv-number">{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
+                    <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
                     <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.site_label_snapshot}</div>}</td>
                     <td><span className="inv-badge" style={{ background: s.color }}>{s.label}</span></td>
                     <td>{fmtDate(inv.issue_date)}</td>

@@ -368,7 +368,7 @@ function OptionSection({ title, defaultOpen, children }) {
 
 const STATUS_FR = {
   // invoices
-  brouillon: 'Brouillon', envoyee: 'Envoyée', payee: 'Payée', en_retard: 'En retard', annulee: 'Annulée',
+  brouillon: 'Brouillon', envoyee: 'Envoyée', payee: 'Payée', partiellement_payee: 'Partiellement payée', en_retard: 'En retard', annulee: 'Annulée',
   // tickets
   ouvert: 'Ouvert', en_cours: 'En cours', en_attente: 'En attente', resolu: 'Résolu', ferme: 'Fermé',
   // equipment

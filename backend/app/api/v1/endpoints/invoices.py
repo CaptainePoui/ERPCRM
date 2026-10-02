@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ class LineOut(BaseModel):
     unit_price: float
     line_total: float
     sort_order: int
+    is_taxable: bool = True
     model_config = {"from_attributes": True}
 
 
@@ -109,6 +111,7 @@ class LineCreate(BaseModel):
     qty: float = 1.0
     unit_price: float = 0.0
     sort_order: int = 0
+    is_taxable: bool = True
 
 
 class LineUpdate(BaseModel):
@@ -116,6 +119,7 @@ class LineUpdate(BaseModel):
     qty: float | None = None
     unit_price: float | None = None
     sort_order: int | None = None
+    is_taxable: bool | None = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -129,11 +133,20 @@ async def _next_number(db: AsyncSession) -> str:
     return f"{year}-{count + 1:04d}"
 
 
+def _money(v) -> Decimal:
+    """Arrondi au cent, demie vers le haut (regle usuelle des taxes ; round() de Python
+    arrondit une demie au pair et donnait 1 cent de moins sur certaines factures)."""
+    return Decimal(str(v)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def _recalc(inv: Invoice) -> None:
-    inv.subtotal = sum(l.line_total for l in inv.lines)
-    inv.tps_amount = round(inv.subtotal * inv.tps_rate / 100, 2) if inv.apply_tps else 0.0
-    inv.tvq_amount = round(inv.subtotal * inv.tvq_rate / 100, 2) if inv.apply_tvq else 0.0
-    inv.total = round(inv.subtotal + inv.tps_amount + inv.tvq_amount, 2)
+    # Une ligne tout juste creee porte encore un float (payload) : tout ramener en Decimal
+    inv.subtotal = sum((Decimal(str(l.line_total)) for l in inv.lines), Decimal("0.00"))
+    # Taxes seulement sur les lignes taxables (TASK-005.9)
+    taxable = sum((Decimal(str(l.line_total)) for l in inv.lines if l.is_taxable is not False), Decimal("0.00"))
+    inv.tps_amount = _money(taxable * inv.tps_rate / 100) if inv.apply_tps else Decimal("0.00")
+    inv.tvq_amount = _money(taxable * inv.tvq_rate / 100) if inv.apply_tvq else Decimal("0.00")
+    inv.total = _money(inv.subtotal + inv.tps_amount + inv.tvq_amount)
 
 
 async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
@@ -330,8 +343,9 @@ async def add_line(invoice_id: uuid.UUID, payload: LineCreate, db: AsyncSession 
         description=payload.description,
         qty=payload.qty,
         unit_price=payload.unit_price,
-        line_total=round(payload.qty * payload.unit_price, 2),
+        line_total=_money(Decimal(str(payload.qty)) * Decimal(str(payload.unit_price))),
         sort_order=payload.sort_order or len(inv.lines),
+        is_taxable=payload.is_taxable,
     )
     db.add(line)
     await db.flush()
@@ -350,7 +364,7 @@ async def update_line(invoice_id: uuid.UUID, line_id: uuid.UUID, payload: LineUp
         raise HTTPException(status_code=404, detail="Ligne introuvable")
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(line, field, value)
-    line.line_total = round(line.qty * line.unit_price, 2)
+    line.line_total = _money(Decimal(str(line.qty)) * Decimal(str(line.unit_price)))
     _recalc(inv)
     await db.commit()
     inv = await _get_inv(invoice_id, db)
@@ -418,6 +432,7 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
             unit_price=-abs(line.unit_price),
             line_total=-abs(line.line_total),
             sort_order=line.sort_order,
+            is_taxable=line.is_taxable,
         ))
     await db.flush()
     credit = await _get_inv(credit.id, db)
@@ -464,6 +479,7 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
             unit_price=line.unit_price,
             line_total=line.line_total,
             sort_order=line.sort_order,
+            is_taxable=line.is_taxable,
         ))
     original.recurrence_next_date = next_due
     await db.flush()

@@ -8,6 +8,7 @@ from decimal import Decimal
 from sqlalchemy import select, func
 from app.models.client_payment import ClientPayment, PaymentAllocation
 from app.models.payment import PaymentMethod
+from app.api.v1.endpoints.payments import next_payment_reference
 from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -319,14 +320,7 @@ async def portal_payment_request(body: dict, u: PortalUser = Depends(get_portal_
     if not method:
         raise HTTPException(status_code=400, detail="Mode de paiement non disponible")
 
-    # Generer reference unique PAY-YYYY-NNNN
-    from datetime import date
-    year = date.today().year
-    r_count = await db.execute(
-        select(func.count()).where(ClientPayment.reference.like(f"PAY-{year}-%"))
-    )
-    n = (r_count.scalar() or 0) + 1
-    reference = f"PAY-{year}-{n:04d}"
+    reference = await next_payment_reference(db)
 
     cp = ClientPayment(
         company_id=u.company_id,

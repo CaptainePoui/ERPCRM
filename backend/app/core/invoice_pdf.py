@@ -153,7 +153,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
     for ln in inv.lines:
         lines_rows += f"""
         <tr>
-            <td>{ln.description}</td>
+            <td>{ln.description}{' <em>(non taxable)</em>' if ln.is_taxable is False else ''}</td>
             <td>{float(ln.qty):g}</td>
             <td>{_FMT(ln.unit_price)}</td>
             <td>{_FMT(ln.line_total)}</td>

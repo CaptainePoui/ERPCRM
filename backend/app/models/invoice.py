@@ -65,6 +65,8 @@ class InvoiceLine(Base):
     qty: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=Decimal("1.0"))
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
     line_total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
+    # TASK-005.9 : taxe par ligne (TPS/TVQ seulement sur les lignes taxables, comme Zoho)
+    is_taxable: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
     invoice: Mapped["Invoice"] = relationship("Invoice", back_populates="lines")
