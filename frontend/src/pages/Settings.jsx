@@ -27,6 +27,7 @@ export default function Settings() {
         hourly_rate: parseFloat(settings.hourly_rate),
         labour_round_minutes: parseInt(settings.labour_round_minutes),
         commission_rate: parseFloat(settings.commission_rate),
+        fiscal_year_start_month: parseInt(settings.fiscal_year_start_month),
       })
       setSettings(r.data)
       setMsg('Paramètres sauvegardés')
@@ -80,6 +81,15 @@ export default function Settings() {
             <input type="number" step="0.1" value={settings.commission_rate}
               onChange={e => setSettings(p => ({ ...p, commission_rate: e.target.value }))}
               style={{ width: 80 }} />
+          </div>
+          {/* TASK-042 : annee imposable du graphique Banque */}
+          <div className="form-group" style={{ marginBottom: 0 }}>
+            <label>Début de l'exercice financier</label>
+            <select value={settings.fiscal_year_start_month}
+              onChange={e => setSettings(p => ({ ...p, fiscal_year_start_month: e.target.value }))}>
+              {['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
+                .map((m, i) => <option key={i + 1} value={i + 1}>1er {m}</option>)}
+            </select>
           </div>
         </div>
         <button className="btn-primary" onClick={saveSettings} disabled={saving} style={{ marginTop: 16 }}>

@@ -1,0 +1,75 @@
+import uuid
+from decimal import Decimal
+from datetime import datetime, date, timezone
+from sqlalchemy import String, Text, Boolean, Date, DateTime, Integer, Numeric, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.dialects.postgresql import UUID
+from app.core.database import Base
+
+
+class BankAccount(Base):
+    """Compte de l'onglet Banque (TASK-042) : compte bancaire, carte de credit ou compte interne (petite caisse)."""
+    __tablename__ = "bank_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # bank | credit_card | petty_cash
+    account_type: Mapped[str] = mapped_column(String(20), nullable=False, default="bank")
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    institution: Mapped[str | None] = mapped_column(String(100))
+    # 4 derniers chiffres seulement -- affiche xxxx1234
+    account_last4: Mapped[str | None] = mapped_column(String(4))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    # Connexion bancaire (flux) -- aucune source branchee pour l'instant
+    feed_connected: Mapped[bool] = mapped_column(Boolean, default=False)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # Un compte ferme se desactive, ne se supprime jamais
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class BankStatementImport(Base):
+    """Un releve bancaire importe (OFX/QFX/QBO ou CSV) dans un compte."""
+    __tablename__ = "bank_statement_imports"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # ofx | csv
+    file_format: Mapped[str] = mapped_column(String(10), nullable=False)
+    # Fichier original conserve hors du dossier public (re-lecture possible)
+    stored_path: Mapped[str | None] = mapped_column(String(500))
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    rows_total: Mapped[int] = mapped_column(Integer, default=0)
+    rows_new: Mapped[int] = mapped_column(Integer, default=0)
+    rows_duplicate: Mapped[int] = mapped_column(Integer, default=0)
+    # Solde fourni par le releve (OFX LEDGERBAL) -- absent d'un CSV
+    ledger_balance: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    ledger_balance_date: Mapped[date | None] = mapped_column(Date)
+    imported_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class BankTransaction(Base):
+    """Ligne recue de la banque (releve importe). Montant signe : positif = depot, negatif = retrait."""
+    __tablename__ = "bank_transactions"
+    __table_args__ = (UniqueConstraint("account_id", "dedup_key", name="uq_bank_transactions_account_dedup"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    import_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_statement_imports.id", ondelete="SET NULL"))
+    posted_date: Mapped[date] = mapped_column(Date, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    payee: Mapped[str | None] = mapped_column(String(255))
+    reference: Mapped[str | None] = mapped_column(String(100))
+    # Identifiant unique de la banque (OFX FITID) -- absent d'un CSV
+    fitid: Mapped[str | None] = mapped_column(String(255))
+    # Empeche de reimporter deux fois la meme ligne (FITID, sinon date+montant+description+rang)
+    dedup_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    # unclassified | excluded (matched / classified viendront avec le rapprochement)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="unclassified")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

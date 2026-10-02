@@ -27,6 +27,8 @@ import Settings from './pages/Settings'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
 import Server from './pages/Server'
+import Bank from './pages/Bank'
+import BankAccountDetail from './pages/BankAccountDetail'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -77,6 +79,8 @@ function InternalApp() {
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/agenda" element={<Tasks defaultView="month" />} />
         <Route path="/server" element={<Server />} />
+        <Route path="/bank" element={<Bank />} />
+        <Route path="/bank/:id" element={<BankAccountDetail />} />
       </Routes>
     </Layout>
   )

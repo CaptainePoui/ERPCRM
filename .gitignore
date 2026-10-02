@@ -58,3 +58,6 @@ tools/knowledge/graphiti/neo4j_data/
 tools/knowledge/graphiti/neo4j_logs/
 tools/knowledge/graphiti/graphiti-build/*.tar.gz
 tools/knowledge/graphiti/graphiti-build/graphiti-021d3a5*/
+
+# Releves bancaires importes (donnees financieres) -- jamais commites
+backend/storage/

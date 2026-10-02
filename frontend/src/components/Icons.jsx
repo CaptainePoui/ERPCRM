@@ -146,3 +146,51 @@ export function IconSettings(props) {
     </svg>
   )
 }
+
+export function IconBank(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M3 9.5 12 4l9 5.5" />
+      <path d="M4 10h16" />
+      <path d="M6 10v7M10 10v7M14 10v7M18 10v7" />
+      <path d="M3 20h18" />
+    </svg>
+  )
+}
+
+export function IconCreditCard(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="5.5" width="18" height="13" rx="2" />
+      <path d="M3 10h18" />
+      <path d="M7 15h3" />
+    </svg>
+  )
+}
+
+export function IconCash(props) {
+  return (
+    <svg {...base} {...props}>
+      <rect x="3" y="6.5" width="18" height="11" rx="1.5" />
+      <circle cx="12" cy="12" r="2.5" />
+      <path d="M6.5 9.5v.01M17.5 14.5v.01" />
+    </svg>
+  )
+}
+
+export function IconSearch(props) {
+  return (
+    <svg {...base} {...props}>
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4.5 4.5" />
+    </svg>
+  )
+}
+
+export function IconChevronDown(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  )
+}

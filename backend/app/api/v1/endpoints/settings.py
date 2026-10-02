@@ -2,7 +2,7 @@ import math
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.app_settings import AppSetting
@@ -21,6 +21,8 @@ DEFAULTS = {
     # contre le chrono client-side laisse tourner par erreur, ex. onglet
     # oublie ouvert toute la nuit).
     "ticket_time_confirm_threshold_minutes": "30",
+    # TASK-042 : mois de debut de l'exercice financier (1 = janvier ; Simple IP inc. = 7, 1er juillet au 30 juin)
+    "fiscal_year_start_month": "1",
 }
 
 
@@ -54,6 +56,7 @@ class SettingsOut(BaseModel):
     commission_rate: float
     default_vendor_contact_id: str
     ticket_time_confirm_threshold_minutes: int
+    fiscal_year_start_month: int
 
 
 class SettingsIn(BaseModel):
@@ -62,6 +65,7 @@ class SettingsIn(BaseModel):
     commission_rate: float | None = None
     default_vendor_contact_id: str | None = None
     ticket_time_confirm_threshold_minutes: int | None = None
+    fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
 
 
 class InflationPayload(BaseModel):
@@ -76,6 +80,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         commission_rate=float(await get_setting(db, "commission_rate")),
         default_vendor_contact_id=await get_setting(db, "default_vendor_contact_id"),
         ticket_time_confirm_threshold_minutes=int(await get_setting(db, "ticket_time_confirm_threshold_minutes")),
+        fiscal_year_start_month=int(await get_setting(db, "fiscal_year_start_month")),
     )
 
 
@@ -96,6 +101,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "default_vendor_contact_id", payload.default_vendor_contact_id)
     if payload.ticket_time_confirm_threshold_minutes is not None:
         await set_setting(db, "ticket_time_confirm_threshold_minutes", str(payload.ticket_time_confirm_threshold_minutes))
+    if payload.fiscal_year_start_month is not None:
+        await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
     return await get_settings(db)
 
 
