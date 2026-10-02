@@ -208,8 +208,8 @@ async def deactivate_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSessi
         # branche "_removed") -- on prend la plus recente pour ce type de
         # service sur la recurrence de CETTE compagnie.
         if primary:
-            rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == primary.id))
-            rb = rb_result.scalar_one_or_none()
+            from app.api.v1.endpoints.recurring_billing import telephony_recurrence
+            rb = await telephony_recurrence(db, primary.id)
             if rb:
                 credit_result = await db.execute(
                     select(RecurringBillingLine).where(
@@ -361,8 +361,8 @@ async def create_contact_sip_extension(
     # facturables, pas juste un succes silencieux). Meme calcul que celui
     # utilise par SIPV/le webhook pour le prorata reel.
     period_start = period_end = days_billed = None
-    rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == company.id))
-    rb = rb_result.scalar_one_or_none()
+    from app.api.v1.endpoints.recurring_billing import telephony_recurrence
+    rb = await telephony_recurrence(db, company.id)
     if rb:
         from app.api.v1.endpoints.recurring_billing import _cycle_bounds
         effective = payload.billing_start_date or date.today()

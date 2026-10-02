@@ -1428,13 +1428,23 @@ frontend/src/pages/CompanyDetail.jsx, frontend/src/pages/Recurrence.jsx (nouveau
 frontend/src/components/Layout.jsx, frontend/src/components/Icons.jsx, App.jsx.
 
 
-### TASK-021.1 [ ] Factures périodiques : date de fin + import des profils Zoho
+### TASK-021.1 [x] Factures périodiques : date de fin + import des profils Zoho
 Date de demande : 2026-10-02 (Philippe : « j'ajoute les factures périodiques pour que tu les remplisses, ils ont tous une date de début de facturation et l'option de fin (une date) »)
-Date(s) de travail : (aucune — décisions en attente)
+Date(s) de travail : 2026-10-02
 
 Fichier `/home/simpleip/Simple_IP/factures_zoho/Facture_périodique.csv` : 36 profils (24 actifs, 11 expirés avec date de fin, 1 inactif), mensuels sauf D'Astous (6 mois) et Heka & Luna (3 mois) ; 88 lignes actives, toutes taxables.
 Constat du modèle ERPCRM (`CompanyRecurringBilling`) : date de début, fréquence, actif ; pas de date de fin ; une seule récurrence par compagnie (contrainte unique, utilisée par l'activation SIPV, les événements de facturation SIPV et contacts.py — 6 endroits) ; génération manuelle (bouton), aucun envoi automatique → pas de double facturation avec Zoho à l'import ; `first_invoice_generated` (TASK-033) doublerait les lignes de la première facture générée si on ne le met pas à vrai pour des profils déjà facturés dans Zoho.
 Points à trancher : Maison Le Passeur a 2 profils actifs (Le Passeur + Oxygène, succursale) → plusieurs récurrences par compagnie (avec succursale) ou fusion ; sort des 12 profils expirés / inactifs (plusieurs clients n'existent plus comme compagnies).
+
+Décisions de Philippe (2026-10-02) : Le Passeur et Oxygène = 2 factures séparées (choix du client) ; profils expirés = clients arrêtés, non importés.
+Fait le 2026-10-02 :
+- Migration `c8d9e0f1a2b3` (revises `b7c8d9e0f1a2`) : unicité `company_id` retirée (index simple), + `name`, `site_id` (succursale), `end_date` (optionnelle), `last_invoice_date`, `is_telephony` (la récurrence existante de Simple IP marquée téléphonie) ; testée up/down/up.
+- `telephony_recurrence()` (recurring_billing.py) : seule récurrence visée par l'activation / désactivation du tenant SIPV (companies.py), les événements de facturation SIPV et le prorata des postes (contacts.py) — 7 endroits qui supposaient une seule récurrence par compagnie. `GET /companies/{id}/recurring-billing` (compatibilité) renvoie la téléphonie sinon la plus ancienne.
+- Génération : refusée si le cycle commence après la date de fin, ou s'il est déjà facturé (`last_invoice_date`, mis à jour à chaque génération) ; facture rattachée à la succursale ; note « Généré depuis la facture périodique « nom » ». Mise à jour : nom, date de fin (`clear_end_date` pour la retirer, doit suivre la date de début).
+- Import `backend/import_zoho_recurring.py` (essai à blanc par défaut, tout ou rien, relançable) : 24 profils actifs, `first_invoice_generated` = vrai (pas de doublement TASK-033), `last_invoice_date` = cycle de la dernière facture Zoho ; contrôles : sous-total ERPCRM = Zoho et prochain cycle ERPCRM = « Next Invoice Date » Zoho pour les 24 (aucun écart). Oxygène sur la succursale Oxygene de Maison Le Passeur.
+- Frontend `Recurrence.jsx` (« Factures périodiques ») : date de début → fin en premier, nom du profil, succursale, badge Téléphonie, dernière facture, recherche, date de fin modifiable, erreurs de génération affichées.
+- Preuve : 25 récurrences (1 téléphonie) ; générer Hamak → refusé (cycle du 2026-10-02 déjà facturé par Zoho), 777 factures inchangées ; date de fin avant le début → 400.
+- À savoir : le profil Zoho de « HB Architectes inc. » s'appelle « Hetu-Bellehumeur » et ERPCRM a aussi une compagnie « Hetu-Bellhumeur » (sans facture) — doublon probable à fusionner (demander à Philippe). Les factures restent générées à la main (bouton) : tant que Zoho facture aussi, ne pas générer dans ERPCRM.
 ---
 
 ## TASK-022 [ERPCRM] [x] Checkbox tenant SIPV sur fiche compagnie

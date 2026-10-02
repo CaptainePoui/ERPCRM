@@ -296,13 +296,13 @@ async def toggle_sipv_tenant(
     # "je veux une facturation automatique pas le choix").
     if payload.enabled:
         from app.models.recurring_billing import CompanyRecurringBilling
-        rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == company_id))
-        rb = rb_result.scalar_one_or_none()
+        from app.api.v1.endpoints.recurring_billing import telephony_recurrence
+        rb = await telephony_recurrence(db, company_id)
         if rb:
             rb.is_active = True
         else:
             db.add(CompanyRecurringBilling(
-                company_id=company_id,
+                company_id=company_id, is_telephony=True,
                 start_date=payload.billing_start_date or date.today(),
                 frequency=payload.billing_frequency if payload.billing_frequency in ("mensuel", "bimestriel", "trimestriel", "biannuel", "annuel") else "mensuel",
             ))
@@ -311,9 +311,9 @@ async def toggle_sipv_tenant(
         # (même risque de double-facturation que celui soulevé par Philippe,
         # juste dans l'autre sens). Réversible : réactiver le tenant remet
         # is_active=True ci-dessus, rien n'est supprimé.
-        from app.models.recurring_billing import CompanyRecurringBilling
-        rb_result = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == company_id))
-        rb = rb_result.scalar_one_or_none()
+        # Seulement la recurrence telephonie : les autres factures periodiques (TASK-021.1) continuent
+        from app.api.v1.endpoints.recurring_billing import telephony_recurrence
+        rb = await telephony_recurrence(db, company_id)
         if rb:
             rb.is_active = False
 

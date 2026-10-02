@@ -16,8 +16,18 @@ class CompanyRecurringBilling(Base):
     __tablename__ = "company_recurring_billings"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, unique=True)
+    # Plusieurs recurrences possibles par compagnie (TASK-021.1, ex. une par succursale)
+    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(255))
+    site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("company_sites.id", ondelete="SET NULL"))
+    # LA recurrence liee au tenant SIPV : seule visee par l'activation du tenant et les
+    # evenements de facturation SIPV (ajout/retrait de postes, DID)
+    is_telephony: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    # Optionnelle : plus aucune facture pour un cycle qui commence apres cette date
+    end_date: Mapped[date | None] = mapped_column(Date)
+    # Debut du dernier cycle facture -- empeche de facturer deux fois le meme cycle
+    last_invoice_date: Mapped[date | None] = mapped_column(Date)
     # mensuel / biannuel / annuel
     frequency: Mapped[str] = mapped_column(String(20), nullable=False, default="mensuel")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -30,6 +40,7 @@ class CompanyRecurringBilling(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     company: Mapped["Company"] = relationship("Company")
+    site: Mapped["CompanySite | None"] = relationship("CompanySite", lazy="selectin")
     lines: Mapped[list["RecurringBillingLine"]] = relationship(
         "RecurringBillingLine", back_populates="recurring_billing",
         cascade="all, delete-orphan", order_by="RecurringBillingLine.sort_order",

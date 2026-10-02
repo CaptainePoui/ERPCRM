@@ -77,7 +77,13 @@ class RecurringBillingOut(BaseModel):
     id: uuid.UUID
     company_id: uuid.UUID
     company_name: str
+    name: str | None = None
+    site_id: uuid.UUID | None = None
+    site_label: str | None = None
+    is_telephony: bool = False
     start_date: date
+    end_date: date | None = None
+    last_invoice_date: date | None = None
     frequency: str
     is_active: bool
     current_cycle_start: date
@@ -95,6 +101,9 @@ class RecurringBillingUpdate(BaseModel):
     start_date: date | None = None
     frequency: str | None = None
     is_active: bool | None = None
+    name: str | None = None
+    end_date: date | None = None
+    clear_end_date: bool = False  # distingue « absent » de « retirer la date de fin »
 
 
 class LineCreate(BaseModel):
@@ -110,6 +119,8 @@ def _out(rb: CompanyRecurringBilling) -> RecurringBillingOut:
     cycle_start, cycle_end = _cycle_bounds(rb.start_date, rb.frequency, date.today())
     return RecurringBillingOut(
         id=rb.id, company_id=rb.company_id, company_name=rb.company.name,
+        name=rb.name, site_id=rb.site_id, site_label=rb.site.label if rb.site else None,
+        is_telephony=rb.is_telephony, end_date=rb.end_date, last_invoice_date=rb.last_invoice_date,
         start_date=rb.start_date, frequency=rb.frequency, is_active=rb.is_active,
         current_cycle_start=cycle_start, current_cycle_end=cycle_end,
         lines=[LineOut.model_validate(l) for l in rb.lines],
@@ -130,6 +141,17 @@ async def _get_rb(rb_id: uuid.UUID, db: AsyncSession) -> CompanyRecurringBilling
 
 # ── Admin CRUD ───────────────────────────────────────────────────────────────
 
+async def telephony_recurrence(db: AsyncSession, company_id: uuid.UUID, with_lines: bool = False) -> CompanyRecurringBilling | None:
+    """LA recurrence liee au tenant SIPV de la compagnie (TASK-021.1 : une compagnie peut en
+    avoir plusieurs, mais l'activation du tenant et les evenements SIPV ne visent que celle-ci)."""
+    q = select(CompanyRecurringBilling).where(
+        CompanyRecurringBilling.company_id == company_id, CompanyRecurringBilling.is_telephony == True
+    ).order_by(CompanyRecurringBilling.created_at).limit(1)
+    if with_lines:
+        q = q.options(selectinload(CompanyRecurringBilling.lines))
+    return (await db.execute(q)).scalar_one_or_none()
+
+
 @router.get("/recurring-billing", response_model=list[RecurringBillingOut])
 async def list_recurring_billing(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     result = await db.execute(
@@ -141,9 +163,11 @@ async def list_recurring_billing(db: AsyncSession = Depends(get_db), _: User = D
 
 @router.get("/companies/{company_id}/recurring-billing", response_model=RecurringBillingOut | None)
 async def get_company_recurring_billing(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    # Compatibilite : la recurrence telephonie si elle existe, sinon la plus ancienne
     result = await db.execute(
         select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines), selectinload(CompanyRecurringBilling.company))
         .where(CompanyRecurringBilling.company_id == company_id)
+        .order_by(CompanyRecurringBilling.is_telephony.desc(), CompanyRecurringBilling.start_date).limit(1)
     )
     rb = result.scalar_one_or_none()
     return _out(rb) if rb else None
@@ -159,14 +183,13 @@ async def create_recurring_billing(company_id: uuid.UUID, payload: RecurringBill
     company = await db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
-    existing = await db.execute(select(CompanyRecurringBilling).where(CompanyRecurringBilling.company_id == company_id))
-    rb = existing.scalar_one_or_none()
+    rb = await telephony_recurrence(db, company_id)
     if rb:
         rb.start_date = payload.start_date
         rb.frequency = payload.frequency
         rb.is_active = True
     else:
-        rb = CompanyRecurringBilling(company_id=company_id, start_date=payload.start_date, frequency=payload.frequency)
+        rb = CompanyRecurringBilling(company_id=company_id, start_date=payload.start_date, frequency=payload.frequency, is_telephony=True)
         db.add(rb)
     await db.commit()
     return _out(await _get_rb(rb.id, db))
@@ -178,6 +201,11 @@ async def update_recurring_billing(rb_id: uuid.UUID, payload: RecurringBillingUp
     data = payload.model_dump(exclude_unset=True)
     if "frequency" in data and data["frequency"] not in FREQUENCIES:
         raise HTTPException(status_code=400, detail="Fréquence invalide (mensuel/biannuel/annuel)")
+    if data.pop("clear_end_date", False):
+        rb.end_date = None
+        data.pop("end_date", None)
+    if data.get("end_date") and data["end_date"] < data.get("start_date", rb.start_date):
+        raise HTTPException(status_code=400, detail="La date de fin doit suivre la date de début")
     for k, v in data.items():
         setattr(rb, k, v)
     await db.commit()
@@ -227,6 +255,10 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
     if not rb.lines:
         raise HTTPException(status_code=400, detail="Aucune ligne à facturer")
     cycle_start, cycle_end = _cycle_bounds(rb.start_date, rb.frequency, date.today())
+    if rb.end_date and cycle_start > rb.end_date:
+        raise HTTPException(status_code=400, detail=f"Facture périodique terminée le {rb.end_date} : plus aucune facture à générer")
+    if rb.last_invoice_date and cycle_start <= rb.last_invoice_date:
+        raise HTTPException(status_code=400, detail=f"Le cycle du {cycle_start} est déjà facturé (dernière facture : cycle du {rb.last_invoice_date})")
     is_first_invoice = not rb.first_invoice_generated
     next_cycle_start, next_cycle_end = _cycle_bounds(rb.start_date, rb.frequency, cycle_end)
 
@@ -235,7 +267,9 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
         company_id=rb.company_id,
         issue_date=cycle_start,
         due_date=cycle_end,
-        notes="Généré depuis la récurrence téléphonique SIPV",
+        notes=f"Généré depuis la facture périodique « {rb.name} »" if rb.name else "Généré depuis la récurrence téléphonique SIPV",
+        site_id=rb.site_id,
+        site_label_snapshot=rb.site.label if rb.site else None,
         is_recurring=True,
         recurrence_frequency=rb.frequency,
         recurrence_next_date=cycle_end,
@@ -261,6 +295,7 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
             sort_order += 1
     if is_first_invoice:
         rb.first_invoice_generated = True
+    rb.last_invoice_date = cycle_start
     # Les crédits de prorata sont ponctuels -- une fois facturés, ils disparaissent
     # de la récurrence (sinon ils seraient refacturés indéfiniment au cycle suivant).
     for line in list(rb.lines):
@@ -296,7 +331,8 @@ async def sipv_billing_event(payload: SipvBillingEvent, db: AsyncSession = Depen
 
     rb_result = await db.execute(
         select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines))
-        .where(CompanyRecurringBilling.company_id == company.id)
+        .where(CompanyRecurringBilling.company_id == company.id, CompanyRecurringBilling.is_telephony == True)
+        .order_by(CompanyRecurringBilling.created_at).limit(1)
     )
     rb = rb_result.scalar_one_or_none()
     if not rb or not rb.is_active:
