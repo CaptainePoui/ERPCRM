@@ -30,7 +30,7 @@ import Server from './pages/Server'
 import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
 import Taxes from './pages/Taxes'
-import { SalesPayments, SalesDeposits, SalesPaymentLinks } from './pages/Sales'
+import { SalesPayments, SalesDeposits } from './pages/Sales'
 import { PurchaseVendors, PurchaseExpenses, PurchaseRecurringExpenses, PurchaseBills, PurchaseRecurringBills, PurchasePayments, PurchaseCredits, PurchaseOrdersPage } from './pages/Purchases'
 import { clearToken } from './services/api'
 import './App.css'
@@ -87,7 +87,6 @@ function InternalApp() {
         <Route path="/taxes" element={<Taxes />} />
         <Route path="/sales/payments" element={<SalesPayments />} />
         <Route path="/sales/deposits" element={<SalesDeposits />} />
-        <Route path="/sales/payment-links" element={<SalesPaymentLinks />} />
         <Route path="/sales/credits" element={<Invoices creditsOnly />} />
         <Route path="/purchases/vendors" element={<PurchaseVendors />} />
         <Route path="/purchases/expenses" element={<PurchaseExpenses />} />

@@ -18,7 +18,6 @@ const GROUPS = {
       { to: '/sales/deposits', label: "Factures d'acompte" },
       { to: '/invoices', label: 'Factures' },
       { to: '/recurrence', label: 'Factures périodiques' },
-      { to: '/sales/payment-links', label: 'Liens de paiement' },
       { to: '/sales/payments', label: 'Paiements reçus' },
       { to: '/sales/credits', label: "Factures d'avoir" },
     ],

@@ -90,7 +90,3 @@ export function SalesPayments() {
 export const SalesDeposits = () => <ModulePlaceholder title="Factures d'acompte" newLabel="+ Nouvelle facture d'acompte"
   columns={['Date', 'N°', 'Client', 'Statut', 'Montant', 'Solde']}
   note="Une facture d'acompte demande une partie du montant avant le travail ; l'acompte payé se déduit ensuite de la facture finale. À construire." />
-
-export const SalesPaymentLinks = () => <ModulePlaceholder title="Liens de paiement" newLabel="+ Nouveau lien de paiement"
-  columns={['Date', 'Client', 'Description', 'Expire le', 'Statut', 'Montant']}
-  note="Un lien de paiement envoie au client une page pour payer par carte. Nécessite le branchement d'une passerelle de paiement (Elavon ou Authorize.Net, champs déjà prévus). À construire." />
