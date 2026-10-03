@@ -31,7 +31,7 @@ import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
 import Taxes from './pages/Taxes'
 import { SalesPayments, SalesDeposits } from './pages/Sales'
-import { PurchaseVendors, PurchaseExpenses, PurchaseRecurringExpenses, PurchaseBills, PurchaseRecurringBills, PurchasePayments, PurchaseCredits, PurchaseOrdersPage } from './pages/Purchases'
+import { PurchaseVendors, PurchaseExpenses, PurchaseRecurringExpenses, PurchaseBills, PurchaseBillDetail, PurchaseRecurringBills, PurchasePayments, PurchaseCredits, PurchaseOrdersPage } from './pages/Purchases'
 import { clearToken } from './services/api'
 import './App.css'
 
@@ -92,6 +92,7 @@ function InternalApp() {
         <Route path="/purchases/expenses" element={<PurchaseExpenses />} />
         <Route path="/purchases/recurring-expenses" element={<PurchaseRecurringExpenses />} />
         <Route path="/purchases/bills" element={<PurchaseBills />} />
+        <Route path="/purchases/bills/:id" element={<PurchaseBillDetail />} />
         <Route path="/purchases/recurring-bills" element={<PurchaseRecurringBills />} />
         <Route path="/purchases/payments" element={<PurchasePayments />} />
         <Route path="/purchases/credits" element={<PurchaseCredits />} />

@@ -55,6 +55,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
   const [selected, setSelected] = useState(null)
   const [report, setReport] = useState(null)
   const [showInvoices, setShowInvoices] = useState(false)
+  const [showPurchases, setShowPurchases] = useState(false)
   const [error, setError] = useState(null)
 
   async function load(f = freq) {
@@ -99,7 +100,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
         <Table head={<>
           <th style={th}>Période</th><th style={th}>État</th><th style={th}>Échéance</th>
           <th style={thR}>Ventes</th><th style={thR}>TPS perçue</th><th style={thR}>TVQ perçue</th>
-          <th style={thR}>Ajustements</th><th style={thR}>Payé</th><th style={thR}>Solde</th>
+          <th style={thR}>CTI + RTI</th><th style={thR}>Ajustements</th><th style={thR}>Payé</th><th style={thR}>Solde</th>
         </>}>
           {data.periods.map(p => {
             const active = selected && p.start === selected.start && p.end === selected.end
@@ -111,6 +112,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
                 <td style={tdR}>{fmtMoney(p.sales)}</td>
                 <td style={tdR}>{fmtMoney(p.tps_collected)}</td>
                 <td style={tdR}>{fmtMoney(p.tvq_collected)}</td>
+                <td style={tdR}>{p.tps_credits || p.tvq_credits ? fmtMoney(-(p.tps_credits + p.tvq_credits)) : EMPTY}</td>
                 <td style={tdR}>{p.tps_adjustments || p.tvq_adjustments ? fmtMoney(p.tps_adjustments + p.tvq_adjustments) : EMPTY}</td>
                 <td style={tdR}>{p.tps_paid || p.tvq_paid ? fmtMoney(p.tps_paid + p.tvq_paid) : EMPTY}</td>
                 <td style={{ ...tdR, fontWeight: 600 }}>{fmtMoney(p.balance)}</td>
@@ -142,7 +144,8 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
                     <div style={{ fontWeight: 700, marginBottom: 8 }}>{label}</div>
                     {[
                       ['Taxe perçue sur les ventes', s[`${k}_collected`]],
-                      ['Ajustements (dont CTI/RTI saisis)', s[`${k}_adjustments`]],
+                      [k === 'tps' ? 'CTI — TPS payée sur les achats' : 'RTI — TVQ payée sur les achats', -s[`${k}_credits`]],
+                      ['Ajustements', s[`${k}_adjustments`]],
                       ['Taxe nette à remettre', s[`${k}_net`], true],
                       ['Déjà payé pour cette période', s[`${k}_paid`]],
                     ].map(([t, v, b]) => (
@@ -158,9 +161,28 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
                 <span>Solde à payer : <strong style={{ fontSize: 17 }}>{fmtMoney(s.balance)}</strong></span>
               </div>
               <div style={{ fontSize: 12, color: C.muted, background: '#F9FAFB', borderRadius: 8, padding: '8px 12px', marginTop: 12 }}>
-                Les taxes payées sur vos achats (CTI/RTI) ne sont pas encore calculées : ERPCRM n'a pas de module Dépenses.
-                Inscrivez-les avec « + Ajustement », catégorie CTI/RTI, en montant négatif.
+                CTI/RTI calculés automatiquement depuis Achats : dépenses et factures fournisseurs datées dans la période, moins les avoirs fournisseur.
+                Les comptes de dépense marqués « pas de CTI/RTI » (salaires, versements de taxe, impôts) sont exclus.
               </div>
+
+              <button type="button" onClick={() => setShowPurchases(v => !v)} style={{ background: 'none', border: 'none', color: C.link, cursor: 'pointer', padding: 0, marginTop: 14, marginRight: 16, fontSize: 13 }}>
+                {showPurchases ? 'Masquer les achats ▲' : `Voir les ${report.purchases.length} achats taxés de la période ▼`}
+              </button>
+              {showPurchases && (
+                <div style={{ marginTop: 8 }}>
+                  <Table head={<><th style={th}>Date</th><th style={th}>Document</th><th style={th}>Fournisseur</th><th style={thR}>TPS (CTI)</th><th style={thR}>TVQ (RTI)</th></>}>
+                    {report.purchases.map(x => (
+                      <tr key={x.kind + x.id} onClick={() => x.kind === 'bill' ? navigate(`/purchases/bills/${x.id}`) : navigate(x.kind === 'credit' ? '/purchases/credits' : '/purchases/expenses')}
+                        style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }}>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(x.date)}</td>
+                        <td style={td}>{x.kind === 'expense' ? 'Dépense — ' : ''}{x.label}</td>
+                        <td style={td}>{x.vendor || EMPTY}</td>
+                        <td style={tdR}>{fmtMoney(x.tps)}</td><td style={tdR}>{fmtMoney(x.tvq)}</td>
+                      </tr>
+                    ))}
+                  </Table>
+                </div>
+              )}
 
               <button type="button" onClick={() => setShowInvoices(v => !v)} style={{ background: 'none', border: 'none', color: C.link, cursor: 'pointer', padding: 0, marginTop: 14, fontSize: 13 }}>
                 {showInvoices ? 'Masquer les factures ▲' : `Voir les ${report.invoices.length} factures de la période ▼`}
@@ -199,7 +221,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
 function AdjustmentModal({ initial, categories, onClose, onSaved }) {
   const [f, setF] = useState({
     adjustment_date: initial?.adjustment_date || new Date().toISOString().slice(0, 10),
-    category: initial?.category || 'cti_rti',
+    category: initial?.category || 'correction',
     tps_amount: initial?.tps_amount ?? '', tvq_amount: initial?.tvq_amount ?? '', description: initial?.description || '',
   })
   const [error, setError] = useState(null)

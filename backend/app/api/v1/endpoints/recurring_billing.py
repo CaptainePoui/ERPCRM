@@ -37,6 +37,7 @@ FREQUENCIES = {
     "trimestriel": relativedelta(months=3),
     "biannuel": relativedelta(months=6),
     "annuel": relativedelta(years=1),
+    "hebdomadaire": relativedelta(weeks=1),   # factures fournisseurs (ex. abonnement hebdomadaire)
 }
 
 
@@ -50,12 +51,12 @@ def _cycle_bounds(start_date: date, frequency: str, on_date: date) -> tuple[date
     """Retourne (début, fin) du cycle de facturation qui contient `on_date`,
     en avançant par sauts de `frequency` depuis `start_date`."""
     delta = FREQUENCIES.get(frequency, FREQUENCIES["mensuel"])
-    cycle_start = start_date
-    cycle_end = cycle_start + delta
-    while cycle_end <= on_date:
-        cycle_start = cycle_end
-        cycle_end = cycle_start + delta
-    return cycle_start, cycle_end
+    # Chaque cycle se calcule depuis start_date (start + k sauts), jamais depuis le cycle precedent :
+    # sinon un debut le 30 ou 31 glisse au 28 apres fevrier et ne revient jamais (2026-10-03).
+    k = 0
+    while start_date + delta * (k + 1) <= on_date:
+        k += 1
+    return start_date + delta * k, start_date + delta * (k + 1)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────

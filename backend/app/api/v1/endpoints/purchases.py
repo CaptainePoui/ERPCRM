@@ -2,8 +2,8 @@
 
 Taxes (meme arrondi que les ventes, demie vers le haut) :
 - hors taxes  : TPS = 5 % et TVQ = 9,975 % de la base des lignes qui portent chaque taxe ;
-- taxes incluses : chaque montant saisi contient deja ses taxes ; la base est extraite ligne par
-  ligne, et la TVQ prend le reste pour que le total reste exactement la somme saisie.
+- taxes incluses : chaque montant saisi contient deja ses taxes ; TPS et TVQ en sont extraites
+  et arrondies ligne par ligne, la base prend le reste pour que le total reste exactement la somme saisie.
 """
 import uuid
 from datetime import date
@@ -38,20 +38,15 @@ def _rates(code: str) -> tuple[Decimal, Decimal]:
 def compute_taxes(items: list[tuple[Decimal, str]], mode: str) -> dict:
     """items = [(montant saisi, code de taxe)] -> sous-total, TPS, TVQ, total."""
     if mode == "inclusive":
+        # Chaque taxe est extraite du montant TTC puis arrondie ; la base prend le reste
+        # (le total ne bouge jamais d'un cent), arrondi par ligne. Verifie sur les 851 factures fournisseurs importees.
         total = sum((Decimal(a) for a, _ in items), ZERO)
-        base_tps = base_tvq = subtotal = ZERO
-        for a, code in items:
+        tps = tvq = ZERO
+        for a, code in items:   # arrondi ligne par ligne
             r1, r2 = _rates(code)
-            base = Decimal(a) / (1 + (r1 + r2) / 100)
-            subtotal += base
-            base_tps += base if r1 else ZERO
-            base_tvq += base if r2 else ZERO
-        subtotal = _money(subtotal)
-        tps = _money(base_tps * TPS / 100)
-        tvq = total - subtotal - tps if base_tvq else ZERO
-        if not base_tvq:  # TPS seule : tout l'ecart va a la TPS
-            tps = total - subtotal
-        return {"subtotal": subtotal, "tps_amount": tps, "tvq_amount": tvq, "total": _money(total)}
+            tps += _money(Decimal(a) * r1 / (100 + r1 + r2))
+            tvq += _money(Decimal(a) * r2 / (100 + r1 + r2))
+        return {"subtotal": _money(total) - tps - tvq, "tps_amount": tps, "tvq_amount": tvq, "total": _money(total)}
     subtotal = _money(sum((Decimal(a) for a, _ in items), ZERO))
     base_tps = sum((Decimal(a) for a, c in items if _rates(c)[0]), ZERO)
     base_tvq = sum((Decimal(a) for a, c in items if _rates(c)[1]), ZERO)
@@ -266,9 +261,18 @@ class RecurringExpenseIn(BaseModel):
 
 
 def _cycle(start: date, freq: str, end: date | None, last: date | None) -> dict:
-    cs, ce = _cycle_bounds(start, freq, date.today())
-    return {"current_cycle_start": cs, "current_cycle_end": ce,
-            "can_generate": not (end and cs > end) and not (last and cs <= last) and start <= date.today()}
+    """Prochain cycle a enregistrer : celui qui suit le dernier genere (ou le premier). Un cycle
+    oublie n'est jamais perdu -- chaque generation rattrape le plus ancien cycle manquant."""
+    nxt = start if not last else _cycle_bounds(start, freq, last)[1]
+    cs, ce = _cycle_bounds(start, freq, nxt)
+    return {"current_cycle_start": cs, "current_cycle_end": ce, "next_date": cs,
+            "can_generate": not (end and cs > end) and cs <= date.today()}
+
+
+def _why_not(r, c: dict) -> str:
+    if r.end_date and c["current_cycle_start"] > r.end_date:
+        return f"Terminée : le prochain cycle ({c['current_cycle_start']}) est après la date de fin"
+    return f"Rien à enregistrer : le prochain cycle commence le {c['current_cycle_start']}"
 
 
 def _rexp_out(r: RecurringExpense) -> dict:
@@ -316,8 +320,10 @@ async def update_recurring_expense(rid: uuid.UUID, p: RecurringExpenseIn, db: As
 async def generate_recurring_expense(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     r = await _get(db, RecurringExpense, rid, "Dépense périodique")
     c = _cycle(r.start_date, r.frequency, r.end_date, r.last_generated_date)
+    if not r.is_active:
+        raise HTTPException(status_code=400, detail="Récurrence inactive : réactivez-la d'abord")
     if not c["can_generate"]:
-        raise HTTPException(status_code=400, detail=f"Rien à générer : cycle du {c['current_cycle_start']} déjà enregistré, terminé ou pas commencé")
+        raise HTTPException(status_code=400, detail=_why_not(r, c))
     e = Expense(recurring_id=r.id, source="recurring")
     _apply_expense(e, ExpenseIn(expense_date=c["current_cycle_start"], vendor_id=r.vendor_id, category_id=r.category_id,
                                 description=r.description or r.name, tax_mode=r.tax_mode, tax_code=r.tax_code,
@@ -326,6 +332,13 @@ async def generate_recurring_expense(rid: uuid.UUID, db: AsyncSession = Depends(
     r.last_generated_date = c["current_cycle_start"]
     await db.commit()
     return _expense_out(await _reload(db, Expense, e.id))
+
+
+@router.delete("/recurring-expenses/{rid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recurring_expense(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Les depenses deja enregistrees restent (lien recurring_id remis a vide)."""
+    await db.delete(await _get(db, RecurringExpense, rid, "Dépense périodique"))
+    await db.commit()
 
 
 # ── Factures fournisseurs ────────────────────────────────────────────────────
@@ -344,6 +357,7 @@ class BillIn(BaseModel):
     bill_date: date
     due_date: date | None = None
     tax_mode: str = "exclusive"
+    adjustment: float = 0
     notes: str | None = None
     is_draft: bool = False
     lines: list[BillLineIn]
@@ -381,7 +395,7 @@ def _bill_out(b: Bill, paid: Decimal, with_lines: bool = False) -> dict:
     d = {"id": str(b.id), "vendor_id": str(b.vendor_id), "vendor_name": b.vendor.name, "bill_number": b.bill_number,
          "bill_date": b.bill_date, "due_date": b.due_date, "status": b.status, "tax_mode": b.tax_mode,
          "subtotal": float(b.subtotal), "tps_amount": float(b.tps_amount), "tvq_amount": float(b.tvq_amount),
-         "total": float(b.total), "paid": float(paid), "balance": float(max(ZERO, b.total - paid)) if b.status not in ("brouillon", "annulee") else 0.0,
+         "adjustment": float(b.adjustment or 0), "total": float(b.total), "paid": float(paid), "balance": float(max(ZERO, b.total - paid)) if b.status not in ("brouillon", "annulee") else 0.0,
          "notes": b.notes, "source": b.source, "recurring_id": str(b.recurring_id) if b.recurring_id else None}
     if with_lines:
         d["lines"] = [{"id": str(l.id), "description": l.description, "category_id": str(l.category_id) if l.category_id else None,
@@ -405,7 +419,11 @@ def _apply_bill(b: Bill, p: BillIn) -> None:
                                 rate=Decimal(str(l.rate)), line_total=total, tax_code=l.tax_code, sort_order=n))
         items.append((total, l.tax_code))
     t = compute_taxes(items, p.tax_mode)
-    b.subtotal, b.tps_amount, b.tvq_amount, b.total = t["subtotal"], t["tps_amount"], t["tvq_amount"], t["total"]
+    b.adjustment = _money(p.adjustment or 0)
+    if abs(b.adjustment) > 1:
+        raise HTTPException(status_code=400, detail="Ajustement d'arrondi limité à 1 $")
+    b.subtotal, b.tps_amount, b.tvq_amount = t["subtotal"], t["tps_amount"], t["tvq_amount"]
+    b.total = t["total"] + b.adjustment
 
 
 @router.get("/bills")
@@ -543,8 +561,10 @@ async def update_recurring_bill(rid: uuid.UUID, p: RecurringBillIn, db: AsyncSes
 async def generate_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     r = await _get(db, RecurringBill, rid, "Facture périodique")
     c = _cycle(r.start_date, r.frequency, r.end_date, r.last_generated_date)
+    if not r.is_active:
+        raise HTTPException(status_code=400, detail="Récurrence inactive : réactivez-la d'abord")
     if not c["can_generate"]:
-        raise HTTPException(status_code=400, detail=f"Rien à générer : cycle du {c['current_cycle_start']} déjà enregistré, terminé ou pas commencé")
+        raise HTTPException(status_code=400, detail=_why_not(r, c))
     b = Bill(status="ouverte", recurring_id=r.id, source="recurring", lines=[])
     _apply_bill(b, BillIn(vendor_id=r.vendor_id, bill_date=c["current_cycle_start"], due_date=c["current_cycle_start"],
                           tax_mode=r.tax_mode, notes=f"Générée depuis la facture périodique « {r.name} »",
@@ -556,6 +576,13 @@ async def generate_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get
     await recalc_bill_status(db, b.id)
     await db.commit()
     return await get_bill(b.id, db)
+
+
+@router.delete("/recurring-bills/{rid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Les factures deja generees restent (lien recurring_id remis a vide)."""
+    await db.delete(await _get(db, RecurringBill, rid, "Facture périodique"))
+    await db.commit()
 
 
 # ── Paiements effectues (groupes) ────────────────────────────────────────────

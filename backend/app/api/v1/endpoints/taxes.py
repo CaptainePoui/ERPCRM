@@ -3,9 +3,12 @@
 Déclaration de TPS/TVQ : par période (mensuelle / trimestrielle / annuelle, alignée sur
 l'exercice), taxes perçues = somme des factures émises datées dans la période (hors
 brouillons et annulées ; les avoirs, négatifs, se soustraient), + ajustements fiscaux datés
-dans la période, − paiements de taxe rattachés à la période. Les CTI/RTI (taxes payées sur
-les achats) n'existent pas encore dans ERPCRM (pas de module Dépenses) : ils se saisissent
-comme ajustements (catégorie cti_rti, montants négatifs).
+dans la période, − paiements de taxe rattachés à la période, − CTI/RTI.
+
+CTI/RTI (TASK-044, 2026-10-03) : calculés depuis le module Achats -- TPS/TVQ des dépenses et des
+factures fournisseurs datées dans la période (hors brouillons/annulées), moins celles des avoirs
+fournisseur. Exclus : les comptes de dépense marqués « pas de CTI/RTI » (salaires, versements de
+taxe, impôts) ; une facture fournisseur est exclue si toutes ses lignes sont dans de tels comptes.
 """
 import uuid
 from datetime import date, datetime, timedelta
@@ -23,12 +26,13 @@ from app.api.v1.endpoints.settings import get_setting, set_setting
 from app.core.tax_reminders import FREQ_MONTHS, _add_months, deadline, complete_declared_tasks
 from app.models.invoice import Invoice
 from app.models.tax import TaxAdjustment, TaxPayment
+from app.models.purchases import Expense, ExpenseCategory, Bill, BillLine, VendorCredit
 from app.models.user import User
 
 router = APIRouter()
 
 ADJ_CATEGORIES = {
-    "cti_rti": "CTI/RTI (taxes payées sur les achats)",
+    "cti_rti": "CTI/RTI — correction manuelle (ceux des achats sont déjà calculés)",
     "creance_irrecouvrable": "Créance irrécouvrable",
     "correction": "Correction",
     "autre": "Autre",
@@ -60,6 +64,37 @@ async def _context(db: AsyncSession, frequency: str | None):
     return freq, (date.fromisoformat(lock_s) if lock_s else None), fiscal
 
 
+def _no_credit_categories():
+    return select(ExpenseCategory.id).where(ExpenseCategory.claims_tax_credits.is_(False))
+
+
+def _purchase_docs(start: date, end: date):
+    """Requetes des documents d'achat qui donnent des CTI/RTI dans la periode."""
+    excluded = _no_credit_categories()
+    exp = select(Expense).where(Expense.expense_date >= start, Expense.expense_date <= end,
+                                (Expense.category_id.is_(None)) | (Expense.category_id.not_in(excluded)))
+    # Facture exclue seulement si TOUTES ses lignes sont dans des comptes sans CTI/RTI
+    claimable_line = select(BillLine.id).where(BillLine.bill_id == Bill.id,
+                                               (BillLine.category_id.is_(None)) | (BillLine.category_id.not_in(excluded))).exists()
+    bills = select(Bill).where(Bill.bill_date >= start, Bill.bill_date <= end, Bill.status.not_in(["brouillon", "annulee"]), claimable_line)
+    creds = select(VendorCredit).where(VendorCredit.credit_date >= start, VendorCredit.credit_date <= end,
+                                       (VendorCredit.category_id.is_(None)) | (VendorCredit.category_id.not_in(excluded)))
+    return exp, bills, creds
+
+
+async def _purchase_credits(db: AsyncSession, start: date, end: date) -> tuple[Decimal, Decimal, int]:
+    exp, bills, creds = _purchase_docs(start, end)
+    tps = tvq = ZERO
+    n = 0
+    for q, sign in ((exp, 1), (bills, 1), (creds, -1)):
+        sub = q.subquery()
+        r = (await db.execute(select(func.count(), func.coalesce(func.sum(sub.c.tps_amount), 0), func.coalesce(func.sum(sub.c.tvq_amount), 0)))).one()
+        n += r[0]
+        tps += sign * Decimal(r[1])
+        tvq += sign * Decimal(r[2])
+    return tps, tvq, n
+
+
 async def _summary(db: AsyncSession, start: date, end: date) -> dict:
     inv = (await db.execute(
         select(func.count(), func.coalesce(func.sum(Invoice.subtotal), 0), func.coalesce(func.sum(Invoice.tps_amount), 0),
@@ -74,11 +109,13 @@ async def _summary(db: AsyncSession, start: date, end: date) -> dict:
         select(func.coalesce(func.sum(TaxPayment.tps_amount), 0), func.coalesce(func.sum(TaxPayment.tvq_amount), 0))
         .where(TaxPayment.period_start == start, TaxPayment.period_end == end)
     )).one()
-    tps_net, tvq_net = Decimal(inv[2]) + Decimal(adj[0]), Decimal(inv[3]) + Decimal(adj[1])
+    cti, rti, purchase_count = await _purchase_credits(db, start, end)
+    tps_net, tvq_net = Decimal(inv[2]) + Decimal(adj[0]) - cti, Decimal(inv[3]) + Decimal(adj[1]) - rti
     return {
         "invoice_count": inv[0], "sales": float(inv[1]),
         "tps_collected": float(inv[2]), "tvq_collected": float(inv[3]),
         "tps_adjustments": float(adj[0]), "tvq_adjustments": float(adj[1]),
+        "tps_credits": float(cti), "tvq_credits": float(rti), "purchase_count": purchase_count,
         "tps_net": float(tps_net), "tvq_net": float(tvq_net),
         "tps_paid": float(paid[0]), "tvq_paid": float(paid[1]),
         "balance": float(tps_net + tvq_net - Decimal(paid[0]) - Decimal(paid[1])),
@@ -124,9 +161,29 @@ async def period_report(start: date, end: date, db: AsyncSession = Depends(get_d
         "invoices": [{"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "company_name": i.company.name,
                       "status": i.status, "is_credit": i.credit_of_id is not None, "subtotal": float(i.subtotal),
                       "tps": float(i.tps_amount), "tvq": float(i.tvq_amount), "total": float(i.total)} for i in invs],
+        "purchases": await _purchase_list(db, start, end),
         "adjustments": [_adj_out(a) for a in adjs],
         "payments": [_pay_out(p) for p in pays],
     }
+
+
+async def _purchase_list(db: AsyncSession, start: date, end: date) -> list:
+    """Documents d'achat avec des taxes dans la periode (detail des CTI/RTI)."""
+    exp, bills, creds = _purchase_docs(start, end)
+    out = []
+    for e in (await db.execute(exp)).scalars().all():
+        if e.tps_amount or e.tvq_amount:
+            out.append({"kind": "expense", "id": str(e.id), "date": e.expense_date, "label": e.description or (e.category.name if e.category else "Dépense"),
+                        "vendor": e.vendor.name if e.vendor else None, "tps": float(e.tps_amount), "tvq": float(e.tvq_amount)})
+    for b in (await db.execute(bills)).scalars().all():
+        if b.tps_amount or b.tvq_amount:
+            out.append({"kind": "bill", "id": str(b.id), "date": b.bill_date, "label": f"Facture {b.bill_number or ''}".strip(),
+                        "vendor": b.vendor.name, "tps": float(b.tps_amount), "tvq": float(b.tvq_amount)})
+    for c in (await db.execute(creds)).scalars().all():
+        if c.tps_amount or c.tvq_amount:
+            out.append({"kind": "credit", "id": str(c.id), "date": c.credit_date, "label": f"Avoir {c.credit_number or ''}".strip(),
+                        "vendor": c.vendor.name, "tps": -float(c.tps_amount), "tvq": -float(c.tvq_amount)})
+    return sorted(out, key=lambda x: x["date"])
 
 
 class DeclareIn(BaseModel):
