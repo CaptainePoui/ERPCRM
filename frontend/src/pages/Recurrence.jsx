@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import AutoRecurringToggle from '../components/AutoRecurringToggle'
 
-const FREQ_LABELS = { mensuel: 'Mensuelle', bimestriel: 'Bimestrielle', trimestriel: 'Trimestrielle', biannuel: 'Biannuelle', annuel: 'Annuelle' }
+const FREQ_LABELS = { hebdomadaire: 'Hebdomadaire', mensuel: 'Mensuelle', bimestriel: 'Bimestrielle', trimestriel: 'Trimestrielle', biannuel: 'Biannuelle', annuel: 'Annuelle' }
 
 export default function Recurrence() {
   const [items, setItems] = useState([])
@@ -51,8 +52,11 @@ export default function Recurrence() {
         Une compagnie peut avoir plusieurs factures périodiques (ex. une par succursale). Celle marquée
         « Téléphonie » est liée au tenant SIPV : mise à jour automatiquement quand un poste ou un DID est
         ajouté ou retiré. Une date de fin (optionnelle) arrête la facturation ; un cycle déjà facturé ne peut
-        pas être généré deux fois.
+        pas être généré deux fois, et un cycle oublié est rattrapé (le plus ancien d'abord).
       </p>
+      <AutoRecurringToggle settingKey="recurring_auto_sales"
+        onText="Chaque cycle dû crée sa facture, émise mais « non transmise » : rien n'est envoyé au client tant que vous ne l'envoyez pas (filtre « Non transmises » dans Factures)."
+        offText="Les factures se génèrent à la main (« Générer une facture maintenant » sur chaque récurrence)." />
       <input className="search-input" placeholder="Rechercher (client, nom, succursale)..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16 }} />
 
       {loading ? <div className="loading">Chargement...</div> : items.length === 0 ? (
@@ -73,8 +77,9 @@ export default function Recurrence() {
               <span style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }} title="Début du dernier cycle facturé">{rb.last_invoice_date ? `dernière : ${rb.last_invoice_date}` : 'jamais facturée'}</span>
               <span style={{ fontSize: 12, color: rb.is_active ? '#059669' : '#9CA3AF' }}>{rb.is_active ? 'Active' : 'Inactive'}</span>
               <span style={{ fontSize: 12, color: '#6B7280' }}>{FREQ_LABELS[rb.frequency] || rb.frequency}</span>
-              <span style={{ fontSize: 12, color: '#6B7280', fontFamily: 'monospace' }}>
-                {rb.current_cycle_start} → {rb.current_cycle_end}
+              <span style={{ fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: rb.is_active && rb.current_cycle_start <= new Date().toISOString().slice(0, 10) && rb.lines.length ? '#D97706' : '#6B7280' }}
+                title="Prochain cycle à facturer (le plus ancien pas encore facturé)">
+                prochaine : {rb.current_cycle_start}
               </span>
               <span style={{ fontWeight: 700, fontFamily: 'monospace', minWidth: 90, textAlign: 'right' }}>{fmt(rb.subtotal)}</span>
               <span style={{ color: '#9CA3AF' }}>{expanded === rb.id ? '▾' : '▸'}</span>

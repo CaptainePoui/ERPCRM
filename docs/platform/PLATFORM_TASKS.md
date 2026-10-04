@@ -1486,6 +1486,17 @@ Fait le 2026-10-02 :
 - Frontend `Recurrence.jsx` (« Factures périodiques ») : date de début → fin en premier, nom du profil, succursale, badge Téléphonie, dernière facture, recherche, date de fin modifiable, erreurs de génération affichées.
 - Preuve : 25 récurrences (1 téléphonie) ; générer Hamak → refusé (cycle du 2026-10-02 déjà facturé par Zoho), 777 factures inchangées ; date de fin avant le début → 400.
 - À savoir : le profil Zoho de « HB Architectes inc. » s'appelle « Hetu-Bellehumeur » et ERPCRM a aussi une compagnie « Hetu-Bellhumeur » (sans facture) — doublon probable à fusionner (demander à Philippe). Les factures restent générées à la main (bouton) : tant que Zoho facture aussi, ne pas générer dans ERPCRM.
+
+### TASK-021.2 [x] Création automatique des périodiques — ventes et achats
+Date de demande : 2026-10-04 (Philippe : « fais le périodique, que ce soit achat ou vente »)
+Date(s) de travail : 2026-10-04
+
+- `app/services/recurring_poller.py` (lancé dans `main.py`, toutes les 30 min, 1re passe 60 s après le démarrage) : pour chaque périodique active, crée tous les cycles dus jusqu'à aujourd'hui, le plus ancien d'abord ; une transaction par document ; verrou `SELECT … FOR UPDATE` sur la périodique (le bouton et l'automatique ne peuvent pas créer deux fois le même cycle) ; garde-fou 60 cycles par passage.
+- Paramètres (`settings.py`, modifiables depuis les pages) : `recurring_auto_purchases` = activé par défaut (factures fournisseurs + dépenses périodiques, TASK-044) ; `recurring_auto_sales` = **désactivé par défaut** — à activer par Philippe quand l'ancien logiciel ne génère plus ses factures (sinon double facturation des clients). Interrupteur `components/AutoRecurringToggle.jsx` sur Factures périodiques (ventes) et sur les deux pages périodiques d'Achats.
+- Ventes : `recurring_billing.create_recurring_invoice` (partagé bouton / automatique) ; le bouton et l'automatique produisent maintenant le **prochain cycle manquant** (avant : seulement le cycle en cours, un mois oublié était sauté). Création automatique = facture émise mais « non transmise » (rien n'est jamais envoyé au client tout seul) ; nouveau filtre « Non transmises » dans Factures. Un cycle daté dans une période de taxes déclarée n'est jamais créé automatiquement. La liste affiche « prochaine : date » (orange quand due).
+- Achats : `purchases.create_recurring_bill` / `create_recurring_expense` (partagés bouton / automatique).
+- Preuve : la facture Spotify du 2026-10-04 (24,13 $) créée par l'automatique une seule fois ; facture client testée en transaction annulée (LS Services Comptables : 2026-0002, émise, non transmise, 45,88 $) ; Maison Le Passeur refusée (prochain cycle 2026-10-22) ; captures sans erreur.
+- À trancher par Philippe avant d'activer les ventes : (1) l'ancien logiciel génère-t-il encore les factures périodiques ? (2) la récurrence téléphonie de « Simple IP inc. » (début 2026-08-08, jamais facturée) facturerait Simple IP à elle-même — à désactiver ? (3) numérotation : les nouvelles factures sont « 2026-0002… » alors que l'historique est « INV-111xxx ».
 ---
 
 ## TASK-022 [ERPCRM] [x] Checkbox tenant SIPV sur fiche compagnie
@@ -5520,6 +5531,7 @@ Demande de Philippe : un onglet « Impôts et formulaires » avec ses menus, com
 - Chiffres au 2026-10-02 : juillet–septembre 2026 (à produire, échéance 2026-10-31) : 77 factures, ventes 13 605,62 $, TPS 679,87 $, TVQ 1 355,95 $. Les périodes déjà déclarées affichent un solde tant que les paiements passés ne sont pas inscrits.
 - Preuve HTTP : ajustement −10 / −19,95 dans juil.–sept. → taxe nette 669,87 / 1 336,00 ; ajustement dans une période déclarée → 400 ; catégorie invalide → 400 ; paiement 300 $ → solde 1 705,87 ; déclarer une période non terminée ou déjà déclarée → 400 ; données de test supprimées (0 ajustement, 0 paiement, verrou inchangé au 2026-06-30). Captures desktop, fenêtres, mobile ; aucune erreur console.
 - Reste : CTI/RTI calculés et feuillets T4A/T5018 → module Dépenses.
+- 2026-10-04 : CTI/RTI faits (voir TASK-044). Philippe met l'analyse des taxes **en attente** : « je suis mélangé avec les taxes, on va attendre d'avoir toute mon entreprise pour bien comprendre ce qui se passe… plusieurs paiements ont été faits en retard ou très en retard, on va avoir besoin de toutes les infos ». Ne pas proposer de convertir les dépenses « Taxe » en paiements de taxe ni d'autre travail sur les déclarations avant qu'il le redemande.
 
 ---
 

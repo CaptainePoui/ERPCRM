@@ -117,7 +117,8 @@ class LineCreate(BaseModel):
 
 
 def _out(rb: CompanyRecurringBilling) -> RecurringBillingOut:
-    cycle_start, cycle_end = _cycle_bounds(rb.start_date, rb.frequency, date.today())
+    # current_cycle_* = prochain cycle a facturer (le plus ancien pas encore facture)
+    cycle_start, cycle_end = next_missing_cycle(rb)
     return RecurringBillingOut(
         id=rb.id, company_id=rb.company_id, company_name=rb.company.name,
         name=rb.name, site_id=rb.site_id, site_label=rb.site.label if rb.site else None,
@@ -236,30 +237,28 @@ def _dated_desc(description: str, period_start: date, period_end: date) -> str:
     return f"{description} — {period_start.isoformat()} au {period_end.isoformat()}"
 
 
-@router.post("/recurring-billing/{rb_id}/generate-invoice", status_code=status.HTTP_201_CREATED)
-async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Crée une vraie Invoice (is_recurring=True) à partir des lignes actuelles
-    de la récurrence -- snapshot au moment de la génération, comme pour
-    invoices.py::generate_next. Les lignes de crédit de prorata (ponctuelles)
-    sont retirées de la récurrence après génération, pas reconduites au
-    prochain cycle ; les lignes de service normales restent.
+def next_missing_cycle(rb) -> tuple[date, date]:
+    """Prochain cycle a facturer : celui qui suit le dernier facture (ou le premier). Un cycle
+    oublie n'est jamais saute -- chaque generation rattrape le plus ancien cycle manquant."""
+    nxt = rb.start_date if not rb.last_invoice_date else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
+    return _cycle_bounds(rb.start_date, rb.frequency, nxt)
 
-    TASK-033 : chaque ligne indique sa période de service exacte dans la
-    description (transparence totale envers le client, demande explicite).
-    La toute première facture d'une récurrence double les lignes de service
-    (période courante + période suivante, chacune datée séparément) --
-    les services sont facturés d'avance mais le client a 30 jours pour payer ;
-    sans ce doublement, la 1ère facture donnerait 30 jours de service gratuit
-    avant le premier paiement et désynchroniserait le cycle par la suite.
-    Les crédits de prorata ne sont jamais doublés (ponctuels par nature)."""
-    rb = await _get_rb(rb_id, db)
+
+class NothingToGenerate(Exception):
+    pass
+
+
+async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling, issue: bool = False) -> Invoice:
+    """Facture du prochain cycle manquant (voir generate_invoice_from_recurring). issue=True (creation
+    automatique) : facture emise mais « non transmise » -- c'est Philippe qui l'envoie au client.
+    Leve NothingToGenerate si rien n'est du. Ne fait pas le commit."""
     if not rb.lines:
-        raise HTTPException(status_code=400, detail="Aucune ligne à facturer")
-    cycle_start, cycle_end = _cycle_bounds(rb.start_date, rb.frequency, date.today())
+        raise NothingToGenerate("Aucune ligne à facturer")
+    cycle_start, cycle_end = next_missing_cycle(rb)
     if rb.end_date and cycle_start > rb.end_date:
-        raise HTTPException(status_code=400, detail=f"Facture périodique terminée le {rb.end_date} : plus aucune facture à générer")
-    if rb.last_invoice_date and cycle_start <= rb.last_invoice_date:
-        raise HTTPException(status_code=400, detail=f"Le cycle du {cycle_start} est déjà facturé (dernière facture : cycle du {rb.last_invoice_date})")
+        raise NothingToGenerate(f"Facture périodique terminée le {rb.end_date} : plus aucune facture à générer")
+    if cycle_start > date.today():
+        raise NothingToGenerate(f"Rien à facturer : le prochain cycle commence le {cycle_start}")
     is_first_invoice = not rb.first_invoice_generated
     next_cycle_start, next_cycle_end = _cycle_bounds(rb.start_date, rb.frequency, cycle_end)
 
@@ -275,6 +274,8 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
         recurrence_frequency=rb.frequency,
         recurrence_next_date=cycle_end,
     )
+    if issue:
+        inv.status, inv.transmission_status = "envoyee", "non_transmise"
     db.add(inv)
     await db.flush()
     sort_order = 0
@@ -303,11 +304,44 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
         if line.is_prorata_credit:
             await db.delete(line)
     await db.flush()
-    inv_result = await db.execute(
+    inv = (await db.execute(
         select(Invoice).options(selectinload(Invoice.lines), selectinload(Invoice.company)).where(Invoice.id == inv.id)
-    )
-    inv = inv_result.scalar_one()
+    )).scalar_one()
     _recalc(inv)
+    return inv
+
+
+async def lock_recurrence(db: AsyncSession, rb_id: uuid.UUID) -> CompanyRecurringBilling:
+    """Verrouille la recurrence le temps de la generation (bouton et creation automatique
+    simultanes ne peuvent pas facturer deux fois le meme cycle)."""
+    await db.execute(select(CompanyRecurringBilling.id).where(CompanyRecurringBilling.id == rb_id).with_for_update())
+    rb = await _get_rb(rb_id, db)
+    await db.refresh(rb)
+    return rb
+
+
+@router.post("/recurring-billing/{rb_id}/generate-invoice", status_code=status.HTTP_201_CREATED)
+async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Crée une vraie Invoice (is_recurring=True) à partir des lignes actuelles
+    de la récurrence -- snapshot au moment de la génération, comme pour
+    invoices.py::generate_next. Les lignes de crédit de prorata (ponctuelles)
+    sont retirées de la récurrence après génération, pas reconduites au
+    prochain cycle ; les lignes de service normales restent.
+
+    TASK-033 : chaque ligne indique sa période de service exacte dans la
+    description (transparence totale envers le client, demande explicite).
+    La toute première facture d'une récurrence double les lignes de service
+    (période courante + période suivante, chacune datée séparément) --
+    les services sont facturés d'avance mais le client a 30 jours pour payer ;
+    sans ce doublement, la 1ère facture donnerait 30 jours de service gratuit
+    avant le premier paiement et désynchroniserait le cycle par la suite.
+    Les crédits de prorata ne sont jamais doublés (ponctuels par nature)."""
+    rb = await lock_recurrence(db, rb_id)
+    try:
+        inv = await create_recurring_invoice(db, rb)
+    except NothingToGenerate as e:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
     await db.commit()
     return {"invoice_id": str(inv.id), "invoice_number": inv.number, "total": inv.total}
 

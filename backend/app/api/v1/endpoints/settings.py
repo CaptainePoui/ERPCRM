@@ -29,6 +29,9 @@ DEFAULTS = {
     # Rappels de declaration TPS/TVQ (core/tax_reminders.py) : vide = desactive
     "tax_filing_frequency": "trimestrielle",  # mensuelle | trimestrielle | annuelle (vide = pas de rappel)
     "tax_reminder_user_id": "",      # utilisateur qui recoit la tache et les rappels
+    # Creation automatique des periodiques (services/recurring_poller.py, 2026-10-04)
+    "recurring_auto_sales": "false",      # factures clients : emises « non transmises », jamais envoyees seules
+    "recurring_auto_purchases": "true",   # factures fournisseurs et depenses periodiques
 }
 
 
@@ -66,6 +69,8 @@ class SettingsOut(BaseModel):
     tax_lock_date: str
     tax_filing_frequency: str
     tax_reminder_user_id: str
+    recurring_auto_sales: bool
+    recurring_auto_purchases: bool
 
 
 class SettingsIn(BaseModel):
@@ -78,6 +83,8 @@ class SettingsIn(BaseModel):
     tax_lock_date: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
     tax_filing_frequency: str | None = Field(default=None, pattern=r"^(|mensuelle|trimestrielle|annuelle)$")
     tax_reminder_user_id: str | None = None
+    recurring_auto_sales: bool | None = None
+    recurring_auto_purchases: bool | None = None
 
 
 class InflationPayload(BaseModel):
@@ -96,6 +103,8 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         tax_lock_date=await get_setting(db, "tax_lock_date"),
         tax_filing_frequency=await get_setting(db, "tax_filing_frequency"),
         tax_reminder_user_id=await get_setting(db, "tax_reminder_user_id"),
+        recurring_auto_sales=(await get_setting(db, "recurring_auto_sales")) == "true",
+        recurring_auto_purchases=(await get_setting(db, "recurring_auto_purchases")) == "true",
     )
 
 
@@ -133,6 +142,10 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
             if not await db.get(User, _uuid.UUID(payload.tax_reminder_user_id)):
                 raise HTTPException(status_code=400, detail="Utilisateur introuvable")
         await set_setting(db, "tax_reminder_user_id", payload.tax_reminder_user_id)
+    if payload.recurring_auto_sales is not None:
+        await set_setting(db, "recurring_auto_sales", "true" if payload.recurring_auto_sales else "false")
+    if payload.recurring_auto_purchases is not None:
+        await set_setting(db, "recurring_auto_purchases", "true" if payload.recurring_auto_purchases else "false")
     if payload.tax_filing_frequency is not None or payload.tax_reminder_user_id is not None:
         from app.core.tax_reminders import ensure_tax_filing_tasks
         await ensure_tax_filing_tasks(db)

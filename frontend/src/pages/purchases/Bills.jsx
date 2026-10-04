@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../services/api'
+import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, Filters, TAX_CODES, TAX_MODES, FREQS, freqLabel, BILL_STATUS, computeTaxes, useRefs, errText,
@@ -265,6 +266,7 @@ export function PurchaseRecurringBills() {
         <div><h1 className="page-title">Factures fournisseurs périodiques</h1><p className="page-sub">« Créer » ajoute la facture du prochain cycle (un cycle oublié n'est jamais perdu : on rattrape le plus ancien d'abord).</p></div>
         <button className="btn-primary" onClick={() => { setError(''); setEdit({ name: '', vendor_id: null, tax_mode: 'exclusive', frequency: 'mensuel', start_date: today(), end_date: '', is_active: true, notes: '', lines: [newLine()] }) }}>+ Nouvelle facture périodique</button>
       </div>
+      <AutoRecurringToggle settingKey="recurring_auto_purchases" onText="Chaque cycle dû est créé tout seul (vérifié toutes les 30 minutes), le plus ancien d'abord." offText="Cliquez « Créer » / « Enregistrer » pour chaque cycle." />
       <Card>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 920, borderCollapse: 'collapse', fontSize: 13 }}>

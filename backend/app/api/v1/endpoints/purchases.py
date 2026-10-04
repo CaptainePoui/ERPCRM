@@ -316,20 +316,43 @@ async def update_recurring_expense(rid: uuid.UUID, p: RecurringExpenseIn, db: As
     return _rexp_out(await _reload(db, RecurringExpense, rid))
 
 
-@router.post("/recurring-expenses/{rid}/generate", status_code=status.HTTP_201_CREATED)
-async def generate_recurring_expense(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    r = await _get(db, RecurringExpense, rid, "Dépense périodique")
+class NothingDue(Exception):
+    pass
+
+
+async def _lock(db: AsyncSession, model, rid: uuid.UUID):
+    """Verrouille la periodique pendant la generation (bouton + creation automatique simultanes)."""
+    await db.execute(select(model.id).where(model.id == rid).with_for_update())
+    r = await _get(db, model, rid, "Périodique")
+    await db.refresh(r)
+    return r
+
+
+async def create_recurring_expense(db: AsyncSession, r: RecurringExpense) -> Expense:
+    """Depense du prochain cycle manquant ; leve NothingDue sinon. Ne fait pas le commit."""
     c = _cycle(r.start_date, r.frequency, r.end_date, r.last_generated_date)
     if not r.is_active:
-        raise HTTPException(status_code=400, detail="Récurrence inactive : réactivez-la d'abord")
+        raise NothingDue("Récurrence inactive : réactivez-la d'abord")
     if not c["can_generate"]:
-        raise HTTPException(status_code=400, detail=_why_not(r, c))
+        raise NothingDue(_why_not(r, c))
     e = Expense(recurring_id=r.id, source="recurring")
     _apply_expense(e, ExpenseIn(expense_date=c["current_cycle_start"], vendor_id=r.vendor_id, category_id=r.category_id,
                                 description=r.description or r.name, tax_mode=r.tax_mode, tax_code=r.tax_code,
                                 amount=float(r.amount), paid_through=r.paid_through))
     db.add(e)
     r.last_generated_date = c["current_cycle_start"]
+    await db.flush()
+    return e
+
+
+@router.post("/recurring-expenses/{rid}/generate", status_code=status.HTTP_201_CREATED)
+async def generate_recurring_expense(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    r = await _lock(db, RecurringExpense, rid)
+    try:
+        e = await create_recurring_expense(db, r)
+    except NothingDue as ex:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(ex))
     await db.commit()
     return _expense_out(await _reload(db, Expense, e.id))
 
@@ -557,14 +580,15 @@ async def update_recurring_bill(rid: uuid.UUID, p: RecurringBillIn, db: AsyncSes
     return _rbill_out(await _reload(db, RecurringBill, rid))
 
 
-@router.post("/recurring-bills/{rid}/generate", status_code=status.HTTP_201_CREATED)
-async def generate_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    r = await _get(db, RecurringBill, rid, "Facture périodique")
+async def create_recurring_bill(db: AsyncSession, r: RecurringBill) -> Bill:
+    """Facture fournisseur du prochain cycle manquant ; leve NothingDue sinon. Ne fait pas le commit."""
     c = _cycle(r.start_date, r.frequency, r.end_date, r.last_generated_date)
     if not r.is_active:
-        raise HTTPException(status_code=400, detail="Récurrence inactive : réactivez-la d'abord")
+        raise NothingDue("Récurrence inactive : réactivez-la d'abord")
     if not c["can_generate"]:
-        raise HTTPException(status_code=400, detail=_why_not(r, c))
+        raise NothingDue(_why_not(r, c))
+    if not r.lines:
+        raise NothingDue("Aucune ligne")
     b = Bill(status="ouverte", recurring_id=r.id, source="recurring", lines=[])
     _apply_bill(b, BillIn(vendor_id=r.vendor_id, bill_date=c["current_cycle_start"], due_date=c["current_cycle_start"],
                           tax_mode=r.tax_mode, notes=f"Générée depuis la facture périodique « {r.name} »",
@@ -574,6 +598,17 @@ async def generate_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get
     r.last_generated_date = c["current_cycle_start"]
     await db.flush()
     await recalc_bill_status(db, b.id)
+    return b
+
+
+@router.post("/recurring-bills/{rid}/generate", status_code=status.HTTP_201_CREATED)
+async def generate_recurring_bill(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    r = await _lock(db, RecurringBill, rid)
+    try:
+        b = await create_recurring_bill(db, r)
+    except NothingDue as ex:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail=str(ex))
     await db.commit()
     return await get_bill(b.id, db)
 

@@ -28,6 +28,7 @@ const FILTERS = [
   ['payee', 'Payée'],
   ['partiellement_payee', 'Partielle'],
   ['en_retard', 'En retard'],
+  ['non_transmise', 'Non transmises'],
 ]
 
 // creditsOnly : menu Ventes > Factures d'avoir (avoirs seulement)
@@ -46,9 +47,12 @@ export default function Invoices({ creditsOnly = false }) {
 
   async function load() {
     setLoading(true)
-    const params = filter ? `?status=${filter}` : ''
+    // « Non transmises » : emises mais pas encore envoyees au client (ex. creees par la facturation periodique automatique)
+    const params = filter && filter !== 'non_transmise' ? `?status=${filter}` : ''
     const r = await api.get(`/v1/invoices${params}`)
-    setInvoices(r.data)
+    setInvoices(filter === 'non_transmise'
+      ? r.data.filter(i => i.transmission_status === 'non_transmise' && !['brouillon', 'annulee'].includes(i.status))
+      : r.data)
     setLoading(false)
   }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
+import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, Filters, TAX_CODES, TAX_MODES, FREQS, freqLabel, computeTaxes, useRefs, errText,
@@ -184,6 +185,7 @@ export function PurchaseRecurringExpenses() {
         <div><h1 className="page-title">Dépenses périodiques</h1><p className="page-sub">Une dépense qui revient (abonnement, assurance…) : « Enregistrer » crée la dépense du prochain cycle.</p></div>
         <button className="btn-primary" onClick={() => { setError(''); setEdit({ name: '', vendor_id: null, category_id: null, description: '', tax_mode: 'exclusive', tax_code: 'tps_tvq', amount: '', paid_through: "Compte de l'entreprise", frequency: 'mensuel', start_date: today(), end_date: '', is_active: true }) }}>+ Nouvelle dépense périodique</button>
       </div>
+      <AutoRecurringToggle settingKey="recurring_auto_purchases" onText="Chaque cycle dû est créé tout seul (vérifié toutes les 30 minutes), le plus ancien d'abord." offText="Cliquez « Créer » / « Enregistrer » pour chaque cycle." />
       <Card>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 880, borderCollapse: 'collapse', fontSize: 13 }}>
