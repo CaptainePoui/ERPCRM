@@ -90,6 +90,9 @@ async def main(apply: bool):
                 problems.append(f"{cn} : appliqué en partie sur des factures absentes d'ERPCRM")
                 continue
             if cn in invs:
+                # Meme numero : ce doit etre le meme avoir (meme total), sinon on arrete tout (TASK-005.12)
+                if -invs[cn].total != sum((Decimal(r["Amount"]).quantize(C) for r in rows), Decimal("0")):
+                    problems.append(f"{cn} : déjà dans ERPCRM avec un autre total ({invs[cn].total} $)")
                 skipped += 1
                 continue
             targets = [(invs[r["Invoice Number"].strip()], Decimal(r["Amount"]).quantize(C)) for r in rows]

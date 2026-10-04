@@ -19,6 +19,7 @@ from app.models.document_counter import DocumentCounter
 # type -> (valeurs par defaut, modele/colonne ou vivent les numeros)
 DEFAULTS = {
     "invoice": ("{year}-", 4),
+    "credit": ("CN-", 5),          # avoirs : suite separee, comme dans l'ancien logiciel (CN-00308 importe)
     "devis": ("{year}-D", 4),
     "payment": ("PAY-{year}-", 4),
     "purchase_order": ("BC-", 5),
@@ -27,7 +28,7 @@ DEFAULTS = {
 
 
 def _column(key: str):
-    if key == "invoice":
+    if key in ("invoice", "credit"):
         from app.models.invoice import Invoice
         return Invoice.number
     if key == "devis":

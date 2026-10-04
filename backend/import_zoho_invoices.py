@@ -108,7 +108,7 @@ def postal(v: str) -> str:
 
 def read_zoho():
     invoices = defaultdict(list)
-    for f in sorted(glob.glob(f"{ZOHO_DIR}/*.csv")):
+    for f in sorted(glob.glob(f"{ZOHO_DIR}/Facture20*.csv")):   # exports de factures seulement (le dossier contient aussi achats, avoirs, periodiques)
         for r in csv.DictReader(open(f, encoding="utf-8-sig")):
             invoices[r["Invoice ID"]].append(r)
     return invoices
@@ -164,9 +164,14 @@ async def main(apply: bool):
         for cust in sorted({rows[0]["Customer Name"] for rows in invoices.values()}):
             name = CUSTOMER_MAP.get(cust)
             if name is not None:
+                if name not in companies and name in RENAME and RENAME[name][0] in companies:
+                    name = RENAME[name][0]   # deja renommee lors d'un import precedent (relance)
                 if name not in companies:
                     raise SystemExit(f"Compagnie introuvable en base : {name!r} (client Zoho {cust!r})")
                 target[cust] = companies[name]
+                continue
+            if cust in companies:   # client cree lors d'un import precedent (relance)
+                target[cust] = companies[cust]
                 continue
             entity = Entity(entity_type=EntityType.company)
             db.add(entity)
@@ -181,6 +186,8 @@ async def main(apply: bool):
             report["created_company_ids"].append(str(comp.id))
 
         for old, (new, note) in RENAME.items():
+            if old not in companies:   # deja renommee lors d'un import precedent
+                continue
             comp = companies[old]
             comp.name = new
             comp.notes_internal = (comp.notes_internal + "\n" if comp.notes_internal else "") + note
@@ -218,11 +225,20 @@ async def main(apply: bool):
                 report["companies_filled"].append(f"{comp.name} : {', '.join(filled)}")
 
         # ── Factures ──────────────────────────────────────────────────────
-        existing_numbers = set((await db.execute(select(Invoice.number))).scalars().all())
+        # Numero deja present : ce doit etre LA MEME facture (marche en parallele, TASK-005.12) --
+        # meme client, meme date, meme total ; sinon on arrete tout plutot que de perdre une facture.
+        existing = {i.number: i for i in (await db.execute(select(Invoice))).scalars().all()}
+        existing_numbers = set(existing)
+        mismatches = []
         for rows in sorted(invoices.values(), key=lambda rs: (rs[0]["Invoice Date"], rs[0]["Invoice Number"])):
             r = rows[0]
             number = r["Invoice Number"].strip()
             if number in existing_numbers:
+                e = existing[number]
+                same = (e.company_id == target[r["Customer Name"]].id and e.issue_date == date.fromisoformat(r["Invoice Date"])
+                        and e.total == dec(r["Total"]))
+                if not same:
+                    mismatches.append(f"{number} : ERPCRM {e.issue_date} {e.total} $ ≠ fichier {r['Invoice Date']} {r['Total']} $ ({r['Customer Name']})")
                 report["invoices_skipped_existing"] += 1
                 continue
             cust = r["Customer Name"]
@@ -282,6 +298,12 @@ async def main(apply: bool):
                 report["payments_created"] += 1
                 report["created_payment_ids"].append(str(cp.id))
 
+        if mismatches:
+            await db.rollback()
+            print("ARRÊT — même numéro mais facture différente (rien n'a été écrit) :")
+            for m in mismatches:
+                print("  ", m)
+            raise SystemExit(1)
         if apply:
             await db.commit()
         else:

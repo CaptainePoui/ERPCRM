@@ -180,7 +180,7 @@ async def apply_inflation(payload: InflationPayload, db: AsyncSession = Depends(
 
 # ── Numerotation des documents (2026-10-04) ──────────────────────────────────
 
-NUMBERING_LABELS = {"invoice": "Factures et avoirs", "devis": "Devis", "payment": "Références de paiement",
+NUMBERING_LABELS = {"invoice": "Factures", "credit": "Avoirs (notes de crédit)", "devis": "Devis", "payment": "Références de paiement",
                     "purchase_order": "Bons de commande", "ecom_order": "Commandes web"}
 
 

@@ -133,6 +133,12 @@ async def _next_number(db: AsyncSession) -> str:
     return await next_document_number(db, "invoice")
 
 
+async def _next_credit_number(db: AsyncSession) -> str:
+    """Avoirs : leur propre suite CN- (meme compteur qui ne recule jamais)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "credit")
+
+
 def _money(v) -> Decimal:
     """Arrondi au cent, demie vers le haut (regle usuelle des taxes ; round() de Python
     arrondit une demie au pair et donnait 1 cent de moins sur certaines factures)."""
@@ -451,7 +457,7 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     if original.credit_of_id is not None:
         raise HTTPException(status_code=400, detail="Un avoir ne peut pas être crédité")
     credit = Invoice(
-        number=await _next_number(db),
+        number=await _next_credit_number(db),
         company_id=original.company_id,
         issue_date=date.today(),
         due_date=date.today(),
