@@ -128,12 +128,9 @@ class LineUpdate(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _next_number(db: AsyncSession) -> str:
-    year = date.today().year
-    result = await db.execute(
-        select(func.count()).where(Invoice.number.like(f"{year}-%"))
-    )
-    count = result.scalar() or 0
-    return f"{year}-{count + 1:04d}"
+    """Factures et avoirs : compteur qui ne recule jamais (app/core/numbering.py)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "invoice")
 
 
 def _money(v) -> Decimal:

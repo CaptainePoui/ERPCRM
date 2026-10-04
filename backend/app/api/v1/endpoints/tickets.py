@@ -546,13 +546,9 @@ async def _generate_invoice(t: Ticket, db: AsyncSession, catalogue_item_id: uuid
     if not category_lines and generic_rounded <= 0 and not catalogue_item_id:
         return None
 
-    # Next invoice number
-    year = date.today().year
-    result = await db.execute(
-        select(func.count()).where(Invoice.number.like(f"{year}-%"))
-    )
-    count = result.scalar() or 0
-    inv_number = f"{year}-{count + 1:04d}"
+    # Next invoice number -- meme compteur que les factures (ne recule jamais)
+    from app.core.numbering import next_document_number
+    inv_number = await next_document_number(db, "invoice")
 
     today = date.today()
     inv = Invoice(

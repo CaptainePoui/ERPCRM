@@ -82,21 +82,10 @@ class MultiPaymentCreate(BaseModel):
 
 
 async def next_payment_reference(db: AsyncSession) -> str:
-    """Prochaine reference PAY-AAAA-NNNN : plus grand numero de l'annee + 1.
-
-    Le verrou consultatif (relache au commit/rollback de la transaction) serialise
-    deux creations simultanees ; le MAX evite de retomber sur une reference
-    existante apres une suppression (un comptage + 1 le faisait).
-    """
-    await db.execute(text("SELECT pg_advisory_xact_lock(hashtext('client_payments.reference'))"))
-    year = date.today().year
-    prefix = f"PAY-{year}-"
-    r = await db.execute(
-        select(func.max(cast(func.substr(ClientPayment.reference, len(prefix) + 1), Integer)))
-        .where(ClientPayment.reference.like(f"{prefix}%"))
-    )
-    n = (r.scalar() or 0) + 1
-    return f"{prefix}{n:04d}"
+    """Prochaine reference PAY-AAAA-NNNN : compteur qui ne recule jamais, meme si le dernier
+    paiement est supprime (app/core/numbering.py ; avant : plus grand numero + 1)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "payment")
 
 
 async def _reload_payment(payment_id: uuid.UUID, db: AsyncSession) -> ClientPayment:

@@ -117,9 +117,9 @@ def _po_out(po: PurchaseOrder) -> POOut:
 
 
 async def _next_po_number(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count()).select_from(PurchaseOrder))
-    count = result.scalar() or 0
-    return f"BC-{count + 1:05d}"
+    """Compteur qui ne recule jamais (app/core/numbering.py)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "purchase_order")
 
 
 @router.get("/", response_model=list[POListItem])

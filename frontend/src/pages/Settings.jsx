@@ -164,6 +164,8 @@ export default function Settings() {
         )}
       </div>
 
+      <NumberingSection />
+
       {/* ── Commissions ── */}
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Rapport de commissions vendeurs</h3>
@@ -209,6 +211,62 @@ export default function Settings() {
               </table>
             )
         )}
+      </div>
+    </div>
+  )
+}
+
+// Numerotation des documents (2026-10-04) : le compteur ne peut jamais reculer -- le serveur refuse
+// tout prochain numero plus petit que le compteur actuel ou deja utilise avec ce prefixe.
+function NumberingSection() {
+  const [rows, setRows] = useState(null)
+  const [edit, setEdit] = useState({})
+  const [msg, setMsg] = useState({})
+  const load = () => api.get('/v1/settings/numbering').then(r => { setRows(r.data); setEdit(Object.fromEntries(r.data.map(x => [x.key, { prefix: x.prefix, next_value: x.next_value, padding: x.padding }]))) })
+  useEffect(() => { load() }, [])
+  const preview = e => `${e.prefix.replace('{year}', new Date().getFullYear())}${String(e.next_value).padStart(Number(e.padding) || 0, '0')}`
+  async function save(key) {
+    setMsg({ ...msg, [key]: '' })
+    const e = edit[key]
+    if (!confirm(`Le prochain numéro sera ${preview(e)}. Le compteur ne pourra plus jamais revenir en arrière. Continuer ?`)) return
+    try {
+      await api.put(`/v1/settings/numbering/${key}`, { prefix: e.prefix, next_value: Number(e.next_value), padding: Number(e.padding) })
+      setMsg({ ...msg, [key]: 'Enregistré' }); load()
+    } catch (err) { setMsg({ ...msg, [key]: err.response?.data?.detail || 'Refusé' }) }
+  }
+  if (!rows) return null
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: '#111827' }}>Numérotation des documents</h3>
+      <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0, marginBottom: 16 }}>
+        Chaque numéro n'est donné qu'une fois : supprimer ou annuler un document ne fait jamais reculer le compteur.
+        « {'{year}'} » dans le préfixe est remplacé par l'année en cours.
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: '#F9FAFB' }}>
+            {['Document', 'Préfixe', 'Chiffres', 'Prochain numéro', 'Aperçu', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {rows.map(x => {
+              const e = edit[x.key]
+              const changed = e.prefix !== x.prefix || Number(e.next_value) !== x.next_value || Number(e.padding) !== x.padding
+              return (
+                <tr key={x.key} style={{ borderTop: '1px solid #F3F4F6' }}>
+                  <td style={{ padding: '8px 10px', fontWeight: 500 }}>{x.label}</td>
+                  <td style={{ padding: '8px 10px' }}><input value={e.prefix} style={{ width: 120 }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, prefix: ev.target.value } })} /></td>
+                  <td style={{ padding: '8px 10px' }}><input type="number" min="0" max="10" value={e.padding} style={{ width: 60 }} title="Nombre minimum de chiffres (0 = sans zéros devant)" onChange={ev => setEdit({ ...edit, [x.key]: { ...e, padding: ev.target.value } })} /></td>
+                  <td style={{ padding: '8px 10px' }}><input type="number" min={1} value={e.next_value} style={{ width: 110 }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, next_value: ev.target.value } })} /></td>
+                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600 }}>{preview(e)}</td>
+                  <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
+                    {changed && <button className="btn-primary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => save(x.key)}>Enregistrer</button>}
+                    {msg[x.key] && <span style={{ marginLeft: 8, fontSize: 12, color: msg[x.key] === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg[x.key]}</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   )

@@ -420,6 +420,16 @@ Date(s) de travail : 2026-10-02
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 
+### TASK-005.12 [x] Numérotation des documents : compteur qui ne recule jamais
+Date de demande : 2026-10-04 (Philippe : « ERPCRM peut redonner un numéro déjà utilisé… assure-toi que non, le compteur ne peut pas descendre » ; et « garde la suite des INV, les clients ne vont pas être mélangés »)
+Date(s) de travail : 2026-10-04
+
+- Défaut corrigé : factures/avoirs, factures de tickets, devis, bons de commande et commandes web prenaient « nombre de documents + 1 » (supprimer un document faisait redonner un numéro déjà émis) ; les références de paiement « plus grand + 1 » (supprimer le dernier le faisait redonner).
+- Table `document_counters` (migration a2b3c4d5e6f7, up/down testés, amorcée au plus grand numéro déjà émis) + `app/core/numbering.py` : verrou de ligne, compteur avancé dans la transaction du document (création annulée = numéro pas consommé), jamais redonné ensuite ; garde-fou : jamais sous le plus grand numéro existant du préfixe. Changement manuel refusé s'il fait reculer (même préfixe : sous le compteur ; autre préfixe : sur un numéro déjà utilisé).
+- Paramètres › « Numérotation des documents » (`GET/PUT /v1/settings/numbering`) : préfixe (« {year} » = année en cours), chiffres, prochain numéro, aperçu.
+- Preuve : facture créée puis supprimée → suivante = numéro + 1 (pas réutilisé) ; création annulée → compteur inchangé (2026-0004) ; recul refusé (« prochain numéro minimum 4 ») ; INV-112000 refusé (« minimum 112249 », déjà utilisés).
+- Suite INV- : décision de Philippe = garder la suite INV-. En attente de sa réponse sur le numéro de départ : recommandé INV-113000 tant que l'ancien logiciel émet encore des INV-1122xx (sinon collisions de numéros et factures perdues au prochain import, qui ignore les numéros déjà présents), ou suite exacte le jour de l'arrêt de l'ancien logiciel. Les factures 2026-0002 / 2026-0003 (non transmises) pourront être renumérotées.
+
 ### TASK-005.11 [x] Retrait des mentions de Zoho dans ERPCRM (encaissements, notes, écrans)
 Date de demande : 2026-10-02 (Philippe, en voyant « Dernier paiement … Historique Zoho Books » sur une fiche compagnie : « je n'aime pas que tu parles de Zoho, j'essaie de m'en débarrasser »)
 Date(s) de travail : 2026-10-02

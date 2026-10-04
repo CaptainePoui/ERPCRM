@@ -103,9 +103,9 @@ def _order_out(o: EcomOrder) -> EcomOrderOut:
 
 
 async def _next_order_number(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count()).select_from(EcomOrder))
-    count = result.scalar() or 0
-    return f"WEB-{count + 1:05d}"
+    """Compteur qui ne recule jamais (app/core/numbering.py)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "ecom_order")
 
 
 # ── Public: Catalogue Vitrine ─────────────────────────────────────────────────

@@ -112,12 +112,9 @@ class SendDevisPayload(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 async def _next_number(db: AsyncSession) -> str:
-    year = date.today().year
-    result = await db.execute(
-        select(func.count()).where(Devis.number.like(f"{year}-D%"))
-    )
-    count = result.scalar() or 0
-    return f"{year}-D{count + 1:04d}"
+    """Compteur qui ne recule jamais (app/core/numbering.py)."""
+    from app.core.numbering import next_document_number
+    return await next_document_number(db, "devis")
 
 
 def _recalc(d: Devis) -> None:

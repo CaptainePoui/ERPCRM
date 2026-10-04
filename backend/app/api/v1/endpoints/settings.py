@@ -176,3 +176,37 @@ async def apply_inflation(payload: InflationPayload, db: AsyncSession = Depends(
         item.price = new_price
     await db.commit()
     return InflationResult(updated=len(items), preview=preview)
+
+
+# ── Numerotation des documents (2026-10-04) ──────────────────────────────────
+
+NUMBERING_LABELS = {"invoice": "Factures et avoirs", "devis": "Devis", "payment": "Références de paiement",
+                    "purchase_order": "Bons de commande", "ecom_order": "Commandes web"}
+
+
+class NumberingIn(BaseModel):
+    prefix: str
+    next_value: int
+    padding: int = 4
+
+
+@router.get("/numbering")
+async def get_numbering(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core.numbering import preview_next
+    out = []
+    for key, label in NUMBERING_LABELS.items():
+        out.append({**await preview_next(db, key), "label": label})
+    await db.commit()
+    return out
+
+
+@router.put("/numbering/{key}")
+async def update_numbering(key: str, p: NumberingIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Change le prefixe ou le prochain numero -- jamais vers le bas (voir core/numbering.py)."""
+    from app.core.numbering import set_next_number, preview_next
+    if key not in NUMBERING_LABELS:
+        raise HTTPException(status_code=404, detail="Type de document inconnu")
+    await set_next_number(db, key, p.prefix.strip(), p.next_value, p.padding)
+    out = {**await preview_next(db, key), "label": NUMBERING_LABELS[key]}
+    await db.commit()
+    return out
