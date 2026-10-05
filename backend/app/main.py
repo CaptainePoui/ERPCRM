@@ -19,6 +19,7 @@ from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
 from app.services.cdr_report_poller import run_cdr_report_poller
 from app.services.recurring_poller import run_recurring_poller
+from app.services.bank_ai_poller import run_bank_ai_poller
 
 
 @asynccontextmanager
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     backup_task = asyncio.create_task(run_backup_poller())
     cdr_report_task = asyncio.create_task(run_cdr_report_poller())
     recurring_task = asyncio.create_task(run_recurring_poller())
+    bank_ai_task = asyncio.create_task(run_bank_ai_poller())
     try:
         yield
     finally:
@@ -38,7 +40,8 @@ async def lifespan(app: FastAPI):
         backup_task.cancel()
         cdr_report_task.cancel()
         recurring_task.cancel()
-        for t in (poller_task, reminder_task, backup_task, cdr_report_task, recurring_task):
+        bank_ai_task.cancel()
+        for t in (poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task):
             try:
                 await t
             except asyncio.CancelledError:

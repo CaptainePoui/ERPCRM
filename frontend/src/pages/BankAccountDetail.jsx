@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
@@ -300,7 +300,81 @@ function MatchModal({ tx, onClose, onDone }) {
   )
 }
 
-function UnclassifiedTab({ transactions, onChanged }) {
+// Depot d'un releve dans la page (TASK-042.2) : apercu (nouvelles lignes, doublons exacts et probables),
+// puis import ; le serveur associe ce qui est sur et confie le reste a l'IA locale (propositions seulement).
+function DropImport({ accountId, onImported }) {
+  const [over, setOver] = useState(false)
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [includeProbable, setIncludeProbable] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const inputRef = useRef()
+
+  async function send(f, dryRun, incl = includeProbable) {
+    const fd = new FormData()
+    fd.append('file', f); fd.append('dry_run', dryRun ? 'true' : 'false'); fd.append('include_probable', incl ? 'true' : 'false')
+    return (await api.post(`/v1/bank/accounts/${accountId}/statements`, fd)).data
+  }
+  async function pick(f) {
+    if (!f) return
+    setError(''); setResult(null); setPreview(null); setFile(f); setBusy(true)
+    try { setPreview(await send(f, true)) } catch (e) { setError(errText(e)); setFile(null) }
+    setBusy(false)
+  }
+  async function doImport() {
+    setBusy(true); setError('')
+    try { setResult(await send(file, false)); setPreview(null); setFile(null); await onImported() } catch (e) { setError(errText(e)) }
+    setBusy(false)
+  }
+  const n = (v, one, many) => `${v} ${v > 1 ? many : one}`
+  return (
+    <div style={{ marginBottom: 14 }}>
+      {!preview && (
+        <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
+          onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files[0]) }}
+          onClick={() => inputRef.current?.click()}
+          style={{ border: `2px dashed ${over ? C.link : C.border}`, background: over ? '#EFF6FF' : '#FAFAFA', borderRadius: 10,
+            padding: '14px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: C.muted }}>
+          {busy ? 'Lecture du fichier…' : <>Glissez votre relevé ici (OFX, QFX, QBO ou CSV) ou <span style={{ color: C.link }}>choisissez un fichier</span> — les doublons sont écartés, ce qui est sûr est associé, l'IA locale propose le reste.</>}
+          <input ref={inputRef} type="file" accept=".ofx,.qfx,.qbo,.csv,.txt" style={{ display: 'none' }} onChange={e => { pick(e.target.files[0]); e.target.value = '' }} />
+        </div>
+      )}
+      {preview && (
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 10, padding: '12px 16px', fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>{file?.name} — {preview.file_format.toUpperCase()}{preview.period_start ? `, du ${fmtD(preview.period_start)} au ${fmtD(preview.period_end)}` : ''}</div>
+          <div>{n(preview.rows_new, 'nouvelle transaction', 'nouvelles transactions')} · {n(preview.rows_duplicate, 'doublon exact écarté', 'doublons exacts écartés')}
+            {preview.rows_probable_duplicate > 0 && <> · <strong>{n(preview.rows_probable_duplicate, 'doublon probable', 'doublons probables')}</strong> (même date et même montant qu'une ligne déjà importée d'un autre fichier)</>}
+            {preview.rows_zero_skipped > 0 && <> · {preview.rows_zero_skipped} ligne(s) à 0,00 $ ignorée(s)</>}</div>
+          {preview.account_mismatch && <div style={{ color: C.red, marginTop: 4 }}>Attention : le fichier semble venir d'un autre compte (se termine par {preview.file_account_last4}).</div>}
+          {preview.rows_probable_duplicate > 0 && (
+            <div style={{ marginTop: 6, color: C.muted }}>
+              {preview.probable_duplicates.map((d, i) => <div key={i}>{fmtD(d.posted_date)} · {fmtMoney(d.amount)} · {d.description}</div>)}
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, color: '#111827' }}>
+                <input type="checkbox" checked={includeProbable} onChange={async e => { setIncludeProbable(e.target.checked); setPreview(await send(file, true, e.target.checked)) }} />
+                Ce ne sont pas des doublons : les importer aussi
+              </label>
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10 }}>
+            <button className="btn-secondary" onClick={() => { setPreview(null); setFile(null) }}>Annuler</button>
+            <button className="btn-primary" disabled={busy || preview.rows_new === 0} onClick={doImport}>{busy ? 'Import…' : `Importer ${preview.rows_new} transaction${preview.rows_new > 1 ? 's' : ''}`}</button>
+          </div>
+        </div>
+      )}
+      {result && (
+        <div style={{ marginTop: 8, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
+          {n(result.rows_new, 'transaction importée', 'transactions importées')} · {n(result.rows_auto_matched || 0, 'associée automatiquement (sûre)', 'associées automatiquement (sûres)')}
+          {' '}· {n(result.rows_recognized || 0, 'reconnue', 'reconnues')}{result.rows_sent_to_ai ? ` · ${result.rows_sent_to_ai} confiée(s) à l'IA locale (propositions dans quelques minutes)` : ''}
+        </div>
+      )}
+      {error && <div style={{ color: C.red, fontSize: 13, marginTop: 6 }}>{error}</div>}
+    </div>
+  )
+}
+
+function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [sub, setSub] = useState('all')            // all | recognized
   const [excluded, setExcluded] = useState(false)
   const [multi, setMulti] = useState(false)
@@ -343,15 +417,31 @@ function UnclassifiedTab({ transactions, onChanged }) {
     await onChanged()
   }
   const reset = () => { setPage(0); setSelected(new Set()); setMsg(null) }
+  async function autoAssociate() {
+    if (!confirm("Associer automatiquement les dépôts dont la correspondance est certaine (client reconnu et un seul paiement ou une seule facture au montant exact) ? Chaque association reste annulable.")) return
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post(`/v1/bank/accounts/${accountId}/auto-associate`)
+      setMsg(`${r.data.auto_matched} associée(s) automatiquement${r.data.sent_to_ai ? ` · ${r.data.sent_to_ai} confiée(s) à l'IA locale` : ''}`)
+      await onChanged()
+    } finally { setBusy(false) }
+  }
+  async function acceptAi(t) {
+    await api.put(`/v1/bank/transactions/${t.id}/company`, { company_id: t.ai_company_id, remember: true })
+    await onChanged()
+  }
 
   return (
     <div>
+      <DropImport accountId={accountId} onImported={onChanged} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
         <div className="filter-tabs">
           <button className={`filter-tab${sub === 'all' && !excluded ? ' active' : ''}`} onClick={() => { setSub('all'); setExcluded(false); reset() }}>Tout ({unclassified.length})</button>
           <button className={`filter-tab${sub === 'recognized' && !excluded ? ' active' : ''}`} onClick={() => { setSub('recognized'); setExcluded(false); reset() }}>Reconnu ({recognized.length})</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+          <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={busy} onClick={autoAssociate}>Associer ce qui est sûr</button>
+          {msg && !(multi || sel.length > 0) && <span style={{ fontSize: 12, color: C.muted }}>{msg}</span>}
           <Switch checked={multi} onChange={setMulti} label="Correspondance & sélection multiple" />
           <button type="button" onClick={() => { setExcluded(e => !e); reset() }} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: excluded ? C.link : C.muted, cursor: 'pointer', fontWeight: excluded ? 600 : 400 }}>Exclu ({transactions.filter(t => t.status === 'excluded').length})</button>
         </div>
@@ -394,6 +484,15 @@ function UnclassifiedTab({ transactions, onChanged }) {
                     </div>
                   )}
                   {!t.payee && t.reference && <div style={{ fontSize: 12, color: C.muted }}>Réf. : {t.reference}</div>}
+                  {!t.company_id && t.ai_status === 'pending' && <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>IA locale : analyse en cours…</div>}
+                  {!t.company_id && t.ai_status === 'done' && (
+                    <div style={{ fontSize: 12, marginTop: 2, color: '#6D28D9' }}>
+                      {t.ai_company_id
+                        ? <>IA propose : <strong>{t.ai_company_name}</strong> ({t.ai_confidence} %){t.ai_note ? ` — ${t.ai_note}` : ''}
+                            <button className="btn-secondary" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 6 }} onClick={() => acceptAi(t)}>Accepter</button></>
+                        : <>IA : aucun client probable{t.ai_note ? ` — ${t.ai_note}` : ''}</>}
+                    </div>
+                  )}
                   {t.company_id && (
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
@@ -468,7 +567,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>{t.reference || ''}</td>
                 <td style={{ padding: '10px 8px' }}>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : {t.company_name}</div></td>
-                <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance</td>
+                <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance{t.auto_matched && <div style={{ fontSize: 11, color: C.muted }}>automatiquement (sûre)</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}</td>
@@ -604,7 +703,7 @@ export default function BankAccountDetail() {
           </Tab>
         </div>
         {tab === 'dashboard' && <DashboardTab key={id} account={account} internal={internal} />}
-        {tab === 'unclassified' && <UnclassifiedTab key={id} transactions={transactions} onChanged={load} />}
+        {tab === 'unclassified' && <UnclassifiedTab key={id} transactions={transactions} onChanged={load} accountId={id} />}
         {tab === 'all' && <AllTransactionsTab transactions={transactions} filter={allFilter} onChanged={load} />}
       </div>
 

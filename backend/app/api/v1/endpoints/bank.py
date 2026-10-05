@@ -1,5 +1,6 @@
 import re
 import uuid
+from collections import Counter
 from decimal import Decimal
 from datetime import datetime, date, timezone
 from pathlib import Path
@@ -82,6 +83,12 @@ class TransactionOut(BaseModel):
     matched_at: datetime | None = None
     invoice_numbers: list[str] = []
     suggestion: dict | None = None  # onglet « Reconnu » : suggestion sure pour « Valider »
+    auto_matched: bool = False      # associee automatiquement a l'import (TASK-042.2)
+    ai_status: str | None = None
+    ai_company_id: uuid.UUID | None = None
+    ai_company_name: str | None = None
+    ai_confidence: int | None = None
+    ai_note: str | None = None
     model_config = {"from_attributes": True}
 
 
@@ -221,11 +228,19 @@ async def import_statement(
     account_id: uuid.UUID,
     file: UploadFile = File(...),
     dry_run: bool = Form(True),
+    include_probable: bool = Form(False),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Lit un releve OFX/QFX/QBO ou CSV. dry_run=true : apercu sans rien enregistrer
-    (nouvelles lignes vs deja importees) ; dry_run=false : importe les nouvelles lignes."""
+    (nouvelles lignes vs deja importees) ; dry_run=false : importe les nouvelles lignes.
+
+    TASK-042.2 : en plus des doublons exacts (meme FITID ou meme cle), les « doublons probables »
+    -- meme date et meme montant qu'une transaction deja importee depuis un AUTRE fichier ou format
+    (ex. CSV depose a la main + releve recu par SFTP) -- sont ecartes, sauf include_probable. Compte
+    par compte : deux frais identiques le meme jour restent deux lignes. Apres l'import, les depots
+    dont l'association est sure (bm.best_exact) sont associes automatiquement ; les depots non
+    reconnus sont confies a l'IA locale, qui propose un client sans jamais confirmer."""
     acc = await _get_account(account_id, db)
     if acc.account_type == "petty_cash":
         raise HTTPException(status_code=400, detail="Une petite caisse n'a pas de relevé bancaire")
@@ -255,6 +270,27 @@ async def import_statement(
         seen.add(l.dedup_key)
         new_lines.append(l)
 
+    # Doublons probables : meme date + meme montant qu'une ligne deja en base, en surplus des doublons exacts
+    probable = []
+    if new_lines:
+        dates = [l.posted_date for l in st.lines]
+        in_db = Counter((d, Decimal(a)) for d, a in (await db.execute(
+            select(BankTransaction.posted_date, BankTransaction.amount).where(
+                BankTransaction.account_id == acc.id, BankTransaction.posted_date >= min(dates), BankTransaction.posted_date <= max(dates))
+        )).all())
+        explained = Counter((l.posted_date, l.amount) for l in st.lines if l.dedup_key in existing)
+        avail = in_db - explained
+        kept = []
+        for l in new_lines:
+            k = (l.posted_date, l.amount)
+            if avail[k] > 0:
+                avail[k] -= 1
+                probable.append(l)
+            else:
+                kept.append(l)
+        if not include_probable:
+            new_lines = kept
+
     # Le numero du fichier doit finir par les 4 chiffres du compte choisi -- avertissement seulement
     file_digits = re.sub(r"\D", "", st.account_number or "")
     mismatch = bool(acc.account_last4 and file_digits and not file_digits.endswith(acc.account_last4))
@@ -265,7 +301,9 @@ async def import_statement(
         "period_end": st.period_end,
         "rows_total": len(st.lines),
         "rows_new": len(new_lines),
-        "rows_duplicate": len(st.lines) - len(new_lines),
+        "rows_duplicate": len(st.lines) - len(new_lines) - (0 if include_probable else len(probable)),
+        "rows_probable_duplicate": len(probable),
+        "probable_duplicates": [{"posted_date": l.posted_date, "amount": float(l.amount), "description": l.description} for l in probable[:20]],
         "rows_zero_skipped": zero_count,
         "ledger_balance": float(st.ledger_balance) if st.ledger_balance is not None else None,
         "ledger_balance_date": st.ledger_balance_date,
@@ -308,7 +346,61 @@ async def import_statement(
     result["rows_recognized"] = await bm.apply_rules(db, account_id=acc.id)
     await db.commit()
     result["import_id"] = imp.id
+    new_ids = list((await db.execute(select(BankTransaction.id).where(BankTransaction.import_id == imp.id))).scalars().all())
+    result["rows_auto_matched"] = await _auto_associate(db, new_ids)
+    result["rows_sent_to_ai"] = await _queue_for_ai(db, new_ids)
     return result
+
+
+async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
+    """Associe les depots dont la suggestion est unique et exacte (compagnie reconnue par une regle
+    ou attribuee, ET un seul paiement en attente ou une seule facture ouverte au solde exact).
+    Rien d'approximatif, rien venant de l'IA ; chaque association reste annulable."""
+    n = 0
+    for tid in tx_ids:
+        tx = await db.get(BankTransaction, tid)
+        if not tx or tx.status != "unclassified" or tx.amount <= 0 or not tx.company_id:
+            continue
+        sug = await bm.best_exact(db, tx)
+        if not sug:
+            continue
+        body = MatchIn(client_payment_id=sug["id"]) if sug["kind"] == "payment" else MatchIn(
+            allocations=[AllocIn(invoice_id=sug["id"], amount=sug["balance"])])
+        try:
+            await match_transaction(tx.id, body, db)
+        except HTTPException:
+            await db.rollback()
+            continue
+        tx = await db.get(BankTransaction, tid)
+        tx.auto_matched = True
+        await db.commit()
+        n += 1
+    return n
+
+
+async def _queue_for_ai(db: AsyncSession, tx_ids: list) -> int:
+    """Depots encore non reconnus -> file de l'IA locale (services/bank_ai_poller.py)."""
+    from app.core.config import settings
+    if not settings.LOCAL_AI_URL:
+        return 0
+    n = 0
+    for tid in tx_ids:
+        tx = await db.get(BankTransaction, tid)
+        if tx and tx.status == "unclassified" and tx.amount > 0 and not tx.company_id and tx.ai_status is None:
+            tx.ai_status = "pending"
+            n += 1
+    await db.commit()
+    return n
+
+
+@router.post("/accounts/{account_id}/auto-associate")
+async def auto_associate_account(account_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """« Associer ce qui est sûr » sur toutes les lignes non classees du compte, puis confie a l'IA
+    les depots encore non reconnus."""
+    await _get_account(account_id, db)
+    ids = list((await db.execute(select(BankTransaction.id).where(
+        BankTransaction.account_id == account_id, BankTransaction.status == "unclassified"))).scalars().all())
+    return {"auto_matched": await _auto_associate(db, ids), "sent_to_ai": await _queue_for_ai(db, ids)}
 
 
 @router.get("/accounts/{account_id}/statements", response_model=list[StatementImportOut])
@@ -355,6 +447,9 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
     out = TransactionOut.model_validate(t)
     if t.company_id:
         out.company_name = (await db.get(Company, t.company_id)).name
+    if t.ai_company_id:
+        c = await db.get(Company, t.ai_company_id)
+        out.ai_company_name = c.name if c else None
     if t.client_payment_id:
         out.invoice_numbers = list((await db.execute(
             select(Invoice.number).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
@@ -516,6 +611,8 @@ async def set_transaction_company(tx_id: uuid.UUID, payload: CompanyAssignIn, db
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
     tx.company_id = payload.company_id
     tx.company_source = "manual" if payload.company_id else None
+    if payload.company_id and tx.ai_company_id == payload.company_id:
+        tx.ai_status = "accepted"
     if payload.company_id and payload.remember and tx.payee:
         await _remember(db, tx.payee, payload.company_id)
     await db.commit()

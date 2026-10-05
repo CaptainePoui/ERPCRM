@@ -81,6 +81,13 @@ class BankTransaction(Base):
     # faux s'il existait deja (paiement declare au portail, historique Zoho) -- on le delie seulement
     payment_created: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     matched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Associee automatiquement a l'import (suggestion unique et exacte) -- annulable comme les autres
+    auto_matched: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Proposition de l'IA locale (jamais appliquee seule) : pending | done | failed | accepted
+    ai_status: Mapped[str | None] = mapped_column(String(10))
+    ai_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
+    ai_confidence: Mapped[int | None] = mapped_column(Integer)
+    ai_note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

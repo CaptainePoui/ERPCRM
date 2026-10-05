@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
     # Network — change these when migrating servers
     ERPCRM_HOST: str = "192.168.1.9"
+    # IA locale (API compatible OpenAI, ex. Ollama) -- vide = desactivee. Sert a proposer le client
+    # des depots bancaires non reconnus (services/bank_ai_poller.py), jamais a confirmer seule.
+    LOCAL_AI_URL: str = ""
+    LOCAL_AI_MODEL: str = "gpt-oss:20b"
     # URL publique HTTPS (Nginx + Let's Encrypt, TASK infrastructure de suivi) --
     # utilisee pour construire les URLs absolues du pixel de suivi d'ouverture,
     # doit etre joignable depuis Internet par le client courriel du destinataire.
