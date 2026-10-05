@@ -5527,6 +5527,14 @@ Constat au 2026-10-01 : 32 compagnies dans ERPCRM, dont plusieurs bénéficiaire
 
 **Prochaine étape** : classement des retraits = module Dépenses (spécification ci-dessus), à concevoir avec Philippe.
 
+### TASK-042.1 [ ] Relevés BNC automatiques par SFTP (Transfert de fichiers corporatifs)
+Date de demande : 2026-10-05 (Philippe : « pour Simple IP, la connexion directement avec la BNC par SFTP — service TFC, accessible par SFTP et conçu pour être automatisé », guide https://www.bnc.ca/content/dam/bnc/entreprise/pdf/transfert-de-fichiers-corporatifs.pdf)
+Date(s) de travail : 2026-10-05 (lecture du guide seulement, rien construit)
+
+Ce que dit le guide (ins-021, 2020) : TFC = boîte aux lettres pour échanger des fichiers avec la BNC, par le Web (https://web.tfc.bnc.ca) ou par SFTP (sftp.bnc.ca, automatisable), mot de passe ou clé publique (RSA 1024 bits sans phrase de passe, nom de clé = numéro client à 10 chiffres) ; maintenance samedi 23 h 59 → dimanche 6 h et dimanche 22 h → 23 h 59 ; soutien Solutions électroniques aux entreprises 1 844 394-4494, support.tfc@bnc.ca.
+Ce que le guide ne dit PAS : quels fichiers sont déposés. TFC n'est que le canal ; les relevés de compte exigent un service BNC à part qui y dépose les fichiers. À obtenir de la BNC avant de coder : nom du service de relevés, format (CAMT.053, BAI2, MT940, OFX ?), fréquence (quotidienne, intrajournalière), frais, clé acceptée (2048/4096 bits ou ed25519 ?), et **un fichier exemple**.
+Plan proposé (en attente de ces réponses) : connexion SFTP configurable par compte bancaire dans l'écran (pas d'identifiant en dur, logiciel destiné à être vendu), clé privée hors du dépôt et lisible seulement par le service, récupération planifiée → lecteur du format BNC → même import que les relevés OFX/CSV (doublons écartés, rien de confirmé sans Philippe).
+
 
 ---
 
