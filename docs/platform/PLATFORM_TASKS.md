@@ -5535,6 +5535,13 @@ Ce que dit le guide (ins-021, 2020) : TFC = boîte aux lettres pour échanger de
 Ce que le guide ne dit PAS : quels fichiers sont déposés. TFC n'est que le canal ; les relevés de compte exigent un service BNC à part qui y dépose les fichiers. À obtenir de la BNC avant de coder : nom du service de relevés, format (CAMT.053, BAI2, MT940, OFX ?), fréquence (quotidienne, intrajournalière), frais, clé acceptée (2048/4096 bits ou ed25519 ?), et **un fichier exemple**.
 Plan proposé (en attente de ces réponses) : connexion SFTP configurable par compte bancaire dans l'écran (pas d'identifiant en dur, logiciel destiné à être vendu), clé privée hors du dépôt et lisible seulement par le service, récupération planifiée → lecteur du format BNC → même import que les relevés OFX/CSV (doublons écartés, rien de confirmé sans Philippe).
 
+### TASK-042.3 [ ] Dépôts Elavon : détail des paiements par carte (Authorize.Net / Elavon)
+Date de demande : 2026-10-05 (Philippe : « si je te donne accès à mon courriel Facturation@simpleip.tel tu pourrais avoir les rapports de carte de crédit, ça te sert-tu à quelque chose ? » ; puis « je vais regarder si j'ai des API avec Elavon »)
+Date(s) de travail : (aucune — en attente de Philippe)
+
+Constat : les dépôts « ELAVON MRCH SVC » (22 non classés) sont des lots de paiements par carte ; le bénéficiaire est toujours le même, donc ni règle ni IA ne peut trouver le client. Le courriel de règlement Authorize.Net (ID marchand 2787824) donne le lot (ex. 22 sept. 2026 : 193,67 $, 1 transaction = dépôt Elavon du 24 sept.) mais pas le client ni la facture. Chaîne : Authorize.Net = passerelle (détail par transaction : client, courriel, montant, n° de facture), Elavon = processeur (dépôts et frais par lot).
+Recommandé : API de rapports Authorize.Net (lecture seule : lots réglés → transactions), identifiants (API Login ID + Transaction Key) saisis par Philippe dans un écran ERPCRM, jamais dans le code ni le chat → association exacte dépôt Elavon → lot → client/facture, automatique quand sûre. Courriel = plan B (totaux de lots seulement). En attente : Philippe vérifie ce qu'Elavon offre comme API.
+
 ### TASK-042.2 [x] Dépôt d'un relevé dans la page : doublons, associations sûres, IA locale
 Date de demande : 2026-10-05 (Philippe : « j'aimerais avoir mon IA locale qui gère un fichier importé, pour commencer ; ce serait une sécurité si les autres connexions se perdent » ; « j'ai besoin qu'elle analyse ce qui est, enlève les doublons et associe ce qu'elle est sûre, une place dans la page »)
 Date(s) de travail : 2026-10-05
