@@ -901,3 +901,19 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : renumérotées TASK-005.2 à TASK-005.6 (module Factures) dans PLATFORM_TASKS.md avec la correspondance, code relu (4 défauts trouvés et listés dans TASK-005.4, non corrigés sans GO), Graphiti mis à jour, commit.
 
 **Leçon (à ne pas refaire)** : tout travail ERPCRM se fait dans une session lancée depuis `/home/simpleip/erpcrm` ; tout travail SIPV depuis `/home/sipv/sipv`, jamais depuis `/home/sipv`. Décision de Philippe (2026-10-01) : ne plus lancer Claude sur SIPV, tout lancer depuis ERPCRM.
+
+---
+
+## TASK-042.4 — Identifiant de migration inventé déjà pris, puis « downgrade -1 » à l'aveugle : colonnes de l'IA supprimées
+
+**Date** : 2026-10-06
+
+**On croyait** : qu'un identifiant de révision Alembic écrit « à la main » en suivant un motif (`e0f1a2b3c4d5`, `f1a2b3c4d5e6`, `a2b3c4d5e6f7`, `b3c4d5e6f7a8`, puis `c4d5e6f7a8b9`) était forcément nouveau, et qu'après un `upgrade head` en échec, `downgrade -1` annulerait la migration qu'on venait d'écrire.
+
+**Preuve** : `c4d5e6f7a8b9` existait déjà (`c4d5e6f7a8b9_catalogue_drop_linked_hourly.py`, avec une suite `d5e6f7a8b9c0`) → Alembic voit deux têtes, `upgrade head` refuse (« Multiple head revisions ») ; la commande enchaînée `downgrade -1` part de la révision **courante** de la base (`b3c4d5e6f7a8`, TASK-042.2) et l'annule : colonnes `auto_matched`, `ai_status`, `ai_company_id`, `ai_confidence`, `ai_note` supprimées avec leurs données (169 propositions de l'IA). Aucune sauvegarde depuis le 2026-10-02.
+
+**Cause réelle** : (1) identifiant fabriqué par motif au lieu d'être généré ; (2) commandes chaînées avec `&&`/`;` sans vérifier `alembic heads` entre l'échec et le downgrade ; (3) `downgrade -1` est relatif à la base, pas au fichier qu'on vient d'écrire.
+
+**Correction** : migration renommée avec un identifiant aléatoire vérifié unique (`9559265c75e8`) ; `upgrade head` a recréé les colonnes de TASK-042.2 puis ajouté celles des retraits ; down/up retesté avec la révision explicite (`downgrade 9559265c75e8-1`) après contrôle « une seule tête ». Perte limitée aux propositions de l'IA (règles, compagnies attribuées, factures et paiements intacts — autres colonnes/tables) : 152 dépôts remis en file, régénérés par la comparaison des noms et l'IA.
+
+**Leçon (à ne pas refaire)** : générer l'identifiant de révision (`uuid4().hex[:12]` ou `alembic revision`) et vérifier `grep` + `alembic heads` = 1 avant d'appliquer ; ne jamais enchaîner un `downgrade` après un `upgrade` qui a échoué — s'arrêter et lire l'erreur ; tester le down/up avec une révision **explicite** (`downgrade <rev>-1`), jamais `-1` seul. Avant une migration sur des données qui ont coûté du calcul (propositions de l'IA), prendre une sauvegarde des tables touchées.
