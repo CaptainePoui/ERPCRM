@@ -191,6 +191,15 @@ function MatchModal({ tx, onClose, onDone }) {
     })
   }
 
+  // Regle de Philippe : le depot paie les plus vieilles factures ouvertes du client, dans l'ordre
+  // (la derniere peut etre payee en partie)
+  function oldestFirst() {
+    const n = {}; let left = tx.amount
+    ;[...invoices].filter(i => i.balance > 0).sort((a, b) => a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number))
+      .forEach(i => { if (left > 0.004) { const v = Math.min(i.balance, left); n[i.id] = v.toFixed(2); left = Math.round((left - v) * 100) / 100 } })
+    setAlloc(n)
+  }
+
   async function submit(body) {
     setSaving(true); setError(null)
     try {
@@ -244,9 +253,12 @@ function MatchModal({ tx, onClose, onDone }) {
         <Autocomplete items={companies} value={company} onSelect={setCompany} openOnFocus placeholder="Rechercher une compagnie..." />
         {company && (
           <div style={box}>
-            <label style={{ fontSize: 12, color: C.muted, display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-              <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} /> Afficher aussi les factures payées
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+              <label style={{ fontSize: 12, color: C.muted, display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input type="checkbox" checked={showPaid} onChange={e => setShowPaid(e.target.checked)} /> Afficher aussi les factures payées
+              </label>
+              <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} disabled={!invoices.some(i => i.balance > 0)} onClick={oldestFirst}>Appliquer aux plus vieilles factures d'abord</button>
+            </div>
             <div style={{ maxHeight: 260, overflowY: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <tbody>
@@ -413,7 +425,8 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   async function validateOne(t) {
     const s = t.suggestion
     await api.post(`/v1/bank/transactions/${t.id}/match`, s.kind === 'payment'
-      ? { client_payment_id: s.id } : { allocations: [{ invoice_id: s.id, amount: s.balance }] })
+      ? { client_payment_id: s.id }
+      : { allocations: (s.allocations || [{ invoice_id: s.id, amount: s.balance }]).map(a => ({ invoice_id: a.invoice_id, amount: a.amount })) })
     await onChanged()
   }
   const reset = () => { setPage(0); setSelected(new Set()); setMsg(null) }
@@ -497,7 +510,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
-                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})` : `facture ${t.suggestion.number}`}</span>}
+                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})` : `${t.suggestion.allocations?.length > 1 ? 'factures' : 'facture'} ${t.suggestion.number}${t.suggestion.oldest_first ? ' (la plus vieille d\'abord)' : ''}`}</span>}
                     </div>
                   )}
                 </td>

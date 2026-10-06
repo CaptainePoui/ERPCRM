@@ -352,6 +352,14 @@ async def import_statement(
     return result
 
 
+def _match_body(sug: dict) -> "MatchIn":
+    """Suggestion sure -> association : paiement a lier, ou factures (les plus vieilles d'abord)."""
+    if sug["kind"] == "payment":
+        return MatchIn(client_payment_id=sug["id"])
+    allocs = sug.get("allocations") or [{"invoice_id": sug["id"], "amount": sug["balance"]}]
+    return MatchIn(allocations=[AllocIn(invoice_id=a["invoice_id"], amount=a["amount"]) for a in allocs])
+
+
 async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
     """Associe les depots dont la suggestion est unique et exacte (compagnie reconnue par une regle
     ou attribuee, ET un seul paiement en attente ou une seule facture ouverte au solde exact).
@@ -364,8 +372,7 @@ async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
         sug = await bm.best_exact(db, tx)
         if not sug:
             continue
-        body = MatchIn(client_payment_id=sug["id"]) if sug["kind"] == "payment" else MatchIn(
-            allocations=[AllocIn(invoice_id=sug["id"], amount=sug["balance"])])
+        body = _match_body(sug)
         try:
             await match_transaction(tx.id, body, db)
         except HTTPException:
@@ -640,8 +647,7 @@ async def bulk_transactions(payload: BulkIn, db: AsyncSession = Depends(get_db),
                 skipped += 1
                 continue
             await db.commit()
-            body = MatchIn(client_payment_id=sug["id"]) if sug["kind"] == "payment" else MatchIn(
-                allocations=[AllocIn(invoice_id=sug["id"], amount=sug["balance"])])
+            body = _match_body(sug)
             await match_transaction(tx.id, body, db)
             done += 1
         else:

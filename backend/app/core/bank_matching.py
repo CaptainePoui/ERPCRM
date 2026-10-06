@@ -197,9 +197,28 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
         best, second = pays[0], pays[1]
         if gap(best) <= 10 and (gap(second) > gap(best) or second["received_at"] == best["received_at"]):
             return {"kind": "payment", **best}
-    exact = [i for i in s["invoices"] if i["exact"] and i["company_id"] == str(tx.company_id)]
-    if len(exact) == 1 and not pays:
-        return {"kind": "invoice", **exact[0]}
+    if pays:
+        return None
+    # Regle de Philippe (2026-10-06) : un depot paie la plus vieille facture ouverte du client, ou les
+    # plus vieilles dans l'ordre. Sur seulement si le montant egale exactement la plus vieille, ou la
+    # somme des 2, 3... plus vieilles -- sinon (paiement partiel, autre facture) : suggestion, pas automatique.
+    open_invs = (await db.execute(select(Invoice).where(
+        Invoice.company_id == tx.company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
+        Invoice.issue_date <= tx.posted_date + timedelta(days=10)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    paid = await invoice_balances(db, [i.id for i in open_invs])
+    amount, run, picked = Decimal(tx.amount), Decimal("0"), []
+    for inv in open_invs:
+        bal = inv.total - (paid.get(inv.id) or Decimal("0"))
+        if bal <= 0:
+            continue
+        run += bal
+        picked.append((inv, bal))
+        if run == amount:
+            return {"kind": "invoice", "id": str(picked[0][0].id), "number": ", ".join(i.number for i, _ in picked),
+                    "balance": float(amount), "company_id": str(tx.company_id), "oldest_first": True,
+                    "allocations": [{"invoice_id": str(i.id), "number": i.number, "amount": float(b)} for i, b in picked]}
+        if run > amount:
+            break
     return None
 
 
