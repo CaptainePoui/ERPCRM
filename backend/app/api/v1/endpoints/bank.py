@@ -21,6 +21,7 @@ from app.models.payment import PaymentMethod
 from app.core import bank_matching as bm
 from app.api.v1.endpoints.payments import _recalculate_invoice_status
 from app.models.user import User
+from app.models.purchases import Vendor
 
 router = APIRouter()
 
@@ -89,6 +90,12 @@ class TransactionOut(BaseModel):
     ai_company_name: str | None = None
     ai_confidence: int | None = None
     ai_note: str | None = None
+    vendor_id: uuid.UUID | None = None      # retraits (TASK-042.4)
+    vendor_name: str | None = None
+    vendor_source: str | None = None        # manual | rule | name (name = proposition a accepter)
+    expense_id: uuid.UUID | None = None
+    vendor_payment_id: uuid.UUID | None = None
+    withdrawal_label: str | None = None     # ce qui explique le retrait associe
     ai_queue_position: int | None = None    # place dans la file de l'IA (1 = la prochaine)
     ai_eta_seconds: int | None = None       # attente estimee
     model_config = {"from_attributes": True}
@@ -346,6 +353,9 @@ async def import_statement(
 
     await db.flush()
     result["rows_recognized"] = await bm.apply_rules(db, account_id=acc.id)
+    await db.flush()
+    new_tx_ids = list((await db.execute(select(BankTransaction.id).where(BankTransaction.import_id == imp.id))).scalars().all())
+    result["rows_vendor_recognized"] = await bm.propose_vendors(db, new_tx_ids)
     await db.commit()
     result["import_id"] = imp.id
     new_ids = list((await db.execute(select(BankTransaction.id).where(BankTransaction.import_id == imp.id))).scalars().all())
@@ -369,7 +379,23 @@ async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
     n = 0
     for tid in tx_ids:
         tx = await db.get(BankTransaction, tid)
-        if not tx or tx.status != "unclassified" or tx.amount <= 0 or not tx.company_id:
+        if not tx or tx.status != "unclassified":
+            continue
+        if tx.amount < 0:
+            sug = await bm.best_exact_withdrawal(db, tx)
+            if not sug:
+                continue
+            try:
+                await match_withdrawal(tx.id, _withdrawal_body(sug), db)
+            except HTTPException:
+                await db.rollback()
+                continue
+            tx = await db.get(BankTransaction, tid)
+            tx.auto_matched = True
+            await db.commit()
+            n += 1
+            continue
+        if tx.amount <= 0 or not tx.company_id:
             continue
         sug = await bm.best_exact(db, tx)
         if not sug:
@@ -409,6 +435,8 @@ async def auto_associate_account(account_id: uuid.UUID, db: AsyncSession = Depen
     await _get_account(account_id, db)
     ids = list((await db.execute(select(BankTransaction.id).where(
         BankTransaction.account_id == account_id, BankTransaction.status == "unclassified"))).scalars().all())
+    await bm.propose_vendors(db, ids)
+    await db.commit()
     return {"auto_matched": await _auto_associate(db, ids), "sent_to_ai": await _queue_for_ai(db, ids)}
 
 
@@ -474,6 +502,21 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
         )).scalars().all())
     if with_suggestion and t.status == "unclassified" and t.company_id:
         out.suggestion = await bm.best_exact(db, t)
+    if t.vendor_id:
+        v = (await db.execute(select(Vendor).where(Vendor.id == t.vendor_id).execution_options(populate_existing=True))).scalar_one_or_none()
+        out.vendor_name = v.name if v else None
+    if t.expense_id:
+        from app.models.purchases import Expense
+        e = (await db.execute(select(Expense).where(Expense.id == t.expense_id).execution_options(populate_existing=True))).scalar_one_or_none()
+        if e:
+            out.withdrawal_label = "Dépense" + (f" — {e.category.name}" if e.category else "") + (f" · {e.vendor.name}" if e.vendor else "")
+    elif t.vendor_payment_id:
+        from app.models.purchases import VendorPayment
+        p = (await db.execute(select(VendorPayment).where(VendorPayment.id == t.vendor_payment_id).execution_options(populate_existing=True))).scalar_one_or_none()
+        if p:
+            out.withdrawal_label = "Paiement fournisseur — " + (p.vendor.name if p.vendor else (p.payee_label or ""))
+    if with_suggestion and t.status == "unclassified" and t.amount < 0:
+        out.suggestion = await bm.best_exact_withdrawal(db, t)
     return out
 
 
@@ -490,7 +533,9 @@ async def _remember(db: AsyncSession, payee: str | None, company_id: uuid.UUID) 
     if not key:
         return
     rule = (await db.execute(select(BankPayeeRule).where(BankPayeeRule.payee_key == key))).scalar_one_or_none()
-    if rule:
+    if rule and rule.company_id is None:
+        rule.company_id = company_id        # meme beneficiaire deja connu comme fournisseur (retraits)
+    elif rule:
         if rule.company_id != company_id:
             rule.company_id = company_id
             # Les lignes deja reconnues par l'ancienne regle suivent la nouvelle compagnie
@@ -600,6 +645,8 @@ async def unmatch_transaction(tx_id: uuid.UUID, db: AsyncSession = Depends(get_d
     """Annule une association : supprime l'encaissement s'il a ete cree par l'association,
     sinon le delie (un paiement declare au portail redevient en attente)."""
     tx = await _get_tx(tx_id, db)
+    if tx.status == "matched" and (tx.expense_id or tx.vendor_payment_id):
+        return await _unmatch_withdrawal(tx, db)
     if tx.status != "matched" or not tx.client_payment_id:
         raise HTTPException(status_code=400, detail="Transaction non associée")
     cp = await db.get(ClientPayment, tx.client_payment_id)
@@ -652,18 +699,199 @@ async def bulk_transactions(payload: BulkIn, db: AsyncSession = Depends(get_db),
         elif payload.action == "restore" and tx.status == "excluded":
             tx.status = "unclassified"; done += 1
         elif payload.action == "validate" and tx.status == "unclassified":
-            sug = await bm.best_exact(db, tx)
+            sug = await (bm.best_exact_withdrawal(db, tx) if tx.amount < 0 else bm.best_exact(db, tx))
             if not sug:
                 skipped += 1
                 continue
             await db.commit()
-            body = _match_body(sug)
-            await match_transaction(tx.id, body, db)
+            if tx.amount < 0:
+                await match_withdrawal(tx.id, _withdrawal_body(sug), db)
+            else:
+                await match_transaction(tx.id, _match_body(sug), db)
             done += 1
         else:
             skipped += 1
     await db.commit()
     return {"done": done, "skipped": skipped}
+
+
+# ── Retraits (TASK-042.4) ────────────────────────────────────────────────────
+
+class BillAllocIn(BaseModel):
+    bill_id: uuid.UUID
+    amount: float
+
+
+class NewExpenseIn(BaseModel):
+    vendor_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    description: str | None = None
+    tax_mode: str = "inclusive"     # le montant du releve contient deja les taxes
+    tax_code: str = "tps_tvq"
+
+
+class WithdrawalMatchIn(BaseModel):
+    """Une seule option : lier une depense ou un paiement deja enregistre, payer des factures
+    fournisseurs (cree le paiement), ou enregistrer une nouvelle depense."""
+    expense_id: uuid.UUID | None = None
+    vendor_payment_id: uuid.UUID | None = None
+    bill_allocations: list[BillAllocIn] = []
+    payee_label: str | None = None  # paiement groupe sans fournisseur unique (ex. carte de credit)
+    new_expense: NewExpenseIn | None = None
+    remember_payee: bool = True
+
+
+class VendorAssignIn(BaseModel):
+    vendor_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    remember: bool = True
+
+
+def _withdrawal_body(sug: dict) -> WithdrawalMatchIn:
+    if sug["kind"] == "expense":
+        return WithdrawalMatchIn(expense_id=sug["id"])
+    if sug["kind"] == "vendor_payment":
+        return WithdrawalMatchIn(vendor_payment_id=sug["id"])
+    return WithdrawalMatchIn(bill_allocations=[BillAllocIn(**a) for a in sug["allocations"]])
+
+
+async def _remember_vendor(db: AsyncSession, payee: str | None, vendor_id: uuid.UUID, category_id: uuid.UUID | None) -> None:
+    """Regle beneficiaire -> fournisseur (+ compte de depense habituel), appliquee aux autres retraits."""
+    key = bm.payee_key(payee)
+    if not key:
+        return
+    rule = (await db.execute(select(BankPayeeRule).where(BankPayeeRule.payee_key == key))).scalar_one_or_none()
+    if rule:
+        rule.vendor_id = vendor_id
+        if category_id:
+            rule.category_id = category_id
+    else:
+        db.add(BankPayeeRule(payee_key=key, payee_label=payee.strip(), vendor_id=vendor_id, category_id=category_id))
+    await db.flush()
+    for t in (await db.execute(select(BankTransaction).where(BankTransaction.amount < 0, BankTransaction.status == "unclassified"))).scalars().all():
+        if bm.payee_key(t.payee or t.description) == key and t.vendor_source != "manual":
+            t.vendor_id, t.vendor_source = vendor_id, "rule"
+
+
+@router.post("/transactions/{tx_id}/match-withdrawal", response_model=TransactionOut)
+async def match_withdrawal(tx_id: uuid.UUID, payload: WithdrawalMatchIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.purchases import Expense, VendorPayment, Vendor
+    from app.api.v1.endpoints.purchases import ExpenseIn, VendorPaymentIn, AllocIn as BillAlloc, _apply_expense, _save_payment
+    tx = await _get_tx(tx_id, db)
+    if tx.status != "unclassified":
+        raise HTTPException(status_code=400, detail="Transaction déjà traitée")
+    if tx.amount >= 0:
+        raise HTTPException(status_code=400, detail="Seuls les retraits se lient à une dépense ou à un paiement fournisseur")
+    amount = -Decimal(tx.amount)
+    options = sum(bool(x) for x in (payload.expense_id, payload.vendor_payment_id, payload.bill_allocations, payload.new_expense))
+    if options != 1:
+        raise HTTPException(status_code=400, detail="Choisissez une seule façon d'expliquer ce retrait")
+    linked_e, linked_p = await bm.linked_withdrawal_ids(db)
+    acc = await db.get(BankAccount, tx.account_id)
+    vendor_id, category_id, created = tx.vendor_id, None, False
+
+    if payload.expense_id:
+        e = await db.get(Expense, payload.expense_id)
+        if not e:
+            raise HTTPException(status_code=404, detail="Dépense introuvable")
+        if e.id in linked_e:
+            raise HTTPException(status_code=400, detail="Cette dépense est déjà liée à une autre transaction bancaire")
+        if e.total != amount:
+            raise HTTPException(status_code=400, detail="Le montant de la dépense ne correspond pas au retrait")
+        tx.expense_id, vendor_id, category_id = e.id, e.vendor_id or vendor_id, e.category_id
+    elif payload.vendor_payment_id:
+        p = await db.get(VendorPayment, payload.vendor_payment_id)
+        if not p:
+            raise HTTPException(status_code=404, detail="Paiement introuvable")
+        if p.id in linked_p:
+            raise HTTPException(status_code=400, detail="Ce paiement est déjà lié à une autre transaction bancaire")
+        if p.amount != amount:
+            raise HTTPException(status_code=400, detail="Le montant du paiement ne correspond pas au retrait")
+        tx.vendor_payment_id, vendor_id = p.id, p.vendor_id or vendor_id
+    elif payload.bill_allocations:
+        from app.models.purchases import Bill
+        bills = [await db.get(Bill, a.bill_id) for a in payload.bill_allocations]
+        if any(b is None for b in bills):
+            raise HTTPException(status_code=404, detail="Facture fournisseur introuvable")
+        vendors = {b.vendor_id for b in bills}
+        pay_vendor = vendors.pop() if len(vendors) == 1 else None
+        label = payload.payee_label or (None if pay_vendor else (tx.payee or tx.description or "Paiement groupé"))
+        vp = await _save_payment(db, VendorPaymentIn(
+            payment_date=tx.posted_date, vendor_id=pay_vendor, payee_label=label, amount=float(amount), method="Banque",
+            reference=tx.reference, bank_account_id=tx.account_id,
+            notes=f"Retrait bancaire du {tx.posted_date} : {tx.description}" + (f" — {tx.payee}" if tx.payee else ""),
+            allocations=[BillAlloc(bill_id=a.bill_id, amount=a.amount) for a in payload.bill_allocations]), None)
+        vp = await db.get(VendorPayment, vp.id)
+        vp.source = "bank_import"
+        tx = await _get_tx(tx_id, db)
+        tx.vendor_payment_id, vendor_id, created = vp.id, pay_vendor or vendor_id, True
+    else:
+        ne = payload.new_expense
+        e = Expense(source="bank_import")
+        _apply_expense(e, ExpenseIn(expense_date=tx.posted_date, vendor_id=ne.vendor_id or tx.vendor_id, category_id=ne.category_id,
+                                    description=ne.description or tx.payee or tx.description, tax_mode=ne.tax_mode, tax_code=ne.tax_code,
+                                    amount=float(amount), paid_through=acc.name if acc else None, bank_account_id=tx.account_id,
+                                    reference=tx.reference))
+        if e.total != amount:
+            raise HTTPException(status_code=400, detail="Le montant « taxes incluses » doit égaler le retrait")
+        db.add(e)
+        await db.flush()
+        tx.expense_id, vendor_id, category_id, created = e.id, e.vendor_id, e.category_id, True
+
+    tx.status, tx.matched_at, tx.payment_created = "matched", datetime.now(timezone.utc), created
+    if vendor_id:
+        tx.vendor_id, tx.vendor_source = vendor_id, "manual"
+        if payload.remember_payee and (tx.payee or tx.description):
+            await _remember_vendor(db, tx.payee or tx.description, vendor_id, category_id)
+    await db.commit()
+    return await _tx_out(tx, db, with_suggestion=False)
+
+
+async def _unmatch_withdrawal(tx: BankTransaction, db: AsyncSession) -> TransactionOut:
+    """Supprime la depense / le paiement cree par l'association, sinon le delie seulement."""
+    from app.models.purchases import Expense, VendorPayment
+    from app.api.v1.endpoints.purchases import recalc_bill_status
+    if tx.expense_id:
+        e = await db.get(Expense, tx.expense_id)
+        tx.expense_id = None
+        if e and tx.payment_created:
+            await db.delete(e)
+    if tx.vendor_payment_id:
+        p = await db.get(VendorPayment, tx.vendor_payment_id)
+        tx.vendor_payment_id = None
+        if p and tx.payment_created:
+            bills = [a.bill_id for a in p.allocations]
+            await db.delete(p)
+            await db.flush()
+            for bid in bills:
+                await recalc_bill_status(db, bid)
+    tx.status, tx.matched_at, tx.payment_created, tx.auto_matched = "unclassified", None, False, False
+    await db.commit()
+    return await _tx_out(tx, db)
+
+
+@router.get("/transactions/{tx_id}/withdrawal-suggestions")
+async def tx_withdrawal_suggestions(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return await bm.withdrawal_suggestions(db, await _get_tx(tx_id, db))
+
+
+@router.get("/vendors/{vendor_id}/open-bills")
+async def vendor_open_bills(vendor_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return await bm.open_bills_oldest_first(db, vendor_id)
+
+
+@router.put("/transactions/{tx_id}/vendor", response_model=TransactionOut)
+async def set_transaction_vendor(tx_id: uuid.UUID, payload: VendorAssignIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Attribue le fournisseur d'un retrait ; avec remember, les autres retraits du meme beneficiaire suivent."""
+    tx = await _get_tx(tx_id, db)
+    if tx.status == "matched":
+        raise HTTPException(status_code=400, detail="Annulez d'abord l'association")
+    tx.vendor_id = payload.vendor_id
+    tx.vendor_source = "manual" if payload.vendor_id else None
+    if payload.vendor_id and payload.remember:
+        await _remember_vendor(db, tx.payee or tx.description, payload.vendor_id, payload.category_id)
+    await db.commit()
+    return await _tx_out(tx, db)
 
 
 # ── Regles beneficiaire -> compagnie ─────────────────────────────────────────
@@ -675,10 +903,13 @@ async def list_rules(db: AsyncSession = Depends(get_db), _: User = Depends(get_c
     out = []
     for r in rules:
         n = 0
-        for t in (await db.execute(select(BankTransaction.payee).where(BankTransaction.company_id == r.company_id))).scalars().all():
+        col, val = (BankTransaction.company_id, r.company_id) if r.company_id else (BankTransaction.vendor_id, r.vendor_id)
+        for t in (await db.execute(select(BankTransaction.payee).where(col == val))).scalars().all():
             n += bm.payee_key(t) == r.payee_key
-        out.append({"id": str(r.id), "payee": r.payee_label, "company_id": str(r.company_id),
-                    "company_name": names.get(r.company_id, ""), "transactions": n, "created_at": r.created_at})
+        vendor = await db.get(Vendor, r.vendor_id) if r.vendor_id else None
+        out.append({"id": str(r.id), "payee": r.payee_label, "company_id": str(r.company_id) if r.company_id else None,
+                    "company_name": names.get(r.company_id, ""), "vendor_id": str(r.vendor_id) if r.vendor_id else None,
+                    "vendor_name": vendor.name if vendor else None, "transactions": n, "created_at": r.created_at})
     return out
 
 

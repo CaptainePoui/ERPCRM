@@ -88,6 +88,12 @@ class BankTransaction(Base):
     ai_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
     ai_confidence: Mapped[int | None] = mapped_column(Integer)
     ai_note: Mapped[str | None] = mapped_column(Text)
+    # Retraits (TASK-042.4) : fournisseur reconnu/attribue, et ce qui explique le retrait -- une depense
+    # ou un paiement de factures fournisseurs (existant, ou cree par l'association : payment_created)
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="SET NULL"))
+    vendor_source: Mapped[str | None] = mapped_column(String(10))          # manual | rule | name
+    expense_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"))
+    vendor_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendor_payments.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
@@ -100,5 +106,8 @@ class BankPayeeRule(Base):
     # Beneficiaire normalise (minuscules, sans accents ni ponctuation) -- unique
     payee_key: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     payee_label: Mapped[str] = mapped_column(String(255), nullable=False)
-    company_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
+    # Depot -> compagnie (client) ; retrait -> fournisseur (+ compte de depense habituel). Une des deux.
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"))
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="CASCADE"))
+    category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

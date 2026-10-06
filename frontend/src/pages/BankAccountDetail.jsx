@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
+import { useRefs, VendorPicker, CategorySelect, AllocationTable, allocList, allocSum, computeTaxes, TAX_CODES, TAX_MODES } from './purchases/common'
 import { IconBank, IconCalendar, IconSearch, IconSettings } from '../components/Icons'
 import {
   ACCOUNT_TYPES, C, EMPTY, fmtDate, fmtMoney,
@@ -386,6 +387,131 @@ function DropImport({ accountId, onImported }) {
   )
 }
 
+// Retraits (TASK-042.4) : lier une depense / un paiement deja enregistre (jamais recreer : double compte),
+// payer des factures fournisseurs (les plus vieilles d'abord), ou enregistrer une nouvelle depense.
+function WithdrawalModal({ tx, onClose, onDone }) {
+  const refs = useRefs()
+  const amount = -tx.amount
+  const [sugg, setSugg] = useState(null)
+  const [mode, setMode] = useState('bills')         // bills | expense
+  const [grouped, setGrouped] = useState(false)
+  const [vendorId, setVendorId] = useState(tx.vendor_id)
+  const [bills, setBills] = useState([])
+  const [alloc, setAlloc] = useState({})
+  const [exp, setExp] = useState({ category_id: null, description: tx.payee || tx.description || '', tax_mode: 'inclusive', tax_code: 'tps_tvq' })
+  const [remember, setRemember] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(() => { api.get(`/v1/bank/transactions/${tx.id}/withdrawal-suggestions`).then(r => setSugg(r.data)) }, [tx.id])
+  useEffect(() => {
+    setAlloc({})
+    if (grouped) api.get('/v1/purchases/bills/open').then(r => setBills(r.data.map(b => ({ ...b, balance: b.balance }))))
+    else if (vendorId) api.get(`/v1/bank/vendors/${vendorId}/open-bills`).then(r => setBills(r.data.map(b => ({ ...b, vendor_name: '' }))))
+    else setBills([])
+  }, [vendorId, grouped])
+  useEffect(() => {
+    const v = refs.vendors.find(x => x.id === vendorId)
+    if (v?.default_category_id) setExp(e => ({ ...e, category_id: e.category_id || v.default_category_id }))
+  }, [vendorId, refs.vendors])
+
+  const allocated = allocSum(alloc)
+  function oldestFirst() {
+    const n = {}; let left = amount
+    ;[...bills].sort((a, b) => a.bill_date.localeCompare(b.bill_date)).forEach(b => {
+      if (left > 0.004) { const v = Math.min(b.balance, left); n[b.id] = v.toFixed(2); left = Math.round((left - v) * 100) / 100 }
+    })
+    setAlloc(n)
+  }
+  async function submit(body) {
+    setSaving(true); setError(null)
+    try { await api.post(`/v1/bank/transactions/${tx.id}/match-withdrawal`, { remember_payee: remember, ...body }); await onDone() }
+    catch (e) { setError(errText(e)) } finally { setSaving(false) }
+  }
+  const box = { border: `1px solid ${C.border}`, borderRadius: 8, padding: 10 }
+  const t = computeTaxes([[amount, exp.tax_code]], exp.tax_mode)
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ width: 820, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto' }}>
+        <h3 className="modal-title">Associer le retrait de {fmtMoney(amount)} du {fmtD(tx.posted_date)}</h3>
+        <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>
+
+        <div style={{ fontWeight: 600, fontSize: 14 }}>Déjà enregistré dans ERPCRM</div>
+        {!sugg && <div style={{ fontSize: 13, color: C.muted }}>Recherche...</div>}
+        {sugg && !sugg.expenses.length && !sugg.vendor_payments.length && <div style={{ fontSize: 13, color: C.faint }}>Aucune dépense ni aucun paiement du même montant à ±15 jours.</div>}
+        {sugg?.expenses.map(e => (
+          <div key={e.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13 }}><strong>Dépense</strong> du {fmtD(e.date)} · {e.category_name || 'sans compte'}{e.vendor_name ? ` · ${e.vendor_name}` : ''} · {fmtMoney(e.amount)}
+              <div style={{ color: C.muted, fontSize: 12 }}>{e.description || EMPTY} · écart {e.gap} j</div></div>
+            <button className="btn-primary" disabled={saving} onClick={() => submit({ expense_id: e.id })}>Lier</button>
+          </div>
+        ))}
+        {sugg?.vendor_payments.map(p => (
+          <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <div style={{ fontSize: 13 }}><strong>Paiement fournisseur</strong> du {fmtD(p.date)} · {p.payee || EMPTY} · {fmtMoney(p.amount)}
+              <div style={{ color: C.muted, fontSize: 12 }}>Factures {p.bill_numbers.join(', ') || EMPTY} · écart {p.gap} j</div></div>
+            <button className="btn-primary" disabled={saving} onClick={() => submit({ vendor_payment_id: p.id })}>Lier</button>
+          </div>
+        ))}
+
+        <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+          <button className={`filter-tab${mode === 'bills' ? ' active' : ''}`} onClick={() => setMode('bills')}>Payer des factures fournisseurs</button>
+          <button className={`filter-tab${mode === 'expense' ? ' active' : ''}`} onClick={() => setMode('expense')}>Enregistrer une dépense</button>
+        </div>
+
+        {mode === 'bills' && (
+          <div style={box}>
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+              {!grouped && <div style={{ minWidth: 260, flex: 1 }}><VendorPicker vendors={refs.vendors} value={vendorId} onCreated={refs.reload} onChange={setVendorId} /></div>}
+              <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12 }}>
+                <input type="checkbox" checked={grouped} onChange={e => setGrouped(e.target.checked)} /> Paiement groupé (ex. carte de crédit : factures de plusieurs fournisseurs)
+              </label>
+            </div>
+            {(grouped || vendorId) && (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '4px 0 8px' }}>
+                  <span style={{ fontSize: 13 }}>Réparti : <strong>{fmtMoney(allocated)}</strong> sur {fmtMoney(amount)}</span>
+                  <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} disabled={!bills.length} onClick={oldestFirst}>Appliquer aux plus vieilles factures d'abord</button>
+                </div>
+                <AllocationTable bills={bills} alloc={alloc} setAlloc={setAlloc} showVendor={grouped} />
+                <div style={{ textAlign: 'right', marginTop: 8 }}>
+                  <button className="btn-primary" disabled={saving || allocated <= 0 || allocated > amount + 0.005}
+                    onClick={() => submit({ bill_allocations: allocList(alloc), payee_label: grouped ? (tx.payee || tx.description) : null })}>Enregistrer le paiement</button>
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        {mode === 'expense' && (
+          <div style={box}>
+            <div className="form-grid">
+              <VendorPicker vendors={refs.vendors} value={vendorId} onCreated={refs.reload} onChange={setVendorId} />
+              <div className="form-group"><label>Compte de dépense</label><CategorySelect categories={refs.categories} value={exp.category_id} onChange={v => setExp({ ...exp, category_id: v })} /></div>
+              <div className="form-group"><label>Le montant du relevé est</label><select value={exp.tax_mode} onChange={e => setExp({ ...exp, tax_mode: e.target.value })}>{TAX_MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+              <div className="form-group"><label>Taxes payées</label><select value={exp.tax_code} onChange={e => setExp({ ...exp, tax_code: e.target.value })}>{TAX_CODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+            </div>
+            <div className="form-group"><label>Description</label><input value={exp.description} onChange={e => setExp({ ...exp, description: e.target.value })} /></div>
+            <div style={{ fontSize: 13, color: C.muted }}>Sous-total {fmtMoney(t.subtotal)} · TPS {fmtMoney(t.tps)} · TVQ {fmtMoney(t.tvq)} · Total {fmtMoney(t.total)}</div>
+            <div style={{ textAlign: 'right', marginTop: 8 }}>
+              <button className="btn-primary" disabled={saving || exp.tax_mode !== 'inclusive'}
+                title={exp.tax_mode !== 'inclusive' ? 'Le montant du relevé contient déjà les taxes' : undefined}
+                onClick={() => submit({ new_expense: { vendor_id: vendorId, ...exp } })}>Enregistrer la dépense</button>
+            </div>
+          </div>
+        )}
+
+        <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> Retenir ce bénéficiaire pour ce fournisseur (prochains relevés)
+        </label>
+        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+        <div className="modal-actions"><button className="btn-secondary" onClick={onClose}>Fermer</button></div>
+      </div>
+    </div>
+  )
+}
+
 function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [sub, setSub] = useState('all')            // all | recognized
   const [excluded, setExcluded] = useState(false)
@@ -397,12 +523,13 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [desc, setDesc] = useState(true)
   const [selected, setSelected] = useState(new Set())
   const [matching, setMatching] = useState(null)
+  const [matchingOut, setMatchingOut] = useState(null)
   const [payeeTx, setPayeeTx] = useState(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
 
   const unclassified = transactions.filter(t => t.status === 'unclassified')
-  const recognized = unclassified.filter(t => t.company_id)
+  const recognized = unclassified.filter(t => t.company_id || (t.vendor_id && t.vendor_source !== 'name'))
   const base = excluded ? transactions.filter(t => t.status === 'excluded') : sub === 'recognized' ? recognized : unclassified
   const q = search.trim().toLowerCase()
   const rows = base
@@ -424,6 +551,12 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   }
   async function validateOne(t) {
     const s = t.suggestion
+    if (t.amount < 0) {
+      await api.post(`/v1/bank/transactions/${t.id}/match-withdrawal`, s.kind === 'expense' ? { expense_id: s.id }
+        : s.kind === 'vendor_payment' ? { vendor_payment_id: s.id } : { bill_allocations: s.allocations })
+      await onChanged()
+      return
+    }
     await api.post(`/v1/bank/transactions/${t.id}/match`, s.kind === 'payment'
       ? { client_payment_id: s.id }
       : { allocations: (s.allocations || [{ invoice_id: s.id, amount: s.balance }]).map(a => ({ invoice_id: a.invoice_id, amount: a.amount })) })
@@ -438,6 +571,10 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       setMsg(`${r.data.auto_matched} associée(s) automatiquement${r.data.sent_to_ai ? ` · ${r.data.sent_to_ai} confiée(s) à l'IA locale` : ''}`)
       await onChanged()
     } finally { setBusy(false) }
+  }
+  async function acceptVendor(t) {
+    await api.put(`/v1/bank/transactions/${t.id}/vendor`, { vendor_id: t.vendor_id, remember: true })
+    await onChanged()
   }
   async function acceptAi(t) {
     await api.put(`/v1/bank/transactions/${t.id}/company`, { company_id: t.ai_company_id, remember: true })
@@ -497,6 +634,21 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     </div>
                   )}
                   {!t.payee && t.reference && <div style={{ fontSize: 12, color: C.muted }}>Réf. : {t.reference}</div>}
+                  {t.amount < 0 && t.vendor_id && (
+                    <div style={{ fontSize: 12, marginTop: 2 }}>
+                      {t.vendor_source === 'name'
+                        ? <span style={{ color: '#6D28D9' }}>Fournisseur probable : <strong>{t.vendor_name}</strong> (nom du bénéficiaire)
+                            <button className="btn-secondary" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 6 }} onClick={() => acceptVendor(t)}>Accepter</button></span>
+                        : <span style={{ color: C.green, fontWeight: 600 }}>→ {t.vendor_name}<span style={{ color: C.faint, fontWeight: 400 }}>{t.vendor_source === 'rule' ? ' (reconnu)' : ''}</span></span>}
+                    </div>
+                  )}
+                  {t.amount < 0 && t.suggestion && (
+                    <div style={{ fontSize: 12, color: C.muted }}>
+                      {t.suggestion.kind === 'expense' ? `dépense déjà enregistrée du ${fmtD(t.suggestion.date)} (${t.suggestion.category_name || 'sans compte'})`
+                        : t.suggestion.kind === 'vendor_payment' ? `paiement fournisseur déjà enregistré du ${fmtD(t.suggestion.date)}`
+                        : `factures ${t.suggestion.bill_numbers.join(', ')} (la plus vieille d'abord)`}
+                    </div>
+                  )}
                   {!t.company_id && t.ai_status === 'pending' && (
                     <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>
                       IA locale : {t.ai_queue_position === 1 ? 'analyse en cours' : `en file d'attente (n° ${t.ai_queue_position})`}
@@ -522,8 +674,8 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {t.status === 'unclassified' && t.amount > 0 && t.suggestion && <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12, marginRight: 6 }} onClick={() => validateOne(t)}>Valider</button>}
-                  {t.status === 'unclassified' && t.amount > 0 && <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => setMatching(t)}>Associer</button>}
+                  {t.status === 'unclassified' && t.suggestion && <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12, marginRight: 6 }} onClick={() => validateOne(t)}>Valider</button>}
+                  {t.status === 'unclassified' && <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => t.amount > 0 ? setMatching(t) : setMatchingOut(t)}>Associer</button>}
                 </td>
               </tr>
             ))}
@@ -540,6 +692,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       </div>
       <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
       {matching && <MatchModal tx={matching} onClose={() => setMatching(null)} onDone={async () => { setMatching(null); await onChanged() }} />}
+      {matchingOut && <WithdrawalModal tx={matchingOut} onClose={() => setMatchingOut(null)} onDone={async () => { setMatchingOut(null); await onChanged() }} />}
       {payeeTx && <PayeeModal tx={payeeTx} onClose={() => setPayeeTx(null)} onDone={async () => { setPayeeTx(null); await onChanged() }} />}
     </div>
   )
@@ -559,7 +712,8 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
     .sort((a, b) => b.posted_date.localeCompare(a.posted_date))
   const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
   async function unmatch(t) {
-    if (!confirm(`Annuler l'association du dépôt de ${fmtMoney(t.amount)} (${t.company_name}) ? ${t.payment_created ? "L'encaissement créé sera supprimé et les factures redeviendront à payer." : "Le paiement existant sera seulement délié."}`)) return
+    const what = t.amount > 0 ? `du dépôt de ${fmtMoney(t.amount)} (${t.company_name})` : `du retrait de ${fmtMoney(-t.amount)}`
+    if (!confirm(`Annuler l'association ${what} ? ${t.payment_created ? "Ce qui a été créé par l'association (encaissement, dépense ou paiement fournisseur) sera supprimé." : "L'élément existant sera seulement délié."}`)) return
     await api.post(`/v1/bank/transactions/${t.id}/unmatch`)
     await onChanged()
   }
@@ -584,7 +738,9 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
               <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>{t.reference || ''}</td>
-                <td style={{ padding: '10px 8px' }}>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : {t.company_name}</div></td>
+                <td style={{ padding: '10px 8px' }}>{t.amount > 0
+                  ? <>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : {t.company_name}</div></>
+                  : <>{t.withdrawal_label || 'Retrait'}</>}</td>
                 <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance{t.auto_matched && <div style={{ fontSize: 11, color: C.muted }}>automatiquement (sûre)</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>

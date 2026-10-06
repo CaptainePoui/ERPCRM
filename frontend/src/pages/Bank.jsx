@@ -609,14 +609,14 @@ export function RulesModal({ onClose }) {
       <div className="modal-box" style={{ width: 700, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
         <h3 className="modal-title" style={{ margin: 0 }}>Règles de transaction</h3>
         <div style={{ fontSize: 13, color: C.muted }}>
-          Une règle attribue automatiquement les lignes d'un bénéficiaire à une compagnie (onglet « Reconnu ») — elle propose, vous validez.
+          Une règle reconnaît automatiquement un bénéficiaire : le client de ses dépôts (onglet « Reconnu ») et le fournisseur de ses retraits.
           Pour en créer une : cliquez sur le nom d'un bénéficiaire dans les transactions non classées.
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, textTransform: 'uppercase', borderBottom: `1px solid ${C.border}` }}>
               <th style={{ padding: 8 }}>Bénéficiaire du relevé</th>
-              <th style={{ padding: 8 }}>Compagnie</th>
+              <th style={{ padding: 8 }}>Client (dépôts) / Fournisseur (retraits)</th>
               <th style={{ padding: 8, textAlign: 'right' }}>Lignes</th>
               <th style={{ padding: 8 }}></th>
             </tr>
@@ -630,7 +630,7 @@ export function RulesModal({ onClose }) {
                 <td style={{ padding: 8, minWidth: 220 }}>
                   {editing === r.id
                     ? <Autocomplete items={companies} value={{ id: r.company_id, label: r.company_name }} onSelect={c => change(r, c)} openOnFocus autoFocus />
-                    : r.company_name}
+                    : <>{r.company_name || ''}{r.vendor_name && <div style={{ fontSize: 12, color: C.muted }}>{r.company_name ? 'Fournisseur : ' : ''}{r.vendor_name}{!r.company_name && ' (fournisseur)'}</div>}</>}
                 </td>
                 <td style={{ padding: 8, textAlign: 'right' }}>{r.transactions}</td>
                 <td style={{ padding: 8, textAlign: 'right', whiteSpace: 'nowrap' }}>
