@@ -89,6 +89,8 @@ class TransactionOut(BaseModel):
     ai_company_name: str | None = None
     ai_confidence: int | None = None
     ai_note: str | None = None
+    ai_queue_position: int | None = None    # place dans la file de l'IA (1 = la prochaine)
+    ai_eta_seconds: int | None = None       # attente estimee
     model_config = {"from_attributes": True}
 
 
@@ -447,7 +449,15 @@ async def list_transactions(account_id: uuid.UUID, status_filter: str = "unclass
     if status_filter != "all":
         q = q.where(BankTransaction.status == status_filter)
     txs = (await db.execute(q.order_by(BankTransaction.posted_date.desc(), BankTransaction.created_at.desc()))).scalars().all()
-    return [await _tx_out(t, db) for t in txs]
+    out = [await _tx_out(t, db) for t in txs]
+    # Decompte de la file de l'IA (meme ordre que services/bank_ai_poller.py, tous comptes confondus)
+    from app.services.bank_ai_poller import QUEUE_ORDER, SECONDS_PER_DEPOSIT
+    queue = list((await db.execute(select(BankTransaction.id).where(BankTransaction.ai_status == "pending").order_by(*QUEUE_ORDER))).scalars().all())
+    pos = {tid: k + 1 for k, tid in enumerate(queue)}
+    for o in out:
+        if o.id in pos:
+            o.ai_queue_position, o.ai_eta_seconds = pos[o.id], pos[o.id] * SECONDS_PER_DEPOSIT
+    return out
 
 
 async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = True) -> TransactionOut:

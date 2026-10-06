@@ -29,7 +29,10 @@ from app.models.invoice import Invoice
 
 log = logging.getLogger("bank_ai_poller")
 
-_POLL_INTERVAL = 60
+_POLL_INTERVAL = 15            # verification de la file (requete legere) ; l'IA ne tourne que s'il y a du travail
+SECONDS_PER_DEPOSIT = 30       # mesure du 2026-10-05 (~27 s) -- sert au decompte affiche
+# File : le plus vieil import d'abord (demande de Philippe, 2026-10-06), puis la date du releve
+QUEUE_ORDER = (BankTransaction.created_at, BankTransaction.posted_date, BankTransaction.id)
 _BATCH = 20          # depots confies a l'IA par passage (un par appel)
 _TIMEOUT = 900
 
@@ -116,7 +119,7 @@ async def run_bank_ai_once() -> int:
     async with AsyncSessionLocal() as db:
         # Comparaison des noms sur TOUS les depots en attente (instantane), l'IA ensuite par paquets
         txs = (await db.execute(select(BankTransaction).where(BankTransaction.ai_status == "pending")
-                                .order_by(BankTransaction.posted_date.desc()))).scalars().all()
+                                .order_by(*QUEUE_ORDER))).scalars().all()
         if not txs:
             return 0
         clients, examples = await _context(db)

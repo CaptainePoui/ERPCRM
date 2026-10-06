@@ -497,7 +497,12 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     </div>
                   )}
                   {!t.payee && t.reference && <div style={{ fontSize: 12, color: C.muted }}>Réf. : {t.reference}</div>}
-                  {!t.company_id && t.ai_status === 'pending' && <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>IA locale : analyse en cours…</div>}
+                  {!t.company_id && t.ai_status === 'pending' && (
+                    <div style={{ fontSize: 12, color: C.faint, marginTop: 2 }}>
+                      IA locale : {t.ai_queue_position === 1 ? 'analyse en cours' : `en file d'attente (n° ${t.ai_queue_position})`}
+                      {t.ai_eta_seconds ? ` — environ ${t.ai_eta_seconds < 60 ? `${t.ai_eta_seconds} s` : `${Math.ceil(t.ai_eta_seconds / 60)} min`}` : ''}
+                    </div>
+                  )}
                   {!t.company_id && t.ai_status === 'done' && (
                     <div style={{ fontSize: 12, marginTop: 2, color: '#6D28D9' }}>
                       {t.ai_company_id
@@ -632,6 +637,13 @@ export default function BankAccountDetail() {
     setLoading(false)
   }
   useEffect(() => { load() }, [id])
+  // Tant que l'IA locale a des depots en file, la page se met a jour toute seule (decompte)
+  const aiPending = transactions.some(t => t.ai_status === 'pending')
+  useEffect(() => {
+    if (!aiPending) return
+    const h = setInterval(load, 20000)
+    return () => clearInterval(h)
+  }, [aiPending, id])
 
   if (loading) return <div className="page"><div className="loading">Chargement...</div></div>
   const account = accounts.find(a => a.id === id)
