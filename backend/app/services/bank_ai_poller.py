@@ -45,11 +45,11 @@ async def _context(db) -> tuple[list[dict], list[str]]:
     paid = await invoice_balances(db, [i.id for i in open_invs])
     names = dict((await db.execute(select(Company.id, Company.name))).all())
     by_company: dict = {i.company_id: [] for i in invs}
-    for i in open_invs:
+    for i in sorted(open_invs, key=lambda x: x.issue_date):
         bal = i.total - (paid.get(i.id) or Decimal("0"))
         if bal > 0:
-            by_company[i.company_id].append(f"{bal:.2f}")
-    clients = [{"nom": names[c], **({"soldes_ouverts": b[:6]} if b else {})} for c, b in by_company.items() if c in names]
+            by_company[i.company_id].append({"date": str(i.issue_date), "solde": f"{bal:.2f}"})
+    clients = [{"nom": names[c], **({"factures_ouvertes": b[:6]} if b else {})} for c, b in by_company.items() if c in names]
     rules = (await db.execute(select(BankPayeeRule))).scalars().all()
     examples = [f"« {r.payee_label} » = {names.get(r.company_id, '?')}" for r in rules[:40]]
     return clients, examples
@@ -77,10 +77,12 @@ def _system_prompt(clients: list[dict], examples: list[str]) -> str:
     """Identique d'un depot a l'autre : Ollama garde ce debut en memoire et ne le relit pas."""
     return (
         "Tu aides une entreprise québécoise à identifier quel client a fait un dépôt bancaire.\n"
-        "Clients facturés dans la dernière année (nom, et soldes ouverts s'il y en a) :\n" + json.dumps(clients, ensure_ascii=False) + "\n"
+        "Clients facturés dans la dernière année (nom, et factures ouvertes avec date et solde s'il y en a) :\n" + json.dumps(clients, ensure_ascii=False) + "\n"
         + ("Bénéficiaires déjà reconnus par le passé :\n" + "\n".join(examples) + "\n" if examples else "")
         + "Choisis le client le plus probable dans la liste (nom EXACT tel qu'écrit) ou null si rien ne permet de le dire. "
-        "Un nom de bénéficiaire qui ressemble au nom du client, ou un montant égal à un solde ouvert, sont des indices forts. "
+        "Un nom de bénéficiaire qui ressemble au nom du client, ou un montant égal au solde d'une facture ouverte, sont des indices forts. "
+        "Un client paie habituellement entre 1 et 30 jours après la date de la facture, parfois plus tard s'il est en retard ; "
+        "une facture datée après le dépôt est peu probable (sauf paiement d'avance). "
         "Ne devine pas : certitude basse si tu n'es pas sûr.\n"
         "Réponds UNIQUEMENT en JSON : {\"client\": \"...\" ou null, \"certitude\": 0-100, \"raison\": \"courte phrase en français\"}"
     )

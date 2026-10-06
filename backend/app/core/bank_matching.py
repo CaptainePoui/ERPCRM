@@ -78,14 +78,16 @@ async def linked_payment_ids(db: AsyncSession) -> set:
 
 
 async def payment_dict(db: AsyncSession, cp: ClientPayment, company_name: str) -> dict:
-    nums = (await db.execute(
-        select(Invoice.number).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
+    rows = (await db.execute(
+        select(Invoice.number, Invoice.issue_date).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
         .where(PaymentAllocation.payment_id == cp.id).order_by(Invoice.number)
-    )).scalars().all()
+    )).all()
+    nums = [n for n, _ in rows]
     return {
         "id": str(cp.id), "company_id": str(cp.company_id), "company_name": company_name,
         "amount": float(cp.amount), "status": cp.status, "source": cp.source, "method_name": cp.method_name,
         "reference": cp.reference, "received_at": cp.received_at, "invoice_numbers": nums,
+        "invoice_date": min((d for _, d in rows), default=None),   # plus vieille facture couverte
     }
 
 
@@ -141,15 +143,21 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
         if tx.company_id and inv.company_id == tx.company_id:
             score += 40
         score += 30 * name_similarity(tx.payee or tx.description, names.get(inv.company_id))
+        # Delai habituel (Philippe, 2026-10-06) : le client paie 1 a 30 jours apres la facture,
+        # parfois plus tard s'il est en retard -- indice de classement, jamais une association seule
         age = (tx.posted_date - inv.issue_date).days
-        if -10 <= age <= 60:
-            score += 10
+        if 1 <= age <= 30:
+            score += 15
+        elif 0 <= age <= 120:
+            score += 8
+        elif -10 <= age < 0:
+            score += 2
         if score >= 40:
             d = invoice_dict(inv, paid.get(inv.id) or Decimal("0"), names.get(inv.company_id, ""))
             d["score"] = round(score)
             d["exact"] = bal == amount
             cands.append(d)
-    cands.sort(key=lambda d: (-d["score"], abs((tx.posted_date - d["issue_date"]).days)))
+    cands.sort(key=lambda d: (-d["score"], d["issue_date"]))   # a score egal : la plus vieille d'abord (client en retard)
     out["invoices"] = cands[:limit]
 
     # Combinaisons pour la compagnie connue (ou la plus probable)
@@ -178,12 +186,17 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
         return None
     s = await suggestions(db, tx)
     pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id)]
-    # Paiement recurrent (meme montant chaque mois) : celui du meme jour (+/- 2) est le bon s'il est seul
-    close = [p for p in pays if p["received_at"] and abs((p["received_at"] - tx.posted_date).days) <= 2]
-    if len(close) == 1:
-        return {"kind": "payment", **close[0]}
     if len(pays) == 1:
         return {"kind": "payment", **pays[0]}
+    if pays:
+        # Paiement recurrent (meme client, meme montant) : le plus proche du depot, s'il l'est nettement
+        # (10 jours au plus) ; a egalite le meme jour (deux paiements identiques), la plus vieille facture.
+        def gap(p):
+            return abs((p["received_at"] - tx.posted_date).days) if p["received_at"] else 9999
+        pays.sort(key=lambda p: (gap(p), p["invoice_date"] or date.max))
+        best, second = pays[0], pays[1]
+        if gap(best) <= 10 and (gap(second) > gap(best) or second["received_at"] == best["received_at"]):
+            return {"kind": "payment", **best}
     exact = [i for i in s["invoices"] if i["exact"] and i["company_id"] == str(tx.company_id)]
     if len(exact) == 1 and not pays:
         return {"kind": "invoice", **exact[0]}
