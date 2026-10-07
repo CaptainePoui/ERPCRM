@@ -166,6 +166,8 @@ export default function Settings() {
 
       <NumberingSection />
 
+      <InteracMailSection />
+
       {/* ── Commissions ── */}
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Rapport de commissions vendeurs</h3>
@@ -268,6 +270,77 @@ function NumberingSection() {
           </tbody>
         </table>
       </div>
+    </div>
+  )
+}
+
+// Avis de virement Interac par courriel (TASK-042.5) : donnent le nom de l'expediteur des depots
+// « VIREMENT INTERAC ». Mot de passe chiffre dans la base, jamais reaffiche.
+function InteracMailSection() {
+  const [f, setF] = useState(null)
+  const [password, setPassword] = useState('')
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/v1/settings/interac-mail').then(r => setF({ ...r.data, port: r.data.port || 993, folder: r.data.folder || 'INBOX' }))
+  useEffect(() => { load() }, [])
+  if (!f) return null
+  async function save() {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.put('/v1/settings/interac-mail', { host: f.host || '', port: Number(f.port) || 993, user: f.user || '', password: password || null, folder: f.folder || 'INBOX', enabled: f.enabled, since: f.since || null })
+      setF({ ...f, ...r.data }); setPassword(''); setMsg({ ok: true, text: 'Enregistré (mot de passe chiffré)' })
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.detail || 'Erreur' }) }
+    setBusy(false)
+  }
+  async function test() {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post('/v1/settings/interac-mail/test')
+      setMsg({ ok: true, text: `Connexion réussie (lecture seule) : ${r.data.interac_count} courriel(s) Interac trouvé(s).`, list: r.data.last_subjects })
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.detail || 'Connexion impossible' }) }
+    setBusy(false)
+  }
+  async function run() {
+    await api.post('/v1/settings/interac-mail/run')
+    setMsg({ ok: true, text: 'Lecture lancée en arrière-plan — l\'IA lit environ un avis par 30 secondes.' })
+    setTimeout(load, 5000)
+  }
+  const st = f.stats || {}
+  const field = (label, key, props = {}) => (
+    <div className="form-group" style={{ marginBottom: 0 }}><label>{label}</label>
+      <input value={f[key] ?? ''} onChange={e => setF({ ...f, [key]: e.target.value })} {...props} /></div>
+  )
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: '#111827' }}>Courriels Interac (dépôts)</h3>
+      <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0, marginBottom: 16 }}>
+        Le relevé de la banque n'indique que « VIREMENT INTERAC ». ERPCRM lit les avis d'Interac dans cette boîte
+        (lecture seule : aucun courriel marqué lu ni déplacé) pour connaître l'expéditeur de chaque dépôt.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        {field('Serveur (IMAP)', 'host', { placeholder: 'ex. mail.votredomaine.com' })}
+        {field('Port', 'port', { type: 'number' })}
+        {field('Adresse / utilisateur', 'user')}
+        <div className="form-group" style={{ marginBottom: 0 }}><label>Mot de passe</label>
+          <input type="password" value={password} autoComplete="new-password" placeholder={f.has_password ? '•••••••• (enregistré, chiffré)' : ''} onChange={e => setPassword(e.target.value)} /></div>
+        {field('Dossier', 'folder')}
+        {field('Lire depuis le (optionnel)', 'since', { type: 'date' })}
+      </div>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, marginTop: 12 }}>
+        <input type="checkbox" checked={!!f.enabled} onChange={e => setF({ ...f, enabled: e.target.checked })} /> Lecture automatique (toutes les 15 minutes)
+      </label>
+      <div style={{ display: 'flex', gap: 8, marginTop: 14, flexWrap: 'wrap' }}>
+        <button className="btn-primary" disabled={busy} onClick={save}>Enregistrer</button>
+        <button className="btn-secondary" disabled={busy || !f.has_password} onClick={test}>Tester la connexion</button>
+        <button className="btn-secondary" disabled={busy || !f.has_password || !f.enabled} onClick={run}>Lire maintenant</button>
+      </div>
+      {msg && <div style={{ marginTop: 10, fontSize: 13, color: msg.ok ? '#059669' : '#DC2626' }}>{msg.text}
+        {msg.list?.map((x, i) => <div key={i} style={{ color: '#6B7280' }}>• {x}</div>)}</div>}
+      {Object.keys(st).length > 0 && (
+        <div style={{ marginTop: 10, fontSize: 13, color: '#6B7280' }}>
+          Avis : {st.matched || 0} reliés à un dépôt · {st.parsed || 0} lus en attente du relevé · {st.pending || 0} à lire · {st.ignored || 0} ignorés (pas un virement reçu) · {st.failed || 0} illisibles
+        </div>
+      )}
     </div>
   )
 }

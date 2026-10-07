@@ -113,3 +113,26 @@ class BankPayeeRule(Base):
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="CASCADE"))
     category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class InteracNotice(Base):
+    """Avis de virement Interac recu par courriel (TASK-042.5) : donne le NOM de l'expediteur, que le
+    releve BNC n'a pas (« VIREMENT INTERAC »). Lu en lecture seule dans la boite configuree, analyse
+    par l'IA locale, puis relie au depot du meme montant (a quelques jours pres)."""
+    __tablename__ = "interac_notices"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
+    received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    subject: Mapped[str | None] = mapped_column(Text)
+    body: Mapped[str | None] = mapped_column(Text)
+    # pending (a analyser) | parsed | matched | ignored (pas un virement recu) | failed
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="pending")
+    sender_name: Mapped[str | None] = mapped_column(String(255))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    sent_date: Mapped[date | None] = mapped_column(Date)
+    message: Mapped[str | None] = mapped_column(Text)        # message du payeur (souvent un n° de facture)
+    reference: Mapped[str | None] = mapped_column(String(100))
+    error: Mapped[str | None] = mapped_column(Text)
+    bank_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_transactions.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

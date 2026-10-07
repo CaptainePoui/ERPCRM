@@ -21,6 +21,7 @@ from app.services.cdr_report_poller import run_cdr_report_poller
 from app.services.recurring_poller import run_recurring_poller
 from app.services.bank_ai_poller import run_bank_ai_poller
 from app.services.receipt_poller import run_receipt_poller
+from app.services.interac_poller import run_interac_poller
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
     recurring_task = asyncio.create_task(run_recurring_poller())
     bank_ai_task = asyncio.create_task(run_bank_ai_poller())
     receipt_task = asyncio.create_task(run_receipt_poller())
+    interac_task = asyncio.create_task(run_interac_poller())
     try:
         yield
     finally:
@@ -44,7 +46,8 @@ async def lifespan(app: FastAPI):
         recurring_task.cancel()
         bank_ai_task.cancel()
         receipt_task.cancel()
-        for t in (poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task):
+        interac_task.cancel()
+        for t in (poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task):
             try:
                 await t
             except asyncio.CancelledError:
