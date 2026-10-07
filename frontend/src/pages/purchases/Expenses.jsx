@@ -2,6 +2,14 @@ import { useState, useEffect } from 'react'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import { ReceiptDrop, openReceipt, LINE_CLASSES } from './Receipts'
+
+// Trombone dessine (l'emoji 📎 s'affiche en « Clippy » avec des yeux sous Windows)
+const Clip = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+    style={{ verticalAlign: '-2px', marginRight: 4 }} aria-label="Reçu joint">
+    <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+  </svg>
+)
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, Filters, TAX_CODES, TAX_MODES, FREQS, freqLabel, computeTaxes, useRefs, errText,
@@ -113,7 +121,7 @@ export function PurchaseExpenses() {
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(e.expense_date)}</td>
                   <td style={td}>{e.category_name || EMPTY}</td>
                   <td style={td}>{e.vendor_name || EMPTY}</td>
-                  <td style={{ ...td, color: C.muted, maxWidth: 280 }}>{e.receipt_id ? '📎 ' : ''}{e.description || EMPTY}{e.recurring_id ? ' ↺' : ''}{e.lines?.length > 1 ? ` (${e.lines.length} lignes)` : ''}</td>
+                  <td style={{ ...td, color: C.muted, maxWidth: 280 }}>{e.receipt_id ? <Clip /> : null}{e.description || EMPTY}{e.recurring_id ? ' ↺' : ''}{e.lines?.length > 1 ? ` (${e.lines.length} lignes)` : ''}</td>
                   <td style={{ ...td, fontSize: 12, color: C.muted }}>{e.paid_through || EMPTY}</td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{fmtMoney(e.total)}</td>
                 </tr>
@@ -136,7 +144,7 @@ export function PurchaseExpenses() {
             <Field label="Référence"><input value={edit.reference || ''} onChange={e => setEdit({ ...edit, reference: e.target.value })} /></Field>
           </div>
           {edit.lines?.length ? <ExpenseLinesFields f={edit} set={setEdit} refs={refs} /> : <ExpenseFields f={edit} set={setEdit} refs={refs} />}
-          {edit.receipt_id && <button type="button" className="btn-secondary" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => openReceipt(edit.receipt_id)}>📎 Voir le reçu</button>}
+          {edit.receipt_id && <button type="button" className="btn-secondary" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => openReceipt(edit.receipt_id)}><Clip />Voir le reçu</button>}
           <Field label="Notes"><textarea rows={2} value={edit.notes || ''} onChange={e => setEdit({ ...edit, notes: e.target.value })} /></Field>
           {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         </Modal>
