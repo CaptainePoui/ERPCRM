@@ -840,7 +840,9 @@ async def match_withdrawal(tx_id: uuid.UUID, payload: WithdrawalMatchIn, db: Asy
 
     tx.status, tx.matched_at, tx.payment_created = "matched", datetime.now(timezone.utc), created
     if vendor_id:
-        tx.vendor_id, tx.vendor_source = vendor_id, "manual"
+        # « match » = fournisseur venu de l'association : retire si on annule (un fournisseur choisi a la main reste)
+        if tx.vendor_id != vendor_id or tx.vendor_source not in ("manual", "rule"):
+            tx.vendor_id, tx.vendor_source = vendor_id, "match"
         if payload.remember_payee and (tx.payee or tx.description):
             await _remember_vendor(db, tx.payee or tx.description, vendor_id, category_id)
     await db.commit()
@@ -866,6 +868,10 @@ async def _unmatch_withdrawal(tx: BankTransaction, db: AsyncSession) -> Transact
             for bid in bills:
                 await recalc_bill_status(db, bid)
     tx.status, tx.matched_at, tx.payment_created, tx.auto_matched = "unclassified", None, False, False
+    if tx.vendor_source == "match":
+        tx.vendor_id, tx.vendor_source = None, None
+        await db.flush()
+        await bm.propose_vendors(db, [tx.id])   # regle ou nom, comme avant l'association
     await db.commit()
     return await _tx_out(tx, db)
 

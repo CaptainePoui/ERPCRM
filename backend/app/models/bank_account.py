@@ -91,7 +91,7 @@ class BankTransaction(Base):
     # Retraits (TASK-042.4) : fournisseur reconnu/attribue, et ce qui explique le retrait -- une depense
     # ou un paiement de factures fournisseurs (existant, ou cree par l'association : payment_created)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="SET NULL"))
-    vendor_source: Mapped[str | None] = mapped_column(String(10))          # manual | rule | name
+    vendor_source: Mapped[str | None] = mapped_column(String(10))          # manual | rule | name | match (venu d'une association)
     expense_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"))
     vendor_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendor_payments.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
