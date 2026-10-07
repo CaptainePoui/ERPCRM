@@ -1002,12 +1002,14 @@ async def create_expense_from_receipt(db: AsyncSession, doc: ReceiptDocument, r:
     category_id = category_id or cats.get((r.get("compte") or "").strip().lower()) or (vendor.default_category_id if vendor else None)
     tps, tvq, total = r["tps"] or Decimal("0.00"), r["tvq"] or Decimal("0.00"), r["total"]
     e = Expense(expense_date=r["date"], vendor_id=vendor_id, category_id=category_id,
-                description=" · ".join(l["description"] for l in r["lignes"] if l["description"])[:500] or None,
+                # Courte (Philippe, 2026-10-07) : « Facture ScopServ 2026-10-01 » -- le detail est dans les lignes
+                description=f"Facture {vendor.name if vendor else (r['fournisseur'] or '')} {r['date']}".strip(),
                 tax_mode="inclusive" if r["prix_taxes_incluses"] else "exclusive",
                 tax_code="tps_tvq" if any(l["taxable"] for l in r["lignes"]) else "aucune",
                 amount=total, subtotal=total - tps - tvq, tps_amount=tps, tvq_amount=tvq, total=total,
                 reference=r["numero"], notes=f"Créée depuis le reçu « {doc.filename} »", source="receipt", lines=[])
-    for n, l in enumerate(r["lignes"]):
+    from app.core.receipt_reader import aggregate_lines
+    for n, l in enumerate(aggregate_lines(r["lignes"])):
         e.lines.append(ExpenseLine(line_class=l["classe"], description=l["description"] or None, amount=l["montant"],
                                    tax_code="tps_tvq" if l["taxable"] else "aucune",
                                    category_id=cats.get(CLASS_DEFAULT_CATEGORY.get(l["classe"], "").lower()) or category_id, sort_order=n))

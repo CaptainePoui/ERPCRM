@@ -57,7 +57,6 @@ export function PurchaseExpenses() {
     .filter(e => !year || e.expense_date.startsWith(year))
     .filter(e => !q || [e.vendor_name, e.category_name, e.description, e.reference, e.paid_through, String(e.total)].some(x => (x || '').toLowerCase().includes(q)))
   const total = shown.reduce((s, e) => s + e.total, 0)
-  const taxes = shown.reduce((s, e) => s + e.tps_amount + e.tvq_amount, 0)
 
   function open(e) {
     setError('')
@@ -85,7 +84,7 @@ export function PurchaseExpenses() {
   return (
     <div className="page">
       <div className="page-header">
-        <div><h1 className="page-title">Dépenses</h1><p className="page-sub">{shown.length} dépense{shown.length > 1 ? 's' : ''} · {fmtMoney(total)} (dont {fmtMoney(taxes)} de taxes)</p></div>
+        <div><h1 className="page-title">Dépenses</h1><p className="page-sub">{shown.length} dépense{shown.length > 1 ? 's' : ''} · {fmtMoney(total)}</p></div>
         <button className="btn-primary" onClick={() => open(null)}>+ Nouvelle dépense</button>
       </div>
       <ReceiptDrop onExpenseCreated={load} />
@@ -105,10 +104,10 @@ export function PurchaseExpenses() {
           <table style={{ width: '100%', minWidth: 860, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={headRow}>
               <th style={th}>Date</th><th style={th}>Compte de dépense</th><th style={th}>Fournisseur</th><th style={th}>Description</th>
-              <th style={th}>Payé par</th><th style={thR}>Taxes</th><th style={thR}>Montant</th>
+              <th style={th}>Payé par</th><th style={thR}>Montant</th>
             </tr></thead>
             <tbody>
-              {rows === null && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
+              {rows === null && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
               {shown.slice(0, 500).map(e => (
                 <tr key={e.id} style={rowStyle} onClick={() => open(e)}>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(e.expense_date)}</td>
@@ -116,11 +115,10 @@ export function PurchaseExpenses() {
                   <td style={td}>{e.vendor_name || EMPTY}</td>
                   <td style={{ ...td, color: C.muted, maxWidth: 280 }}>{e.receipt_id ? '📎 ' : ''}{e.description || EMPTY}{e.recurring_id ? ' ↺' : ''}{e.lines?.length > 1 ? ` (${e.lines.length} lignes)` : ''}</td>
                   <td style={{ ...td, fontSize: 12, color: C.muted }}>{e.paid_through || EMPTY}</td>
-                  <td style={{ ...tdR, color: C.muted }}>{e.tps_amount + e.tvq_amount ? fmtMoney(e.tps_amount + e.tvq_amount) : EMPTY}</td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{fmtMoney(e.total)}</td>
                 </tr>
               ))}
-              {rows && !shown.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucune dépense.</td></tr>}
+              {rows && !shown.length && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucune dépense.</td></tr>}
             </tbody>
           </table>
           {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premières affichées — filtrez par année ou recherchez.</div>}

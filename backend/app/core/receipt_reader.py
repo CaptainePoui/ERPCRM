@@ -77,10 +77,22 @@ def extract_text(path: Path) -> tuple[str, str]:
     raise ReadError(f"Format non lu ({ext or 'sans extension'}) : PDF, image (JPEG, PNG…) ou texte")
 
 
+def compact(text: str) -> str:
+    """Texte « mis en page » (pdftotext -layout) : les longues suites d'espaces deviennent deux espaces
+    -- une facture Bell de 19 000 caracteres tient alors en entier (avant : coupee a 7 000, totaux perdus)."""
+    lines = [re.sub(r"[ \t]{3,}", "  ", l).rstrip() for l in text.splitlines()]
+    return "\n".join(l for l in lines if l.strip())
+
+
 def _system_prompt(categories: list[str], vendors: list[str]) -> str:
     classes = ", ".join(f"« {k} » ({v})" for k, v in LINE_CLASSES.items())
     return (
-        "Tu lis le texte d'un reçu ou d'une facture d'achat d'une entreprise québécoise (texte parfois mal lu par OCR).\n"
+        "Tu lis le texte d'un reçu ou d'une facture d'achat reçue par l'entreprise Simple IP inc. (Québec) — texte parfois mal lu par OCR. "
+        "Simple IP est le CLIENT (« Vendu à », « Facturé à ») : ce n'est jamais le fournisseur. Le fournisseur est l'entreprise qui émet la facture "
+        "(son nom, son adresse, son site web ou son courriel en tête de facture).\n"
+        "Factures de télécommunications (Bell, Vidéotron, Rogers…) : la dépense est celle de la PÉRIODE COURANTE (« Total du mois courant », "
+        "« Nouveaux frais »), jamais le solde antérieur, les paiements reçus ni le « montant total dû ». Les réductions et crédits sont des lignes "
+        "négatives. Un forfait, un service ou des frais mensuels sont des services (pas du matériel) ; un paiement d'appareil est du matériel.\n"
         f"Classes possibles pour chaque ligne : {classes}. Matériel = produit, pièce, équipement ; service = main-d'œuvre, "
         "abonnement, logiciel en ligne, télécommunication. Une ligne est taxable si la TPS/TVQ s'applique à elle ; "
         "si le reçu n'a aucune taxe, toutes les lignes sont non taxables. Assurance = prime d'assurance (pas de TPS/TVQ). "
@@ -100,14 +112,21 @@ def _system_prompt(categories: list[str], vendors: list[str]) -> str:
     )
 
 
-async def ai_extract(text: str, categories: list[str], vendors: list[str]) -> dict:
+async def ai_extract(text: str, categories: list[str], vendors: list[str], filename: str = "", examples: list[dict] | None = None) -> dict:
+    """examples : lectures deja validees (par le programme ou par Philippe) de factures du meme fournisseur --
+    l'IA « apprend par l'exemple » la structure de ses factures (lignes, classes, compte)."""
     if not settings.LOCAL_AI_URL:
         raise ReadError("IA locale non configurée (LOCAL_AI_URL)")
-    async with httpx.AsyncClient(timeout=900) as client:
+    user = f"Nom du fichier (indice) : {filename}\n" if filename else ""
+    for ex in (examples or [])[:2]:
+        user += ("Exemple VALIDÉ d'une facture précédente du même fournisseur (même structure attendue ; les montants "
+                 "changent, recopie ceux du nouveau reçu) :\n" + json.dumps(ex, ensure_ascii=False) + "\n")
+    user += "Texte du reçu :\n" + compact(text)[:24000]
+    async with httpx.AsyncClient(timeout=1200) as client:
         r = await client.post(f"{settings.LOCAL_AI_URL.rstrip('/')}/chat/completions", json={
             "model": settings.LOCAL_AI_MODEL, "temperature": 0, "reasoning_effort": "low",
             "messages": [{"role": "system", "content": _system_prompt(categories, vendors)},
-                         {"role": "user", "content": "Texte du reçu :\n" + text[:7000]}]})
+                         {"role": "user", "content": user}]})
         r.raise_for_status()
         content = r.json()["choices"][0]["message"]["content"]
     m = re.search(r"\{.*\}", content, re.S)
@@ -177,15 +196,48 @@ def check(r: dict) -> list[dict]:
     return out
 
 
+_TAX_LINE = re.compile(r"(?i)\b(tps|tvq|tvp|tvh|gst|qst|hst|taxes?)\b")
+
+
+def aggregate_lines(lines: list[dict]) -> list[dict]:
+    """Une ligne par classe (Philippe, 2026-10-07 : « je ne veux pas le détail de tous les articles ; la
+    partie taxable et la partie non taxable, mais pas chaque article »). L'IA lit quand meme chaque
+    article -- c'est ce qui permet de verifier les totaux -- mais la depense ne garde que les sommes."""
+    out: dict = {}
+    for l in lines:
+        k = (l["classe"], l["taxable"])
+        if k not in out:
+            out[k] = {"description": None, "classe": l["classe"], "taxable": l["taxable"], "montant": Decimal("0.00")}
+        out[k]["montant"] += l["montant"] or 0
+    return [l for l in out.values() if l["montant"] != 0]
+
+
 def settle(r: dict) -> dict:
     """Decide par le calcul (pas par l'IA) si les prix sont hors taxes ou taxes incluses ; si UNE seule
     ligne empeche les lignes de donner le sous-total et que le montant manquant rend aussi la TPS/TVQ
     exactes, propose la correction (a confirmer -- jamais appliquee sans verification)."""
+    # Les montants de TPS/TVQ ne sont pas des articles (l'IA les ajoute parfois comme lignes)
+    tax_amounts = {r["tps"], r["tvq"]} - {None, Decimal("0.00")}
+    r["lignes"] = [l for l in r["lignes"] if not (l["montant"] in tax_amounts and _TAX_LINE.search(l["description"] or ""))]
     lines = r["lignes"]
+    # Facture deja payee (« Solde à payer : 0,00 ») : le total de la facture = sous-total + taxes
+    if r["sous_total"] and (not r["total"] or r["total"] < r["sous_total"]):
+        r["total"] = r["sous_total"] + (r["tps"] or 0) + (r["tvq"] or 0)
     if not lines or any(l["montant"] is None for l in lines) or not r["total"]:
         return r
     s = sum((l["montant"] for l in lines), Decimal("0"))
     tax = (r["tps"] or 0) + (r["tvq"] or 0)
+    # Credits et reductions (facture de telecom) : si les taxes sont exactement celles des lignes, le
+    # sous-total et le total lus « avant credits » sont remplaces par ceux des lignes -- a confirmer
+    taxable = sum((l["montant"] for l in lines if l["taxable"]), Decimal("0"))
+    if (tax and taxable > 0 and abs(taxable * Decimal("0.05") - (r["tps"] or 0)) <= Decimal("0.02")
+            and abs(taxable * Decimal("0.09975") - (r["tvq"] or 0)) <= Decimal("0.02")
+            and abs(s + tax - r["total"]) > Decimal("0.02")):
+        r["correction"] = (f"Total lu {r['total']} $ ; les lignes ({s} $) et les taxes ({tax} $) donnent {s + tax} $ "
+                           f"(crédits ou réductions déduits) — corrigé, à confirmer")
+        r["sous_total"], r["total"] = s, s + tax
+        r["prix_taxes_incluses"] = False
+        return r
     if r["sous_total"] is not None and abs(s - r["sous_total"]) <= Decimal("0.02"):
         r["prix_taxes_incluses"] = False
     elif abs(s - r["total"]) <= Decimal("0.02") and tax:

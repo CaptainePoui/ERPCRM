@@ -38,6 +38,16 @@ function ReceiptPreview({ id, filename }) {
       : <a href={url} target="_blank" rel="noreferrer">Ouvrir {filename}</a>
 }
 
+function groupLines(lines) {
+  const out = {}
+  for (const l of lines) {
+    const k = `${l.classe}|${l.taxable}`
+    out[k] = out[k] || { description: '', classe: l.classe, taxable: l.taxable, montant: 0 }
+    out[k].montant = Math.round((out[k].montant + (parseFloat(l.montant) || 0)) * 100) / 100
+  }
+  return Object.values(out).filter(l => l.montant !== 0).map(l => ({ ...l, montant: l.montant.toFixed(2) }))
+}
+
 function ReviewModal({ doc, onClose, onDone }) {
   const refs = useRefs()
   const x = doc.extracted || {}
@@ -45,7 +55,8 @@ function ReviewModal({ doc, onClose, onDone }) {
     fournisseur: x.fournisseur || '', vendor_id: null, date: x.date || '', numero: x.numero || '',
     prix_taxes_incluses: !!x.prix_taxes_incluses, sous_total: x.sous_total ?? '', tps: x.tps ?? 0, tvq: x.tvq ?? 0, total: x.total ?? '',
     category_id: null, compte: x.compte || '',
-    lignes: (x.lignes?.length ? x.lignes : [{ description: '', classe: 'materiel_taxable', taxable: true, montant: '' }]).map(l => ({ ...l, montant: l.montant ?? '' })),
+    // Une ligne par classe, pas par article (Philippe, 2026-10-07)
+    lignes: x.lignes?.length ? groupLines(x.lignes) : [{ description: '', classe: 'materiel_taxable', taxable: true, montant: '' }],
   })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -94,7 +105,7 @@ function ReviewModal({ doc, onClose, onDone }) {
           <Field label="Compte de dépense"><CategorySelect categories={refs.categories} value={f.category_id} onChange={v => setF({ ...f, category_id: v })} /></Field>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead><tr style={headRow}><th style={th}>Classe</th><th style={th}>Article (note)</th><th style={thR}>Montant</th><th style={th}>Taxable</th><th style={th}></th></tr></thead>
+              <thead><tr style={headRow}><th style={th}>Classe</th><th style={th}>Note</th><th style={thR}>Montant</th><th style={th}>Taxable</th><th style={th}></th></tr></thead>
               <tbody>
                 {f.lignes.map((l, i) => (
                   <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
@@ -181,6 +192,10 @@ export function ReceiptDrop({ onExpenseCreated }) {
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={headRow}>
+                <th style={th}>Fichier déposé</th><th style={th}>État</th><th style={th}>Fournisseur et date lus</th>
+                <th style={thR}>Total lu</th><th style={thR}>Actions</th>
+              </tr></thead>
               <tbody>
                 {shown.slice(0, 200).map(d => {
                   const [sl, sc] = STATUS[d.status] || [d.status, C.muted]
