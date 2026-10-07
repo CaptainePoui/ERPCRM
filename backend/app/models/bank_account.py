@@ -94,6 +94,8 @@ class BankTransaction(Base):
     vendor_source: Mapped[str | None] = mapped_column(String(10))          # manual | rule | name | match (venu d'une association)
     expense_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"))
     vendor_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("vendor_payments.id", ondelete="SET NULL"))
+    # Versement au gouvernement (TASK-043.1) -- TPS/TVQ, impot, retenues
+    tax_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tax_payments.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 

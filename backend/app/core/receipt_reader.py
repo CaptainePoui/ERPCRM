@@ -26,8 +26,8 @@ from app.core.config import settings
 from app.models.purchases import LINE_CLASSES
 
 C = Decimal("0.01")
-TAXABLE_CLASSES = {"materiel_taxable", "service_taxable"}
-NON_TAXABLE_CLASSES = {"materiel_non_taxable", "service_non_taxable", "assurance"}
+TAXABLE_CLASSES = {"materiel_taxable", "service_taxable", "repas_representation"}
+NON_TAXABLE_CLASSES = {"materiel_non_taxable", "service_non_taxable", "assurance", "frais_bancaires", "salaires_commissions", "versement_gouvernement"}
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".gif", ".webp"}
 
 
@@ -84,7 +84,11 @@ def _system_prompt(categories: list[str], vendors: list[str]) -> str:
         f"Classes possibles pour chaque ligne : {classes}. Matériel = produit, pièce, équipement ; service = main-d'œuvre, "
         "abonnement, logiciel en ligne, télécommunication. Une ligne est taxable si la TPS/TVQ s'applique à elle ; "
         "si le reçu n'a aucune taxe, toutes les lignes sont non taxables. Assurance = prime d'assurance (pas de TPS/TVQ). "
-        "Frais de fournisseur = frais facturés par le fournisseur (livraison, frais de service, frais bancaires).\n"
+        "Frais de fournisseur = frais facturés par un fournisseur (livraison, frais de service). "
+        "Frais bancaires et de carte = frais de banque ou de traitement de cartes (pas de taxes). "
+        "Repas et représentation = restaurant, repas d'affaires, cadeaux à des clients. "
+        "Salaires, commissions et sous-traitants = rémunération d'une personne. "
+        "Versement au gouvernement = paiement à Revenu Québec ou à l'ARC (taxes, impôts, retenues).\n"
         f"Comptes de dépense possibles (choisis le plus juste, nom EXACT) : {json.dumps(categories, ensure_ascii=False)}\n"
         + (f"Fournisseurs déjà connus (réutilise le nom exact si c'est l'un d'eux) : {json.dumps(vendors[:150], ensure_ascii=False)}\n" if vendors else "")
         + "Recopie les montants tels qu'imprimés (ne calcule rien, ne devine pas un montant illisible : mets null). "
@@ -126,7 +130,7 @@ def normalize(x: dict) -> dict:
     lines = []
     for l in x.get("lignes") or []:
         cls = l.get("classe") if l.get("classe") in LINE_CLASSES else ("materiel_taxable" if l.get("taxable") else "materiel_non_taxable")
-        taxable = cls in TAXABLE_CLASSES or (cls == "frais_fournisseur" and bool(l.get("taxable")))
+        taxable = cls in TAXABLE_CLASSES or (cls not in NON_TAXABLE_CLASSES and bool(l.get("taxable")))
         lines.append({"description": (l.get("description") or "").strip()[:500], "classe": cls, "taxable": taxable,
                       "montant": money(l.get("montant"))})
     d = None

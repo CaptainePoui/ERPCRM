@@ -396,13 +396,93 @@ function DropImport({ accountId, onImported }) {
   )
 }
 
+// Versement au gouvernement (TASK-043.1) : rattache le retrait a une periode (TPS/TVQ d'un trimestre,
+// impot d'une annee, retenues d'un mois) ; au-dela du montant declare = penalites et interets.
+const GOV_KINDS = [['tps_tvq', 'TPS/TVQ (trimestre)'], ['impot_societe', 'Impôt des sociétés (année)'], ['das', 'Retenues à la source (mois)'], ['autre', 'Autre versement']]
+function guessKind(tx) {
+  const t = `${tx.payee || ''} ${tx.description || ''}`.toUpperCase()
+  if (t.includes('IMPOT')) return 'impot_societe'
+  if (t.includes('DEDUCTION')) return 'das'
+  return 'tps_tvq'
+}
+function GovernmentForm({ tx, onDone }) {
+  const [kind, setKind] = useState(guessKind(tx))
+  const [periods, setPeriods] = useState([])
+  const [sel, setSel] = useState('')
+  const [declared, setDeclared] = useState({ tps_due: '', tvq_due: '', amount_due: '' })
+  const [pv, setPv] = useState(null)
+  const [error, setError] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const loadPeriods = async (keep) => {
+    const r = await api.get('/v1/taxes/government/periods', { params: { kind } })
+    setPeriods(r.data)
+    // periode la plus probable : la derniere terminee avant le versement
+    const guess = keep || r.data.find(p => p.end < tx.posted_date)?.start || r.data[0]?.start || ''
+    setSel(guess)
+  }
+  useEffect(() => { loadPeriods() }, [kind])
+  const period = periods.find(p => p.start === sel)
+  useEffect(() => {
+    if (!period) { setPv(null); return }
+    setDeclared({ tps_due: period.tps_due ?? '', tvq_due: period.tvq_due ?? '', amount_due: period.declared && kind !== 'tps_tvq' ? period.due : '' })
+    api.post(`/v1/bank/transactions/${tx.id}/government-preview`, { kind, period_start: period.start, period_end: period.end }).then(r => setPv(r.data)).catch(e => setError(errText(e)))
+  }, [sel, periods])
+  async function saveDeclared() {
+    setError(null)
+    try {
+      await api.put('/v1/taxes/government/obligations', { kind, period_start: period.start, period_end: period.end,
+        tps_due: parseFloat(declared.tps_due) || 0, tvq_due: parseFloat(declared.tvq_due) || 0, amount_due: parseFloat(declared.amount_due) || 0 })
+      await loadPeriods(sel)
+    } catch (e) { setError(errText(e)) }
+  }
+  async function link() {
+    setSaving(true); setError(null)
+    try { await api.post(`/v1/bank/transactions/${tx.id}/match-government`, { kind, period_start: period.start, period_end: period.end }); await onDone() }
+    catch (e) { setError(errText(e)); setSaving(false) }
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="form-grid">
+        <div className="form-group"><label>Type de versement</label>
+          <select value={kind} onChange={e => setKind(e.target.value)}>{GOV_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+        <div className="form-group"><label>Période</label>
+          <select value={sel} onChange={e => setSel(e.target.value)}>
+            {periods.map(p => <option key={p.start} value={p.start}>{fmtD(p.start)} au {fmtD(p.end)}{p.declared ? ` — déclaré ${fmtMoney(p.due)}, reste ${fmtMoney(p.remaining)}` : p.paid ? ` — déjà payé ${fmtMoney(p.paid)}` : ''}</option>)}
+          </select></div>
+      </div>
+      {period && (
+        <div style={{ background: '#F9FAFB', borderRadius: 8, padding: 10, fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Montant déclaré pour cette période {period.declared ? '' : <span style={{ color: '#B45309', fontWeight: 400 }}>— pas encore saisi (depuis votre avis)</span>}</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+            {kind === 'tps_tvq' ? <>
+              <div className="form-group" style={{ marginBottom: 0 }}><label>TPS déclarée</label><input type="number" step="0.01" value={declared.tps_due} style={{ width: 120 }} onChange={e => setDeclared({ ...declared, tps_due: e.target.value })} /></div>
+              <div className="form-group" style={{ marginBottom: 0 }}><label>TVQ déclarée</label><input type="number" step="0.01" value={declared.tvq_due} style={{ width: 120 }} onChange={e => setDeclared({ ...declared, tvq_due: e.target.value })} /></div>
+            </> : <div className="form-group" style={{ marginBottom: 0 }}><label>Montant cotisé / dû</label><input type="number" step="0.01" value={declared.amount_due} style={{ width: 140 }} onChange={e => setDeclared({ ...declared, amount_due: e.target.value })} /></div>}
+            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={saveDeclared}>Enregistrer le déclaré</button>
+          </div>
+        </div>
+      )}
+      {pv && (
+        <div style={{ fontSize: 13 }}>
+          Ce versement de <strong>{fmtMoney(-tx.amount)}</strong> :
+          {' '}paie le dû <strong>{fmtMoney(pv.applied)}</strong>{kind === 'tps_tvq' ? ` (TPS ${fmtMoney(pv.tps)}, TVQ ${fmtMoney(pv.tvq)})` : ''}
+          {pv.penalty > 0 && <> · <strong style={{ color: C.red }}>pénalités et intérêts {fmtMoney(pv.penalty)}</strong> (non déductibles)</>}
+          {!pv.declared && <div style={{ color: '#B45309', fontSize: 12 }}>Sans montant déclaré, tout est compté comme paiement du dû ; saisissez le déclaré pour reconnaître les frais de retard.</div>}
+        </div>
+      )}
+      {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+      <div style={{ textAlign: 'right' }}><button className="btn-primary" disabled={!period || saving} onClick={link}>Rattacher le versement</button></div>
+    </div>
+  )
+}
+
 // Retraits (TASK-042.4) : lier une depense / un paiement deja enregistre (jamais recreer : double compte),
 // payer des factures fournisseurs (les plus vieilles d'abord), ou enregistrer une nouvelle depense.
 function WithdrawalModal({ tx, onClose, onDone, embedded }) {
   const refs = useRefs()
   const amount = -tx.amount
   const [sugg, setSugg] = useState(null)
-  const [mode, setMode] = useState('bills')         // bills | expense
+  const [mode, setMode] = useState(/REVENU QUEBEC|ARC -/i.test(`${tx.payee || ''} ${tx.description || ''}`) ? 'gov' : 'bills')   // bills | expense | gov
   const [grouped, setGrouped] = useState(false)
   const [vendorId, setVendorId] = useState(tx.vendor_id)
   const [bills, setBills] = useState([])
@@ -466,6 +546,7 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
         <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
           <button className={`filter-tab${mode === 'bills' ? ' active' : ''}`} onClick={() => setMode('bills')}>Payer des factures fournisseurs</button>
           <button className={`filter-tab${mode === 'expense' ? ' active' : ''}`} onClick={() => setMode('expense')}>Enregistrer une dépense</button>
+          <button className={`filter-tab${mode === 'gov' ? ' active' : ''}`} onClick={() => setMode('gov')}>Versement au gouvernement</button>
         </div>
 
         {mode === 'bills' && (
@@ -492,6 +573,8 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
           </div>
         )}
 
+        {mode === 'gov' && <div style={box}><GovernmentForm tx={tx} onDone={onDone} /></div>}
+
         {mode === 'expense' && (
           <div style={box}>
             <div className="form-grid">
@@ -500,7 +583,8 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
               <div className="form-group"><label>Classe de l'article</label>
                 <select value={exp.line_class} onChange={e => {
                   const c = e.target.value
-                  const tax = ['materiel_taxable', 'service_taxable'].includes(c) ? 'tps_tvq' : ['materiel_non_taxable', 'service_non_taxable', 'assurance'].includes(c) ? 'aucune' : exp.tax_code
+                  const tax = ['materiel_taxable', 'service_taxable', 'repas_representation'].includes(c) ? 'tps_tvq'
+                    : ['materiel_non_taxable', 'service_non_taxable', 'assurance', 'frais_bancaires', 'salaires_commissions', 'versement_gouvernement'].includes(c) ? 'aucune' : exp.tax_code
                   setExp({ ...exp, line_class: c, tax_code: tax })
                 }}>
                   <option value="">— Aucune —</option>
@@ -595,6 +679,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
               {d.linked.kind === 'client_payment' && <>Encaissement {d.linked.method} du {fmtD(d.linked.received_at)} · {fmtMoney(d.linked.amount)}{d.linked.created_by_link ? ' (créé par l\'association)' : ''}</>}
               {d.linked.kind === 'expense' && <>Dépense du {fmtD(d.linked.date)} · {d.linked.category || 'sans compte'}{d.linked.vendor ? ` · ${d.linked.vendor}` : ''} · {fmtMoney(d.linked.amount)} (TPS {fmtMoney(d.linked.tps)}, TVQ {fmtMoney(d.linked.tvq)}){d.linked.created_by_link ? ' — créée par l\'association' : ''}</>}
               {d.linked.kind === 'vendor_payment' && <>Paiement fournisseur du {fmtD(d.linked.date)} · {d.linked.payee} · {fmtMoney(d.linked.amount)}</>}
+              {d.linked.kind === 'government' && <>Versement — {d.linked.type}, période du {fmtD(d.linked.period_start)} au {fmtD(d.linked.period_end)} · paie le dû {fmtMoney(d.linked.applied)}{d.linked.tps || d.linked.tvq ? ` (TPS ${fmtMoney(d.linked.tps)}, TVQ ${fmtMoney(d.linked.tvq)})` : ''}{d.linked.penalty > 0 && <strong style={{ color: C.red }}> · pénalités et intérêts {fmtMoney(d.linked.penalty)}</strong>}</>}
               {(d.linked.items || []).map(i => <div key={i.id} style={{ color: C.muted }}>• {i.number || 'facture'} du {fmtD(i.date)}{i.vendor ? ` · ${i.vendor}` : ''} : {fmtMoney(i.amount)}</div>)}
             </div>
           </div>

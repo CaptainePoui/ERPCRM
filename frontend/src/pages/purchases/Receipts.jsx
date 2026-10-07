@@ -8,8 +8,10 @@ export const LINE_CLASSES = [
   ['materiel_taxable', 'Matériel taxable'], ['materiel_non_taxable', 'Matériel non taxable'],
   ['service_taxable', 'Service taxable'], ['service_non_taxable', 'Service non taxable'],
   ['frais_fournisseur', 'Frais de fournisseur'], ['assurance', 'Assurance'],
+  ['frais_bancaires', 'Frais bancaires et de carte'], ['repas_representation', 'Repas et représentation (taxes réclamables à 50 %)'],
+  ['salaires_commissions', 'Salaires, commissions et sous-traitants'], ['versement_gouvernement', 'Versement au gouvernement'],
 ]
-const TAXABLE_BY_DEFAULT = { materiel_taxable: true, service_taxable: true, frais_fournisseur: true }
+const TAXABLE_BY_DEFAULT = { materiel_taxable: true, service_taxable: true, frais_fournisseur: true, repas_representation: true }
 const STATUS = {
   pending: ['En file', C.muted], reading: ['Lecture du document…', '#2563EB'], analyzing: ['Analyse par l\'IA…', '#6D28D9'],
   created: ['Dépense créée', C.green], review: ['À vérifier', '#D97706'], failed: ['Échec', C.red], duplicate: ['Doublon', C.faint],

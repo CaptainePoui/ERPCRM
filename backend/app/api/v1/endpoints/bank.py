@@ -511,6 +511,13 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
         e = (await db.execute(select(Expense).where(Expense.id == t.expense_id).execution_options(populate_existing=True))).scalar_one_or_none()
         if e:
             out.withdrawal_label = "Dépense" + (f" — {e.category.name}" if e.category else "") + (f" · {e.vendor.name}" if e.vendor else "")
+    elif t.tax_payment_id:
+        from app.models.tax import TaxPayment
+        from app.core.government import KINDS
+        tp = await db.get(TaxPayment, t.tax_payment_id)
+        if tp:
+            out.withdrawal_label = f"Versement — {KINDS.get(tp.kind, tp.kind)} ({tp.period_start} au {tp.period_end})" + (
+                f" dont {tp.penalty_amount} $ de pénalités et intérêts" if tp.penalty_amount else "")
     elif t.vendor_payment_id:
         from app.models.purchases import VendorPayment
         p = (await db.execute(select(VendorPayment).where(VendorPayment.id == t.vendor_payment_id).execution_options(populate_existing=True))).scalar_one_or_none()
@@ -646,6 +653,15 @@ async def unmatch_transaction(tx_id: uuid.UUID, db: AsyncSession = Depends(get_d
     """Annule une association : supprime l'encaissement s'il a ete cree par l'association,
     sinon le delie (un paiement declare au portail redevient en attente)."""
     tx = await _get_tx(tx_id, db)
+    if tx.status == "matched" and tx.tax_payment_id:
+        from app.models.tax import TaxPayment
+        tp = await db.get(TaxPayment, tx.tax_payment_id)
+        tx.tax_payment_id = None
+        if tp:
+            await db.delete(tp)
+        tx.status, tx.matched_at, tx.payment_created, tx.auto_matched = "unclassified", None, False, False
+        await db.commit()
+        return await _tx_out(tx, db)
     if tx.status == "matched" and (tx.expense_id or tx.vendor_payment_id):
         return await _unmatch_withdrawal(tx, db)
     if tx.status != "matched" or not tx.client_payment_id:
@@ -921,6 +937,15 @@ async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db
             out["linked"] = {"kind": "expense", "created_by_link": tx.payment_created, "date": e.expense_date, "amount": float(e.total),
                              "vendor": e.vendor.name if e.vendor else None, "category": e.category.name if e.category else None,
                              "description": e.description, "tps": float(e.tps_amount), "tvq": float(e.tvq_amount), "id": str(e.id)}
+    elif tx.tax_payment_id:
+        from app.models.tax import TaxPayment
+        from app.core.government import KINDS
+        tp = await db.get(TaxPayment, tx.tax_payment_id)
+        if tp:
+            out["linked"] = {"kind": "government", "created_by_link": True, "type": KINDS.get(tp.kind, tp.kind),
+                             "period_start": tp.period_start, "period_end": tp.period_end, "date": tp.payment_date,
+                             "amount": float(-tx.amount), "tps": float(tp.tps_amount), "tvq": float(tp.tvq_amount),
+                             "applied": float(tp.tps_amount + tp.tvq_amount + tp.amount), "penalty": float(tp.penalty_amount), "notes": tp.notes}
     elif tx.vendor_payment_id:
         p = (await db.execute(select(VendorPayment).where(VendorPayment.id == tx.vendor_payment_id).execution_options(populate_existing=True))).scalar_one_or_none()
         if p:
@@ -937,6 +962,56 @@ async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db
             sg = await bm.withdrawal_suggestions(db, tx)
         out["suggestions"] = sg
     return out
+
+
+class GovernmentMatchIn(BaseModel):
+    kind: str
+    period_start: date
+    period_end: date
+
+
+async def _government_preview(db: AsyncSession, tx: BankTransaction, p: GovernmentMatchIn) -> dict:
+    from app.core.government import KINDS, obligation_status, split
+    if p.kind not in KINDS or p.period_end < p.period_start:
+        raise HTTPException(status_code=400, detail="Type ou période invalide")
+    st = await obligation_status(db, p.kind, p.period_start, p.period_end)
+    ratio = None
+    if p.kind == "tps_tvq" and not st["declared"]:      # sans montant declare : proportion TPS/TVQ calculee par ERPCRM
+        from app.api.v1.endpoints.taxes import _summary
+        sm = await _summary(db, p.period_start, p.period_end)
+        if sm["tps_net"] + sm["tvq_net"] > 0:
+            ratio = Decimal(str(sm["tps_net"])) / Decimal(str(sm["tps_net"] + sm["tvq_net"]))
+    return {**st, **split(-Decimal(tx.amount), st, p.kind, ratio), "kind_label": KINDS[p.kind]}
+
+
+@router.post("/transactions/{tx_id}/government-preview")
+async def government_preview(tx_id: uuid.UUID, p: GovernmentMatchIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tx = await _get_tx(tx_id, db)
+    if tx.amount >= 0:
+        raise HTTPException(status_code=400, detail="Seul un retrait est un versement")
+    return await _government_preview(db, tx, p)
+
+
+@router.post("/transactions/{tx_id}/match-government", response_model=TransactionOut)
+async def match_government(tx_id: uuid.UUID, p: GovernmentMatchIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Rattache un retrait a une obligation : paiement de taxe/impot cree (TPS/TVQ : alimente la colonne
+    « Payé » de la declaration), avec la part penalites et interets si le versement depasse le du."""
+    from app.models.tax import TaxPayment
+    tx = await _get_tx(tx_id, db)
+    if tx.status != "unclassified" or tx.amount >= 0:
+        raise HTTPException(status_code=400, detail="Seul un retrait non classé peut devenir un versement")
+    pv = await _government_preview(db, tx, p)
+    tp = TaxPayment(kind=p.kind, payment_date=tx.posted_date, period_start=p.period_start, period_end=p.period_end,
+                    tps_amount=Decimal(str(pv["tps"])), tvq_amount=Decimal(str(pv["tvq"])), amount=Decimal(str(pv["amount"])),
+                    penalty_amount=Decimal(str(pv["penalty"])), method="Banque", reference=tx.reference,
+                    notes=f"Retrait bancaire du {tx.posted_date} : {tx.description}" + (f" — {tx.payee}" if tx.payee else "")
+                    + ("" if pv["declared"] else " (montant déclaré non saisi)"),
+                    bank_transaction_id=tx.id, created_by=user.id)
+    db.add(tp)
+    await db.flush()
+    tx.tax_payment_id, tx.status, tx.matched_at, tx.payment_created = tp.id, "matched", datetime.now(timezone.utc), True
+    await db.commit()
+    return await _tx_out(tx, db, with_suggestion=False)
 
 
 @router.get("/transactions/{tx_id}/withdrawal-suggestions")

@@ -25,7 +25,7 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.settings import get_setting, set_setting
 from app.core.tax_reminders import FREQ_MONTHS, _add_months, deadline, complete_declared_tasks
 from app.models.invoice import Invoice
-from app.models.tax import TaxAdjustment, TaxPayment
+from app.models.tax import TaxAdjustment, TaxPayment, TaxObligation
 from app.models.purchases import Expense, ExpenseCategory, Bill, BillLine, VendorCredit
 from app.models.user import User
 
@@ -92,6 +92,18 @@ async def _purchase_credits(db: AsyncSession, start: date, end: date) -> tuple[D
         n += r[0]
         tps += sign * Decimal(r[1])
         tvq += sign * Decimal(r[2])
+    # Repas et representation : seulement 50 % des taxes reclamables (part des lignes taxables de cette classe)
+    from app.models.purchases import ExpenseLine, CLAIM_RATIO
+    excluded = _no_credit_categories()
+    for e in (await db.execute(select(Expense).where(Expense.expense_date >= start, Expense.expense_date <= end,
+                                                     (Expense.category_id.is_(None)) | (Expense.category_id.not_in(excluded)),
+                                                     Expense.lines.any(ExpenseLine.line_class.in_(list(CLAIM_RATIO)))))).scalars().all():
+        taxable = sum((l.amount for l in e.lines if l.tax_code != "aucune"), ZERO)
+        if not taxable:
+            continue
+        cut = sum((l.amount * (1 - CLAIM_RATIO[l.line_class]) for l in e.lines if l.line_class in CLAIM_RATIO and l.tax_code != "aucune"), ZERO) / taxable
+        tps -= (e.tps_amount * cut).quantize(Decimal("0.01"))
+        tvq -= (e.tvq_amount * cut).quantize(Decimal("0.01"))
     return tps, tvq, n
 
 
@@ -107,7 +119,7 @@ async def _summary(db: AsyncSession, start: date, end: date) -> dict:
     )).one()
     paid = (await db.execute(
         select(func.coalesce(func.sum(TaxPayment.tps_amount), 0), func.coalesce(func.sum(TaxPayment.tvq_amount), 0))
-        .where(TaxPayment.period_start == start, TaxPayment.period_end == end)
+        .where(TaxPayment.period_start == start, TaxPayment.period_end == end, TaxPayment.kind == "tps_tvq")
     )).one()
     cti, rti, purchase_count = await _purchase_credits(db, start, end)
     tps_net, tvq_net = Decimal(inv[2]) + Decimal(adj[0]) - cti, Decimal(inv[3]) + Decimal(adj[1]) - rti
@@ -153,7 +165,7 @@ async def period_report(start: date, end: date, db: AsyncSession = Depends(get_d
     )).scalars().all()
     adjs = (await db.execute(select(TaxAdjustment).where(TaxAdjustment.adjustment_date >= start, TaxAdjustment.adjustment_date <= end)
                              .order_by(TaxAdjustment.adjustment_date))).scalars().all()
-    pays = (await db.execute(select(TaxPayment).where(TaxPayment.period_start == start, TaxPayment.period_end == end)
+    pays = (await db.execute(select(TaxPayment).where(TaxPayment.period_start == start, TaxPayment.period_end == end, TaxPayment.kind == "tps_tvq")
                              .order_by(TaxPayment.payment_date))).scalars().all()
     return {
         "start": start, "end": end, "state": _state(start, end, lock, date.today()),
@@ -292,7 +304,8 @@ class TaxPaymentIn(BaseModel):
 def _pay_out(p: TaxPayment) -> dict:
     return {"id": str(p.id), "payment_date": p.payment_date, "period_start": p.period_start, "period_end": p.period_end,
             "tps_amount": float(p.tps_amount), "tvq_amount": float(p.tvq_amount), "method": p.method,
-            "reference": p.reference, "notes": p.notes}
+            "reference": p.reference, "notes": p.notes, "kind": p.kind, "amount": float(p.amount or 0),
+            "penalty_amount": float(p.penalty_amount or 0), "bank_transaction_id": str(p.bank_transaction_id) if p.bank_transaction_id else None}
 
 
 def _validate_pay(p: TaxPaymentIn) -> None:
@@ -337,3 +350,43 @@ async def delete_tax_payment(pay_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Paiement introuvable")
     await db.delete(p)
     await db.commit()
+
+
+# ── Montants declares et versements au gouvernement (TASK-043.1) ─────────────
+
+class ObligationIn(BaseModel):
+    kind: str
+    period_start: date
+    period_end: date
+    tps_due: float = 0
+    tvq_due: float = 0
+    amount_due: float = 0
+    notes: str | None = None
+
+
+@router.get("/government/periods")
+async def government_periods(kind: str, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Periodes proposees pour rattacher un versement, avec le declare, le paye et le reste du."""
+    from app.core.government import KINDS, period_options, obligation_status
+    if kind not in KINDS:
+        raise HTTPException(status_code=400, detail="Type de versement inconnu")
+    fiscal = int(await get_setting(db, "fiscal_year_start_month") or 1)
+    return [{"start": p["start"], "end": p["end"], **await obligation_status(db, kind, p["start"], p["end"])}
+            for p in period_options(kind, fiscal)]
+
+
+@router.put("/government/obligations")
+async def save_obligation(p: ObligationIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Saisit ou corrige le montant declare d'une periode (depuis l'avis de Revenu Quebec ou de l'ARC)."""
+    from app.core.government import KINDS, obligation_status
+    if p.kind not in KINDS or p.period_end < p.period_start:
+        raise HTTPException(status_code=400, detail="Type ou période invalide")
+    ob = (await db.execute(select(TaxObligation).where(TaxObligation.kind == p.kind, TaxObligation.period_start == p.period_start,
+                                                       TaxObligation.period_end == p.period_end))).scalar_one_or_none()
+    if ob is None:
+        ob = TaxObligation(kind=p.kind, period_start=p.period_start, period_end=p.period_end)
+        db.add(ob)
+    ob.tps_due, ob.tvq_due, ob.amount_due = Decimal(str(p.tps_due)), Decimal(str(p.tvq_due)), Decimal(str(p.amount_due))
+    ob.notes = p.notes
+    await db.commit()
+    return await obligation_status(db, p.kind, p.period_start, p.period_end)

@@ -80,7 +80,13 @@ LINE_CLASSES = {
     "materiel_taxable": "Matériel taxable", "materiel_non_taxable": "Matériel non taxable",
     "service_taxable": "Service taxable", "service_non_taxable": "Service non taxable",
     "frais_fournisseur": "Frais de fournisseur", "assurance": "Assurance",
+    # Ajoutees le 2026-10-07 (traitement fiscal different)
+    "frais_bancaires": "Frais bancaires et de carte",           # services financiers exoneres : aucune taxe
+    "repas_representation": "Repas et représentation",         # CTI/RTI reclamables a 50 % seulement
+    "salaires_commissions": "Salaires, commissions et sous-traitants",   # feuillets T4A/T5018
+    "versement_gouvernement": "Versement au gouvernement",     # pas une depense : taxes, impots, retenues
 }
+CLAIM_RATIO = {"repas_representation": Decimal("0.5")}          # part des taxes reclamable en CTI/RTI
 
 
 class ExpenseLine(Base):

@@ -5602,6 +5602,17 @@ Demande de Philippe : un onglet « Impôts et formulaires » avec ses menus, com
 
 ---
 
+## TASK-043.1 [x] Versements au gouvernement rattachés à une période (TPS/TVQ, impôt, retenues)
+Date de demande : 2026-10-07 (Philippe : « Versement au gouvernement… ça on pourrait l'associer à une taxe ou un impôt, et si la dépense est plus chère ça veut dire qu'il y a eu des frais de retard » ; « je vais te donner les rapports de taxe des anciennes années et les impôts » ; « oui ajoute tout »)
+Date(s) de travail : 2026-10-07
+
+- Migration 8bfd27dbcf5f (id généré, une seule tête, up/down testés) : `tax_obligations` (montant **déclaré** par période : TPS + TVQ d'un trimestre, montant d'une année d'impôt ou d'un mois de retenues — saisi depuis les avis, pas recalculé) ; `tax_payments` + `kind` (tps_tvq | impot_societe | das | autre), `amount`, `penalty_amount`, `bank_transaction_id` ; `bank_transactions.tax_payment_id`.
+- `app/core/government.py` : reste dû = déclaré − déjà payé ; un versement paie le reste dû, l'excédent = **pénalités et intérêts** (non déductibles) ; TPS/TVQ réparties selon le déclaré (sans déclaré : proportion calculée par ERPCRM, signalé) ; périodes proposées (trimestres, années d'imposition selon l'exercice, mois).
+- API : `GET /taxes/government/periods?kind=`, `PUT /taxes/government/obligations` ; `POST /bank/transactions/{id}/government-preview`, `POST …/match-government` (crée le paiement de taxe lié au retrait — TPS/TVQ : colonne « Payé » de la déclaration), annulation = suppression du paiement ; « Payé » de la déclaration TPS/TVQ ne compte que les versements TPS/TVQ.
+- Écran : fiche d'un retrait → « Versement au gouvernement » (type deviné du bénéficiaire : REVENU QUEBEC → TPS/TVQ, ARC IMPOTS → impôt, ARC DEDUCTIONS → retenues ; période la plus probable = la dernière terminée avant le versement), saisie du montant déclaré, aperçu « paie le dû / pénalités et intérêts », « Rattacher le versement ».
+- Preuve : versement Revenu Québec 1 712,76 $ (31 juillet 2026) — sans déclaré : tout paie le dû (TPS 576,44, TVQ 1 136,32) ; avec un déclaré fictif de 550 + 1 100 $ (test annulé) : dû 1 650 $, pénalités et intérêts 62,76 $ ; rattaché pour de vrai puis annulé (déclaration avril–juin : « Payé » 1 712,76 $ puis 0) ; aucune donnée réelle laissée.
+- En attente : rapports de taxes et avis d'impôt des années passées que Philippe dépose dans `/home/simpleip/Simple_IP/taxes/` → saisir les montants déclarés, puis rattacher les 12 versements Revenu Québec / ARC.
+
 ## TASK-044 [ERPCRM] [x] Achats (onglet, inspiré de Zoho Books) — fournisseurs, dépenses, factures fournisseurs
 Date de demande : 2026-10-02
 Date(s) de travail : 2026-10-02 (menu Ventes / Achats, structure, modèle de données et API), 2026-10-03 (écrans, import, CTI/RTI ; GO de Philippe « go pour le module Achats »)
@@ -5642,6 +5653,7 @@ Date(s) de travail : 2026-10-07
 - API `/purchases/receipts` : dépôt multiple (ZIP ouverts, doublon = même contenu), liste avec place dans la file et attente estimée (90 s), fichier, réessayer, retirer (refusé si le reçu justifie une dépense), créer après vérification. Dépenses : lignes modifiables (taxes recalculées seulement si un montant ou une taxe change), `receipt_id`.
 - Écran Dépenses : zone « Glissez vos reçus ici », liste des reçus (état, décompte, Vérifier / Réessayer / Saisir / Retirer), fenêtre « À vérifier » (reçu affiché à côté, vérifications ✓/✗, lignes avec les 6 classes) ; dépense : lignes, « 📎 Voir le reçu ».
 - Preuve (reçus de test générés, puis supprimés) : PDF Patrick Morin (câble et boîtes taxables, livraison en Frais de fournisseur, consigne non taxable) → toutes les vérifications vertes, dépense créée automatiquement avec 4 lignes ; photo Canadian Tire (OCR) → dépense créée avec 3 lignes ; ZIP ouvert ; même PDF redéposé → doublon. Lecture ~3,5 min pour un PDF, ~1 min pour la photo.
+- 2026-10-07 (Philippe : « oui ajoute tout ») : 4 classes ajoutées (10 au total) — Frais bancaires et de carte (aucune taxe), Repas et représentation (CTI/RTI réclamables à **50 %** : `CLAIM_RATIO`, appliqué dans `taxes._purchase_credits` au prorata des lignes taxables ; test annulé : repas de 100 $ → CTI +2,50 $, RTI +4,99 $), Salaires/commissions/sous-traitants (aucune taxe, feuillets T4A/T5018), Versement au gouvernement (pas une dépense — voir TASK-043.1). L'IA les connaît (consignes) ; la classe règle les taxes par défaut à l'écran.
 
 ---
 
