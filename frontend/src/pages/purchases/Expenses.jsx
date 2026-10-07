@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
+import { ReceiptDrop, openReceipt, LINE_CLASSES } from './Receipts'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, Filters, TAX_CODES, TAX_MODES, FREQS, freqLabel, computeTaxes, useRefs, errText,
@@ -66,8 +67,9 @@ export function PurchaseExpenses() {
     setError('')
     const body = { expense_date: edit.expense_date, vendor_id: edit.vendor_id, category_id: edit.category_id, description: edit.description || null,
       tax_mode: edit.tax_mode, tax_code: edit.tax_code, amount: num(edit.amount), paid_through: edit.paid_through || null,
-      bank_account_id: edit.bank_account_id || null, reference: edit.reference || null, notes: edit.notes || null }
-    if (!body.amount) { setError('Montant requis'); return }
+      bank_account_id: edit.bank_account_id || null, reference: edit.reference || null, notes: edit.notes || null,
+      lines: edit.lines?.length ? edit.lines.map(l => ({ line_class: l.line_class, description: l.description || null, amount: num(l.amount), tax_code: l.tax_code, category_id: l.category_id || null })) : null }
+    if (!body.amount && !body.lines) { setError('Montant requis'); return }
     try {
       if (edit.id) await api.put(`/v1/purchases/expenses/${edit.id}`, body)
       else await api.post('/v1/purchases/expenses', body)
@@ -86,6 +88,7 @@ export function PurchaseExpenses() {
         <div><h1 className="page-title">Dépenses</h1><p className="page-sub">{shown.length} dépense{shown.length > 1 ? 's' : ''} · {fmtMoney(total)} (dont {fmtMoney(taxes)} de taxes)</p></div>
         <button className="btn-primary" onClick={() => open(null)}>+ Nouvelle dépense</button>
       </div>
+      <ReceiptDrop onExpenseCreated={load} />
       <div className="page-toolbar" style={{ gap: 10, flexWrap: 'wrap' }}>
         <input className="search-input" placeholder="Rechercher (fournisseur, description, montant)..." value={search} onChange={e => setSearch(e.target.value)} />
         <select value={cat} onChange={e => setCat(e.target.value)} style={{ maxWidth: 260 }}>
@@ -111,7 +114,7 @@ export function PurchaseExpenses() {
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(e.expense_date)}</td>
                   <td style={td}>{e.category_name || EMPTY}</td>
                   <td style={td}>{e.vendor_name || EMPTY}</td>
-                  <td style={{ ...td, color: C.muted, maxWidth: 280 }}>{e.description || EMPTY}{e.recurring_id ? ' ↺' : ''}</td>
+                  <td style={{ ...td, color: C.muted, maxWidth: 280 }}>{e.receipt_id ? '📎 ' : ''}{e.description || EMPTY}{e.recurring_id ? ' ↺' : ''}{e.lines?.length > 1 ? ` (${e.lines.length} lignes)` : ''}</td>
                   <td style={{ ...td, fontSize: 12, color: C.muted }}>{e.paid_through || EMPTY}</td>
                   <td style={{ ...tdR, color: C.muted }}>{e.tps_amount + e.tvq_amount ? fmtMoney(e.tps_amount + e.tvq_amount) : EMPTY}</td>
                   <td style={{ ...tdR, fontWeight: 600 }}>{fmtMoney(e.total)}</td>
@@ -134,12 +137,41 @@ export function PurchaseExpenses() {
             <Field label="Date *"><input type="date" value={edit.expense_date} onChange={e => setEdit({ ...edit, expense_date: e.target.value })} /></Field>
             <Field label="Référence"><input value={edit.reference || ''} onChange={e => setEdit({ ...edit, reference: e.target.value })} /></Field>
           </div>
-          <ExpenseFields f={edit} set={setEdit} refs={refs} />
+          {edit.lines?.length ? <ExpenseLinesFields f={edit} set={setEdit} refs={refs} /> : <ExpenseFields f={edit} set={setEdit} refs={refs} />}
+          {edit.receipt_id && <button type="button" className="btn-secondary" style={{ alignSelf: 'flex-start', fontSize: 12 }} onClick={() => openReceipt(edit.receipt_id)}>📎 Voir le reçu</button>}
           <Field label="Notes"><textarea rows={2} value={edit.notes || ''} onChange={e => setEdit({ ...edit, notes: e.target.value })} /></Field>
           {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         </Modal>
       )}
     </div>
+  )
+}
+
+// Depense a plusieurs lignes (6 classes, nom de l'article en note) -- creee depuis un recu, modifiable
+function ExpenseLinesFields({ f, set, refs }) {
+  const setLine = (i, k, v) => set({ ...f, lines: f.lines.map((l, j) => j === i ? { ...l, [k]: v } : l) })
+  return (
+    <>
+      <div className="form-grid">
+        <VendorPicker vendors={refs.vendors} value={f.vendor_id} onCreated={refs.reload} onChange={id => set({ ...f, vendor_id: id })} />
+        <Field label="Compte de dépense"><CategorySelect categories={refs.categories} value={f.category_id} onChange={v => set({ ...f, category_id: v })} /></Field>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead><tr style={headRow}><th style={th}>Classe</th><th style={th}>Article (note)</th><th style={thR}>Montant</th><th style={th}>Taxes</th></tr></thead>
+        <tbody>
+          {f.lines.map((l, i) => (
+            <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
+              <td style={td}><select value={l.line_class} onChange={e => setLine(i, 'line_class', e.target.value)}>{LINE_CLASSES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}</select></td>
+              <td style={td}><input value={l.description || ''} style={{ width: '100%' }} onChange={e => setLine(i, 'description', e.target.value)} /></td>
+              <td style={tdR}><input type="number" step="0.01" value={l.amount} style={{ width: 90, textAlign: 'right' }} onChange={e => setLine(i, 'amount', e.target.value)} /></td>
+              <td style={td}><Select value={l.tax_code} onChange={v => setLine(i, 'tax_code', v)} options={TAX_CODES} /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ fontSize: 13, textAlign: 'right' }}>Sous-total {fmtMoney(f.subtotal)} · TPS {fmtMoney(f.tps_amount)} · TVQ {fmtMoney(f.tvq_amount)} · <strong>Total {fmtMoney(f.total)}</strong>
+        <div style={{ fontSize: 11, color: C.muted }}>Taxes lues sur le reçu ; recalculées seulement si vous changez un montant ou une taxe.</div></div>
+    </>
   )
 }
 

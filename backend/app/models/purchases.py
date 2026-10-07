@@ -71,6 +71,54 @@ class Expense(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
     vendor: Mapped["Vendor | None"] = relationship("Vendor", lazy="selectin")
     category: Mapped["ExpenseCategory | None"] = relationship("ExpenseCategory", lazy="selectin")
+    lines: Mapped[list["ExpenseLine"]] = relationship("ExpenseLine", cascade="all, delete-orphan",
+                                                      order_by="ExpenseLine.sort_order", lazy="selectin")
+
+
+# Classes d'une ligne de depense (Philippe, 2026-10-07) -- le nom de l'article va en note (description)
+LINE_CLASSES = {
+    "materiel_taxable": "Matériel taxable", "materiel_non_taxable": "Matériel non taxable",
+    "service_taxable": "Service taxable", "service_non_taxable": "Service non taxable",
+    "frais_fournisseur": "Frais de fournisseur", "assurance": "Assurance",
+}
+
+
+class ExpenseLine(Base):
+    """Ligne d'une depense (une facture peut melanger du taxable et du non taxable). Montants tels
+    que saisis selon le mode de la depense (hors taxes ou taxes incluses)."""
+    __tablename__ = "expense_lines"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    expense_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="CASCADE"), nullable=False, index=True)
+    line_class: Mapped[str] = mapped_column(String(30), nullable=False, default="materiel_taxable")
+    description: Mapped[str | None] = mapped_column(Text)          # nom de l'article (note sous la classe)
+    amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    tax_code: Mapped[str] = mapped_column(String(10), nullable=False, default="tps_tvq")
+    category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="SET NULL"))
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class ReceiptDocument(Base):
+    """Recu ou facture depose (PDF, image, ZIP ouvert) : lu (texte/OCR), analyse par l'IA locale,
+    verifie par le programme, puis transforme en depense. Le fichier original est garde (pieces
+    justificatives des CTI/RTI)."""
+    __tablename__ = "receipt_documents"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    from_zip: Mapped[str | None] = mapped_column(String(255))
+    stored_path: Mapped[str] = mapped_column(Text, nullable=False)
+    mime: Mapped[str | None] = mapped_column(String(100))
+    size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    # pending | reading | analyzing | created | review | failed | duplicate
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="pending")
+    text: Mapped[str | None] = mapped_column(Text)
+    extracted: Mapped[str | None] = mapped_column(Text)       # JSON lu par l'IA (corrige a la validation)
+    checks: Mapped[str | None] = mapped_column(Text)          # JSON : verifications du programme
+    error: Mapped[str | None] = mapped_column(Text)
+    expense_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expenses.id", ondelete="SET NULL"))
+    uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RecurringExpense(Base):

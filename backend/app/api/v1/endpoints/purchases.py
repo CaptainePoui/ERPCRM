@@ -19,8 +19,8 @@ from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.invoices import _money
 from app.api.v1.endpoints.recurring_billing import FREQUENCIES, _cycle_bounds
 from app.models.purchases import (
-    Vendor, ExpenseCategory, Expense, RecurringExpense, Bill, BillLine, RecurringBill, RecurringBillLine,
-    VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation,
+    Vendor, ExpenseCategory, Expense, ExpenseLine, ReceiptDocument, LINE_CLASSES, RecurringExpense, Bill, BillLine,
+    RecurringBill, RecurringBillLine, VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation,
 )
 from app.models.user import User
 
@@ -179,6 +179,14 @@ async def update_category(cid: uuid.UUID, p: CategoryIn, db: AsyncSession = Depe
 
 # ── Depenses ─────────────────────────────────────────────────────────────────
 
+class ExpenseLineIn(BaseModel):
+    line_class: str = "materiel_taxable"
+    description: str | None = None
+    amount: float
+    tax_code: str = "tps_tvq"
+    category_id: uuid.UUID | None = None
+
+
 class ExpenseIn(BaseModel):
     expense_date: date
     vendor_id: uuid.UUID | None = None
@@ -191,9 +199,10 @@ class ExpenseIn(BaseModel):
     bank_account_id: uuid.UUID | None = None
     reference: str | None = None
     notes: str | None = None
+    lines: list[ExpenseLineIn] | None = None   # depense a plusieurs lignes (6 classes) ; sinon montant unique
 
 
-def _expense_out(e: Expense) -> dict:
+def _expense_out(e: Expense, receipt_id=None) -> dict:
     return {"id": str(e.id), "expense_date": e.expense_date, "vendor_id": str(e.vendor_id) if e.vendor_id else None,
             "vendor_name": e.vendor.name if e.vendor else None, "category_id": str(e.category_id) if e.category_id else None,
             "category_name": e.category.name if e.category else None, "description": e.description,
@@ -201,28 +210,63 @@ def _expense_out(e: Expense) -> dict:
             "tps_amount": float(e.tps_amount), "tvq_amount": float(e.tvq_amount), "total": float(e.total),
             "paid_through": e.paid_through, "bank_account_id": str(e.bank_account_id) if e.bank_account_id else None,
             "reference": e.reference, "notes": e.notes, "source": e.source,
-            "recurring_id": str(e.recurring_id) if e.recurring_id else None}
+            "recurring_id": str(e.recurring_id) if e.recurring_id else None,
+            "lines": [{"id": str(l.id), "line_class": l.line_class, "class_label": LINE_CLASSES.get(l.line_class, l.line_class),
+                       "description": l.description, "amount": float(l.amount), "tax_code": l.tax_code,
+                       "category_id": str(l.category_id) if l.category_id else None} for l in e.lines],
+            "receipt_id": str(receipt_id) if receipt_id else None}
 
 
 def _apply_expense(e, p: ExpenseIn) -> None:
     _check_tax(p.tax_mode, p.tax_code)
+    if p.lines:
+        return _apply_expense_lines(e, p)
     if p.amount == 0:
         raise HTTPException(status_code=400, detail="Montant requis")
-    for k, v in p.model_dump().items():
+    for k, v in p.model_dump(exclude={"lines"}).items():
         setattr(e, k, Decimal(str(v)) if k == "amount" else v)
+    if getattr(e, "lines", None):
+        e.lines.clear()
     t = compute_taxes([(Decimal(str(p.amount)), p.tax_code)], p.tax_mode)
     e.subtotal, e.tps_amount, e.tvq_amount, e.total = t["subtotal"], t["tps_amount"], t["tvq_amount"], t["total"]
+
+
+def _apply_expense_lines(e, p: ExpenseIn) -> None:
+    """Depense a plusieurs lignes. Les taxes ne sont recalculees que si les montants ou les taxes des
+    lignes changent : celles lues sur le recu (reellement payees) restent sinon."""
+    new = [(Decimal(str(l.amount)).quantize(Decimal("0.01")), l.tax_code) for l in p.lines]
+    old = [(l.amount, l.tax_code) for l in (e.lines or [])]
+    old_mode = e.tax_mode
+    for l in p.lines:
+        _check_tax(p.tax_mode, l.tax_code)
+        if l.line_class not in LINE_CLASSES:
+            raise HTTPException(status_code=400, detail="Classe de ligne inconnue")
+    for k, v in p.model_dump(exclude={"lines", "amount", "tax_code"}).items():
+        setattr(e, k, v)
+    if new != old or p.tax_mode != (old_mode or p.tax_mode) or not e.total:
+        t = compute_taxes(new, p.tax_mode)
+        e.subtotal, e.tps_amount, e.tvq_amount, e.total = t["subtotal"], t["tps_amount"], t["tvq_amount"], t["total"]
+    e.tax_mode = p.tax_mode
+    e.tax_code = "tps_tvq" if any(c != "aucune" for _, c in new) else "aucune"
+    e.amount = e.total
+    if e.lines is None:
+        e.lines = []
+    e.lines.clear()
+    for n, l in enumerate(p.lines):
+        e.lines.append(ExpenseLine(line_class=l.line_class, description=l.description, amount=Decimal(str(l.amount)).quantize(Decimal("0.01")),
+                                   tax_code=l.tax_code, category_id=l.category_id or p.category_id, sort_order=n))
 
 
 @router.get("/expenses")
 async def list_expenses(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     rows = (await db.execute(select(Expense).order_by(Expense.expense_date.desc(), Expense.created_at.desc()))).scalars().all()
-    return [_expense_out(e) for e in rows]
+    receipts = dict((await db.execute(select(ReceiptDocument.expense_id, ReceiptDocument.id).where(ReceiptDocument.expense_id.is_not(None)))).all())
+    return [_expense_out(e, receipts.get(e.id)) for e in rows]
 
 
 @router.post("/expenses", status_code=status.HTTP_201_CREATED)
 async def create_expense(p: ExpenseIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    e = Expense()
+    e = Expense(lines=[])
     _apply_expense(e, p)
     db.add(e)
     await db.commit()
@@ -800,3 +844,212 @@ async def delete_vendor_credit(cid: uuid.UUID, db: AsyncSession = Depends(get_db
     for bid in bills:
         await recalc_bill_status(db, bid)
     await db.commit()
+
+
+# ── Recus deposes, analyses par l'IA locale (TASK-044.1) ─────────────────────
+
+import hashlib
+import io
+import json as _json
+import re as _re
+import zipfile
+from pathlib import Path
+from fastapi import UploadFile, File
+from fastapi.responses import FileResponse
+
+RECEIPTS_DIR = Path(__file__).resolve().parents[4] / "storage" / "receipts"
+MAX_RECEIPT_BYTES = 25 * 1024 * 1024
+SECONDS_PER_RECEIPT = 90     # lecture + IA, ordre de grandeur mesure sur ce serveur sans carte graphique
+RECEIPT_QUEUE_ORDER = (ReceiptDocument.created_at, ReceiptDocument.id)
+CLASS_DEFAULT_CATEGORY = {"assurance": "Assurance", "frais_fournisseur": "Frais de fournisseur"}
+
+
+def _store_receipt(raw: bytes, name: str, from_zip: str | None, user_id) -> ReceiptDocument:
+    doc = ReceiptDocument(id=uuid.uuid4(), filename=name[:255], from_zip=from_zip, size=len(raw), sha256=hashlib.sha256(raw).hexdigest(),
+                          mime=None, stored_path="", uploaded_by=user_id)
+    RECEIPTS_DIR.mkdir(parents=True, exist_ok=True)
+    safe = _re.sub(r"[^A-Za-z0-9._-]+", "_", name)[-100:]
+    path = RECEIPTS_DIR / f"{doc.id}_{safe}"
+    path.write_bytes(raw)
+    doc.stored_path = str(path)
+    return doc
+
+
+def _receipt_out(d: ReceiptDocument, pos: dict) -> dict:
+    return {"id": str(d.id), "filename": d.filename, "from_zip": d.from_zip, "status": d.status, "size": d.size,
+            "error": d.error, "created_at": d.created_at, "processed_at": d.processed_at,
+            "expense_id": str(d.expense_id) if d.expense_id else None,
+            "extracted": _json.loads(d.extracted) if d.extracted else None, "checks": _json.loads(d.checks) if d.checks else [],
+            "queue_position": pos.get(d.id), "eta_seconds": pos[d.id] * SECONDS_PER_RECEIPT if d.id in pos else None}
+
+
+async def _queue_positions(db: AsyncSession) -> dict:
+    ids = (await db.execute(select(ReceiptDocument.id).where(ReceiptDocument.status.in_(["pending", "reading", "analyzing"]))
+                            .order_by(*RECEIPT_QUEUE_ORDER))).scalars().all()
+    return {i: k + 1 for k, i in enumerate(ids)}
+
+
+@router.post("/receipts", status_code=status.HTTP_201_CREATED)
+async def upload_receipts(files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Depot de recus : PDF, images, texte, ou ZIP (ouvert, un recu par fichier). Un fichier deja depose
+    (meme contenu) est marque doublon. L'analyse se fait en arriere-plan, le plus vieux depot d'abord."""
+    created, known = [], set((await db.execute(select(ReceiptDocument.sha256).where(ReceiptDocument.status != "failed"))).scalars().all())
+    for f in files:
+        raw = await f.read()
+        if len(raw) > MAX_RECEIPT_BYTES:
+            raise HTTPException(status_code=400, detail=f"{f.filename} : fichier trop volumineux (25 Mo maximum)")
+        items = []
+        if (f.filename or "").lower().endswith(".zip"):
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as z:
+                    for info in z.infolist():
+                        if info.is_dir() or info.filename.startswith("__MACOSX") or Path(info.filename).name.startswith("."):
+                            continue
+                        if info.file_size > MAX_RECEIPT_BYTES:
+                            continue
+                        items.append((Path(info.filename).name, z.read(info), f.filename))
+            except zipfile.BadZipFile:
+                raise HTTPException(status_code=400, detail=f"{f.filename} : ZIP illisible")
+        else:
+            items.append((f.filename or "recu", raw, None))
+        for name, data, zipname in items:
+            doc = _store_receipt(data, name, zipname, user.id)
+            if doc.sha256 in known:
+                doc.status, doc.error = "duplicate", "Ce fichier a déjà été déposé"
+            known.add(doc.sha256)
+            db.add(doc)
+            created.append(doc)
+    await db.commit()
+    pos = await _queue_positions(db)
+    return [_receipt_out(d, pos) for d in created]
+
+
+@router.get("/receipts")
+async def list_receipts(limit: int = 200, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    rows = (await db.execute(select(ReceiptDocument).order_by(ReceiptDocument.created_at.desc()).limit(min(limit, 1000)))).scalars().all()
+    pos = await _queue_positions(db)
+    return [_receipt_out(d, pos) for d in rows]
+
+
+@router.get("/receipts/{rid}/file")
+async def receipt_file(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    d = await _get(db, ReceiptDocument, rid, "Reçu")
+    if not Path(d.stored_path).exists():
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+    return FileResponse(d.stored_path, filename=d.filename)
+
+
+@router.post("/receipts/{rid}/retry")
+async def retry_receipt(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    d = await _get(db, ReceiptDocument, rid, "Reçu")
+    if d.expense_id:
+        raise HTTPException(status_code=400, detail="Ce reçu a déjà sa dépense")
+    d.status, d.error = "pending", None
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/receipts/{rid}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_receipt(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Retire un recu depose. Refuse s'il justifie une depense (piece justificative a garder)."""
+    d = await _get(db, ReceiptDocument, rid, "Reçu")
+    if d.expense_id:
+        raise HTTPException(status_code=400, detail="Ce reçu justifie une dépense : il est gardé")
+    Path(d.stored_path).unlink(missing_ok=True)
+    await db.delete(d)
+    await db.commit()
+
+
+class ReceiptLineIn(BaseModel):
+    description: str | None = None
+    classe: str
+    taxable: bool
+    montant: float
+
+
+class ReceiptCreateIn(BaseModel):
+    """Lecture corrigee par Philippe (fenetre « A verifier »)."""
+    fournisseur: str
+    date: date
+    numero: str | None = None
+    prix_taxes_incluses: bool = False
+    lignes: list[ReceiptLineIn]
+    sous_total: float | None = None
+    tps: float = 0
+    tvq: float = 0
+    total: float
+    compte: str | None = None
+    vendor_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+
+
+async def create_expense_from_receipt(db: AsyncSession, doc: ReceiptDocument, r: dict, vendor_id=None, category_id=None) -> Expense:
+    """Cree la depense (lignes, taxes REELLEMENT payees lues sur le recu, fichier joint). Ne fait pas le commit."""
+    from app.core.bank_matching import name_similarity
+    if not vendor_id:
+        vendors = list((await db.execute(select(Vendor.id, Vendor.name))).all())
+        name = r["fournisseur"] or "Fournisseur inconnu"
+        best = max(((((name_similarity(name, n) + name_similarity(n, name)) / 2), vid) for vid, n in vendors), default=(0, None))
+        if best[0] >= 0.6:
+            vendor_id = best[1]
+        else:
+            v = Vendor(name=name[:255])
+            db.add(v)
+            await db.flush()
+            vendor_id = v.id
+    cats = {c.name.lower(): c.id for c in (await db.execute(select(ExpenseCategory))).scalars().all()}
+    vendor = await db.get(Vendor, vendor_id)
+    category_id = category_id or cats.get((r.get("compte") or "").strip().lower()) or (vendor.default_category_id if vendor else None)
+    tps, tvq, total = r["tps"] or Decimal("0.00"), r["tvq"] or Decimal("0.00"), r["total"]
+    e = Expense(expense_date=r["date"], vendor_id=vendor_id, category_id=category_id,
+                description=" · ".join(l["description"] for l in r["lignes"] if l["description"])[:500] or None,
+                tax_mode="inclusive" if r["prix_taxes_incluses"] else "exclusive",
+                tax_code="tps_tvq" if any(l["taxable"] for l in r["lignes"]) else "aucune",
+                amount=total, subtotal=total - tps - tvq, tps_amount=tps, tvq_amount=tvq, total=total,
+                reference=r["numero"], notes=f"Créée depuis le reçu « {doc.filename} »", source="receipt", lines=[])
+    for n, l in enumerate(r["lignes"]):
+        e.lines.append(ExpenseLine(line_class=l["classe"], description=l["description"] or None, amount=l["montant"],
+                                   tax_code="tps_tvq" if l["taxable"] else "aucune",
+                                   category_id=cats.get(CLASS_DEFAULT_CATEGORY.get(l["classe"], "").lower()) or category_id, sort_order=n))
+    db.add(e)
+    await db.flush()
+    doc.expense_id, doc.status = e.id, "created"
+    return e
+
+
+async def link_expense_to_bank(db: AsyncSession, e: Expense) -> bool:
+    """Lie la depense au retrait bancaire correspondant s'il est unique (meme montant, 10 jours au plus)."""
+    from datetime import timedelta
+    from app.models.bank_account import BankTransaction
+    from app.api.v1.endpoints.bank import match_withdrawal, WithdrawalMatchIn
+    cands = (await db.execute(select(BankTransaction).where(
+        BankTransaction.status == "unclassified", BankTransaction.amount == -e.total,
+        BankTransaction.posted_date >= e.expense_date - timedelta(days=10),
+        BankTransaction.posted_date <= e.expense_date + timedelta(days=10)))).scalars().all()
+    if len(cands) != 1:
+        return False
+    try:
+        await match_withdrawal(cands[0].id, WithdrawalMatchIn(expense_id=e.id), db)
+        return True
+    except HTTPException:
+        await db.rollback()
+        return False
+
+
+@router.post("/receipts/{rid}/create")
+async def create_from_receipt(rid: uuid.UUID, p: ReceiptCreateIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """« Créer la dépense » depuis la fenetre A verifier (lecture corrigee a la main)."""
+    from app.core.receipt_reader import normalize, check, to_json
+    d = await _get(db, ReceiptDocument, rid, "Reçu")
+    if d.expense_id:
+        raise HTTPException(status_code=400, detail="Ce reçu a déjà sa dépense")
+    if not p.lignes:
+        raise HTTPException(status_code=400, detail="Au moins une ligne")
+    r = normalize({**p.model_dump(), "date": p.date.isoformat(), "lignes": [l.model_dump() for l in p.lignes]})
+    for l, src in zip(r["lignes"], p.lignes):
+        l["taxable"] = src.taxable          # choix explicite de Philippe
+    d.extracted, d.checks = to_json(r), _json.dumps(check(r), ensure_ascii=False)
+    e = await create_expense_from_receipt(db, d, r, p.vendor_id, p.category_id)
+    await db.commit()
+    linked = await link_expense_to_bank(db, e)
+    return {"expense_id": str(e.id), "bank_linked": linked}

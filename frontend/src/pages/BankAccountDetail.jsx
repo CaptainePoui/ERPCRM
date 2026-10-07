@@ -144,7 +144,17 @@ function PayeeModal({ tx, onClose, onDone }) {
 }
 
 // Modes 1 et 2 : associer un depot a un paiement existant ou a des factures
-function MatchModal({ tx, onClose, onDone }) {
+// Fenetre seule, ou contenu integre a la fiche d'une transaction (embedded)
+function Wrap({ embedded, width, children }) {
+  if (embedded) return <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>{children}</div>
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ width, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto' }}>{children}</div>
+    </div>
+  )
+}
+
+function MatchModal({ tx, onClose, onDone, embedded }) {
   const companies = useCompanies()
   const [sugg, setSugg] = useState(null)
   const [methods, setMethods] = useState([])
@@ -213,10 +223,9 @@ function MatchModal({ tx, onClose, onDone }) {
   const box = { border: `1px solid ${C.border}`, borderRadius: 8, padding: 10 }
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 760, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto' }}>
-        <h3 className="modal-title">Associer le dépôt de {fmtMoney(tx.amount)} du {fmtD(tx.posted_date)}</h3>
-        <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>
+    <Wrap embedded={embedded} width={760}>
+        {!embedded && <h3 className="modal-title">Associer le dépôt de {fmtMoney(tx.amount)} du {fmtD(tx.posted_date)}</h3>}
+        {!embedded && <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>}
 
         {/* Mode 1 : suggestions */}
         <div style={{ fontWeight: 600, fontSize: 14 }}>Suggestions</div>
@@ -228,7 +237,7 @@ function MatchModal({ tx, onClose, onDone }) {
           <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}>
               <strong>Paiement déjà enregistré</strong> · {p.company_name} · {fmtMoney(p.amount)} · {SOURCE_LABEL[p.source] || p.source}{p.reference ? ` ${p.reference}` : ''}
-              <div style={{ color: C.muted, fontSize: 12 }}>{p.status === 'pending' ? 'En attente de confirmation' : `Reçu le ${fmtD(p.received_at)}`} · Factures {p.invoice_numbers.join(', ') || EMPTY}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{p.status === 'pending' ? 'En attente de confirmation' : `Reçu le ${fmtD(p.received_at)}`} · Factures {p.invoice_numbers.join(', ') || EMPTY}{p.pct ? <strong style={{ color: C.text || '#111827' }}> · pertinence {p.pct} %</strong> : null}</div>
             </div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ client_payment_id: p.id })}>{p.status === 'pending' ? 'Confirmer et lier' : 'Lier'}</button>
           </div>
@@ -237,7 +246,7 @@ function MatchModal({ tx, onClose, onDone }) {
           <div key={i.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}>
               <strong>{i.number}</strong> · {i.company_name}{i.site_label ? ` (${i.site_label})` : ''} · solde {fmtMoney(i.balance)} {i.exact && <span style={{ color: C.green, fontWeight: 600 }}>· montant exact</span>}
-              <div style={{ color: C.muted, fontSize: 12 }}>Émise le {fmtD(i.issue_date)} · {STATUS_INV[i.status] || i.status}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>Émise le {fmtD(i.issue_date)} · {STATUS_INV[i.status] || i.status}{i.pct ? <strong style={{ color: '#111827' }}> · pertinence {i.pct} %</strong> : null}</div>
             </div>
             <button className="btn-secondary" onClick={() => pickInvoices([i])}>Choisir</button>
           </div>
@@ -302,14 +311,13 @@ function MatchModal({ tx, onClose, onDone }) {
         </div>
         {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          {!embedded && <button className="btn-secondary" onClick={onClose}>Annuler</button>}
           <button className="btn-primary" disabled={saving || !Object.keys(alloc).length || remaining < 0}
             onClick={() => submit({ method_code: method, allocations: Object.entries(alloc).map(([invoice_id, v]) => ({ invoice_id, amount: parseFloat(v) || 0 })).filter(a => a.amount > 0) })}>
             {saving ? '...' : 'Associer'}
           </button>
         </div>
-      </div>
-    </div>
+    </Wrap>
   )
 }
 
@@ -389,7 +397,7 @@ function DropImport({ accountId, onImported }) {
 
 // Retraits (TASK-042.4) : lier une depense / un paiement deja enregistre (jamais recreer : double compte),
 // payer des factures fournisseurs (les plus vieilles d'abord), ou enregistrer une nouvelle depense.
-function WithdrawalModal({ tx, onClose, onDone }) {
+function WithdrawalModal({ tx, onClose, onDone, embedded }) {
   const refs = useRefs()
   const amount = -tx.amount
   const [sugg, setSugg] = useState(null)
@@ -432,10 +440,9 @@ function WithdrawalModal({ tx, onClose, onDone }) {
   const t = computeTaxes([[amount, exp.tax_code]], exp.tax_mode)
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 820, maxWidth: '96vw', maxHeight: '92vh', overflowY: 'auto' }}>
-        <h3 className="modal-title">Associer le retrait de {fmtMoney(amount)} du {fmtD(tx.posted_date)}</h3>
-        <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>
+    <Wrap embedded={embedded} width={820}>
+        {!embedded && <h3 className="modal-title">Associer le retrait de {fmtMoney(amount)} du {fmtD(tx.posted_date)}</h3>}
+        {!embedded && <div style={{ fontSize: 13, color: C.muted }}>{tx.description}{tx.payee ? ` — ${tx.payee}` : ''}{tx.reference ? ` · Réf. ${tx.reference}` : ''}</div>}
 
         <div style={{ fontWeight: 600, fontSize: 14 }}>Déjà enregistré dans ERPCRM</div>
         {!sugg && <div style={{ fontSize: 13, color: C.muted }}>Recherche...</div>}
@@ -443,14 +450,14 @@ function WithdrawalModal({ tx, onClose, onDone }) {
         {sugg?.expenses.map(e => (
           <div key={e.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}><strong>Dépense</strong> du {fmtD(e.date)} · {e.category_name || 'sans compte'}{e.vendor_name ? ` · ${e.vendor_name}` : ''} · {fmtMoney(e.amount)}
-              <div style={{ color: C.muted, fontSize: 12 }}>{e.description || EMPTY} · écart {e.gap} j</div></div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{e.description || EMPTY} · écart {e.gap} j · <strong style={{ color: '#111827' }}>pertinence {e.pct} %</strong></div></div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ expense_id: e.id })}>Lier</button>
           </div>
         ))}
         {sugg?.vendor_payments.map(p => (
           <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}><strong>Paiement fournisseur</strong> du {fmtD(p.date)} · {p.payee || EMPTY} · {fmtMoney(p.amount)}
-              <div style={{ color: C.muted, fontSize: 12 }}>Factures {p.bill_numbers.join(', ') || EMPTY} · écart {p.gap} j</div></div>
+              <div style={{ color: C.muted, fontSize: 12 }}>Factures {p.bill_numbers.join(', ') || EMPTY} · écart {p.gap} j · <strong style={{ color: '#111827' }}>pertinence {p.pct} %</strong></div></div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ vendor_payment_id: p.id })}>Lier</button>
           </div>
         ))}
@@ -506,7 +513,93 @@ function WithdrawalModal({ tx, onClose, onDone }) {
           <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> Retenir ce bénéficiaire pour ce fournisseur (prochains relevés)
         </label>
         {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
-        <div className="modal-actions"><button className="btn-secondary" onClick={onClose}>Fermer</button></div>
+        {!embedded && <div className="modal-actions"><button className="btn-secondary" onClick={onClose}>Fermer</button></div>}
+    </Wrap>
+  )
+}
+
+// Fiche d'une transaction (clic sur la ligne -- Philippe, 2026-10-07) : toutes ses infos, client ou
+// fournisseur modifiable, ce qui est lie (annulable), suggestions avec pertinence, actions.
+function TransactionModal({ txId, onClose, onChanged }) {
+  const companies = useCompanies()
+  const refs = useRefs()
+  const [d, setD] = useState(null)
+  const [error, setError] = useState(null)
+  const load = async () => setD((await api.get(`/v1/bank/transactions/${txId}/detail`)).data)
+  useEffect(() => { load() }, [txId])
+  async function run(fn) {
+    setError(null)
+    try { await fn(); await load(); await onChanged() } catch (e) { setError(errText(e)) }
+  }
+  if (!d) return <div className="modal-overlay"><div className="modal-box"><div className="loading">Chargement...</div></div></div>
+  const deposit = d.amount > 0
+  const row = (label, value) => value ? <div style={{ display: 'flex', gap: 12, fontSize: 13, padding: '3px 0' }}><span style={{ color: C.muted, minWidth: 150 }}>{label}</span><span>{value}</span></div> : null
+  const statusLabel = d.status === 'matched' ? `Associée${d.auto_matched ? ' automatiquement (correspondance sûre)' : ''}` : d.status === 'excluded' ? 'Exclue' : 'Non classée'
+  const box = { border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ width: 880, maxWidth: '96vw', maxHeight: '94vh', overflowY: 'auto' }}>
+        <h3 className="modal-title" style={{ margin: 0 }}>{deposit ? 'Dépôt' : 'Retrait'} de {fmtMoney(Math.abs(d.amount))} du {fmtD(d.posted_date)}</h3>
+        <div style={box}>
+          {row('Description', d.description)}
+          {row('Bénéficiaire', d.payee)}
+          {row('Référence', d.reference)}
+          {row('Compte', d.account_name)}
+          {row('Relevé', d.statement_file && `${d.statement_file}${d.statement_imported_at ? ` (importé le ${fmtDate(d.statement_imported_at)})` : ''}`)}
+          {row('État', statusLabel)}
+        </div>
+
+        <div style={box}>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{deposit ? 'Client' : 'Fournisseur'}</div>
+          {deposit ? (
+            <>
+              {d.company_name && <div style={{ fontSize: 13, marginBottom: 6 }}>→ <strong>{d.company_name}</strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</div>}
+              {!d.company_id && d.ai_status === 'done' && d.ai_company_id && (
+                <div style={{ fontSize: 13, color: '#6D28D9', marginBottom: 6 }}>IA propose : <strong>{d.ai_company_name}</strong> ({d.ai_confidence} %){d.ai_note ? ` — ${d.ai_note}` : ''}
+                  <button className="btn-primary" style={{ padding: '2px 10px', fontSize: 12, marginLeft: 8 }} onClick={() => run(() => api.put(`/v1/bank/transactions/${d.id}/company`, { company_id: d.ai_company_id, remember: true }))}>Accepter</button></div>
+              )}
+              {d.status !== 'matched' && <Autocomplete items={companies} value={d.company_id ? { id: d.company_id, label: d.company_name } : null}
+                onSelect={c => c && run(() => api.put(`/v1/bank/transactions/${d.id}/company`, { company_id: c.id, remember: true }))} openOnFocus placeholder="Changer le client (retenu pour ce bénéficiaire)..." />}
+            </>
+          ) : (
+            <>
+              {d.vendor_name && <div style={{ fontSize: 13, marginBottom: 6 }}>→ <strong>{d.vendor_name}</strong>{d.vendor_source === 'rule' ? ' (reconnu par une règle)' : d.vendor_source === 'name' ? ' (probable, d\'après le nom)' : ''}</div>}
+              {d.status !== 'matched' && <VendorPicker label="Changer le fournisseur (retenu pour ce bénéficiaire)" vendors={refs.vendors} value={d.vendor_source === 'name' ? null : d.vendor_id} onCreated={refs.reload}
+                onChange={vid => vid && run(() => api.put(`/v1/bank/transactions/${d.id}/vendor`, { vendor_id: vid, remember: true }))} />}
+            </>
+          )}
+        </div>
+
+        {d.linked && (
+          <div style={box}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Lié à</div>
+              <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', color: C.red }} onClick={() => confirm("Annuler cette association ?") && run(() => api.post(`/v1/bank/transactions/${d.id}/unmatch`))}>Annuler l'association</button>
+            </div>
+            <div style={{ fontSize: 13, marginTop: 6 }}>
+              {d.linked.kind === 'client_payment' && <>Encaissement {d.linked.method} du {fmtD(d.linked.received_at)} · {fmtMoney(d.linked.amount)}{d.linked.created_by_link ? ' (créé par l\'association)' : ''}</>}
+              {d.linked.kind === 'expense' && <>Dépense du {fmtD(d.linked.date)} · {d.linked.category || 'sans compte'}{d.linked.vendor ? ` · ${d.linked.vendor}` : ''} · {fmtMoney(d.linked.amount)} (TPS {fmtMoney(d.linked.tps)}, TVQ {fmtMoney(d.linked.tvq)}){d.linked.created_by_link ? ' — créée par l\'association' : ''}</>}
+              {d.linked.kind === 'vendor_payment' && <>Paiement fournisseur du {fmtD(d.linked.date)} · {d.linked.payee} · {fmtMoney(d.linked.amount)}</>}
+              {(d.linked.items || []).map(i => <div key={i.id} style={{ color: C.muted }}>• {i.number || 'facture'} du {fmtD(i.date)}{i.vendor ? ` · ${i.vendor}` : ''} : {fmtMoney(i.amount)}</div>)}
+            </div>
+          </div>
+        )}
+
+        {d.status === 'unclassified' && (
+          <div style={box}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Lier ou classer</div>
+            {deposit
+              ? <MatchModal key={d.company_id || 'none'} tx={d} embedded onClose={onClose} onDone={async () => { await load(); await onChanged() }} />
+              : <WithdrawalModal key={d.vendor_id || 'none'} tx={d} embedded onClose={onClose} onDone={async () => { await load(); await onChanged() }} />}
+          </div>
+        )}
+
+        {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
+        <div className="modal-actions">
+          {d.status === 'unclassified' && <button className="btn-secondary" onClick={() => run(() => api.post('/v1/bank/transactions/bulk', { ids: [d.id], action: 'exclude' }))}>Exclure (pas une transaction d'affaires)</button>}
+          {d.status === 'excluded' && <button className="btn-secondary" onClick={() => run(() => api.post('/v1/bank/transactions/bulk', { ids: [d.id], action: 'restore' }))}>Restaurer</button>}
+          <button className="btn-primary" onClick={onClose}>Fermer</button>
+        </div>
       </div>
     </div>
   )
@@ -522,8 +615,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [page, setPage] = useState(0)
   const [desc, setDesc] = useState(true)
   const [selected, setSelected] = useState(new Set())
-  const [matching, setMatching] = useState(null)
-  const [matchingOut, setMatchingOut] = useState(null)
+  const [detail, setDetail] = useState(null)      // fiche de la transaction cliquee
   const [payeeTx, setPayeeTx] = useState(null)
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState(null)
@@ -549,29 +641,6 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       setSelected(new Set()); await onChanged()
     } finally { setBusy(false) }
   }
-  async function validateOne(t) {
-    const s = t.suggestion
-    if (t.amount < 0) {
-      await api.post(`/v1/bank/transactions/${t.id}/match-withdrawal`, s.kind === 'expense' ? { expense_id: s.id }
-        : s.kind === 'vendor_payment' ? { vendor_payment_id: s.id } : { bill_allocations: s.allocations })
-      await onChanged()
-      return
-    }
-    await api.post(`/v1/bank/transactions/${t.id}/match`, s.kind === 'payment'
-      ? { client_payment_id: s.id }
-      : { allocations: (s.allocations || [{ invoice_id: s.id, amount: s.balance }]).map(a => ({ invoice_id: a.invoice_id, amount: a.amount })) })
-    await onChanged()
-  }
-  const reset = () => { setPage(0); setSelected(new Set()); setMsg(null) }
-  async function autoAssociate() {
-    if (!confirm("Associer automatiquement les dépôts dont la correspondance est certaine (client reconnu et un seul paiement ou une seule facture au montant exact) ? Chaque association reste annulable.")) return
-    setBusy(true); setMsg(null)
-    try {
-      const r = await api.post(`/v1/bank/accounts/${accountId}/auto-associate`)
-      setMsg(`${r.data.auto_matched} associée(s) automatiquement${r.data.sent_to_ai ? ` · ${r.data.sent_to_ai} confiée(s) à l'IA locale` : ''}`)
-      await onChanged()
-    } finally { setBusy(false) }
-  }
   async function acceptVendor(t) {
     await api.put(`/v1/bank/transactions/${t.id}/vendor`, { vendor_id: t.vendor_id, remember: true })
     await onChanged()
@@ -590,7 +659,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
           <button className={`filter-tab${sub === 'recognized' && !excluded ? ' active' : ''}`} onClick={() => { setSub('recognized'); setExcluded(false); reset() }}>Reconnu ({recognized.length})</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-          <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={busy} onClick={autoAssociate}>Associer ce qui est sûr</button>
+          <span style={{ fontSize: 12, color: C.faint }} title="À l'import, quand vous acceptez une proposition, et toutes les 10 minutes">Correspondances sûres associées automatiquement</span>
           {msg && !(multi || sel.length > 0) && <span style={{ fontSize: 12, color: C.muted }}>{msg}</span>}
           <Switch checked={multi} onChange={setMulti} label="Correspondance & sélection multiple" />
           <button type="button" onClick={() => { setExcluded(e => !e); reset() }} style={{ background: 'none', border: 'none', padding: 0, fontSize: 13, color: excluded ? C.link : C.muted, cursor: 'pointer', fontWeight: excluded ? 600 : 400 }}>Exclu ({transactions.filter(t => t.status === 'excluded').length})</button>
@@ -600,7 +669,6 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       {(multi || sel.length > 0) && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
           <span>{sel.length} sélectionnée{sel.length > 1 ? 's' : ''}</span>
-          {!excluded && sub === 'recognized' && <button className="btn-primary" disabled={busy || !sel.length} onClick={() => bulk('validate')}>Valider la sélection</button>}
           {!excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('exclude')}>Exclure</button>}
           {excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('restore')}>Restaurer</button>}
           {msg && <span style={{ color: C.muted }}>{msg}</span>}
@@ -621,15 +689,16 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
           </thead>
           <tbody>
             {pageRows.map(t => (
-              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                <td style={{ padding: '10px 8px' }}><input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setDetail(t.id)}
+                onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'} onMouseLeave={e => e.currentTarget.style.background = ''}>
+                <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>
                   <div>Description : {t.description || EMPTY}</div>
                   {t.payee && (
                     <div style={{ fontSize: 12, color: C.muted }}>
                       Bénéficiaire :{' '}
-                      <button type="button" title="Attribuer ce bénéficiaire à une compagnie" onClick={() => setPayeeTx(t)} style={{ background: 'none', border: 'none', padding: 0, color: C.link, cursor: 'pointer', fontSize: 12, textDecoration: 'underline dotted' }}>{t.payee}</button>
+                      <button type="button" title="Attribuer ce bénéficiaire à une compagnie" onClick={e => { e.stopPropagation(); setPayeeTx(t) }} style={{ background: 'none', border: 'none', padding: 0, color: C.link, cursor: 'pointer', fontSize: 12, textDecoration: 'underline dotted' }}>{t.payee}</button>
                       {t.reference ? ` · Réf. : ${t.reference}` : ''}
                     </div>
                   )}
@@ -672,17 +741,13 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {/* Un seul bouton principal : Valider (correspondance sure), sinon Accepter (client ou fournisseur
-                      propose -- associe aussitot si ca devient sur) ; « Associer » reste un lien pour le cas a la main */}
-                  {t.status === 'unclassified' && (t.suggestion
-                    ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title="Associer la correspondance sûre indiquée sous la ligne" onClick={() => validateOne(t)}>Valider</button>
-                    : t.amount > 0 && !t.company_id && t.ai_status === 'done' && t.ai_company_id
-                      ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.ai_company_name} (et associer la facture si c'est sûr)`} onClick={() => acceptAi(t)}>Accepter</button>
-                      : t.amount < 0 && t.vendor_source === 'name'
-                        ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.vendor_name} (et associer si c'est sûr)`} onClick={() => acceptVendor(t)}>Accepter</button>
-                        : null)}
-                  {t.status === 'unclassified' && <button type="button" onClick={() => t.amount > 0 ? setMatching(t) : setMatchingOut(t)}
-                    style={{ background: 'none', border: 'none', color: C.link, cursor: 'pointer', fontSize: 12, marginLeft: 8 }}>Associer…</button>}
+                  {/* Un seul bouton, seulement quand il sert : « Accepter » la proposition (client de l'IA ou fournisseur
+                      probable) -- les correspondances sures s'associent toutes seules ; le reste : clic sur la ligne */}
+                  {t.status === 'unclassified' && (t.amount > 0 && !t.company_id && t.ai_status === 'done' && t.ai_company_id
+                    ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.ai_company_name} (et associer la facture si c'est sûr)`} onClick={e => { e.stopPropagation(); acceptAi(t) }}>Accepter</button>
+                    : t.amount < 0 && t.vendor_source === 'name'
+                      ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.vendor_name} (et associer si c'est sûr)`} onClick={e => { e.stopPropagation(); acceptVendor(t) }}>Accepter</button>
+                      : null)}
                 </td>
               </tr>
             ))}
@@ -698,14 +763,14 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
         </table>
       </div>
       <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
-      {matching && <MatchModal tx={matching} onClose={() => setMatching(null)} onDone={async () => { setMatching(null); await onChanged() }} />}
-      {matchingOut && <WithdrawalModal tx={matchingOut} onClose={() => setMatchingOut(null)} onDone={async () => { setMatchingOut(null); await onChanged() }} />}
+      {detail && <TransactionModal txId={detail} onClose={() => setDetail(null)} onChanged={onChanged} />}
       {payeeTx && <PayeeModal tx={payeeTx} onClose={() => setPayeeTx(null)} onDone={async () => { setPayeeTx(null); await onChanged() }} />}
     </div>
   )
 }
 
 function AllTransactionsTab({ transactions, filter, onChanged }) {
+  const [detail, setDetail] = useState(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [perPage, setPerPage] = useState(200)
@@ -742,7 +807,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
           </thead>
           <tbody>
             {pageRows.map(t => (
-              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setDetail(t.id)}>
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>{t.reference || ''}</td>
                 <td style={{ padding: '10px 8px' }}>{t.amount > 0
@@ -752,7 +817,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={() => unmatch(t)} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
+                <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={e => { e.stopPropagation(); unmatch(t) }} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
               </tr>
             ))}
             {pageRows.length === 0 && <EmptyRow colSpan={8}>Aucune transaction associée dans ERPCRM pour ce compte.</EmptyRow>}
@@ -760,6 +825,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
         </table>
       </div>
       <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
+      {detail && <TransactionModal txId={detail} onClose={() => setDetail(null)} onChanged={onChanged} />}
     </div>
   )
 }

@@ -155,10 +155,33 @@ async def run_bank_ai_once() -> int:
         return len(txs) - len(rest) + sum(1 for t in rest if t.ai_status == "done")
 
 
+async def run_sure_pass() -> int:
+    """Associe toutes les lignes dont la correspondance est sure (Philippe, 2026-10-07 : « pas besoin
+    de l'étape Valider, le rapprochement est sûr ») : une facture creee plus tard, une regle ajoutee ou
+    un recu transforme en depense peuvent rendre sure une ligne restee en attente. Annulable."""
+    from app.api.v1.endpoints.bank import _auto_associate
+    async with AsyncSessionLocal() as db:
+        ids = list((await db.execute(select(BankTransaction.id).where(BankTransaction.status == "unclassified"))).scalars().all())
+        from app.core.bank_matching import propose_vendors
+        await propose_vendors(db, ids)
+        await db.commit()
+        n = await _auto_associate(db, ids)
+    if n:
+        log.info("Rapprochement : %d transaction(s) associee(s) (correspondance sure)", n)
+    return n
+
+
+_SURE_EVERY = 600
+
+
 async def run_bank_ai_poller():
     await asyncio.sleep(90)
+    last_sure = 0.0
     while True:
         try:
+            if time.monotonic() - last_sure >= _SURE_EVERY:
+                await run_sure_pass()
+                last_sure = time.monotonic()
             while await run_bank_ai_once():
                 pass
         except Exception:

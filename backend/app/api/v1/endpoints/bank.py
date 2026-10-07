@@ -889,6 +889,49 @@ async def _unmatch_withdrawal(tx: BankTransaction, db: AsyncSession) -> Transact
     return await _tx_out(tx, db)
 
 
+@router.get("/transactions/{tx_id}/detail")
+async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Fiche complete d'une transaction (clic sur la ligne) : infos du releve, client/fournisseur,
+    proposition de l'IA, ce qui est lie, suggestions avec leur pertinence (%)."""
+    from app.models.purchases import Expense, VendorPayment, Bill
+    tx = await _get_tx(tx_id, db)
+    out = (await _tx_out(tx, db)).model_dump()
+    imp = await db.get(BankStatementImport, tx.import_id) if tx.import_id else None
+    acc = await db.get(BankAccount, tx.account_id)
+    out.update({"account_name": acc.name if acc else None, "statement_file": imp.filename if imp else None,
+                "statement_imported_at": imp.created_at if imp else None, "fitid": tx.fitid, "linked": None, "suggestions": None})
+    if tx.client_payment_id:
+        cp = await db.get(ClientPayment, tx.client_payment_id)
+        if cp:
+            allocs = (await db.execute(select(PaymentAllocation, Invoice).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+                                       .where(PaymentAllocation.payment_id == cp.id).order_by(Invoice.issue_date))).all()
+            out["linked"] = {"kind": "client_payment", "created_by_link": tx.payment_created, "method": cp.method_name, "source": cp.source,
+                             "received_at": cp.received_at, "amount": float(cp.amount),
+                             "items": [{"id": str(i.id), "number": i.number, "date": i.issue_date, "total": float(i.total), "amount": float(a.amount_allocated)} for a, i in allocs]}
+    elif tx.expense_id:
+        e = (await db.execute(select(Expense).where(Expense.id == tx.expense_id).execution_options(populate_existing=True))).scalar_one_or_none()
+        if e:
+            out["linked"] = {"kind": "expense", "created_by_link": tx.payment_created, "date": e.expense_date, "amount": float(e.total),
+                             "vendor": e.vendor.name if e.vendor else None, "category": e.category.name if e.category else None,
+                             "description": e.description, "tps": float(e.tps_amount), "tvq": float(e.tvq_amount), "id": str(e.id)}
+    elif tx.vendor_payment_id:
+        p = (await db.execute(select(VendorPayment).where(VendorPayment.id == tx.vendor_payment_id).execution_options(populate_existing=True))).scalar_one_or_none()
+        if p:
+            bills = {b.id: b for b in (await db.execute(select(Bill).where(Bill.id.in_([a.bill_id for a in p.allocations])))).scalars().all()} if p.allocations else {}
+            out["linked"] = {"kind": "vendor_payment", "created_by_link": tx.payment_created, "date": p.payment_date, "amount": float(p.amount),
+                             "payee": p.vendor.name if p.vendor else p.payee_label,
+                             "items": [{"id": str(a.bill_id), "number": bills[a.bill_id].bill_number, "date": bills[a.bill_id].bill_date,
+                                        "vendor": bills[a.bill_id].vendor.name, "amount": float(a.amount)} for a in p.allocations if a.bill_id in bills]}
+    if tx.status == "unclassified":
+        if tx.amount > 0:
+            sg = await bm.suggestions(db, tx)
+            sg["method_code"] = bm.guess_method(tx.description)
+        else:
+            sg = await bm.withdrawal_suggestions(db, tx)
+        out["suggestions"] = sg
+    return out
+
+
 @router.get("/transactions/{tx_id}/withdrawal-suggestions")
 async def tx_withdrawal_suggestions(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     return await bm.withdrawal_suggestions(db, await _get_tx(tx_id, db))

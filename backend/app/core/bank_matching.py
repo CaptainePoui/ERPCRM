@@ -121,6 +121,7 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
     for s, cp in sorted(scored, key=lambda x: -x[0])[:5]:
         d = await payment_dict(db, cp, names.get(cp.company_id, ""))
         d["score"] = round(s)
+        d["pct"] = max(5, min(100, round(s / 1.2)))     # 120 = meme montant, meme jour, meme client, meme nom
         out["payments"].append(d)
 
     # Factures ouvertes
@@ -155,6 +156,7 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
         if score >= 40:
             d = invoice_dict(inv, paid.get(inv.id) or Decimal("0"), names.get(inv.company_id, ""))
             d["score"] = round(score)
+            d["pct"] = max(5, min(100, round(score / 1.45)))   # 145 = montant exact + client + nom + 1-30 jours
             d["exact"] = bal == amount
             cands.append(d)
     cands.sort(key=lambda d: (-d["score"], d["issue_date"]))   # a score egal : la plus vieille d'abord (client en retard)
@@ -185,9 +187,14 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     if not tx.company_id or tx.amount <= 0:
         return None
     s = await suggestions(db, tx)
-    pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id)]
+    # Un paiement deja enregistre n'est « sur » que s'il est proche du depot (10 jours au plus) et ne
+    # paie pas une facture emise apres le depot (2026-10-07 : la regle « un seul candidat sur 45 jours »
+    # avait lie 6 depots a un paiement d'un autre mois chez des clients mensuels au meme montant).
+    pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id)
+            and not (p["invoice_date"] and p["invoice_date"] > tx.posted_date + timedelta(days=10))]
     if len(pays) == 1:
-        return {"kind": "payment", **pays[0]}
+        gap = abs((pays[0]["received_at"] - tx.posted_date).days) if pays[0]["received_at"] else 9999
+        return {"kind": "payment", **pays[0]} if gap <= 10 else None
     if pays:
         # Paiement recurrent (meme client, meme montant) : le plus proche du depot, s'il l'est nettement
         # (10 jours au plus) ; a egalite le meme jour (deux paiements identiques), la plus vieille facture.
@@ -268,6 +275,7 @@ async def withdrawal_suggestions(db: AsyncSession, tx: BankTransaction) -> dict:
         if e.id in linked_e or (tx.vendor_id and e.vendor_id and e.vendor_id != tx.vendor_id):
             continue
         out["expenses"].append({"kind": "expense", "id": str(e.id), "date": e.expense_date, "gap": abs((e.expense_date - tx.posted_date).days),
+                                "pct": max(10, 100 - 5 * abs((e.expense_date - tx.posted_date).days)),
                                 "vendor_name": e.vendor.name if e.vendor else None, "category_name": e.category.name if e.category else None,
                                 "description": e.description, "amount": float(e.total), "vendor_id": str(e.vendor_id) if e.vendor_id else None})
     for p in (await db.execute(select(VendorPayment).where(
@@ -277,6 +285,7 @@ async def withdrawal_suggestions(db: AsyncSession, tx: BankTransaction) -> dict:
             continue
         bills = {b.id: b for b in (await db.execute(select(Bill).where(Bill.id.in_([a.bill_id for a in p.allocations])))).scalars().all()} if p.allocations else {}
         out["vendor_payments"].append({"kind": "vendor_payment", "id": str(p.id), "date": p.payment_date, "gap": abs((p.payment_date - tx.posted_date).days),
+                                       "pct": max(10, 100 - 3 * abs((p.payment_date - tx.posted_date).days)),
                                        "payee": p.vendor.name if p.vendor else p.payee_label, "amount": float(p.amount),
                                        "bill_numbers": [bills[a.bill_id].bill_number or "" for a in p.allocations if a.bill_id in bills],
                                        "vendor_id": str(p.vendor_id) if p.vendor_id else None})
