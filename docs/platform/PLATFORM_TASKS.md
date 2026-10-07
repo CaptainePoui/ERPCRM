@@ -420,6 +420,13 @@ Date(s) de travail : 2026-10-02
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 
+### TASK-005.13 [ ] Échanges (troc) : fiche d'échange, avoir de troc appliqué aux factures, preuve gardée
+Date de demande : 2026-10-07 (Philippe : D'Astous Auto a réparé sa voiture, 860 $ hors taxes ; « j'ai oublié de lui charger les textos 500 à 19,95 $ pendant 6 mois, on déduit ça… et le reste sur sa facture habituelle » ; puis « il me faudrait aussi cette option (troc) pour certaines entreprises qui acceptent l'échange, ça resterait dans l'ERPCRM pour garder une trace de la transaction et prouver l'échange »)
+Date(s) de travail : —
+
+- En attente du GO sur le plan (proposé le 2026-10-07). Constat : un avoir n'existe aujourd'hui que copié d'une facture d'origine (`credit_of_id`, ~28 usages) → un avoir de troc sans facture d'origine demande un repère « avoir » distinct du lien.
+- Premier cas : D'Astous Auto — 860,00 $ − texto 500 non facturés 6 × 19,95 $ = 740,30 $ hors taxes de crédit ; facture périodique aux 6 mois (12 nov./12 mai, 508,80 $ HT) → nov. 2026 couverte, ≈ 318,81 $ à payer en mai 2027. Suspension de la facturation écartée (pas de « suspendre jusqu'au », rattrapage des cycles à la réactivation, génération automatique des ventes activée).
+
 ### TASK-005.12 [x] Numérotation des documents : compteur qui ne recule jamais
 Date de demande : 2026-10-04 (Philippe : « ERPCRM peut redonner un numéro déjà utilisé… assure-toi que non, le compteur ne peut pas descendre » ; et « garde la suite des INV, les clients ne vont pas être mélangés »)
 Date(s) de travail : 2026-10-04
