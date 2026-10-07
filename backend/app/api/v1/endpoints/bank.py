@@ -117,6 +117,7 @@ class MatchIn(BaseModel):
 class CompanyAssignIn(BaseModel):
     company_id: uuid.UUID | None = None
     remember: bool = True
+    auto_match: bool = True     # « Accepter » va jusqu'au bout : associe aussitot si c'est sur
 
 
 class RuleUpdate(BaseModel):
@@ -680,6 +681,17 @@ async def set_transaction_company(tx_id: uuid.UUID, payload: CompanyAssignIn, db
     if payload.company_id and payload.remember and tx.payee:
         await _remember(db, tx.payee, payload.company_id)
     await db.commit()
+    if payload.company_id and payload.auto_match and tx.amount > 0 and tx.status == "unclassified":
+        sug = await bm.best_exact(db, tx)
+        if sug:
+            try:
+                await match_transaction(tx.id, _match_body(sug), db)
+                tx = await _get_tx(tx_id, db)
+                tx.auto_matched = True
+                await db.commit()
+            except HTTPException:
+                await db.rollback()
+                tx = await _get_tx(tx_id, db)
     return await _tx_out(tx, db)
 
 
@@ -745,6 +757,7 @@ class VendorAssignIn(BaseModel):
     vendor_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
     remember: bool = True
+    auto_match: bool = True
 
 
 def _withdrawal_body(sug: dict) -> WithdrawalMatchIn:
@@ -897,6 +910,17 @@ async def set_transaction_vendor(tx_id: uuid.UUID, payload: VendorAssignIn, db: 
     if payload.vendor_id and payload.remember:
         await _remember_vendor(db, tx.payee or tx.description, payload.vendor_id, payload.category_id)
     await db.commit()
+    if payload.vendor_id and payload.auto_match and tx.amount < 0 and tx.status == "unclassified":
+        sug = await bm.best_exact_withdrawal(db, tx)
+        if sug:
+            try:
+                await match_withdrawal(tx.id, _withdrawal_body(sug), db)
+                tx = await _get_tx(tx_id, db)
+                tx.auto_matched = True
+                await db.commit()
+            except HTTPException:
+                await db.rollback()
+                tx = await _get_tx(tx_id, db)
     return await _tx_out(tx, db)
 
 

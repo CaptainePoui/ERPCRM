@@ -637,8 +637,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                   {t.amount < 0 && t.vendor_id && (
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       {t.vendor_source === 'name'
-                        ? <span style={{ color: '#6D28D9' }}>Fournisseur probable : <strong>{t.vendor_name}</strong> (nom du bénéficiaire)
-                            <button className="btn-secondary" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 6 }} onClick={() => acceptVendor(t)}>Accepter</button></span>
+                        ? <span style={{ color: '#6D28D9' }}>Fournisseur probable : <strong>{t.vendor_name}</strong> (nom du bénéficiaire)</span>
                         : <span style={{ color: C.green, fontWeight: 600 }}>→ {t.vendor_name}<span style={{ color: C.faint, fontWeight: 400 }}>{t.vendor_source === 'rule' ? ' (reconnu)' : ''}</span></span>}
                     </div>
                   )}
@@ -658,8 +657,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                   {!t.company_id && t.ai_status === 'done' && (
                     <div style={{ fontSize: 12, marginTop: 2, color: '#6D28D9' }}>
                       {t.ai_company_id
-                        ? <>IA propose : <strong>{t.ai_company_name}</strong> ({t.ai_confidence} %){t.ai_note ? ` — ${t.ai_note}` : ''}
-                            <button className="btn-secondary" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 6 }} onClick={() => acceptAi(t)}>Accepter</button></>
+                        ? <>IA propose : <strong>{t.ai_company_name}</strong> ({t.ai_confidence} %){t.ai_note ? ` — ${t.ai_note}` : ''}</>
                         : <>IA : aucun client probable{t.ai_note ? ` — ${t.ai_note}` : ''}</>}
                     </div>
                   )}
@@ -674,8 +672,17 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  {t.status === 'unclassified' && t.suggestion && <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12, marginRight: 6 }} onClick={() => validateOne(t)}>Valider</button>}
-                  {t.status === 'unclassified' && <button className="btn-secondary" style={{ padding: '3px 10px', fontSize: 12 }} onClick={() => t.amount > 0 ? setMatching(t) : setMatchingOut(t)}>Associer</button>}
+                  {/* Un seul bouton principal : Valider (correspondance sure), sinon Accepter (client ou fournisseur
+                      propose -- associe aussitot si ca devient sur) ; « Associer » reste un lien pour le cas a la main */}
+                  {t.status === 'unclassified' && (t.suggestion
+                    ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title="Associer la correspondance sûre indiquée sous la ligne" onClick={() => validateOne(t)}>Valider</button>
+                    : t.amount > 0 && !t.company_id && t.ai_status === 'done' && t.ai_company_id
+                      ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.ai_company_name} (et associer la facture si c'est sûr)`} onClick={() => acceptAi(t)}>Accepter</button>
+                      : t.amount < 0 && t.vendor_source === 'name'
+                        ? <button className="btn-primary" style={{ padding: '3px 10px', fontSize: 12 }} title={`Confirmer ${t.vendor_name} (et associer si c'est sûr)`} onClick={() => acceptVendor(t)}>Accepter</button>
+                        : null)}
+                  {t.status === 'unclassified' && <button type="button" onClick={() => t.amount > 0 ? setMatching(t) : setMatchingOut(t)}
+                    style={{ background: 'none', border: 'none', color: C.link, cursor: 'pointer', fontSize: 12, marginLeft: 8 }}>Associer…</button>}
                 </td>
               </tr>
             ))}
