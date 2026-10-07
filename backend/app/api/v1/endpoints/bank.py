@@ -737,6 +737,7 @@ class BillAllocIn(BaseModel):
 class NewExpenseIn(BaseModel):
     vendor_id: uuid.UUID | None = None
     category_id: uuid.UUID | None = None
+    line_class: str | None = None   # une des classes de ligne (Materiel taxable, Assurance...) -- TASK-044.1
     description: str | None = None
     tax_mode: str = "inclusive"     # le montant du releve contient deja les taxes
     tax_code: str = "tps_tvq"
@@ -847,6 +848,12 @@ async def match_withdrawal(tx_id: uuid.UUID, payload: WithdrawalMatchIn, db: Asy
                                     reference=tx.reference))
         if e.total != amount:
             raise HTTPException(status_code=400, detail="Le montant « taxes incluses » doit égaler le retrait")
+        if ne.line_class:
+            from app.models.purchases import ExpenseLine, LINE_CLASSES
+            if ne.line_class not in LINE_CLASSES:
+                raise HTTPException(status_code=400, detail="Classe inconnue")
+            e.lines = [ExpenseLine(line_class=ne.line_class, description=ne.description or tx.payee or tx.description,
+                                   amount=amount, tax_code=ne.tax_code, category_id=ne.category_id, sort_order=0)]
         db.add(e)
         await db.flush()
         tx.expense_id, vendor_id, category_id, created = e.id, e.vendor_id, e.category_id, True

@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import { useRefs, VendorPicker, CategorySelect, AllocationTable, allocList, allocSum, computeTaxes, TAX_CODES, TAX_MODES } from './purchases/common'
+import { LINE_CLASSES } from './purchases/Receipts'
 import { IconBank, IconCalendar, IconSearch, IconSettings } from '../components/Icons'
 import {
   ACCOUNT_TYPES, C, EMPTY, fmtDate, fmtMoney,
@@ -406,7 +407,7 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
   const [vendorId, setVendorId] = useState(tx.vendor_id)
   const [bills, setBills] = useState([])
   const [alloc, setAlloc] = useState({})
-  const [exp, setExp] = useState({ category_id: null, description: tx.payee || tx.description || '', tax_mode: 'inclusive', tax_code: 'tps_tvq' })
+  const [exp, setExp] = useState({ category_id: null, description: tx.payee || tx.description || '', tax_mode: 'inclusive', tax_code: 'tps_tvq', line_class: '' })
   const [remember, setRemember] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -496,6 +497,16 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
             <div className="form-grid">
               <VendorPicker vendors={refs.vendors} value={vendorId} onCreated={refs.reload} onChange={setVendorId} />
               <div className="form-group"><label>Compte de dépense</label><CategorySelect categories={refs.categories} value={exp.category_id} onChange={v => setExp({ ...exp, category_id: v })} /></div>
+              <div className="form-group"><label>Classe de l'article</label>
+                <select value={exp.line_class} onChange={e => {
+                  const c = e.target.value
+                  const tax = ['materiel_taxable', 'service_taxable'].includes(c) ? 'tps_tvq' : ['materiel_non_taxable', 'service_non_taxable', 'assurance'].includes(c) ? 'aucune' : exp.tax_code
+                  setExp({ ...exp, line_class: c, tax_code: tax })
+                }}>
+                  <option value="">— Aucune —</option>
+                  {LINE_CLASSES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
               <div className="form-group"><label>Le montant du relevé est</label><select value={exp.tax_mode} onChange={e => setExp({ ...exp, tax_mode: e.target.value })}>{TAX_MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
               <div className="form-group"><label>Taxes payées</label><select value={exp.tax_code} onChange={e => setExp({ ...exp, tax_code: e.target.value })}>{TAX_CODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
             </div>
@@ -504,7 +515,7 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
             <div style={{ textAlign: 'right', marginTop: 8 }}>
               <button className="btn-primary" disabled={saving || exp.tax_mode !== 'inclusive'}
                 title={exp.tax_mode !== 'inclusive' ? 'Le montant du relevé contient déjà les taxes' : undefined}
-                onClick={() => submit({ new_expense: { vendor_id: vendorId, ...exp } })}>Enregistrer la dépense</button>
+                onClick={() => submit({ new_expense: { vendor_id: vendorId, ...exp, line_class: exp.line_class || null } })}>Enregistrer la dépense</button>
             </div>
           </div>
         )}
@@ -563,7 +574,11 @@ function TransactionModal({ txId, onClose, onChanged }) {
             </>
           ) : (
             <>
-              {d.vendor_name && <div style={{ fontSize: 13, marginBottom: 6 }}>→ <strong>{d.vendor_name}</strong>{d.vendor_source === 'rule' ? ' (reconnu par une règle)' : d.vendor_source === 'name' ? ' (probable, d\'après le nom)' : ''}</div>}
+              {d.vendor_name && <div style={{ fontSize: 13, marginBottom: 6 }}>→ <strong>{d.vendor_name}</strong>{d.vendor_source === 'rule' ? ' (reconnu par une règle)' : d.vendor_source === 'name' ? ' (probable, d\'après le nom)' : ''}
+                {d.status === 'unclassified' && d.vendor_source === 'name' && (
+                  <button className="btn-primary" style={{ padding: '2px 10px', fontSize: 12, marginLeft: 8 }} title="Crée la règle « bénéficiaire → fournisseur » pour les prochains relevés et associe si c'est sûr"
+                    onClick={() => run(() => api.put(`/v1/bank/transactions/${d.id}/vendor`, { vendor_id: d.vendor_id, remember: true }))}>Accepter</button>
+                )}</div>}
               {d.status !== 'matched' && <VendorPicker label="Changer le fournisseur (retenu pour ce bénéficiaire)" vendors={refs.vendors} value={d.vendor_source === 'name' ? null : d.vendor_id} onCreated={refs.reload}
                 onChange={vid => vid && run(() => api.put(`/v1/bank/transactions/${d.id}/vendor`, { vendor_id: vid, remember: true }))} />}
             </>
