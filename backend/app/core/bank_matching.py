@@ -190,21 +190,21 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # Un paiement deja enregistre n'est « sur » que s'il est proche du depot (10 jours au plus) et ne
     # paie pas une facture emise apres le depot (2026-10-07 : la regle « un seul candidat sur 45 jours »
     # avait lie 6 depots a un paiement d'un autre mois chez des clients mensuels au meme montant).
-    pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id)
+    # Un paiement plus eloigne n'est pas ce depot : il ne bloque plus la regle de la plus vieille facture
+    # (2026-10-07, MRST : un paiement non relie du 24 aout empechait le depot du 6 octobre).
+    def gap(p):
+        return abs((p["received_at"] - tx.posted_date).days) if p["received_at"] else 9999
+    pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id) and gap(p) <= 10
             and not (p["invoice_date"] and p["invoice_date"] > tx.posted_date + timedelta(days=10))]
     if len(pays) == 1:
-        gap = abs((pays[0]["received_at"] - tx.posted_date).days) if pays[0]["received_at"] else 9999
-        return {"kind": "payment", **pays[0]} if gap <= 10 else None
+        return {"kind": "payment", **pays[0]}
     if pays:
-        # Paiement recurrent (meme client, meme montant) : le plus proche du depot, s'il l'est nettement
-        # (10 jours au plus) ; a egalite le meme jour (deux paiements identiques), la plus vieille facture.
-        def gap(p):
-            return abs((p["received_at"] - tx.posted_date).days) if p["received_at"] else 9999
+        # Paiement recurrent (meme client, meme montant) : le plus proche du depot, s'il l'est nettement ;
+        # a egalite le meme jour (deux paiements identiques), la plus vieille facture.
         pays.sort(key=lambda p: (gap(p), p["invoice_date"] or date.max))
         best, second = pays[0], pays[1]
-        if gap(best) <= 10 and (gap(second) > gap(best) or second["received_at"] == best["received_at"]):
+        if gap(second) > gap(best) or second["received_at"] == best["received_at"]:
             return {"kind": "payment", **best}
-    if pays:
         return None
     # Regle de Philippe (2026-10-06) : un depot paie la plus vieille facture ouverte du client, ou les
     # plus vieilles dans l'ordre. Sur seulement si le montant egale exactement la plus vieille, ou la

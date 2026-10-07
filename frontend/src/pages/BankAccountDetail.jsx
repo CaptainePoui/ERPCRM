@@ -16,7 +16,7 @@ import {
 const TABS = ['dashboard', 'unclassified', 'all']
 
 const ALL_FILTERS = [
-  { value: 'all',         label: 'Toutes les transactions' },
+  { value: 'all',         label: 'Transactions classées' },
   { value: 'deposits',    label: 'Dépôts' },
   { value: 'withdrawals', label: 'Retraits' },
   { value: 'matched',     label: 'Mises en correspondance' },
