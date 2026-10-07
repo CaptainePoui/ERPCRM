@@ -22,6 +22,7 @@ export default function Recurrence() {
     try {
       const r = await api.post(`/v1/recurring-billing/${id}/generate-invoice`)
       load()
+      if (r.data?.covered) alert(r.data.detail)   // cycle couvert par un echange (troc) : aucune facture
       if (r.data?.invoice_id) navigate(`/invoices/${r.data.invoice_id}`)
     } catch (e) { alert(e.response?.data?.detail || 'Génération impossible') }
   }

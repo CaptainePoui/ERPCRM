@@ -21,8 +21,8 @@ from sqlalchemy.orm import selectinload
 from app.core.database import AsyncSessionLocal
 from app.api.v1.endpoints.settings import get_setting
 from app.api.v1.endpoints.purchases import (NothingDue, _lock, create_recurring_bill, create_recurring_expense)
-from app.api.v1.endpoints.recurring_billing import (NothingToGenerate, create_recurring_invoice, lock_recurrence,
-                                                    next_missing_cycle)
+from app.api.v1.endpoints.recurring_billing import (NothingToGenerate, CycleCoveredByBarter, create_recurring_invoice,
+                                                    lock_recurrence, next_missing_cycle)
 from app.models.purchases import RecurringBill, RecurringExpense
 from app.models.recurring_billing import CompanyRecurringBilling
 
@@ -101,6 +101,9 @@ async def _sales() -> int:
             except NothingToGenerate:
                 await db.rollback()
                 skip.add(rid)
+            except CycleCoveredByBarter as e:
+                log.info("Facture periodique %s : %s", rb.name, e)
+                await db.commit()        # cycle marque fait, sans facture ; le cycle suivant peut etre du aussi
             except Exception:
                 await db.rollback()
                 log.exception("Facture periodique %s : creation echouee", rid)

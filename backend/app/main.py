@@ -14,6 +14,7 @@ from app.api.v1.endpoints import backup as backup_router
 from app.api.v1.endpoints import bank
 from app.api.v1.endpoints import taxes
 from app.api.v1.endpoints import purchases
+from app.api.v1.endpoints import barter
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
@@ -103,6 +104,7 @@ app.include_router(knowledge_graph.router, prefix="/api/v1/knowledge-graph", tag
 app.include_router(bank.router, prefix="/api/v1/bank", tags=["bank"])
 app.include_router(taxes.router, prefix="/api/v1/taxes", tags=["taxes"])
 app.include_router(purchases.router, prefix="/api/v1/purchases", tags=["purchases"])
+app.include_router(barter.router, prefix="/api/v1/barter", tags=["barter"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 
 

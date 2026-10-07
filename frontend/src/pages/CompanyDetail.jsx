@@ -10,11 +10,12 @@ import JournalFeed from '../components/JournalFeed'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import TelephonyTab, { CdrSection, E911AddressesSection } from './telephony/TelephonyTab'
 import CdrReportsSection from '../components/CdrReportsSection'
+import BarterTab from './barter/BarterTab'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 
-const TABS = ['Général', 'Transactions', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'transactions', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
+const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'transactions', 'echanges', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -657,6 +658,7 @@ export default function CompanyDetail({ isNew }) {
             )}
 
             {slug === 'transactions' && <TransactionsTab companyId={id} filter={txFilter} setFilter={setTxFilter} />}
+            {slug === 'echanges' && <BarterTab companyId={id} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}

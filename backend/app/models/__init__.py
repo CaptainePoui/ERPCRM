@@ -34,3 +34,4 @@ from app.models.tax import TaxAdjustment, TaxPayment, TaxObligation
 from app.models.purchases import ExpenseLine, ReceiptDocument
 from app.models.purchases import Vendor, ExpenseCategory, Expense, RecurringExpense, Bill, BillLine, RecurringBill, RecurringBillLine, VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation
 from app.models.document_counter import DocumentCounter
+from app.models.barter import BarterExchange, BarterDeduction, BarterFile, BarterApplication

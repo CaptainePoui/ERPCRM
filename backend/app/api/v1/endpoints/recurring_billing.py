@@ -12,7 +12,7 @@ lignes en dehors du cycle de facturation lui-même.
 """
 import uuid
 from decimal import Decimal
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -23,6 +23,7 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.invoices import _next_number, _recalc, _money
+from app.core import barter
 from app.models.recurring_billing import CompanyRecurringBilling, RecurringBillingLine
 from app.models.catalogue import CatalogueItem
 from app.models.company import Company
@@ -248,6 +249,12 @@ class NothingToGenerate(Exception):
     pass
 
 
+class CycleCoveredByBarter(Exception):
+    """Cycle couvert au complet par un echange (troc) : aucune facture, le cycle est marque fait (TASK-005.13).
+    L'appelant fait le commit."""
+    pass
+
+
 async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling, issue: bool = False) -> Invoice:
     """Facture du prochain cycle manquant (voir generate_invoice_from_recurring). issue=True (creation
     automatique) : facture emise mais « non transmise » -- c'est Philippe qui l'envoie au client.
@@ -262,10 +269,25 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     is_first_invoice = not rb.first_invoice_generated
     next_cycle_start, next_cycle_end = _cycle_bounds(rb.start_date, rb.frequency, cycle_end)
 
+    # TASK-005.13 : echange (troc) -- le credit hors taxes repousse la facture (jamais la premiere, facturee d'avance)
+    plan = None
+    if not is_first_invoice:
+        plan = barter.plan_cycle(await barter.credits_for(db, rb), barter.cycle_amount(rb), cycle_start, cycle_end)
+    if plan and plan["full"]:
+        barter.record(db, rb, plan, cycle_start, cycle_end)
+        rb.last_invoice_date = cycle_start
+        for line in list(rb.lines):
+            if line.is_prorata_credit:
+                await db.delete(line)
+        await db.flush()
+        raise CycleCoveredByBarter(f"Cycle du {cycle_start} au {cycle_end - timedelta(days=1)} couvert par l'échange (troc) : aucune facture")
+    if plan and plan["billed_from"] > date.today():
+        raise NothingToGenerate(f"Facture repoussée au {plan['billed_from']} par l'échange (troc)")
+
     inv = Invoice(
         number=await _next_number(db),
         company_id=rb.company_id,
-        issue_date=cycle_start,
+        issue_date=plan["billed_from"] if plan else cycle_start,
         due_date=cycle_end,
         notes=f"Généré depuis la facture périodique « {rb.name} »" if rb.name else "Généré depuis la récurrence téléphonique SIPV",
         site_id=rb.site_id,
@@ -295,6 +317,17 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
                 line_total=_money(Decimal(str(line.qty)) * Decimal(str(line.unit_price))), sort_order=sort_order,
             ))
             sort_order += 1
+    if plan:
+        for b, take in plan["uses"]:
+            db.add(InvoiceLine(
+                invoice_id=inv.id,
+                description=f"Échange (troc) du {b.exchange_date.isoformat()} — {b.description} : service du "
+                            f"{cycle_start.isoformat()} au {plan['covered_until'].isoformat()} couvert",
+                qty=1, unit_price=-float(take), line_total=-take, sort_order=sort_order,
+            ))
+            sort_order += 1
+        await db.flush()
+        barter.record(db, rb, plan, cycle_start, cycle_end, invoice_id=inv.id)
     if is_first_invoice:
         rb.first_invoice_generated = True
     rb.last_invoice_date = cycle_start
@@ -342,6 +375,9 @@ async def generate_invoice_from_recurring(rb_id: uuid.UUID, db: AsyncSession = D
     except NothingToGenerate as e:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+    except CycleCoveredByBarter as e:
+        await db.commit()
+        return {"covered": True, "detail": str(e)}
     await db.commit()
     return {"invoice_id": str(inv.id), "invoice_number": inv.number, "total": inv.total}
 
