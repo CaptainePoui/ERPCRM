@@ -420,6 +420,13 @@ Date(s) de travail : 2026-10-02
 - Preuve HTTP : facture test 100 $ taxable + 50 $ non taxable → 150,00 / TPS 5,00 / TVQ 9,98 / 164,98 ; ligne rendue taxable → 172,46 ; facture supprimée. INV-111280 (importée, mixte) modifiée sans changement → total 131,65 $ inchangé. Captures d'une facture payée et d'un brouillon.
 - Non testé en HTTP : la facturation d'un ticket. Hors périmètre, à signaler : le module Devis (devis.py) a encore son propre calcul (arrondi au pair, sans taxe par ligne).
 
+### TASK-005.14 [ ] Factures de frais de retard automatiques (2 % par mois + frais de gestion)
+Date de demande : 2026-10-07 (Philippe : « ERPCRM va faire des factures de retard, c'est 24 % annuel donc 2 % par mois plus des frais de gestion de 9,95 $ ; par contre ils ont 30 jours pour payer mais je facture les frais 15 jours plus tard, histoire de laisser un chèque arriver par la poste »)
+Date(s) de travail : —
+
+- En attente des réponses de Philippe (base des 2 %, répétition, taxes, exclusions, mise en marche) avant de coder.
+- Constat (factures importées) : l'ancien logiciel fait une facture de retard par facture en retard, puis une autre chaque 30 jours tant qu'elle reste impayée — lignes « Frais de retard (2%) — INV-… » + « Frais d'administration — Frais d'administration pour gestion de retard de paiement » (10,00 $) ; 2 % du **total TTC** même si la facture est presque payée (Physotech : 1,08 $ sur un solde de 4,60 $) ; première à échéance + 25 jours (55 jours après la facture), puis + 30 jours ; taxes incohérentes (2 % parfois taxé, parfois non ; frais d'administration taxés). Plusieurs annulées par avoir (CNJ, Audacie) ; celles de Physotech laissées en brouillon (troc). L'ancien logiciel en produit encore (INV-112243 du 25 sept.).
+
 ### TASK-005.13 [x] Échanges (troc) : fiche d'échange, montant hors taxes qui repousse la facturation périodique, preuve gardée
 Date de demande : 2026-10-07 (Philippe : D'Astous Auto a réparé sa voiture, 860 $ hors taxes ; « j'ai oublié de lui charger les textos 500 à 19,95 $ pendant 6 mois, on déduit ça… et le reste sur sa facture habituelle » ; puis « il me faudrait aussi cette option (troc) pour certaines entreprises qui acceptent l'échange, ça resterait dans l'ERPCRM pour garder une trace de la transaction et prouver l'échange »)
 Date(s) de travail : 2026-10-07
