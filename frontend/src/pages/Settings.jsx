@@ -63,6 +63,7 @@ export default function Settings() {
 
       {msg && <div style={{ background: '#ECFDF5', color: '#065F46', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
+      <BusinessSection />
       <TimezoneSection />
       <LateFeesSection />
 
@@ -299,6 +300,52 @@ function LateFeesSection() {
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// Coordonnees de l'entreprise (TASK-005.18, 2026-10-08) : imprimees en haut de tous les PDF (facture, avoir, devis,
+// entente d'echange). Les n° de TPS/TVQ permettent aux clients de reclamer les taxes payees.
+function BusinessSection() {
+  const [f, setF] = useState(null)
+  const [saved, setSaved] = useState(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { api.get('/v1/settings/business').then(r => { setF(r.data); setSaved(r.data) }) }, [])
+  async function save() {
+    setMsg('')
+    try { const r = await api.put('/v1/settings/business', f); setF(r.data); setSaved(r.data); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') }
+  }
+  if (!f) return null
+  const set = (k, v) => { setF({ ...f, [k]: v }); setMsg('') }
+  const field = (k, label, extra = {}) => (
+    <div className="form-group" style={{ marginBottom: 0 }}>
+      <label>{label}</label>
+      <input value={f[k]} onChange={e => set(k, e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} {...extra} />
+    </div>
+  )
+  const changed = JSON.stringify(f) !== JSON.stringify(saved)
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Coordonnées de l'entreprise</h3>
+      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+        Imprimées en haut de tous les PDF : factures, avoirs, devis et ententes d'échange. Vos numéros de TPS et de TVQ permettent à vos clients de réclamer les taxes qu'ils vous paient.
+      </p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
+        <div style={{ gridColumn: '1 / -1' }}>{field('name', "Nom de l'entreprise")}</div>
+        <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+          <label>Adresse</label>
+          <textarea rows={3} value={f.address} onChange={e => set('address', e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} placeholder={'123, rue Principale\nVille (Québec)  H0H 0H0'} />
+        </div>
+        {field('tps', 'N° de TPS', { placeholder: '123456789 RT0001' })}
+        {field('tvq', 'N° de TVQ', { placeholder: '1234567890 TQ0001' })}
+        {field('phone', 'Téléphone')}
+        {field('email', 'Courriel', { type: 'email' })}
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 16 }}>
+        <button className="btn-primary" onClick={save} disabled={!changed}>Enregistrer</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
     </div>
   )
 }

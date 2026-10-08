@@ -245,6 +245,44 @@ class NumberingIn(BaseModel):
     padding: int = 4
 
 
+# Coordonnees de l'entreprise imprimees sur tous les PDF (facture, avoir, devis, echange) -- TASK-005.18, 2026-10-08.
+# Les cles pdf_seller_* existaient (core/invoice_pdf.py) sans aucun ecran pour les remplir.
+BUSINESS_KEYS = {"name": "pdf_seller_name", "address": "pdf_seller_address", "tps": "pdf_seller_tps",
+                 "tvq": "pdf_seller_tvq", "phone": "pdf_seller_phone", "email": "pdf_seller_email"}
+
+
+class BusinessInfo(BaseModel):
+    name: str = Field(default="", max_length=200)
+    address: str = Field(default="", max_length=500)
+    tps: str = Field(default="", max_length=40)
+    tvq: str = Field(default="", max_length=40)
+    phone: str = Field(default="", max_length=40)
+    email: str = Field(default="", max_length=200)
+
+
+async def _business(db: AsyncSession) -> BusinessInfo:
+    out = {}
+    for field, key in BUSINESS_KEYS.items():
+        s = (await db.execute(select(AppSetting).where(AppSetting.key == key))).scalar_one_or_none()
+        out[field] = s.value if s else ("Simple IP inc." if field == "name" else "")   # meme defaut que le PDF
+    return BusinessInfo(**out)
+
+
+@router.get("/business", response_model=BusinessInfo)
+async def get_business(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return await _business(db)
+
+
+@router.put("/business", response_model=BusinessInfo)
+async def update_business(payload: BusinessInfo, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    if not payload.name.strip():
+        raise HTTPException(status_code=400, detail="Le nom de l'entreprise est obligatoire")
+    for field, key in BUSINESS_KEYS.items():
+        await set_setting(db, key, getattr(payload, field).strip())
+    await db.commit()
+    return await _business(db)
+
+
 @router.get("/timezones")
 async def list_timezones(_: User = Depends(get_current_user)):
     """Fuseaux horaires proposes pour l'entreprise + l'heure qu'il est selon le fuseau actuel."""
