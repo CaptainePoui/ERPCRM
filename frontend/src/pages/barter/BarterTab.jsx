@@ -2,6 +2,7 @@
 // des mois de service de la facture periodique ; sa facturation repart a la date de reprise. Suivi du jour en haut.
 // Les pieces justificatives (facture du fournisseur, photo) restent jointes : preuve de l'echange.
 import { useState, useEffect, useRef, Fragment } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney } from '../Bank'
 
@@ -148,6 +149,7 @@ function Projection({ rb, children }) {
 }
 
 function MonthsBox({ rb }) {
+  const navigate = useNavigate()
   const p = rb.projection
   const th = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }
   const td = { padding: '6px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13 }
@@ -161,6 +163,14 @@ function MonthsBox({ rb }) {
             <th style={th}>Mois de service</th><th style={th}>Durée</th><th style={{ ...th, textAlign: 'right' }}>Payé par l'échange</th><th style={th}>État</th>
           </tr></thead>
           <tbody>
+            {p.paid_invoices.map(x => (
+              <tr key={x.invoice_id}>
+                <td style={td}>Facture <span style={{ color: C.link, cursor: 'pointer' }} onClick={() => navigate(`/invoices/${x.invoice_id}`)}>{x.number}</span> (payée le {longDate(x.date)})</td>
+                <td style={td}>{EMPTY}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtMoney(x.amount)}</td>
+                <td style={{ ...td, color: C.green }}>Payée</td>
+              </tr>
+            ))}
             {p.months.map(m => (
               <tr key={m.start}>
                 <td style={td}>{longDate(m.start)} → {longDate(m.covered_until)}</td>
@@ -173,7 +183,7 @@ function MonthsBox({ rb }) {
               <tr>
                 <td style={{ ...td, fontWeight: 600 }}>Total</td>
                 <td style={{ ...td, fontWeight: 600 }}>{full} mois{part ? ` et ${part.days} jours` : ''}</td>
-                <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmtMoney(p.months.reduce((t, m) => t + m.amount, 0))}</td>
+                <td style={{ ...td, textAlign: 'right', fontWeight: 600 }}>{fmtMoney(p.months.reduce((t, m) => t + m.amount, 0) + p.paid_invoices.reduce((t, x) => t + x.amount, 0))}</td>
                 <td style={td}></td>
               </tr>
             )}
@@ -189,6 +199,7 @@ function MonthsBox({ rb }) {
 }
 
 function ExchangeCard({ b, onEdit, onChanged }) {
+  const navigate = useNavigate()
   const fileRef = useRef()
   const [busy, setBusy] = useState(false)
   async function upload(list) {
@@ -228,15 +239,19 @@ function ExchangeCard({ b, onEdit, onChanged }) {
           {b.notes && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, whiteSpace: 'pre-wrap' }}>{b.notes}</div>}
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>MOIS DÉJÀ COMPTÉS</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>DÉJÀ UTILISÉ</div>
           {b.remaining <= 0 && b.applications.length > 0 && (
             <div style={{ fontSize: 13, color: C.green, fontWeight: 600, marginBottom: 4 }}>
               Remboursé au complet : service fourni du {longDate(b.applications[0].cycle_start)} au {longDate(b.applications[b.applications.length - 1].covered_until)}
             </div>
           )}
           {b.applications.length ? b.applications.map((a, i) => (
-            <div key={i} style={{ fontSize: 13, marginBottom: 2 }}>{longDate(a.cycle_start)} → {longDate(a.covered_until)} : {fmtMoney(a.amount)}</div>
-          )) : <div style={{ fontSize: 13, color: C.faint }}>Aucun encore — le premier mois se compte au premier jour pas encore facturé</div>}
+            <div key={i} style={{ fontSize: 13, marginBottom: 2 }}>
+              {a.invoice_id
+                ? <>Facture <span style={{ color: C.link, cursor: 'pointer' }} onClick={() => navigate(`/invoices/${a.invoice_id}`)}>{a.invoice_number}</span> payée le {longDate(a.cycle_start)} : {fmtMoney(a.amount)}</>
+                : <>{longDate(a.cycle_start)} → {longDate(a.covered_until)} : {fmtMoney(a.amount)}</>}
+            </div>
+          )) : <div style={{ fontSize: 13, color: C.faint }}>Rien encore — le crédit paie d'abord les factures ouvertes, puis les mois à partir du premier jour pas encore facturé</div>}
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: '12px 0 4px' }}>PIÈCES JUSTIFICATIVES</div>
           {b.files.map(fl => (
             <div key={fl.id} style={{ fontSize: 13, display: 'flex', gap: 8 }}>

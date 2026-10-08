@@ -106,7 +106,8 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
     # Paiements existants a lier
     linked = await linked_payment_ids(db)
     cps = (await db.execute(
-        select(ClientPayment).where(ClientPayment.amount == amount, ClientPayment.status.in_(["confirmed", "pending"]))
+        select(ClientPayment).where(ClientPayment.amount == amount, ClientPayment.status.in_(["confirmed", "pending"]),
+                                    ClientPayment.method_code != "troc")   # un paiement par echange n'entre jamais a la banque
     )).scalars().all()
     scored = []
     for cp in cps:

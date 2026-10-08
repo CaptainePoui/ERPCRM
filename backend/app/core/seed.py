@@ -15,6 +15,7 @@ DEFAULT_PAYMENT_METHODS = [
     {"code": "carte_credit",  "name": "Carte de crédit","discount_rate": 0.0},
     {"code": "elavon",        "name": "Elavon",         "discount_rate": 0.0},
     {"code": "authorizenet",  "name": "Authorize.Net",  "discount_rate": 0.0},
+    {"code": "troc",          "name": "Troc",           "discount_rate": 0.0},   # echanges (TASK-005.13)
 ]
 
 DEFAULT_STATUSES = [

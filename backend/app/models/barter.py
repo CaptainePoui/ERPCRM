@@ -78,4 +78,7 @@ class BarterApplication(Base):
     covered_until: Mapped[date] = mapped_column(Date, nullable=False)     # dernier jour couvert par le credit
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="CASCADE"))
+    # Facture ouverte payee par le credit (2026-10-08, « le troc paie d'abord les factures ouvertes non payees ») :
+    # paiement « Troc » ; supprimer ce paiement rend le credit
+    client_payment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("client_payments.id", ondelete="CASCADE"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

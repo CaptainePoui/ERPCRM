@@ -10,6 +10,12 @@ et 8 jours plus tard, le 20, puis chaque 20 : son cycle repart de la date de rep
 - Le dernier mois se compte en jours ; le jour entame est laisse au client (arrondi vers le haut).
 - A l'epuisement, la facture periodique repart a la date de reprise (start_date) : facture complete, puis meme rythme.
 Plusieurs echanges sur la meme facture periodique : le plus vieux d'abord.
+
+2026-10-08, Philippe : « le troc paie d'abord la/les factures ouvertes non payees ; je pourrais faire un troc avec un
+client sans facture mensuelle et donc les factures deviennent payees des la creation » -- avant les mois de service,
+le credit regle au complet (taxes incluses, comme tout paiement) les factures emises non payees de la compagnie, la
+plus vieille d'abord, par un paiement « Troc » (pay_open_invoices) ; appele a l'enregistrement de l'echange et des
+qu'une facture est emise (facture envoyee/emise, facture periodique creee). Jamais un brouillon.
 """
 import math
 from datetime import date, timedelta
@@ -58,6 +64,51 @@ async def credits_for(db, rb) -> list[list]:
     rows = (await db.execute(select(BarterExchange).where(BarterExchange.recurring_billing_id == rb.id)
                              .order_by(BarterExchange.exchange_date, BarterExchange.created_at))).scalars().all()
     return [[b, r] for b in rows if (r := remaining_of(b)) > 0]
+
+
+OPEN_STATUSES = ("envoyee", "en_retard", "partiellement_payee")
+
+
+async def pay_open_invoices(db, company_id) -> int:
+    """Le credit restant des echanges de la compagnie (plus vieux d'abord) paie ses factures emises non payees, la plus
+    vieille d'abord. Un paiement « Troc » par facture. Retourne le nombre de factures touchees. Ne fait pas le commit."""
+    from app.models.invoice import Invoice
+    from app.models.client_payment import ClientPayment, PaymentAllocation
+    from app.api.v1.endpoints.payments import settled_amounts, _recalculate_invoice_status, next_payment_reference
+    rows = (await db.execute(select(BarterExchange).where(BarterExchange.company_id == company_id)
+                             .order_by(BarterExchange.exchange_date, BarterExchange.created_at))).scalars().all()
+    credits = [[b, r] for b in rows if (r := remaining_of(b)) > 0]
+    if not credits:
+        return 0
+    invoices = (await db.execute(select(Invoice).where(
+        Invoice.company_id == company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None), Invoice.total > 0)
+        .order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    paid = await settled_amounts(db, [i.id for i in invoices])
+    today, n = date.today(), 0
+    for inv in invoices:
+        total_left = sum((c[1] for c in credits), Decimal("0"))
+        balance = _m(Decimal(inv.total) - (paid.get(inv.id) or Decimal("0")))
+        if total_left <= 0:
+            break
+        if balance <= 0:
+            continue
+        take = min(balance, total_left)
+        uses = _take(credits, take)
+        credits = [c for c in credits if c[1] > 0]
+        names = " ; ".join(f"{b.exchange_date.isoformat()} {b.description}" for b, _t in uses)
+        cp = ClientPayment(company_id=company_id, status="confirmed", source="barter", method_code="troc", method_name="Troc",
+                           amount=_m(take), received_at=today, reference=await next_payment_reference(db),
+                           notes=f"Payé par l'échange (troc) : {names}")
+        db.add(cp)
+        await db.flush()
+        db.add(PaymentAllocation(payment_id=cp.id, invoice_id=inv.id, amount_allocated=_m(take)))
+        for b, t in uses:
+            db.add(BarterApplication(barter_id=b.id, cycle_start=today, cycle_end=today, covered_until=today,
+                                     amount=_m(t), invoice_id=inv.id, client_payment_id=cp.id))
+        await db.flush()
+        await _recalculate_invoice_status(inv.id, db)
+        n += 1
+    return n
 
 
 def _take(credits: list[list], amount: Decimal) -> list[tuple]:
@@ -158,6 +209,19 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
             BarterApplication.recurring_billing_id == rb.id, BarterApplication.cycle_start >= since))).scalars().all())
     exchanges = (await db.execute(select(BarterExchange).where(BarterExchange.id.in_(ids)))).scalars().all() if ids else []
     exchange_value = sum((Decimal(b.received_value) for b in exchanges), Decimal("0"))
+    # Factures ouvertes payees par ces echanges (avant les mois de service)
+    paid_invoices = []
+    for b in exchanges:
+        for a in b.applications:
+            if a.client_payment_id:
+                paid_invoices.append({"invoice_id": a.invoice_id, "date": a.cycle_start, "amount": Decimal(a.amount)})
+    if paid_invoices:
+        from app.models.invoice import Invoice
+        numbers = dict((await db.execute(select(Invoice.id, Invoice.number).where(
+            Invoice.id.in_([x["invoice_id"] for x in paid_invoices])))).all())
+        for x in paid_invoices:
+            x["number"] = numbers.get(x["invoice_id"])
+    credit_total += sum((x["amount"] for x in paid_invoices), Decimal("0"))
     resume = None
     for _ in range(max_months):
         if not credits:
@@ -174,7 +238,7 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
     # Suivi du jour (2026-10-08, Philippe : « voir ou on en est de la dette peu importe le jour que je regarde ») :
     # mois termines au complet + le mois en cours au prorata des jours deja passes
     today = date.today()
-    consumed = Decimal("0")
+    consumed = sum((x["amount"] for x in paid_invoices if x["date"] <= today), Decimal("0"))
     for m in months:
         if m["start"] > today:
             continue
@@ -206,4 +270,6 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
         "skipped": skipped,
         "next_invoices": [resume + delta * i for i in range(3)] if resume else [],
         "gauge": gauge,
+        "paid_invoices": [{"invoice_id": x["invoice_id"], "number": x["number"], "date": x["date"], "amount": float(_m(x["amount"]))}
+                          for x in sorted(paid_invoices, key=lambda x: x["date"])],
     }

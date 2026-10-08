@@ -329,6 +329,9 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
     inv.transmission_status = "courriel"
     if inv.status == "brouillon":
         inv.status = "envoyee"
+        await db.flush()
+        from app.core.barter import pay_open_invoices
+        await pay_open_invoices(db, inv.company_id)     # TASK-005.13 : un echange (troc) paie la facture emise
     await db.commit()
     inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)
@@ -360,9 +363,14 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
         inv.site_id = site.id
         inv.site_label_snapshot = site.label
         inv.site_address_snapshot = _site_address_text(site)
+    was_draft = inv.status == "brouillon"
     for field, value in updates.items():
         setattr(inv, field, value)
     _recalc(inv)
+    if was_draft and inv.status != "brouillon" and inv.status != "annulee":
+        await db.flush()
+        from app.core.barter import pay_open_invoices
+        await pay_open_invoices(db, inv.company_id)     # TASK-005.13 : un echange (troc) paie la facture emise
     await db.commit()
     inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)

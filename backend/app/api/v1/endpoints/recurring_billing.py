@@ -331,6 +331,9 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
         select(Invoice).options(selectinload(Invoice.lines), selectinload(Invoice.company)).where(Invoice.id == inv.id)
     )).scalar_one()
     _recalc(inv)
+    if issue:
+        await db.flush()
+        await barter.pay_open_invoices(db, rb.company_id)   # TASK-005.13 : un echange (troc) paie la facture emise
     return inv
 
 

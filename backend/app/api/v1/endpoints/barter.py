@@ -118,6 +118,8 @@ async def create_barter(company_id: uuid.UUID, payload: BarterIn, db: AsyncSessi
     b = BarterExchange(company_id=company_id, deductions=[], files=[], applications=[])
     await _apply(db, b, payload)
     db.add(b)
+    await db.flush()
+    await bt.pay_open_invoices(db, company_id)      # le troc paie d'abord les factures ouvertes
     await db.commit()
     return {"id": str(b.id)}
 
@@ -126,6 +128,8 @@ async def create_barter(company_id: uuid.UUID, payload: BarterIn, db: AsyncSessi
 async def update_barter(bid: uuid.UUID, payload: BarterIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     b = await _get(db, bid)
     await _apply(db, b, payload)
+    await db.flush()
+    await bt.pay_open_invoices(db, b.company_id)
     await db.commit()
     return {"id": str(b.id)}
 

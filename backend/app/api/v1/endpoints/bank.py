@@ -596,6 +596,8 @@ async def match_transaction(tx_id: uuid.UUID, payload: MatchIn, db: AsyncSession
         cp = await db.get(ClientPayment, payload.client_payment_id)
         if not cp:
             raise HTTPException(status_code=404, detail="Paiement introuvable")
+        if cp.method_code == "troc":
+            raise HTTPException(status_code=400, detail="Un paiement par échange (troc) n'entre pas à la banque")
         if cp.id in await bm.linked_payment_ids(db):
             raise HTTPException(status_code=400, detail="Ce paiement est déjà associé à une autre transaction bancaire")
         if cp.amount != tx.amount:
