@@ -151,7 +151,13 @@ function Projection({ rb }) {
   const part = p.months.find(m => m.days)
   return (
     <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>Facture périodique « {rb.name} » — suivi de l'échange</div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>Facture périodique « {rb.name} » — suivi de l'échange</div>
+        <div style={{ textAlign: 'right' }}>
+          <div style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>Valeur de l'échange</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{fmtMoney(p.gauge.credit_total)} <span style={{ fontSize: 12, fontWeight: 400, color: C.muted }}>hors taxes</span></div>
+        </div>
+      </div>
       <Gauge rb={rb} />
       <div style={{ fontSize: 13, marginBottom: 2 }}>
         Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture ({fmtMoney(p.monthly_price)} par mois au prix actuel)
