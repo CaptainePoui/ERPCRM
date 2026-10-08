@@ -164,25 +164,20 @@ function Projection({ rb }) {
         <div style={{ textAlign: 'right' }}>
           <div style={{ fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em' }}>Valeur de l'échange</div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{fmtMoney(p.gauge.exchange_value)} <span style={{ fontSize: 12, fontWeight: 400, color: C.muted }}>hors taxes</span></div>
-          {p.gauge.adjustments !== 0 && <div style={{ fontSize: 12, color: C.muted }}>ajustements {p.gauge.adjustments >= 0 ? '+' : '−'}{fmtMoney(Math.abs(p.gauge.adjustments))} · crédit pour le service {fmtMoney(p.gauge.credit_total)}</div>}
         </div>
       </div>
       <Gauge rb={rb} />
-      <div style={{ fontSize: 13, marginBottom: 2 }}>
-        Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture ({fmtMoney(p.monthly_price)} par mois au prix actuel)
-      </div>
-      <div style={{ fontSize: 13, marginBottom: 10 }}>
-        L'échange paie le service à partir du <b>{longDate(p.since)}</b>, mois par mois{p.resume_on ? <> : <b>{full} mois{part ? ` et ${part.days} jours` : ''}</b></> : ''}.
-      </div>
 
       {p.resume_on && (
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
           <div>Il recommence à payer le <b style={{ fontSize: 15 }}>{longDate(p.resume_on)}</b> — son cycle repart de cette date, {FREQ_LABEL[rb.frequency] || rb.frequency}.</div>
           <div style={{ marginTop: 4 }}>Prochaines factures : {p.next_invoices.map(longDate).join(' · ')} ({fmtMoney(rb.cycle_amount)} hors taxes + taxes chacune, au prix actuel)</div>
-          {p.skipped.length > 0 && <div style={{ marginTop: 4, color: C.muted }}>Factures habituelles sautées : {p.skipped.map(longDate).join(' · ')}</div>}
         </div>
       )}
 
+      <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+        Mois de service payés par l'échange{p.resume_on ? ` — ${full} mois${part ? ` et ${part.days} jours` : ''}` : ''}
+      </div>
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
         <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
           <thead><tr>
@@ -203,6 +198,25 @@ function Projection({ rb }) {
       <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
         Chaque mois est compté au prix de ses services au début du mois : si les services augmentent, les mois suivants coûtent plus cher et la reprise arrive plus tôt. Le jour entamé à la fin est laissé au client.
       </div>
+      {p.skipped.length > 0 && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Factures sautées</div>
+          <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <table style={{ width: '100%', minWidth: 420, borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Date habituelle</th><th style={{ ...th, textAlign: 'right' }}>Montant habituel (HT)</th><th style={th}>État</th></tr></thead>
+              <tbody>
+                {p.skipped.map(d => (
+                  <tr key={d}>
+                    <td style={td}>{longDate(d)}</td>
+                    <td style={{ ...td, textAlign: 'right' }}>{fmtMoney(rb.cycle_amount)}</td>
+                    <td style={{ ...td, color: C.green }}>Sautée — payée par l'échange</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -302,10 +316,10 @@ export default function BarterTab({ companyId }) {
         </div>
         <button className="btn-primary" onClick={() => setEdit('new')}>+ Nouvel échange</button>
       </div>
-      {data.recurrences.map(rb => <Projection key={rb.id} rb={rb} />)}
       {data.exchanges.length
         ? data.exchanges.map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)
         : <div style={{ color: C.faint, fontSize: 13, padding: '20px 0' }}>Aucun échange.</div>}
+      {data.recurrences.map(rb => <Projection key={rb.id} rb={rb} />)}
       {edit && (
         <BarterModal companyId={companyId} initial={edit === 'new' ? null : edit} recurrences={data.recurrences.filter(r => r.is_active || r.id === edit?.recurring_billing_id)}
           onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load() }} />
