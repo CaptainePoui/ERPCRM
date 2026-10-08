@@ -1,5 +1,6 @@
 """
-IMAP poller: checks inbox every 30s.
+IMAP poller: checks inbox every 30s -- boites qui ont la fonction « tickets » (Administration -> Integrations,
+TASK-047.1 ; avant : la seule boite IMAP_* de la configuration du serveur, reprise dans l'ecran au demarrage).
 - Subject matches [Ticket #XXXXXXXX] → adds entry to existing ticket
 - Otherwise → finds contact by sender email → creates new ticket
 """
@@ -68,14 +69,12 @@ def _get_text_body(msg: email.message.Message) -> str:
     return text[:2000]  # max 2000 chars for entry description
 
 
-def _fetch_emails_sync() -> list[dict]:
-    """Blocking IMAP fetch — runs in a thread."""
-    if not settings.IMAP_HOST:
-        return []
+def _fetch_emails_sync(box: dict) -> list[dict]:
+    """Blocking IMAP fetch — runs in a thread. box : {host, port, user, password}."""
     results = []
     try:
-        conn = imaplib.IMAP4_SSL(settings.IMAP_HOST, settings.IMAP_PORT)
-        conn.login(settings.IMAP_USER, settings.IMAP_PASSWORD)
+        conn = imaplib.IMAP4_SSL(box["host"], box["port"])
+        conn.login(box["user"], box["password"])
         conn.select('INBOX')
         _, data = conn.search(None, 'UNSEEN')
         msg_ids = data[0].split()
@@ -191,7 +190,13 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
 
 
 async def poll_once() -> None:
-    emails = await asyncio.to_thread(_fetch_emails_sync)
+    from app.core import mailboxes as mbx
+    async with AsyncSessionLocal() as db:
+        boxes = [{"host": b.host, "port": b.imap_port, "user": b.username, "password": mbx.password_of(b)}
+                 for b in await mbx.active(db, "tickets")]
+    emails = []
+    for box in boxes:
+        emails += await asyncio.to_thread(_fetch_emails_sync, box)
     if not emails:
         return
     async with AsyncSessionLocal() as db:
@@ -203,7 +208,13 @@ async def poll_once() -> None:
 
 
 async def run_poller() -> None:
-    log.info("IMAP poller started (host=%s, interval=%ds)", settings.IMAP_HOST or 'none', _POLL_INTERVAL)
+    from app.core.mailboxes import seed_from_server_config
+    try:        # les deux services (http et https) demarrent en meme temps : un seul cree la boite
+        async with AsyncSessionLocal() as db:
+            await seed_from_server_config(db)
+    except Exception:
+        pass
+    log.info("IMAP poller started (boites « tickets », interval=%ds)", _POLL_INTERVAL)
     while True:
         try:
             await poll_once()

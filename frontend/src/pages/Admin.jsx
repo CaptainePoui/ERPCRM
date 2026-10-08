@@ -5,6 +5,7 @@ import KnowledgeGraphViewer from '../components/KnowledgeGraphViewer'
 import './Admin.css'
 import { parseDay } from '../utils/date'
 import { invalidateFeatures } from '../hooks/useFeatures'
+import MailboxesPanel from '../components/MailboxesPanel'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
@@ -87,7 +88,7 @@ export default function Admin() {
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
         {tab === 2 && <PaymentMethodsPanel />}
-        {tab === 3 && <><OptionsPanel /><IntegrationsPanel /></>}
+        {tab === 3 && <><OptionsPanel /><MailboxesPanel /><IntegrationsPanel /></>}
         {tab === 4 && <BackupPanel />}
         {tab === 5 && <TicketsSettingsPanel />}
         {tab === 6 && <KnowledgeGraphViewer />}

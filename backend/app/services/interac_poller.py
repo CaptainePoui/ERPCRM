@@ -1,4 +1,4 @@
-"""Avis Interac (TASK-042.5) : toutes les 15 minutes, si active dans Parametres -- recupere les nouveaux
+"""Avis Interac (TASK-042.5) : toutes les 15 minutes, si active (Administration -> Integrations), dans toutes les boites -- recupere les nouveaux
 courriels Interac (lecture seule), les fait lire par l'IA locale un a un, puis les relie aux depots."""
 import asyncio
 import logging
@@ -17,10 +17,19 @@ _POLL_INTERVAL = 15 * 60
 async def run_interac_once() -> dict:
     async with AsyncSessionLocal() as db:
         cfg = await im.load_config(db)
-        if not (cfg["enabled"] and cfg["host"] and cfg["user"] and cfg["password"]):
+        if not (cfg["enabled"] and cfg["boxes"]):
             return {"skipped": True}
         known = set((await db.execute(select(InteracNotice.message_id))).scalars().all())
-    new, total = await asyncio.to_thread(im.fetch_sync, cfg, known)
+    new, total = [], 0
+    for box in cfg["boxes"]:            # toutes les boites actives (TASK-047.1) ; un meme avis n'est garde qu'une fois
+        try:
+            got, n = await asyncio.to_thread(im.fetch_sync, {**box, "since": cfg["since"]}, known)
+        except Exception:
+            log.exception("Avis Interac : lecture de %s echouee", box["email"])
+            continue
+        new += got
+        total += n
+        known |= {m["message_id"] for m in got}
     async with AsyncSessionLocal() as db:
         for m in new:
             db.add(InteracNotice(**m))

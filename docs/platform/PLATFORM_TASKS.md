@@ -5816,7 +5816,18 @@ Fichiers concernés (pas touchés) : `/usr/local/freeswitch/conf/autoload_config
 Date de demande : 2026-10-08 (Philippe : « je veux mettre les courriels dans le ERPCRM comme ça tout est à la même place, on peut prendre un courriel reçu et en faire un ticket, etc. »)
 Date(s) de travail : —
 
-- Demandé pendant la signature par employé (TASK-007.1, Signature de courriel par employé). Pas commencé : plan à proposer et GO à obtenir (fournisseur de courriel, IMAP/API, quelles boîtes, lien compagnie/contact par adresse, courriel → ticket/tâche, réponses avec la signature de l'employé).
+- Demandé pendant la signature par employé (TASK-007.1, Signature de courriel par employé). Boîtes : portabilite@ (portabilité), service@ (la plupart des courriels), facturation@ (factures, liens Interac), support@ (« pourrait être lié au ticket direct »). Serveur : mail.simpleip.tel (IMAP 993 / SMTP 465, certificat valide). Plan en 3 étapes proposé le 2026-10-08 : 1) connexion des boîtes et fonctions ; 2) boîte de réception dans ERPCRM (lien compagnie/contact par adresse, courriel → ticket/tâche, synchro lu/non lu avec Outlook) ; 3) répondre/écrire depuis ERPCRM (bonne adresse, signature, copie dans Envoyés). Recommandé et retenu pour l'instant : « en plus d'Outlook ».
+
+### TASK-047.1 [x] Boîtes de courriel et leurs fonctions (Administration → Intégrations)
+Date de demande : 2026-10-08 (Philippe : « oui, dans admin / intégration, et j'aimerais pouvoir les attribuer à certaines fonctions comme facturation à facture, mais sans empêcher que si quelqu'un me fait un paiement dans service je puisse le reconnaître »)
+Date(s) de travail : 2026-10-08
+
+- Migration f8c36063abbc (id généré, une seule tête, up/down/up testés ; autogenerate nettoyé : il ajoutait des écarts sans rapport) : table `mailboxes` (adresse, nom affiché, identifiant, mot de passe chiffré Fernet, serveur, ports IMAP/SMTP, `functions`, active, dernier test/erreur).
+- `core/mailboxes.py` : fonctions « tickets » (courriels reçus → tickets ; courriels de tickets envoyés d'ici), « invoices » (factures, avoirs, avis de retard), « devis » ; une fonction = une seule boîte active (refus 409 sinon). `sender_for` : `core/email.py` `_send(function=…)` part de la boîte qui a la fonction (adresse, nom, identifiants), sinon de l'adresse habituelle (.env) ; boîte illisible → adresse habituelle.
+- support@ (lue jusqu'ici par IMAP_* du .env) reprise automatiquement au démarrage dans l'écran, fonction « tickets », mot de passe chiffré (`seed_from_server_config`) ; `imap_poller` lit maintenant toutes les boîtes « tickets ».
+- Avis Interac (TASK-042.5) : lus dans **toutes** les boîtes actives (un même avis gardé une fois, par Message-ID) ; réglages déplacés de ⚙ Paramètres (« Courriels Interac », jamais configuré) vers le panneau ; « Reconnaître les paiements Interac » coché par défaut, « Lire depuis le », « Lire maintenant », statistiques. Anciennes routes `/settings/interac-mail*` retirées → `/mailboxes` (liste, ajout, modification, retrait sans rien toucher au serveur, test réel IMAP + SMTP sans envoi ni marquage), `/mailboxes/interac/settings`, `/mailboxes/interac/run`.
+- Écran `components/MailboxesPanel.jsx` dans Administration → Intégrations (sous Options) : tableau boîte/fonctions/état, Tester, Modifier (adresse, mot de passe, nom affiché, fonctions, active, serveur en avancé), Retirer.
+- Vérifié : support@ reprise et testée en vrai (réception : 7 courriels, 0 non lu ; envoi : connexion SMTP OK, rien envoyé) ; `poll_once` des tickets et lecture Interac sur les boîtes OK ; refus d'une 2e boîte « Tickets » ; mauvais mot de passe → « Connexion impossible » ; tickets → support@, factures/devis → adresse habituelle tant qu'aucune boîte n'a ces fonctions. À faire par Philippe : ajouter portabilite@, service@, facturation@ avec leur mot de passe et donner « Factures » à facturation@.
 
 ---
 

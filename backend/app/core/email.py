@@ -458,10 +458,12 @@ def _html_part(html_body: str, images: list[tuple[str, bytes, str]]):
     return rel
 
 
-async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None, attachment: tuple[str, bytes, str] | None = None, signature: str | None = None) -> bool:
+async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None, attachment: tuple[str, bytes, str] | None = None, signature: str | None = None, function: str | None = None) -> bool:
     """Send email. Returns True on success, False if SMTP not configured or on error.
     attachment: (filename, content_bytes, mime_subtype) -- ex: ("rapport.csv", b"...", "csv").
-    signature: HTML de la signature de l'employe (courriels de communication seulement, core/signature.py)."""
+    signature: HTML de la signature de l'employe (courriels de communication seulement, core/signature.py).
+    function: « tickets », « invoices », « devis » -- part de la boite de courriel qui a cette fonction (Administration
+    -> Integrations, core/mailboxes.py) ; sinon de l'adresse habituelle (configuration du serveur)."""
     if not settings.SMTP_HOST:
         return False
     images = []
@@ -490,18 +492,27 @@ async def _send(to_email: str, subject: str, html_body: str, tracking_entity_typ
         msg = MIMEMultipart("alternative")
         msg.attach(MIMEText(html_body, "html", "utf-8"))
     msg["Subject"] = subject
-    msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM}>"
+    from app.core.mailboxes import sender_for
+    try:
+        box = await sender_for(function)
+    except Exception:       # boite illisible (mot de passe) : le courriel part quand meme, de l'adresse habituelle
+        box = None
+    if box:
+        msg["From"] = f"{box['from_name']} <{box['from']}>"
+    else:
+        msg["From"] = f"{settings.SMTP_FROM_NAME} <{settings.SMTP_FROM}>"
     msg["To"] = to_email
     try:
-        use_tls = settings.SMTP_PORT == 465
+        port = box["port"] if box else settings.SMTP_PORT
+        use_tls = port == 465
         await aiosmtplib.send(
             msg,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_USER,
-            password=settings.SMTP_PASSWORD,
+            hostname=box["host"] if box else settings.SMTP_HOST,
+            port=port,
+            username=box["user"] if box else settings.SMTP_USER,
+            password=box["password"] if box else settings.SMTP_PASSWORD,
             use_tls=use_tls,
-            start_tls=settings.SMTP_STARTTLS and not use_tls,
+            start_tls=(True if box else settings.SMTP_STARTTLS) and not use_tls,
         )
         return True
     except Exception:
@@ -535,7 +546,7 @@ async def send_ticket_open_email(
     )
     html = _render(_TICKET_OPEN_TMPL, ctx)
     subject = f"[Ticket #{ticket_id[:8].upper()}] Ticket ouvert — {ticket_title}"
-    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature, function="tickets")
 
 
 async def send_ticket_entry_email(
@@ -571,7 +582,7 @@ async def send_ticket_entry_email(
     )
     html = _render(_TICKET_ENTRY_TMPL, ctx)
     subject = f"[Ticket #{ticket_id[:8].upper()}] Mise à jour — {ticket_title}"
-    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, function="tickets")
 
 
 async def send_ticket_close_email(
@@ -604,7 +615,7 @@ async def send_ticket_close_email(
     # du client -- "[Ticket fermé #...]" ne matchait jamais, brisant la reouverture
     # automatique par reponse courriel sur un ticket ferme/facture.
     subject = f"[Ticket #{ticket_id[:8].upper()}] {ticket_title} — Résumé"
-    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature, function="tickets")
 
 
 async def send_invoice_email(
@@ -625,7 +636,7 @@ async def send_invoice_email(
     )
     html = _render(_INVOICE_TMPL, ctx)
     subject = f"Facture #{invoice_number} — {company_name}"
-    return await _send(to_email, subject, html, tracking_entity_type="invoice", tracking_entity_id=invoice_id)
+    return await _send(to_email, subject, html, tracking_entity_type="invoice", tracking_entity_id=invoice_id, function="invoices")
 
 
 async def send_devis_email(
@@ -646,7 +657,7 @@ async def send_devis_email(
     )
     html = _render(_DEVIS_TMPL, ctx)
     subject = f"Devis #{devis_number} — {company_name}"
-    return await _send(to_email, subject, html, tracking_entity_type="devis", tracking_entity_id=devis_id)
+    return await _send(to_email, subject, html, tracking_entity_type="devis", tracking_entity_id=devis_id, function="devis")
 
 
 async def send_task_email(

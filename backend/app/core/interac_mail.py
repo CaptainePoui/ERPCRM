@@ -1,8 +1,8 @@
 """Avis de virement Interac lus dans la boite de courriel (TASK-042.5, 2026-10-07 : depot automatique
 Interac active par Philippe a la BNC ; le releve ne dit que « VIREMENT INTERAC », l'avis dit QUI a paye).
 
-- Connexion configuree dans Parametres (hote, utilisateur, dossier) ; mot de passe chiffre au repos
-  (Fernet, app/core/crypto.py), jamais renvoye a l'ecran.
+- Lu dans toutes les boites de courriel actives (Administration -> Integrations, TASK-047.1) ; mots de passe
+  chiffres au repos (Fernet, app/core/crypto.py), jamais renvoyes a l'ecran.
 - Boite ouverte en LECTURE SEULE (select readonly + BODY.PEEK) : aucun courriel marque lu ni deplace.
 - Seuls les courriels dont l'expediteur contient « interac » sont recuperes.
 - L'IA locale lit chaque avis (format libre, francais ou anglais) ; le programme verifie que le montant
@@ -22,19 +22,15 @@ import httpx
 
 from app.core.config import settings
 
-KEYS = ("interac_mail_host", "interac_mail_port", "interac_mail_user", "interac_mail_password", "interac_mail_folder",
-        "interac_mail_enabled", "interac_mail_since")
-
-
 async def load_config(db) -> dict:
+    """Reglages de lecture (Administration -> Integrations) + les boites ou chercher : TOUTES les boites actives
+    (TASK-047.1, Philippe : « si quelqu'un me fait un paiement dans service, je peux le reconnaitre »)."""
     from app.api.v1.endpoints.settings import get_setting
-    from app.core.crypto import decrypt
-    cfg = {k.replace("interac_mail_", ""): (await get_setting(db, k) or "") for k in KEYS}
-    cfg["port"] = int(cfg["port"] or 993)
-    cfg["folder"] = cfg["folder"] or "INBOX"
-    cfg["enabled"] = cfg["enabled"] == "true"
-    cfg["password"] = decrypt(cfg["password"]) if cfg["password"] else ""
-    return cfg
+    from app.core import mailboxes as mbx
+    boxes = [{"email": b.email, "host": b.host, "port": b.imap_port, "user": b.username, "password": mbx.password_of(b),
+              "folder": "INBOX"} for b in await mbx.active(db)]
+    return {"enabled": (await get_setting(db, "interac_mail_enabled")) == "true",
+            "since": await get_setting(db, "interac_mail_since"), "boxes": boxes}
 
 
 def _decode(value: str | None) -> str:
@@ -89,28 +85,6 @@ def fetch_sync(cfg: dict, known: set, limit: int = 300) -> tuple[list[dict], int
                 received = None
             out.append({"message_id": mid[:500], "received_at": received, "subject": _decode(msg.get("Subject"))[:1000], "body": _text(msg)})
         return out, len(ids)
-    finally:
-        try:
-            conn.logout()
-        except Exception:
-            pass
-
-
-def test_sync(cfg: dict) -> dict:
-    conn = imaplib.IMAP4_SSL(cfg["host"], cfg["port"], timeout=30)
-    try:
-        conn.login(cfg["user"], cfg["password"])
-        typ, _ = conn.select(f'"{cfg["folder"]}"', readonly=True)
-        if typ != "OK":
-            raise RuntimeError(f"Dossier « {cfg['folder']} » introuvable")
-        _, data = conn.search(None, "FROM", '"interac"')
-        ids = data[0].split()
-        subjects = []
-        for num in ids[-3:]:
-            _, hdr = conn.fetch(num, "(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE)])")
-            m = email.message_from_bytes(hdr[0][1])
-            subjects.append(f"{m.get('Date', '')[:16]} — {_decode(m.get('Subject'))}")
-        return {"ok": True, "interac_count": len(ids), "last_subjects": subjects}
     finally:
         try:
             conn.logout()

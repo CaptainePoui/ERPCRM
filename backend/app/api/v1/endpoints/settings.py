@@ -42,6 +42,9 @@ DEFAULTS = {
     # Option Echanges (troc), Administration -> Integrations (2026-10-08) : decochee par defaut pour un acheteur du
     # logiciel ; decochee, toutes les options d'echange disparaissent de l'ecran (les echanges deja faits s'appliquent)
     "barter_enabled": "false",
+    # Avis Interac lus dans toutes les boites de courriel (TASK-047.1, Administration -> Integrations)
+    "interac_mail_enabled": "true",
+    "interac_mail_since": "",
 }
 
 
@@ -312,68 +315,5 @@ async def update_numbering(key: str, p: NumberingIn, db: AsyncSession = Depends(
     return out
 
 
-# ── Courriels Interac (TASK-042.5) ───────────────────────────────────────────
-
-class InteracMailIn(BaseModel):
-    host: str
-    port: int = 993
-    user: str
-    password: str | None = None     # vide = garder celui deja enregistre
-    folder: str = "INBOX"
-    enabled: bool = True
-    since: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
-
-
-async def _interac_out(db) -> dict:
-    from sqlalchemy import func as _f
-    from app.models.bank_account import InteracNotice
-    out = {k.replace("interac_mail_", ""): await get_setting(db, k) for k in
-           ("interac_mail_host", "interac_mail_port", "interac_mail_user", "interac_mail_folder", "interac_mail_enabled", "interac_mail_since")}
-    out["enabled"] = out["enabled"] == "true"
-    out["has_password"] = bool(await get_setting(db, "interac_mail_password"))   # jamais renvoye
-    out["stats"] = dict((await db.execute(select(InteracNotice.status, _f.count()).group_by(InteracNotice.status))).all())
-    return out
-
-
-@router.get("/interac-mail")
-async def get_interac_mail(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    return await _interac_out(db)
-
-
-@router.put("/interac-mail")
-async def save_interac_mail(p: InteracMailIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Le mot de passe est chiffre (Fernet) avant d'etre enregistre ; il n'est jamais renvoye."""
-    from app.core.crypto import encrypt
-    if not p.host.strip() or not p.user.strip():
-        raise HTTPException(status_code=400, detail="Serveur et utilisateur requis")
-    for k, v in (("interac_mail_host", p.host.strip()), ("interac_mail_port", str(p.port)), ("interac_mail_user", p.user.strip()),
-                 ("interac_mail_folder", p.folder.strip() or "INBOX"), ("interac_mail_enabled", "true" if p.enabled else "false"),
-                 ("interac_mail_since", p.since or "")):
-        await set_setting(db, k, v)
-    if p.password:
-        await set_setting(db, "interac_mail_password", encrypt(p.password))
-    return await _interac_out(db)
-
-
-@router.post("/interac-mail/test")
-async def test_interac_mail(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Connexion en lecture seule : nombre de courriels Interac et sujets des 3 derniers."""
-    import asyncio as _a
-    from app.core import interac_mail as im
-    cfg = await im.load_config(db)
-    if not (cfg["host"] and cfg["user"] and cfg["password"]):
-        raise HTTPException(status_code=400, detail="Enregistrez d'abord le serveur, l'utilisateur et le mot de passe")
-    try:
-        return await _a.to_thread(im.test_sync, cfg)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Connexion impossible : {e}")
-
-
-@router.post("/interac-mail/run")
-async def run_interac_mail(_: User = Depends(get_current_user)):
-    """Lit les nouveaux avis maintenant (au lieu d'attendre le passage aux 15 minutes)."""
-    # En arriere-plan : l'IA lit ~30 s par avis ; la page affiche l'avancement (stats)
-    import asyncio as _a
-    from app.services.interac_poller import run_interac_once
-    _a.create_task(run_interac_once())
-    return {"started": True}
+# Courriels Interac (TASK-042.5) : reglages et lecture deplaces dans endpoints/mailboxes.py (TASK-047.1) --
+# les avis sont lus dans toutes les boites de courriel (Administration -> Integrations).
