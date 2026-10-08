@@ -2491,6 +2491,13 @@ Date(s) de travail : 2026-10-02
 - Constat : aucune conversion automatique devis → facture n'existe (`invoice_id` jamais rempli par le code).
 ---
 
+
+### TASK-025.2 [ ] Devis « à régler en troc » (facture d'échange) → facture datée du jour de l'échange
+Date de demande : 2026-10-08 (Philippe, sur le devis 2026-D0001 de Physotech : « ou facture d'échange qui serait entre le devis et la facture… il y aurait les taxes mais pas calculées ; si je voudrais un jour la mettre en facture, là on met la date du jour qu'on le fait avec le lien vers l'échange en question, comme ça on a toutes les dates et on est légal »)
+Date(s) de travail : —
+
+- En attente du GO sur la proposition : pas un 3e type de document — le devis existant (taxes affichées, jamais dans les ventes ni la déclaration) reçoit la marque « À régler en troc » ; il apparaît dans la boîte « À régler en troc » de l'onglet Échanges (en attente, hors taxes déclarées) ; « Créer un échange » sur ce devis le convertit en facture datée du jour de l'échange (taxes alors comptées), reliée au devis et à l'échange, et payée par lui ; bouton « Convertir en facture » aussi seul. Condition légale dite à Philippe : la facture doit être faite au moment de l'échange (paiement en services = paiement), pas laissée indéfiniment.
+- Décision en suspens : INV-112254 (Physotech, 1 069,16 $, émise le 2026-10-08, troc, non envoyée) — gardée, ou remise en brouillon et supprimée pour revenir au devis 2026-D0001.
 ## TASK-026 [ERPCRM] [~] Prise de RDV en ligne
 Classification: CURRENT
 
