@@ -139,6 +139,7 @@ function Projection({ rb, children }) {
 
       {p.resume_on && (
         <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
+          <div style={{ marginBottom: 4 }}>Durée de l'échange : <b>{p.months.filter(m => !m.days).length} mois{p.months.some(m => m.days) ? ` et ${p.months.find(m => m.days).days} jours` : ''}</b></div>
           <div>Il recommence à payer le <b style={{ fontSize: 15 }}>{longDate(p.resume_on)}</b> — son cycle repart de cette date, {FREQ_LABEL[rb.frequency] || rb.frequency}.</div>
           <div style={{ marginTop: 4 }}>Prochaines factures : {p.next_invoices.map(longDate).join(' · ')} ({fmtMoney(rb.cycle_amount)} hors taxes + taxes chacune, au prix actuel)</div>
         </div>
