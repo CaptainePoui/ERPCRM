@@ -1,21 +1,27 @@
-"""Credit d'echange (troc) applique a la facture periodique (TASK-005.13).
+"""Credit d'echange (troc) sur la facture periodique (TASK-005.13).
 
-Regle de Philippe : le montant hors taxes de l'echange repousse la facture. Le credit s'applique a partir du
-premier cycle pas encore facture (le service deja facture et paye n'est jamais recompte) :
-- credit >= montant du cycle : cycle couvert au complet, aucune facture (ni taxes) ;
-- credit < montant du cycle : la facture est repoussee a la date ou le credit s'epuise (au prorata des jours
-  du cycle) ; elle garde les lignes habituelles et une ligne negative « Echange (troc) » du credit utilise,
-  les taxes ne portent que sur le reste a payer.
+Regle de Philippe (2026-10-08) : l'echange paie du TEMPS de service d'avance -- « ca ne fait que retarder les
+paiements de service ». Un client facture le 12 avec un echange de 3 mois et 8 jours recommence a payer 3 mois
+et 8 jours plus tard, le 20, puis chaque 20 : son cycle repart de la date de reprise (meme rythme qu'avant).
+- La couverture commence au premier jour pas encore facture (le service deja facture n'est jamais recompte).
+- Le credit hors taxes se consomme MOIS PAR MOIS, au prix mensuel du moment ou le mois commence (lignes de la
+  facture periodique / mois par cycle) : si les services augmentent, les mois suivants coutent plus cher et la
+  reprise arrive plus tot (« nouveau prix »). Les mois deja passes restent au prix de l'epoque.
+- Le dernier mois se compte en jours ; le jour entame est laisse au client (arrondi vers le haut).
+- A l'epuisement, la facture periodique repart a la date de reprise (start_date) : facture complete, puis meme rythme.
 Plusieurs echanges sur la meme facture periodique : le plus vieux d'abord.
 """
+import math
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
+from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
 
 from app.models.barter import BarterExchange, BarterApplication
 
 CENT = Decimal("0.01")
+MONTHS_PER_CYCLE = {"mensuel": 1, "bimestriel": 2, "trimestriel": 3, "biannuel": 6, "annuel": 12}
 
 
 def _m(v) -> Decimal:
@@ -35,8 +41,13 @@ def remaining_of(b: BarterExchange) -> Decimal:
 
 
 def cycle_amount(rb) -> Decimal:
-    """Montant hors taxes d'un cycle : les lignes actuelles de la facture periodique."""
-    return _m(sum((Decimal(str(l.qty)) * Decimal(str(l.unit_price)) for l in rb.lines), Decimal("0")))
+    """Montant hors taxes d'un cycle : les lignes de service actuelles (sans les credits de prorata ponctuels)."""
+    return _m(sum((Decimal(str(l.qty)) * Decimal(str(l.unit_price)) for l in rb.lines if not l.is_prorata_credit), Decimal("0")))
+
+
+def monthly_price(rb) -> Decimal | None:
+    months = MONTHS_PER_CYCLE.get(rb.frequency)
+    return _m(cycle_amount(rb) / months) if months else None
 
 
 async def credits_for(db, rb) -> list[list]:
@@ -46,69 +57,123 @@ async def credits_for(db, rb) -> list[list]:
     return [[b, r] for b in rows if (r := remaining_of(b)) > 0]
 
 
-def plan_cycle(credits: list[list], amount: Decimal, cycle_start: date, cycle_end: date) -> dict | None:
-    """Ce que le credit couvre sur ce cycle (sans rien ecrire). None si aucun credit."""
-    if amount <= 0 or not credits:
-        return None
-    left, uses = amount, []
+def _take(credits: list[list], amount: Decimal) -> list[tuple]:
+    uses, left = [], amount
     for c in credits:
         if left <= 0:
             break
-        take = min(c[1], left)
-        if take > 0:
-            uses.append((c[0], take))
-            left -= take
-    total = amount - left
-    if total <= 0:
-        return None
-    days = (cycle_end - cycle_start).days
-    if left <= 0:
-        return {"full": True, "uses": uses, "used": total, "billed_from": None, "covered_until": cycle_end - timedelta(days=1), "to_bill": Decimal("0")}
-    covered = int(total / amount * days)              # jours entiers couverts (arrondi vers le bas)
-    billed_from = cycle_start + timedelta(days=covered)
-    return {"full": False, "uses": uses, "used": total, "billed_from": billed_from,
-            "covered_until": max(cycle_start, billed_from - timedelta(days=1)), "to_bill": _m(left)}
+        t = min(c[1], left)
+        if t > 0:
+            uses.append((c[0], t))
+            c[1] -= t
+            left -= t
+    return uses
 
 
-def consume(credits: list[list], plan: dict) -> None:
-    for c in credits:
-        for b, take in plan["uses"]:
-            if c[0] is b:
-                c[1] -= take
+def step(credits: list[list], monthly: Decimal, cursor: date) -> dict:
+    """Consomme le mois de service qui commence a `cursor` (sans rien ecrire). resume = date de reprise si le
+    credit s'epuise dans ce mois (ou pile a sa fin), sinon None."""
+    seg_end = cursor + relativedelta(months=1)
+    total = sum((c[1] for c in credits), Decimal("0"))
+    if total >= monthly:
+        uses = _take(credits, monthly)
+        left = sum((c[1] for c in credits), Decimal("0"))
+        return {"start": cursor, "end": seg_end, "covered_until": seg_end - timedelta(days=1), "uses": uses,
+                "amount": monthly, "days": None, "resume": seg_end if left <= 0 else None}
+    days_in = (seg_end - cursor).days
+    days = min(days_in, math.ceil(total * days_in / monthly))       # le jour entame est laisse au client
+    uses = _take(credits, total)
+    return {"start": cursor, "end": seg_end, "covered_until": cursor + timedelta(days=days - 1), "uses": uses,
+            "amount": total, "days": days, "resume": cursor + timedelta(days=days)}
 
 
-def record(db, rb, plan: dict, cycle_start: date, cycle_end: date, invoice_id=None) -> None:
-    for b, take in plan["uses"]:
-        db.add(BarterApplication(barter_id=b.id, recurring_billing_id=rb.id, cycle_start=cycle_start, cycle_end=cycle_end,
-                                 covered_until=plan["covered_until"], amount=_m(take), invoice_id=invoice_id))
+def _resume(rb, on: date) -> None:
+    """Le cycle de la facture periodique repart a la date de reprise."""
+    rb.start_date = on
+    rb.barter_since = rb.barter_cursor = None
 
 
-async def projection(db, rb, max_cycles: int = 40) -> list[dict]:
-    """Cycles a venir touches par le credit restant : couverts au complet, puis la facture repoussee."""
-    from app.api.v1.endpoints.recurring_billing import _cycle_bounds, next_missing_cycle
+async def advance(db, rb, today: date) -> bool:
+    """Consomme les mois de service commences (<= today). Retourne True si quelque chose a ete enregistre.
+    Appelee par la generation des factures periodiques (bouton et creation automatique)."""
+    from app.api.v1.endpoints.recurring_billing import next_missing_cycle
     credits = await credits_for(db, rb)
-    amount = cycle_amount(rb)
-    if not credits or amount <= 0:
-        return []
-    start, end = next_missing_cycle(rb)
-    if not rb.first_invoice_generated:          # la premiere facture (facturee d'avance) n'est jamais couverte
-        start, end = _cycle_bounds(rb.start_date, rb.frequency, end)
-    out = []
-    for _ in range(max_cycles):
-        if rb.end_date and start > rb.end_date:
+    monthly = monthly_price(rb)
+    if not monthly or monthly <= 0:
+        return False
+    if rb.barter_cursor is None:
+        if not credits:
+            return False
+        start, _end = next_missing_cycle(rb)
+        if start > today:
+            return False
+        rb.barter_since = rb.barter_cursor = start
+    changed = False
+    while rb.barter_cursor is not None and rb.barter_cursor <= today:
+        if not credits:
+            _resume(rb, rb.barter_cursor)      # credit retire entre-temps : reprise au premier jour non couvert
+            return True
+        s = step(credits, monthly, rb.barter_cursor)
+        for b, take in s["uses"]:
+            db.add(BarterApplication(barter_id=b.id, recurring_billing_id=rb.id, cycle_start=s["start"], cycle_end=s["end"],
+                                     covered_until=s["covered_until"], amount=_m(take)))
+        changed = True
+        credits = [c for c in credits if c[1] > 0]
+        if s["resume"]:
+            _resume(rb, s["resume"])
+        else:
+            rb.barter_cursor = s["end"]
+    return changed
+
+
+async def projection(db, rb, max_months: int = 240) -> dict | None:
+    """Ce qui est prevu pour cette facture periodique : mois couverts (deja comptes + a venir au prix actuel),
+    factures habituelles sautees, date de reprise et prochaines factures du nouveau cycle."""
+    from app.api.v1.endpoints.recurring_billing import FREQUENCIES, next_missing_cycle
+    credits = await credits_for(db, rb)
+    monthly = monthly_price(rb)
+    if not monthly or monthly <= 0 or (rb.barter_cursor is None and not credits):
+        return None
+    months = []
+    if rb.barter_cursor is not None:
+        since, cursor = rb.barter_since, rb.barter_cursor
+        rows = (await db.execute(select(BarterApplication).where(
+            BarterApplication.recurring_billing_id == rb.id, BarterApplication.cycle_start >= since)
+            .order_by(BarterApplication.cycle_start))).scalars().all()
+        by_start: dict = {}
+        for a in rows:
+            m = by_start.setdefault(a.cycle_start, {"start": a.cycle_start, "covered_until": a.covered_until, "amount": Decimal("0"), "done": True})
+            m["amount"] += Decimal(a.amount)
+        months = list(by_start.values())
+    else:
+        since = cursor = next_missing_cycle(rb)[0]
+    resume = None
+    for _ in range(max_months):
+        if not credits:
+            resume = cursor
             break
-        plan = plan_cycle(credits, amount, start, end)
-        if not plan:
+        s = step(credits, monthly, cursor)
+        credits = [c for c in credits if c[1] > 0]
+        months.append({"start": s["start"], "covered_until": s["covered_until"], "amount": s["amount"], "done": False, "days": s["days"]})
+        if s["resume"]:
+            resume = s["resume"]
             break
-        consume(credits, plan)
-        out.append({"cycle_start": start, "cycle_end": end, "covered_until": plan["covered_until"], "used": float(plan["used"]),
-                    "full": plan["full"], "billed_from": plan["billed_from"], "to_bill": float(plan["to_bill"])})
-        if not plan["full"]:
-            break
-        start, end = _cycle_bounds(rb.start_date, rb.frequency, end)
-    if out:
-        # Retour au rythme habituel : la facture du cycle suivant, a sa date normale
-        nxt, nxt_end = _cycle_bounds(rb.start_date, rb.frequency, out[-1]["cycle_end"])
-        if not (rb.end_date and nxt > rb.end_date):
-            out.append({"cycle_start": nxt, "cycle_end": nxt_end, "normal": True, "to_bill": float(amount)})
-    return out
+        cursor = s["end"]
+    delta = FREQUENCIES[rb.frequency]
+    # Factures habituelles qui ne seront pas faites : dates de l'ancien cycle entre le debut de la couverture et la reprise
+    skipped, d, k = [], rb.start_date, 0
+    while d < since:
+        k += 1
+        d = rb.start_date + delta * k
+    while resume and d < resume and len(skipped) < 60:
+        skipped.append(d)
+        k += 1
+        d = rb.start_date + delta * k
+    return {
+        "monthly_price": float(monthly), "since": since, "resume_on": resume,
+        "months": [{"start": m["start"], "covered_until": m["covered_until"], "amount": float(_m(m["amount"])),
+                    "done": m["done"], "days": m.get("days") or ((m["covered_until"] - m["start"]).days + 1 if m["covered_until"] < m["start"] + relativedelta(months=1) - timedelta(days=1) else None)}
+                   for m in months],
+        "skipped": skipped,
+        "next_invoices": [resume + delta * i for i in range(3)] if resume else [],
+    }

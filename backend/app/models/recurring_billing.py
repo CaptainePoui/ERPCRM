@@ -36,6 +36,11 @@ class CompanyRecurringBilling(Base):
     # sert a resynchroniser le cycle de facturation (services factures d'avance)
     # avec le delai de paiement de 30 jours. Une fois True, plus jamais redouble.
     first_invoice_generated: Mapped[bool] = mapped_column(Boolean, default=False, server_default='false')
+    # TASK-005.13 : echange (troc) en cours -- debut de la couverture et premier jour pas encore couvert.
+    # Le credit se consomme mois par mois (prix du mois) ; quand il s'epuise, start_date devient la date de
+    # reprise (le cycle repart de la) et ces deux champs redeviennent vides.
+    barter_since: Mapped[date | None] = mapped_column(Date)
+    barter_cursor: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

@@ -2,7 +2,6 @@
 // periodique : cycles couverts sans facture, puis facture au prorata a la date ou le credit s'epuise.
 // Les pieces justificatives (facture du fournisseur, photo) restent jointes : preuve de l'echange.
 import { useState, useEffect, useRef } from 'react'
-import { useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney } from '../Bank'
 
@@ -109,108 +108,63 @@ const FREQ_LABEL = { mensuel: 'chaque mois', bimestriel: 'aux 2 mois', trimestri
 
 // Dates « AAAA-MM-JJ » manipulees en UTC (pas de decalage de fuseau)
 const toD = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
-const toIso = d => d.toISOString().slice(0, 10)
-const addDays = (iso, n) => { const d = toD(iso); d.setUTCDate(d.getUTCDate() + n); return toIso(d) }
-function addMonths(iso, n) {
-  const d = toD(iso), day = d.getUTCDate()
-  const r = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1))
-  const last = new Date(Date.UTC(r.getUTCFullYear(), r.getUTCMonth() + 1, 0)).getUTCDate()
-  r.setUTCDate(Math.min(day, last))
-  return toIso(r)
-}
 const longDate = iso => iso ? toD(iso).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : EMPTY
-const dayCount = (a, b) => Math.round((toD(b) - toD(a)) / 86400000) + 1
-
-// Mois de service couverts par le credit : du premier jour non facture au dernier jour couvert, mois par mois
-function coveredMonths(rb) {
-  const covered = rb.projection.filter(p => !p.normal)
-  if (!covered.length || !rb.months_per_cycle) return []
-  const first = covered[0].cycle_start, lastDay = covered[covered.length - 1].covered_until
-  const monthly = rb.cycle_amount / rb.months_per_cycle
-  const totalUsed = covered.reduce((s, p) => s + p.used, 0)
-  const out = []
-  let from = first, used = 0
-  while (from <= lastDay && out.length < 120) {
-    const to = addDays(addMonths(from, 1), -1)
-    if (to <= lastDay) { out.push({ from, to, amount: monthly }); used += monthly }
-    else { out.push({ from, to: lastDay, amount: Math.max(totalUsed - used, 0), partial: dayCount(from, lastDay) }); break }
-    from = addMonths(from, 1)
-  }
-  return out
-}
 
 function Projection({ rb }) {
-  if (!rb.projection.length) return null
+  const p = rb.projection
+  if (!p) return null
   const th = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }
-  const td = { padding: '7px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13, verticalAlign: 'top' }
-  const months = coveredMonths(rb)
-  const covered = rb.projection.filter(p => !p.normal)
-  const pushed = covered.find(p => !p.full)
-  const normal = rb.projection.find(p => p.normal)
+  const td = { padding: '6px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13 }
+  const full = p.months.filter(m => !m.days).length
+  const part = p.months.find(m => m.days)
   return (
     <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
       <div style={{ fontWeight: 600, marginBottom: 6 }}>Facture périodique « {rb.name} » — calendrier avec l'échange</div>
       <div style={{ fontSize: 13, marginBottom: 2 }}>
-        Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture
-        {rb.months_per_cycle > 1 && <> ({fmtMoney(rb.cycle_amount / rb.months_per_cycle)} par mois)</>}
+        Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture ({fmtMoney(p.monthly_price)} par mois au prix actuel)
       </div>
-      {rb.last_invoice_date && (
-        <div style={{ fontSize: 13, marginBottom: 10 }}>
-          Dernière facture : {rb.last_invoice_number || 'facture'} du {longDate(rb.last_invoice_date)} — service déjà payé jusqu'au <b>{longDate(rb.paid_until)}</b> (le troc commence après)
+      {rb.last_invoice_date && rb.paid_until && (
+        <div style={{ fontSize: 13, marginBottom: 2 }}>
+          Dernière facture : {rb.last_invoice_number || 'facture'} du {longDate(rb.last_invoice_date)} — service déjà payé jusqu'au <b>{longDate(rb.paid_until)}</b>
         </div>
       )}
+      <div style={{ fontSize: 13, marginBottom: 10 }}>
+        L'échange paie le service à partir du <b>{longDate(p.since)}</b>, mois par mois{p.resume_on ? <> : <b>{full} mois{part ? ` et ${part.days} jours` : ''}</b></> : ''}.
+      </div>
+
+      {p.resume_on && (
+        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
+          <div>Il recommence à payer le <b style={{ fontSize: 15 }}>{longDate(p.resume_on)}</b> — son cycle repart de cette date, {FREQ_LABEL[rb.frequency] || rb.frequency}.</div>
+          <div style={{ marginTop: 4 }}>Prochaines factures : {p.next_invoices.map(longDate).join(' · ')} ({fmtMoney(rb.cycle_amount)} hors taxes + taxes chacune, au prix actuel)</div>
+          {p.skipped.length > 0 && <div style={{ marginTop: 4, color: C.muted }}>Factures habituelles sautées : {p.skipped.map(longDate).join(' · ')}</div>}
+        </div>
+      )}
+
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
-        <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
           <thead><tr>
-            <th style={th}>Date habituelle</th><th style={th}>Période</th><th style={{ ...th, textAlign: 'right' }}>Habituel (HT)</th>
-            <th style={{ ...th, textAlign: 'right' }}>Payé par l'échange</th><th style={th}>Ce qui arrive</th>
+            <th style={th}>Mois de service</th><th style={th}>Durée</th><th style={{ ...th, textAlign: 'right' }}>Payé par l'échange</th><th style={th}>État</th>
           </tr></thead>
           <tbody>
-            {rb.projection.map(p => (
-              <tr key={p.cycle_start}>
-                <td style={td}>{longDate(p.cycle_start)}</td>
-                <td style={td}>{longDate(p.cycle_start)} au {longDate(addDays(p.cycle_end, -1))}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{fmtMoney(rb.cycle_amount)}</td>
-                <td style={{ ...td, textAlign: 'right' }}>{p.normal ? EMPTY : fmtMoney(p.used)}</td>
-                <td style={td}>
-                  {p.normal ? <span>Facture normale — retour au rythme habituel</span>
-                    : p.full ? <b style={{ color: C.green }}>Facture sautée — aucune facture</b>
-                    : <><b>Repoussée au {longDate(p.billed_from)}</b> : {fmtMoney(p.to_bill)} hors taxes<div style={{ fontSize: 12, color: C.muted }}>couvert jusqu'au {longDate(p.covered_until)}, facturé du {longDate(p.billed_from)} au {longDate(addDays(p.cycle_end, -1))}</div></>}
-                </td>
+            {p.months.map(m => (
+              <tr key={m.start}>
+                <td style={td}>{longDate(m.start)} → {longDate(m.covered_until)}</td>
+                <td style={td}>{m.days ? `${m.days} jours` : '1 mois'}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtMoney(m.amount)}</td>
+                <td style={{ ...td, color: m.done ? C.green : C.muted }}>{m.done ? 'Compté' : 'À venir'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      {months.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-            Mois de service payés par l'échange : du {longDate(covered[0].cycle_start)} au {longDate(covered[covered.length - 1].covered_until)}
-            {' '}({months.filter(m => !m.partial).length} mois{months.some(m => m.partial) ? ` et ${months.find(m => m.partial).partial} jours` : ''})
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 4 }}>
-            {months.map(m => (
-              <div key={m.from} style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 8px' }}>
-                <span>{longDate(m.from)} → {longDate(m.to)}{m.partial ? ` (${m.partial} j)` : ''}</span><span>{fmtMoney(m.amount)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div style={{ fontSize: 13, marginTop: 12 }}>
-        {pushed
-          ? <>Nouvelle date de facturation : <b>{longDate(pushed.billed_from)}</b> ({fmtMoney(pushed.to_bill)} hors taxes + taxes)</>
-          : <>Prochaine facture : <b>{normal ? longDate(normal.cycle_start) : EMPTY}</b></>}
-        {pushed && normal && <>, puis le {longDate(normal.cycle_start)} au rythme habituel ({fmtMoney(normal.to_bill)} hors taxes + taxes).</>}
+      <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>
+        Chaque mois est compté au prix de ses services au début du mois : si les services augmentent, les mois suivants coûtent plus cher et la reprise arrive plus tôt. Le jour entamé à la fin est laissé au client.
       </div>
     </div>
   )
 }
 
 function ExchangeCard({ b, onEdit, onChanged }) {
-  const navigate = useNavigate()
   const fileRef = useRef()
   const [busy, setBusy] = useState(false)
   async function upload(list) {
@@ -252,15 +206,10 @@ function ExchangeCard({ b, onEdit, onChanged }) {
           {b.notes && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, whiteSpace: 'pre-wrap' }}>{b.notes}</div>}
         </div>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>CYCLES COUVERTS</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>MOIS DÉJÀ COMPTÉS</div>
           {b.applications.length ? b.applications.map((a, i) => (
-            <div key={i} style={{ fontSize: 13, marginBottom: 2 }}>
-              {a.cycle_start} au {a.covered_until} : {fmtMoney(a.amount)}{' '}
-              {a.invoice_id
-                ? <>— facture <span style={{ color: C.link, cursor: 'pointer' }} onClick={() => navigate(`/invoices/${a.invoice_id}`)}>{a.invoice_number}</span> repoussée</>
-                : <span style={{ color: C.muted }}>— aucune facture</span>}
-            </div>
-          )) : <div style={{ fontSize: 13, color: C.faint }}>{EMPTY} pas encore (au prochain cycle à facturer)</div>}
+            <div key={i} style={{ fontSize: 13, marginBottom: 2 }}>{longDate(a.cycle_start)} → {longDate(a.covered_until)} : {fmtMoney(a.amount)}</div>
+          )) : <div style={{ fontSize: 13, color: C.faint }}>Aucun encore — le premier mois se compte au premier jour pas encore facturé</div>}
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, margin: '12px 0 4px' }}>PIÈCES JUSTIFICATIVES</div>
           {b.files.map(fl => (
             <div key={fl.id} style={{ fontSize: 13, display: 'flex', gap: 8 }}>

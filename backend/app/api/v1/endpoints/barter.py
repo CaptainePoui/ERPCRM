@@ -26,7 +26,6 @@ router = APIRouter()
 
 FILES_DIR = Path(__file__).resolve().parents[4] / "storage" / "barter"
 MAX_FILE_BYTES = 25 * 1024 * 1024
-MONTHS_PER_CYCLE = {"mensuel": 1, "bimestriel": 2, "trimestriel": 3, "biannuel": 6, "annuel": 12}
 
 
 class DeductionIn(BaseModel):
@@ -90,14 +89,15 @@ async def list_barters(company_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     recurrences = []
     for rb in rbs:
         # Deja facture jusqu'au : fin du cycle de la derniere facture (le troc ne commence qu'apres)
-        paid_until = (_cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1] - timedelta(days=1)) if rb.last_invoice_date else None
+        paid_until = (_cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1] - timedelta(days=1)) \
+            if rb.last_invoice_date and rb.last_invoice_date >= rb.start_date else None
         last_number = (await db.execute(select(Invoice.number).where(
             Invoice.company_id == company_id, Invoice.issue_date == rb.last_invoice_date,
             Invoice.credit_of_id.is_(None)).order_by(Invoice.number.desc()).limit(1))).scalar_one_or_none() if rb.last_invoice_date else None
         recurrences.append({"id": str(rb.id), "name": names[rb.id], "frequency": rb.frequency, "is_active": rb.is_active,
-                            "cycle_amount": float(bt.cycle_amount(rb)), "months_per_cycle": MONTHS_PER_CYCLE.get(rb.frequency),
+                            "cycle_amount": float(bt.cycle_amount(rb)), "months_per_cycle": bt.MONTHS_PER_CYCLE.get(rb.frequency),
                             "last_invoice_date": rb.last_invoice_date, "last_invoice_number": last_number, "paid_until": paid_until,
-                            "projection": await bt.projection(db, rb) if rb.is_active else []})
+                            "projection": await bt.projection(db, rb) if rb.is_active else None})
     return {"exchanges": [await _out(db, b, names) for b in rows], "recurrences": recurrences}
 
 
@@ -110,6 +110,8 @@ async def _apply(db, b: BarterExchange, payload: BarterIn) -> None:
         rb = await _rb(db, payload.recurring_billing_id)
         if not rb or rb.company_id != b.company_id:
             raise HTTPException(status_code=400, detail="Facture périodique introuvable pour cette compagnie")
+        if rb.frequency not in bt.MONTHS_PER_CYCLE:
+            raise HTTPException(status_code=400, detail="L'échange se compte en mois : facture périodique au mois, aux 2, 3, 6 ou 12 mois seulement")
     if b.applications and payload.recurring_billing_id != b.recurring_billing_id:
         raise HTTPException(status_code=400, detail="Le crédit a déjà servi sur cette facture périodique : elle ne peut plus être changée")
     b.exchange_date, b.description = payload.exchange_date, payload.description.strip()[:500]

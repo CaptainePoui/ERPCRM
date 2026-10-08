@@ -241,7 +241,9 @@ def _dated_desc(description: str, period_start: date, period_end: date) -> str:
 def next_missing_cycle(rb) -> tuple[date, date]:
     """Prochain cycle a facturer : celui qui suit le dernier facture (ou le premier). Un cycle
     oublie n'est jamais saute -- chaque generation rattrape le plus ancien cycle manquant."""
-    nxt = rb.start_date if not rb.last_invoice_date else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
+    # Derniere facture anterieure au debut du cycle : le cycle a ete deplace (reprise apres un echange, TASK-005.13)
+    nxt = rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
+        else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
     return _cycle_bounds(rb.start_date, rb.frequency, nxt)
 
 
@@ -250,8 +252,8 @@ class NothingToGenerate(Exception):
 
 
 class CycleCoveredByBarter(Exception):
-    """Cycle couvert au complet par un echange (troc) : aucune facture, le cycle est marque fait (TASK-005.13).
-    L'appelant fait le commit."""
+    """Service couvert par un echange (troc) : des mois ont ete comptes sur le credit, aucune facture
+    (TASK-005.13). L'appelant fait le commit."""
     pass
 
 
@@ -261,7 +263,21 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     Leve NothingToGenerate si rien n'est du. Ne fait pas le commit."""
     if not rb.lines:
         raise NothingToGenerate("Aucune ligne à facturer")
+    # TASK-005.13 : echange (troc) -- le credit paie des mois de service ; a l'epuisement, le cycle repart a la
+    # date de reprise (start_date deplace). Jamais avant la toute premiere facture (facturee d'avance).
+    barter_changed = False
+    if rb.first_invoice_generated:
+        barter_changed = await barter.advance(db, rb, date.today())
+        if rb.barter_cursor is not None:
+            await db.flush()
+            msg = f"Service payé par l'échange (troc) jusqu'au {rb.barter_cursor - timedelta(days=1)}"
+            if barter_changed:
+                raise CycleCoveredByBarter(msg)
+            raise NothingToGenerate(msg)
     cycle_start, cycle_end = next_missing_cycle(rb)
+    if barter_changed and cycle_start > date.today():
+        await db.flush()
+        raise CycleCoveredByBarter(f"Échange (troc) épuisé : la facturation reprend le {cycle_start}")
     if rb.end_date and cycle_start > rb.end_date:
         raise NothingToGenerate(f"Facture périodique terminée le {rb.end_date} : plus aucune facture à générer")
     if cycle_start > date.today():
@@ -269,25 +285,10 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     is_first_invoice = not rb.first_invoice_generated
     next_cycle_start, next_cycle_end = _cycle_bounds(rb.start_date, rb.frequency, cycle_end)
 
-    # TASK-005.13 : echange (troc) -- le credit hors taxes repousse la facture (jamais la premiere, facturee d'avance)
-    plan = None
-    if not is_first_invoice:
-        plan = barter.plan_cycle(await barter.credits_for(db, rb), barter.cycle_amount(rb), cycle_start, cycle_end)
-    if plan and plan["full"]:
-        barter.record(db, rb, plan, cycle_start, cycle_end)
-        rb.last_invoice_date = cycle_start
-        for line in list(rb.lines):
-            if line.is_prorata_credit:
-                await db.delete(line)
-        await db.flush()
-        raise CycleCoveredByBarter(f"Cycle du {cycle_start} au {cycle_end - timedelta(days=1)} couvert par l'échange (troc) : aucune facture")
-    if plan and plan["billed_from"] > date.today():
-        raise NothingToGenerate(f"Facture repoussée au {plan['billed_from']} par l'échange (troc)")
-
     inv = Invoice(
         number=await _next_number(db),
         company_id=rb.company_id,
-        issue_date=plan["billed_from"] if plan else cycle_start,
+        issue_date=cycle_start,
         due_date=cycle_end,
         notes=f"Généré depuis la facture périodique « {rb.name} »" if rb.name else "Généré depuis la récurrence téléphonique SIPV",
         site_id=rb.site_id,
@@ -317,17 +318,6 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
                 line_total=_money(Decimal(str(line.qty)) * Decimal(str(line.unit_price))), sort_order=sort_order,
             ))
             sort_order += 1
-    if plan:
-        for b, take in plan["uses"]:
-            db.add(InvoiceLine(
-                invoice_id=inv.id,
-                description=f"Échange (troc) du {b.exchange_date.isoformat()} — {b.description} : service du "
-                            f"{cycle_start.isoformat()} au {plan['covered_until'].isoformat()} couvert",
-                qty=1, unit_price=-float(take), line_total=-take, sort_order=sort_order,
-            ))
-            sort_order += 1
-        await db.flush()
-        barter.record(db, rb, plan, cycle_start, cycle_end, invoice_id=inv.id)
     if is_first_invoice:
         rb.first_invoice_generated = True
     rb.last_invoice_date = cycle_start
