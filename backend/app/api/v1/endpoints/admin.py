@@ -126,7 +126,11 @@ async def delete_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), ad
 
 @router.get("/payment-methods", response_model=list[PaymentMethodOut])
 async def list_payment_methods(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    result = await db.execute(select(PaymentMethod).order_by(PaymentMethod.code))
+    from app.api.v1.endpoints.settings import barter_enabled
+    q = select(PaymentMethod).order_by(PaymentMethod.code)
+    if not await barter_enabled(db):
+        q = q.where(PaymentMethod.code != "troc")       # option Echanges decochee
+    result = await db.execute(q)
     return [PaymentMethodOut(id=m.id, code=m.code, name=m.name, discount_rate=float(m.discount_rate or 0), is_active=m.is_active)
             for m in result.scalars().all()]
 

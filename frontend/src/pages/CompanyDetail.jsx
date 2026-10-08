@@ -11,6 +11,7 @@ import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import TelephonyTab, { CdrSection, E911AddressesSection } from './telephony/TelephonyTab'
 import CdrReportsSection from '../components/CdrReportsSection'
 import BarterTab from './barter/BarterTab'
+import useFeatures from '../hooks/useFeatures'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import { todayIso, parseDay } from '../utils/date'
@@ -300,6 +301,8 @@ function FinanceOverview({ companyId, onOpen }) {
         { color: '#DC2626', alert: true, onClick: () => onOpen('retard') })}
       {f.credits_available > 0 && card('Avoirs disponibles', money(f.credits_available), 'À appliquer sur ses factures',
         { color: '#D97706', onClick: () => onOpen('avoirs') })}
+      {f.payment_credit > 0 && card('Crédit du client', money(f.payment_credit), 'Reçu en trop : paiera sa prochaine facture',
+        { color: '#D97706' })}
       {card(`Facturé ${fy}-${fy + 1}`, money(f.billed_fiscal_year), `Payé : ${money(f.paid_fiscal_year)} · net des avoirs`)}
       {card('Dernier paiement', f.last_payment ? money(f.last_payment.amount) : '—',
         f.last_payment ? `${fmtD(f.last_payment.date)} · ${f.last_payment.method}` : 'Aucun paiement')}
@@ -426,6 +429,8 @@ export default function CompanyDetail({ isNew }) {
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); return next }, { replace: true })
   }
   const slug = TAB_SLUGS[tab]
+  const features = useFeatures()   // Echanges (troc) : onglet cache si l'option est decochee (Administration → Integrations)
+  useEffect(() => { if (slug === 'echanges' && !features.loading && !features.barter) setTab(0) }, [slug, features.loading, features.barter])
   const [txFilter, setTxFilter] = useState('')   // filtre de l'onglet Transactions (ouvert depuis la vue d'ensemble)
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(!isNew)
@@ -583,7 +588,7 @@ export default function CompanyDetail({ isNew }) {
 
       {!isNew && (
         <div className="detail-tabs">
-          {TABS.map((t, i) => (
+          {TABS.map((t, i) => (TAB_SLUGS[i] === 'echanges' && !features.barter) ? null : (
             <button key={t} className={`tab-btn${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
           ))}
         </div>
@@ -659,7 +664,7 @@ export default function CompanyDetail({ isNew }) {
             )}
 
             {slug === 'transactions' && <TransactionsTab companyId={id} filter={txFilter} setFilter={setTxFilter} />}
-            {slug === 'echanges' && <BarterTab companyId={id} />}
+            {slug === 'echanges' && features.barter && <BarterTab companyId={id} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}

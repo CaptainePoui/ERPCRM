@@ -177,8 +177,11 @@ async def _recalculate_invoice_status(invoice_id: uuid.UUID, db: AsyncSession) -
 
 @router.get("/methods", response_model=list[PaymentMethodOut])
 async def list_methods(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(PaymentMethod).order_by(PaymentMethod.name))
-    return result.scalars().all()
+    from app.api.v1.endpoints.settings import barter_enabled
+    q = select(PaymentMethod).order_by(PaymentMethod.name)
+    if not await barter_enabled(db):
+        q = q.where(PaymentMethod.code != "troc")       # option Echanges decochee
+    return (await db.execute(q)).scalars().all()
 
 
 @router.put("/methods/{method_id}", response_model=PaymentMethodOut)
@@ -258,6 +261,9 @@ async def add_payment(invoice_id: uuid.UUID, payload: PaymentCreate, db: AsyncSe
     method = method_result.scalar_one_or_none()
     if not method:
         raise HTTPException(status_code=404, detail="Mode de paiement introuvable")
+    if method.code == "troc":
+        from app.api.v1.endpoints.settings import require_barter
+        await require_barter(db)
 
     amount = Decimal(str(payload.amount))
     cp = ClientPayment(
@@ -300,6 +306,9 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
     method = method_result.scalar_one_or_none()
     if not method:
         raise HTTPException(status_code=404, detail="Mode de paiement introuvable")
+    if method.code == "troc":
+        from app.api.v1.endpoints.settings import require_barter
+        await require_barter(db)
 
     total = Decimal(str(sum(a.amount for a in payload.allocations)))
     reference = await next_payment_reference(db) if payload.generate_reference else None

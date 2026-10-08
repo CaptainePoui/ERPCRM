@@ -84,6 +84,7 @@ class TransactionOut(BaseModel):
     payment_created: bool = False
     matched_at: datetime | None = None
     invoice_numbers: list[str] = []
+    credit_left: float = 0          # partie du depot encore en credit au dossier du client (2026-10-08)
     suggestion: dict | None = None  # onglet « Reconnu » : suggestion sure pour « Valider »
     auto_matched: bool = False      # associee automatiquement a l'import (TASK-042.2)
     ai_status: str | None = None
@@ -111,6 +112,9 @@ class MatchIn(BaseModel):
     """Soit lier un encaissement existant (client_payment_id), soit repartir le depot sur des factures."""
     client_payment_id: uuid.UUID | None = None
     allocations: list[AllocIn] = []
+    # Ce qui n'est reparti sur aucune facture va en credit au dossier du client (core/client_credit.py) ; sans
+    # aucune facture, le depot entier va en credit de cette compagnie (2026-10-08)
+    company_id: uuid.UUID | None = None
     method_code: str | None = None
     remember_payee: bool = True
 
@@ -370,6 +374,8 @@ def _match_body(sug: dict) -> "MatchIn":
     """Suggestion sure -> association : paiement a lier, ou factures (les plus vieilles d'abord)."""
     if sug["kind"] == "payment":
         return MatchIn(client_payment_id=sug["id"])
+    if sug["kind"] == "credit":
+        return MatchIn(company_id=sug["company_id"])
     allocs = sug.get("allocations") or [{"invoice_id": sug["id"], "amount": sug["balance"]}]
     return MatchIn(allocations=[AllocIn(invoice_id=a["invoice_id"], amount=a["amount"]) for a in allocs])
 
@@ -502,6 +508,10 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
             select(Invoice.number).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
             .where(PaymentAllocation.payment_id == t.client_payment_id).order_by(Invoice.number)
         )).scalars().all())
+        cp = await db.get(ClientPayment, t.client_payment_id)
+        spread = (await db.execute(select(func.sum(PaymentAllocation.amount_allocated))
+                                   .where(PaymentAllocation.payment_id == t.client_payment_id))).scalar() or 0
+        out.credit_left = float(Decimal(cp.amount) - Decimal(spread)) if cp else 0
     if with_suggestion and t.status == "unclassified" and t.company_id:
         out.suggestion = await bm.best_exact(db, t)
     if t.vendor_id:
@@ -611,7 +621,7 @@ async def match_transaction(tx_id: uuid.UUID, payload: MatchIn, db: AsyncSession
                 await _recalculate_invoice_status(iid, db)
         tx.client_payment_id, tx.payment_created, company_id = cp.id, False, cp.company_id
     else:
-        if not payload.allocations:
+        if not payload.allocations and not payload.company_id:
             raise HTTPException(status_code=400, detail="Choisissez au moins une facture")
         total = sum((Decimal(str(a.amount)) for a in payload.allocations), Decimal("0"))
         if any(a.amount <= 0 for a in payload.allocations) or total > Decimal(tx.amount):
@@ -619,11 +629,14 @@ async def match_transaction(tx_id: uuid.UUID, payload: MatchIn, db: AsyncSession
         invs = [await db.get(Invoice, a.invoice_id) for a in payload.allocations]
         if any(i is None for i in invs):
             raise HTTPException(status_code=404, detail="Facture introuvable")
-        if len({i.company_id for i in invs}) != 1:
+        companies = {i.company_id for i in invs} | ({payload.company_id} if payload.company_id else set())
+        if len(companies) != 1:
             raise HTTPException(status_code=400, detail="Toutes les factures doivent appartenir à la même compagnie")
         if any(i.status in ("brouillon", "annulee") for i in invs):
             raise HTTPException(status_code=400, detail="Impossible d'associer un brouillon ou une facture annulée")
-        company_id = invs[0].company_id
+        company_id = next(iter(companies))
+        if not await db.get(Company, company_id):
+            raise HTTPException(status_code=404, detail="Compagnie introuvable")
         code = payload.method_code or bm.guess_method(tx.description)
         method = (await db.execute(select(PaymentMethod).where(PaymentMethod.code == code))).scalar_one_or_none()
         if not method:

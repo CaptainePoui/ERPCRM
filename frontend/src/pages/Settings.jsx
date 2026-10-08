@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import useFeatures from '../hooks/useFeatures'
 
 const MONTHS = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
 
@@ -227,6 +228,7 @@ export default function Settings() {
 // l'echeance + 15 jours puis chaque 30 jours. Eteint au depart ; l'apercu montre ce qui serait facture aujourd'hui.
 function LateFeesSection() {
   const [cfg, setCfg] = useState(null)
+  const features = useFeatures()
   const [preview, setPreview] = useState(null)
   const [msg, setMsg] = useState('')
   const money = v => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(v)
@@ -263,7 +265,7 @@ function LateFeesSection() {
       <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
         Un avis de retard par client : {cfg.late_fee_monthly_rate} % de tout son solde en retard (avis précédents compris) + frais de gestion,
         {' '}{cfg.late_fee_grace_days} jours après l'échéance, puis chaque {cfg.late_fee_interval_days} jours tant que c'est impayé. Sans taxes.
-        Jamais sur une facture marquée « À régler en troc ». Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
+        {features.barter && 'Jamais sur une facture marquée « À régler en troc ». '}Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
       </p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         {field('late_fee_monthly_rate', '% par mois')}

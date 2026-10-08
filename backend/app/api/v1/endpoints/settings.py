@@ -39,6 +39,9 @@ DEFAULTS = {
     "late_fee_admin": "9.95",
     "late_fee_grace_days": "15",
     "late_fee_interval_days": "30",   # fuseau de l'entreprise (Montreal) : quel jour on est (core/clock.py)
+    # Option Echanges (troc), Administration -> Integrations (2026-10-08) : decochee par defaut pour un acheteur du
+    # logiciel ; decochee, toutes les options d'echange disparaissent de l'ecran (les echanges deja faits s'appliquent)
+    "barter_enabled": "false",
 }
 
 
@@ -56,6 +59,15 @@ async def set_setting(db: AsyncSession, key: str, value: str):
     else:
         db.add(AppSetting(key=key, value=value))
     await db.commit()
+
+
+async def barter_enabled(db: AsyncSession) -> bool:
+    return (await get_setting(db, "barter_enabled")) == "true"
+
+
+async def require_barter(db: AsyncSession) -> None:
+    if not await barter_enabled(db):
+        raise HTTPException(status_code=400, detail="Les échanges (troc) ne sont pas activés (Administration → Intégrations)")
 
 
 def _round_psychological(price: float) -> float:
@@ -84,6 +96,7 @@ class SettingsOut(BaseModel):
     late_fee_admin: float
     late_fee_grace_days: int
     late_fee_interval_days: int
+    barter_enabled: bool
 
 
 class SettingsIn(BaseModel):
@@ -104,6 +117,7 @@ class SettingsIn(BaseModel):
     late_fee_admin: float | None = Field(default=None, ge=0, le=1000)
     late_fee_grace_days: int | None = Field(default=None, ge=0, le=365)
     late_fee_interval_days: int | None = Field(default=None, ge=7, le=365)
+    barter_enabled: bool | None = None
 
 
 class InflationPayload(BaseModel):
@@ -130,6 +144,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         late_fee_admin=float(await get_setting(db, "late_fee_admin")),
         late_fee_grace_days=int(await get_setting(db, "late_fee_grace_days")),
         late_fee_interval_days=int(await get_setting(db, "late_fee_interval_days")),
+        barter_enabled=await barter_enabled(db),
     )
 
 
@@ -171,6 +186,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "recurring_auto_sales", "true" if payload.recurring_auto_sales else "false")
     if payload.recurring_auto_purchases is not None:
         await set_setting(db, "recurring_auto_purchases", "true" if payload.recurring_auto_purchases else "false")
+    if payload.barter_enabled is not None:
+        await set_setting(db, "barter_enabled", "true" if payload.barter_enabled else "false")
     if payload.late_fees_enabled is not None:
         await set_setting(db, "late_fees_enabled", "true" if payload.late_fees_enabled else "false")
     for key in ("late_fee_monthly_rate", "late_fee_admin", "late_fee_grace_days", "late_fee_interval_days"):

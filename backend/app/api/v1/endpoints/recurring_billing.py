@@ -334,7 +334,8 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     _recalc(inv)
     if issue:
         await db.flush()
-        await barter.pay_open_invoices(db, rb.company_id)   # TASK-005.13 : un echange (troc) paie la facture emise
+        from app.core.client_credit import on_issued
+        await on_issued(db, inv)   # TASK-005.13 / 042.2 : l'echange (troc), puis le credit du client, paient la facture emise
     return inv
 
 

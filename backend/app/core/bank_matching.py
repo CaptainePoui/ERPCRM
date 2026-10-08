@@ -188,8 +188,8 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
 
 
 async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
-    """Suggestion unique et sure pour « Valider » dans l'onglet Reconnu : un seul paiement a
-    lier OU une seule facture ouverte de la compagnie reconnue au solde exact. Sinon None."""
+    """Suggestion sure pour « Valider » dans l'onglet Reconnu (et l'association automatique) : un seul paiement a
+    lier, sinon la repartition du depot sur les factures de la compagnie reconnue (+ credit). None si ambigu."""
     if not tx.company_id or tx.amount <= 0:
         return None
     s = await suggestions(db, tx)
@@ -236,10 +236,9 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
             fresh.append((inv, bal))
         else:
             rests.append((inv, bal))
-    fresh, rests = fresh[:12], rests[:12]
     options = {}
-    for j in range(len(fresh) + 1):
-        for k in range(len(rests) + 1):
+    for j in range(min(len(fresh), 12) + 1):
+        for k in range(min(len(rests), 12) + 1):
             if j + k == 0:
                 continue
             combo = fresh[:j] + rests[:k]
@@ -249,11 +248,43 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
         if b == amount:
             options[(str(i.id),)] = [(i, b)]
     if len(options) == 1:
-        combo = sorted(next(iter(options.values())), key=lambda x: (x[0].issue_date, x[0].number))
-        return {"kind": "invoice", "id": str(combo[0][0].id), "number": ", ".join(i.number for i, _ in combo),
-                "balance": float(amount), "company_id": str(tx.company_id), "oldest_first": True,
-                "allocations": [{"invoice_id": str(i.id), "number": i.number, "amount": float(b)} for i, b in combo]}
-    return None
+        return _invoice_plan(tx, amount, next(iter(options.values())), Decimal("0"))
+    if options:
+        return None                         # plusieurs facons exactes : a Philippe de choisir
+    # 2026-10-08 (Philippe) : pas de compte exact -> le depot du client reconnu s'associe quand meme tout seul : ses plus
+    # vieilles factures qui n'ont rien recu au complet, puis le surplus aux plus vieux restes (troc compris), puis, s'il
+    # reste de l'argent, en partie a la plus vieille facture suivante ; un depot qui ne couvre aucune facture au complet
+    # va en partie sur la plus vieille (« si c'est le nom qu'il connait, oui il l'associe automatique ») ; ce qui depasse
+    # tout ce qu'il doit va en credit dans son dossier, meme sans aucune facture ouverte (« il va en credit tout seul »).
+    left, combo = amount, []
+    nxt = None
+    for inv, bal in fresh:
+        if bal > left:
+            nxt = (inv, bal)
+            break
+        combo.append((inv, bal))
+        left -= bal
+    if not combo and nxt:                   # ne couvre aucune facture au complet : en partie sur la plus vieille
+        return _invoice_plan(tx, amount, [(nxt[0], amount)], Decimal("0"))   # (Physotech 49,33 $ sur 53,93 $)
+    for inv, bal in rests:
+        if left <= 0:
+            break
+        take = min(bal, left)
+        combo.append((inv, take))
+        left -= take
+    if left > 0 and nxt:
+        combo.append((nxt[0], left))
+        left = Decimal("0")
+    return _invoice_plan(tx, amount, combo, left)
+
+
+def _invoice_plan(tx: BankTransaction, amount: Decimal, combo: list, credit: Decimal) -> dict:
+    """Association sure d'un depot : repartition sur des factures (les plus vieilles d'abord) + credit au dossier."""
+    combo = sorted(combo, key=lambda x: (x[0].issue_date, x[0].number))
+    return {"kind": "invoice" if combo else "credit", "id": str(combo[0][0].id) if combo else None,
+            "number": ", ".join(i.number for i, _ in combo), "balance": float(amount), "company_id": str(tx.company_id),
+            "oldest_first": True, "credit": float(credit),
+            "allocations": [{"invoice_id": str(i.id), "number": i.number, "amount": float(b)} for i, b in combo]}
 
 
 async def apply_rules(db: AsyncSession, account_id=None, only_key: str | None = None) -> int:

@@ -4,6 +4,7 @@ import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
 import './Invoices.css'
 import { todayIso } from '../utils/date'
+import useFeatures from '../hooks/useFeatures'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -67,6 +68,7 @@ export default function InvoiceDetail() {
   const [actioning, setActioning] = useState(false)
   const [payments, setPayments] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
+  const features = useFeatures()   // Echanges (troc) : options cachees si decochees (Administration → Integrations)
   const [showAddPayment, setShowAddPayment] = useState(false)
   const [showTaskModal, setShowTaskModal] = useState(false)
   const [pricePrompt, setPricePrompt] = useState(null)
@@ -218,7 +220,7 @@ export default function InvoiceDetail() {
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
-              {inv.barter_settlement && <span className="inv-recur-badge" style={{ background: '#ECFDF5', color: '#047857', whiteSpace: 'nowrap' }}>Troc</span>}
+              {features.barter && inv.barter_settlement && <span className="inv-recur-badge" style={{ background: '#ECFDF5', color: '#047857', whiteSpace: 'nowrap' }}>Troc</span>}
               {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: '#FEF2F2', color: '#B91C1C', whiteSpace: 'nowrap' }}>Avis de retard</span>}
             </h1>
             <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
@@ -257,7 +259,7 @@ export default function InvoiceDetail() {
               <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.late_fee_for_id}`)}>Voir la facture en retard</strong>
             </div>
           )}
-          {!inv.credit_of_id && !inv.late_fee_for_id && (
+          {features.barter && !inv.credit_of_id && !inv.late_fee_for_id && (
             <div className="inv-info-row">
               <span title="Une facture à régler en troc n'a jamais de frais de retard">À régler en troc</span>
               <input type="checkbox" checked={!!inv.barter_settlement} onChange={e => saveField('barter_settlement', e.target.checked)} />

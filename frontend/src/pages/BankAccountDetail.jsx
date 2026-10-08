@@ -170,7 +170,7 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
 
   useEffect(() => {
     api.get(`/v1/bank/transactions/${tx.id}/suggestions`).then(r => { setSugg(r.data); setMethod(r.data.method_code) })
-    api.get('/v1/payments/methods').then(r => setMethods(r.data.filter(m => m.is_active)))
+    api.get('/v1/payments/methods').then(r => setMethods(r.data.filter(m => m.is_active && m.code !== 'troc')))   // un troc n'entre pas a la banque
   }, [tx.id])
   useEffect(() => {
     setAlloc({})
@@ -206,7 +206,9 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
   // Regle de Philippe : le depot paie les plus vieilles factures ouvertes du client, dans l'ordre
   // (la derniere peut etre payee en partie). 2026-10-08 : d'abord les factures qui n'ont encore rien recu, puis
   // les plus vieux restes des factures deja payees en partie (« sa facture et 3 retards »), troc compris ; un depot
-  // egal au reste d'une seule facture va sur ce reste.
+  // egal au reste d'une seule facture va sur ce reste. Meme ordre que l'association automatique (bank_matching.best_exact) :
+  // les plus vieilles factures qui n'ont rien recu au complet, puis les restes, puis une partie de la facture suivante ;
+  // ce qui depasse tout ce que le client doit reste en credit dans son dossier.
   function oldestFirst() {
     const cents = v => Math.round(v * 100)
     const byDate = (a, b) => a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number)
@@ -215,7 +217,14 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
     const exact = rests.filter(i => cents(i.balance) === cents(tx.amount))
     if (exact.length === 1 && !fresh.some(i => cents(i.balance) === cents(tx.amount))) { setAlloc({ [exact[0].id]: exact[0].balance.toFixed(2) }); return }
     const n = {}; let left = tx.amount
-    ;[...fresh, ...rests].forEach(i => { if (left > 0.004) { const v = Math.min(i.balance, left); n[i.id] = v.toFixed(2); left = Math.round((left - v) * 100) / 100 } })
+    const take = (i, v) => { n[i.id] = v.toFixed(2); left = Math.round((left - v) * 100) / 100 }
+    const full = []
+    for (const i of fresh) { if (cents(i.balance) > cents(left)) break; full.push(i) }
+    if (!full.length && fresh.length) { take(fresh[0], left); setAlloc(n); return }   // ne couvre aucune facture au complet
+    full.forEach(i => take(i, i.balance))
+    rests.forEach(i => { if (left > 0.004) take(i, Math.min(i.balance, left)) })
+    const next = fresh[full.length]
+    if (left > 0.004 && next) take(next, Math.min(next.balance, left))
     setAlloc(n)
   }
 
@@ -320,9 +329,9 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
         {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         <div className="modal-actions">
           {!embedded && <button className="btn-secondary" onClick={onClose}>Annuler</button>}
-          <button className="btn-primary" disabled={saving || !Object.keys(alloc).length || remaining < 0}
-            onClick={() => submit({ method_code: method, allocations: Object.entries(alloc).map(([invoice_id, v]) => ({ invoice_id, amount: parseFloat(v) || 0 })).filter(a => a.amount > 0) })}>
-            {saving ? '...' : 'Associer'}
+          <button className="btn-primary" disabled={saving || !company || remaining < 0}
+            onClick={() => submit({ method_code: method, company_id: company.id, allocations: Object.entries(alloc).map(([invoice_id, v]) => ({ invoice_id, amount: parseFloat(v) || 0 })).filter(a => a.amount > 0) })}>
+            {saving ? '...' : allocated > 0 ? 'Associer' : 'Mettre en crédit du client'}
           </button>
         </div>
     </Wrap>
@@ -841,7 +850,9 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
-                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})` : `${t.suggestion.allocations?.length > 1 ? 'factures' : 'facture'} ${t.suggestion.number}${t.suggestion.oldest_first ? ' (la plus vieille d\'abord)' : ''}`}</span>}
+                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})`
+                        : t.suggestion.kind === 'credit' ? `aucune facture ouverte : ${fmtMoney(t.suggestion.credit)} en crédit du client`
+                        : `${t.suggestion.allocations?.length > 1 ? 'factures' : 'facture'} ${t.suggestion.number}${t.suggestion.oldest_first ? ' (la plus vieille d\'abord)' : ''}${t.suggestion.credit > 0 ? ` + ${fmtMoney(t.suggestion.credit)} en crédit` : ''}`}</span>}
                     </div>
                   )}
                 </td>
@@ -923,7 +934,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
                 <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance{t.auto_matched && <div style={{ fontSize: 11, color: C.muted }}>automatiquement (sûre)</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}{t.credit_left > 0.004 && <div style={{ color: '#D97706' }}>{fmtMoney(t.credit_left)} en crédit du client</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={e => { e.stopPropagation(); unmatch(t) }} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
               </tr>
             ))}

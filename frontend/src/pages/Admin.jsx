@@ -4,6 +4,7 @@ import api from '../services/api'
 import KnowledgeGraphViewer from '../components/KnowledgeGraphViewer'
 import './Admin.css'
 import { parseDay } from '../utils/date'
+import { invalidateFeatures } from '../hooks/useFeatures'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
@@ -86,7 +87,7 @@ export default function Admin() {
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
         {tab === 2 && <PaymentMethodsPanel />}
-        {tab === 3 && <IntegrationsPanel />}
+        {tab === 3 && <><OptionsPanel /><IntegrationsPanel /></>}
         {tab === 4 && <BackupPanel />}
         {tab === 5 && <TicketsSettingsPanel />}
         {tab === 6 && <KnowledgeGraphViewer />}
@@ -141,6 +142,43 @@ function TicketsSettingsPanel() {
 }
 
 // ── Intégrations ──────────────────────────────────────────────────────────────
+
+// Options du logiciel qu'un acheteur peut ne pas vouloir (2026-10-08, Philippe : « si un utilisateur ne la veut pas,
+// inutile de l'achaler avec ces options »). Échanges (troc), décoché par défaut : décoché, l'onglet Échanges des
+// compagnies, la marque « À régler en troc » des factures et le mode de paiement Troc disparaissent.
+function OptionsPanel() {
+  const [barter, setBarter] = useState(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.get('/v1/settings').then(r => setBarter(!!r.data.barter_enabled)) }, [])
+
+  async function toggle(on) {
+    if (!on && !confirm("Retirer les options d'échange (troc) ? L'onglet Échanges des compagnies, la marque « À régler en troc » des factures et le mode de paiement Troc disparaîtront. Les échanges déjà enregistrés continuent de s'appliquer (une entente reste une entente) : ils sont seulement cachés.")) return
+    setSaving(true)
+    try {
+      const r = await api.put('/v1/settings', { barter_enabled: on })
+      setBarter(!!r.data.barter_enabled)
+      invalidateFeatures()
+    } finally { setSaving(false) }
+  }
+
+  if (barter === null) return null
+  return (
+    <div style={{ marginBottom: 28 }}>
+      <div className="adm-panel-header">
+        <span className="adm-count">Options</span>
+      </div>
+      <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, cursor: 'pointer' }}>
+        <input type="checkbox" checked={barter} disabled={saving} onChange={e => toggle(e.target.checked)} style={{ marginTop: 3 }} />
+        <span>
+          <strong>Échanges (troc)</strong>
+          <span style={{ display: 'block', color: '#6B7280', fontSize: 13, marginTop: 2 }}>
+            Un client vous donne un bien ou un service au lieu de payer : la valeur paie ses factures ouvertes puis ses mois de service. Ajoute l'onglet Échanges aux compagnies, la marque « À régler en troc » aux factures et le mode de paiement Troc.
+          </span>
+        </span>
+      </label>
+    </div>
+  )
+}
 
 const GOOGLE_CALLBACK_MESSAGES = {
   connected: { text: '✓ Google Calendar connecté avec succès.', color: '#059669' },

@@ -1501,6 +1501,7 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
                      "overdue": (not is_credit and live and remaining > 0 and bool(i.due_date and i.due_date < today)),
                      "site_label": i.site_label_snapshot})
 
+    from app.core import client_credit
     paid_fy = (await db.execute(
         select(func.sum(ClientPayment.amount)).where(ClientPayment.company_id == company_id,
             ClientPayment.status == "confirmed", ClientPayment.received_at >= fy_start))).scalar() or zero
@@ -1511,6 +1512,7 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
         "summary": {
             "balance_due": float(balance_due), "overdue": float(overdue), "overdue_count": overdue_count,
             "oldest_overdue_days": oldest_days, "credits_available": float(credits_available),
+            "payment_credit": float(await client_credit.balance(db, company_id)),   # argent recu en trop (2026-10-08)
             "fiscal_year_start": fy_start, "billed_fiscal_year": float(billed_fy), "paid_fiscal_year": float(paid_fy),
             "last_payment": {"date": last.received_at, "amount": float(last.amount), "method": last.method_name} if last else None,
         },

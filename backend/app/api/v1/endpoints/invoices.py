@@ -343,8 +343,8 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
     if inv.status == "brouillon":
         inv.status = "envoyee"
         await db.flush()
-        from app.core.barter import pay_open_invoices
-        await pay_open_invoices(db, inv.company_id)     # TASK-005.13 : un echange (troc) paie la facture emise
+        from app.core.client_credit import on_issued
+        await on_issued(db, inv)     # TASK-005.13 / 042.2 : l'echange (troc), puis le credit du client, paient la facture emise
     await db.commit()
     inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)
@@ -356,6 +356,9 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
     updates = payload.model_dump(exclude_unset=True)
     if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre"):
         raise HTTPException(status_code=400, detail="État de transmission invalide")
+    if updates.get("barter_settlement"):
+        from app.api.v1.endpoints.settings import require_barter
+        await require_barter(db)
     if updates.get("status") == "brouillon" and inv.status != "brouillon":
         await _check_can_revert_to_draft(inv, db)
     if updates.get("status") == "annulee" and inv.status != "annulee":
@@ -382,8 +385,8 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
     _recalc(inv)
     if was_draft and inv.status != "brouillon" and inv.status != "annulee":
         await db.flush()
-        from app.core.barter import pay_open_invoices
-        await pay_open_invoices(db, inv.company_id)     # TASK-005.13 : un echange (troc) paie la facture emise
+        from app.core.client_credit import on_issued
+        await on_issued(db, inv)     # TASK-005.13 / 042.2 : l'echange (troc), puis le credit du client, paient la facture emise
     await db.commit()
     inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)

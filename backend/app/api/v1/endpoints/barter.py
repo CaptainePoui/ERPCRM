@@ -113,6 +113,8 @@ async def _apply(db, b: BarterExchange, payload: BarterIn) -> None:
 
 @router.post("/companies/{company_id}", status_code=201)
 async def create_barter(company_id: uuid.UUID, payload: BarterIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.api.v1.endpoints.settings import require_barter
+    await require_barter(db)    # option Echanges decochee (Administration -> Integrations)
     if not await db.get(Company, company_id):
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
     b = BarterExchange(company_id=company_id, deductions=[], files=[], applications=[])
@@ -126,6 +128,8 @@ async def create_barter(company_id: uuid.UUID, payload: BarterIn, db: AsyncSessi
 
 @router.put("/{bid}")
 async def update_barter(bid: uuid.UUID, payload: BarterIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.api.v1.endpoints.settings import require_barter
+    await require_barter(db)    # option Echanges decochee (Administration -> Integrations)
     b = await _get(db, bid)
     await _apply(db, b, payload)
     await db.flush()
@@ -149,6 +153,8 @@ async def delete_barter(bid: uuid.UUID, db: AsyncSession = Depends(get_db), _: U
 
 @router.post("/{bid}/files")
 async def upload_files(bid: uuid.UUID, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.api.v1.endpoints.settings import require_barter
+    await require_barter(db)    # option Echanges decochee (Administration -> Integrations)
     b = await _get(db, bid)
     FILES_DIR.mkdir(parents=True, exist_ok=True)
     added = []
