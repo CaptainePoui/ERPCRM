@@ -435,6 +435,13 @@ Date(s) de travail : 2026-10-07 (soir)
 - À faire plus tard (Philippe : « on va devoir faire un gros ménage, s'assurer qu'ils sont tous légitimes ») : l'ancien logiciel ne recevait plus les paiements → des factures payées y restaient impayées et généraient des avis de retard (d'où tant d'avis crédités) ; revoir les anciens avis encore ouverts avant d'allumer. CNJ : marque troc et 2 avis ouverts (INV-112230, INV-112232) — en attente.
 - Constat (factures importées) : l'ancien logiciel fait une facture de retard par facture en retard, puis une autre chaque 30 jours tant qu'elle reste impayée — lignes « Frais de retard (2%) — INV-… » + « Frais d'administration — Frais d'administration pour gestion de retard de paiement » (10,00 $) ; 2 % du **total TTC** même si la facture est presque payée (Physotech : 1,08 $ sur un solde de 4,60 $) ; première à échéance + 25 jours (55 jours après la facture), puis + 30 jours ; taxes incohérentes (2 % parfois taxé, parfois non ; frais d'administration taxés). Plusieurs annulées par avoir (CNJ, Audacie) ; celles de Physotech laissées en brouillon (troc). L'ancien logiciel en produit encore (INV-112243 du 25 sept.).
 
+
+### TASK-005.15 [x] Notes d'une facture émise modifiables
+Date de demande : 2026-10-08 (Philippe : « j'essaie d'écrire dans les notes de la facture et je ne suis pas capable » — INV-112254 émise ; « oui go pour les notes »)
+Date(s) de travail : 2026-10-08
+
+- Les notes étaient verrouillées dès que la facture n'est plus un brouillon (`InvoiceDetail.jsx`, `disabled={!editable}`) ; elles ne changent ni montants ni taxes → modifiables en tout temps (le serveur les acceptait déjà). Défaut corrigé au passage : enregistrement à chaque lettre tapée (une requête par touche, caractères perdables) → enregistrement en sortant du champ, avec « ✓ Enregistré ». Composant `NotesBox`.
+- Vérifié (Playwright) sur INV-112254 émise : champ modifiable, texte tapé vite enregistré en entier, note d'origine remise ensuite (statut et total inchangés).
 ### TASK-005.13 [x] Échanges (troc) : fiche d'échange, montant hors taxes qui repousse la facturation périodique, preuve gardée
 Date de demande : 2026-10-07 (Philippe : D'Astous Auto a réparé sa voiture, 860 $ hors taxes ; « j'ai oublié de lui charger les textos 500 à 19,95 $ pendant 6 mois, on déduit ça… et le reste sur sa facture habituelle » ; puis « il me faudrait aussi cette option (troc) pour certaines entreprises qui acceptent l'échange, ça resterait dans l'ERPCRM pour garder une trace de la transaction et prouver l'échange »)
 Date(s) de travail : 2026-10-07, 2026-10-08

@@ -338,14 +338,7 @@ export default function InvoiceDetail() {
         {/* Notes */}
         <div className="inv-section">
           <div className="inv-section-title">Notes</div>
-          <textarea
-            className="inv-notes"
-            value={inv.notes || ''}
-            disabled={!editable}
-            placeholder="Notes internes ou message client..."
-            onChange={e => saveField('notes', e.target.value)}
-            rows={5}
-          />
+          <NotesBox value={inv.notes || ''} onSave={v => saveField('notes', v)} />
         </div>
       </div>
 
@@ -729,6 +722,27 @@ function EditLineRow({ line, onSave, onCancel }) {
         <button className="ifield-save" onClick={() => onSave({ description: desc, qty, unit_price: price, is_taxable: taxable })}>✓</button>
         <button className="ifield-cancel" onClick={onCancel}>✕</button>
       </td>
+    </>
+  )
+}
+
+// Notes modifiables meme sur une facture emise (2026-10-08, Philippe : « j'essaie d'ecrire dans les notes de la
+// facture et je ne suis pas capable ») : elles ne changent ni les montants ni les taxes. Enregistrees quand on sort du
+// champ (avant : une requete par lettre tapee, des caracteres pouvaient se perdre).
+function NotesBox({ value, onSave }) {
+  const [text, setText] = useState(value)
+  const [state, setState] = useState('')
+  useEffect(() => { setText(value) }, [value])
+  async function save() {
+    if (text === value) return
+    setState('…')
+    try { await onSave(text); setState('✓ Enregistré') } catch { setState('Erreur : non enregistré') }
+  }
+  return (
+    <>
+      <textarea className="inv-notes" value={text} placeholder="Notes internes ou message client..." rows={5}
+        onChange={e => { setText(e.target.value); setState('') }} onBlur={save} />
+      {state && <div style={{ fontSize: 12, color: state.startsWith('Erreur') ? '#DC2626' : '#059669', marginTop: 4 }}>{state}</div>}
     </>
   )
 }
