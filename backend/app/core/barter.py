@@ -28,8 +28,19 @@ def _m(v) -> Decimal:
     return Decimal(str(v)).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
+def adjustment_amount(d) -> Decimal:
+    """Montant signe d'un ajustement : negatif en faveur de Simple IP (retire du credit), positif en faveur du client."""
+    v = _m(Decimal(d.qty) * Decimal(d.unit_price))
+    return v if d.direction == "client" else -v
+
+
+def adjustments_of(b: BarterExchange) -> Decimal:
+    return _m(sum((adjustment_amount(d) for d in b.deductions), Decimal("0")))
+
+
 def credit_of(b: BarterExchange) -> Decimal:
-    return _m(Decimal(b.received_value) - sum((Decimal(d.qty) * Decimal(d.unit_price) for d in b.deductions), Decimal("0")))
+    """Credit pour le service = valeur de l'echange + ajustements."""
+    return _m(Decimal(b.received_value) + adjustments_of(b))
 
 
 def used_of(b: BarterExchange) -> Decimal:
@@ -148,6 +159,14 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
     else:
         since = cursor = next_missing_cycle(rb)[0]
     credit_total = sum((m["amount"] for m in months), Decimal("0")) + sum((c[1] for c in credits), Decimal("0"))
+    # Echanges de cette couverture (deja comptes depuis since, ou credit restant) : valeur totale et ajustements
+    ids = {c[0].id for c in credits}
+    if rb.barter_cursor is not None:
+        ids |= set((await db.execute(select(BarterApplication.barter_id).where(
+            BarterApplication.recurring_billing_id == rb.id, BarterApplication.cycle_start >= since))).scalars().all())
+    exchanges = (await db.execute(select(BarterExchange).where(BarterExchange.id.in_(ids)))).scalars().all() if ids else []
+    exchange_value = sum((Decimal(b.received_value) for b in exchanges), Decimal("0"))
+    adjustments = sum((adjustments_of(b) for b in exchanges), Decimal("0"))
     resume = None
     for _ in range(max_months):
         if not credits:
@@ -174,7 +193,8 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
     consumed = _m(consumed)
     last_day = resume - timedelta(days=1) if resume else None
     total_days = (resume - since).days if resume else None
-    gauge = {"today": today, "credit_total": float(_m(credit_total)), "consumed": float(consumed),
+    gauge = {"today": today, "exchange_value": float(_m(exchange_value)), "adjustments": float(_m(adjustments)),
+             "credit_total": float(_m(credit_total)), "consumed": float(consumed),
              "remaining": float(_m(credit_total - consumed)), "last_day": last_day, "total_days": total_days,
              "day_index": max(0, min((today - since).days + 1, total_days or 0)) if today >= since else 0,
              "state": "a_venir" if today < since else ("termine" if last_day and today > last_day else "en_cours")}

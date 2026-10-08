@@ -38,7 +38,9 @@ class BarterExchange(Base):
 
 
 class BarterDeduction(Base):
-    """Ce que la compagnie devait deja sans avoir ete facturee (ex. texto 500, 6 x 19,95 $) : retire de la valeur recue."""
+    """Ajustement de l'echange (2026-10-08, separe de la valeur recue a la demande de Philippe). direction
+    « simpleip » = en faveur de Simple IP, retire du credit (ex. texto 500 non facture, 6 x 19,95 $) ;
+    « client » = en faveur du client, ajoute au credit. La note explique pourquoi."""
     __tablename__ = "barter_deductions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -47,6 +49,8 @@ class BarterDeduction(Base):
     qty: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False, default=1)
     unit_price: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    direction: Mapped[str] = mapped_column(String(10), nullable=False, default="simpleip", server_default="simpleip")
+    note: Mapped[str | None] = mapped_column(Text)
 
 
 class BarterFile(Base):

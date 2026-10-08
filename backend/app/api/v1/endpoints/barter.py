@@ -29,9 +29,12 @@ MAX_FILE_BYTES = 25 * 1024 * 1024
 
 
 class DeductionIn(BaseModel):
+    """Ajustement : en faveur de Simple IP (retire du credit) ou du client (ajoute), avec une note."""
     description: str
     qty: float = 1
     unit_price: float
+    direction: str = "simpleip"
+    note: str | None = None
 
 
 class BarterIn(BaseModel):
@@ -58,15 +61,14 @@ async def _get(db, bid: uuid.UUID) -> BarterExchange:
 async def _out(db, b: BarterExchange, rb_names: dict) -> dict:
     inv_ids = [a.invoice_id for a in b.applications if a.invoice_id]
     numbers = dict((await db.execute(select(Invoice.id, Invoice.number).where(Invoice.id.in_(inv_ids)))).all()) if inv_ids else {}
-    ded_total = sum((Decimal(d.qty) * Decimal(d.unit_price) for d in b.deductions), Decimal("0"))
     return {
         "id": str(b.id), "exchange_date": b.exchange_date, "description": b.description,
         "received_value": float(b.received_value), "notes": b.notes,
         "recurring_billing_id": str(b.recurring_billing_id) if b.recurring_billing_id else None,
         "recurring_name": rb_names.get(b.recurring_billing_id),
         "deductions": [{"id": str(d.id), "description": d.description, "qty": float(d.qty), "unit_price": float(d.unit_price),
-                        "total": float(bt._m(Decimal(d.qty) * Decimal(d.unit_price)))} for d in b.deductions],
-        "deductions_total": float(bt._m(ded_total)),
+                        "direction": d.direction, "note": d.note, "total": float(bt.adjustment_amount(d))} for d in b.deductions],
+        "adjustments_total": float(bt.adjustments_of(b)),
         "credit": float(bt.credit_of(b)), "used": float(bt.used_of(b)), "remaining": float(bt.remaining_of(b)),
         "files": [{"id": str(f.id), "filename": f.filename, "size": f.size} for f in b.files],
         "applications": [{"cycle_start": a.cycle_start, "cycle_end": a.cycle_end, "covered_until": a.covered_until,
@@ -121,9 +123,12 @@ async def _apply(db, b: BarterExchange, payload: BarterIn) -> None:
     b.deductions.clear()
     for i, d in enumerate(payload.deductions):
         if d.description.strip() and d.unit_price:
-            b.deductions.append(BarterDeduction(description=d.description.strip()[:500], qty=bt._m(d.qty), unit_price=bt._m(d.unit_price), sort_order=i))
+            if d.direction not in ("simpleip", "client"):
+                raise HTTPException(status_code=400, detail="Sens d'ajustement inconnu")
+            b.deductions.append(BarterDeduction(description=d.description.strip()[:500], qty=bt._m(d.qty), unit_price=bt._m(abs(d.unit_price)),
+                                                direction=d.direction, note=(d.note or "").strip() or None, sort_order=i))
     if bt.credit_of(b) < 0:
-        raise HTTPException(status_code=400, detail="Les déductions dépassent la valeur reçue")
+        raise HTTPException(status_code=400, detail="Les ajustements dépassent la valeur de l'échange")
     if bt.credit_of(b) < bt.used_of(b):
         raise HTTPException(status_code=400, detail=f"Le crédit ne peut pas être plus petit que ce qui a déjà servi ({bt.used_of(b)} $)")
 
