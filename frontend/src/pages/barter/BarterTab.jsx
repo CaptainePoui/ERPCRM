@@ -110,6 +110,38 @@ const FREQ_LABEL = { mensuel: 'chaque mois', bimestriel: 'aux 2 mois', trimestri
 const toD = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
 const longDate = iso => iso ? toD(iso).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : EMPTY
 
+function Gauge({ rb }) {
+  const g = rb.projection.gauge
+  const pct = g.credit_total > 0 ? Math.min(100, (g.consumed / g.credit_total) * 100) : 0
+  return (
+    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13, marginBottom: 8 }}>
+        <b>Aujourd'hui, {longDate(g.today)}</b>
+        <span style={{ color: C.muted }}>
+          {g.state === 'a_venir' ? `L'échange commence le ${longDate(rb.projection.since)}`
+            : g.state === 'termine' ? `Échange remboursé au complet le ${longDate(g.last_day)}`
+            : `Jour ${g.day_index} sur ${g.total_days}`}
+        </span>
+      </div>
+      {rb.paid_until && (
+        <div style={{ fontSize: 13, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
+          Période déjà payée : <b>du {longDate(rb.paid_from)} au {longDate(rb.paid_until)}</b> ({rb.last_invoice_number || 'dernière facture'}) — pas comptée dans l'échange
+        </div>
+      )}
+      <div style={{ height: 12, background: '#E5E7EB', borderRadius: 6, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: C.green }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 10, fontSize: 13 }}>
+        <div><div style={{ color: C.muted, fontSize: 11 }}>CRÉDIT DE DÉPART</div><b>{fmtMoney(g.credit_total)}</b></div>
+        <div><div style={{ color: C.muted, fontSize: 11 }}>SERVICE DÉJÀ FOURNI</div><b>{fmtMoney(g.consumed)}</b> ({Math.round(pct)} %)</div>
+        <div><div style={{ color: C.muted, fontSize: 11 }}>ENCORE DÛ AU CLIENT</div><b style={{ color: g.remaining > 0 ? C.red : C.green }}>{fmtMoney(g.remaining)}</b>{g.last_day && g.remaining > 0 && <div style={{ fontSize: 12, color: C.muted }}>service jusqu'au {longDate(g.last_day)}</div>}</div>
+        <div><div style={{ color: C.muted, fontSize: 11 }}>IL RECOMMENCE À PAYER</div><b>{longDate(rb.projection.resume_on)}</b></div>
+      </div>
+      {g.state === 'a_venir' && <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Rien n'est encore fourni : il est dans sa période déjà payée. La dette commence à diminuer le {longDate(rb.projection.since)}.</div>}
+    </div>
+  )
+}
+
 function Projection({ rb }) {
   const p = rb.projection
   if (!p) return null
@@ -119,15 +151,11 @@ function Projection({ rb }) {
   const part = p.months.find(m => m.days)
   return (
     <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Facture périodique « {rb.name} » — calendrier avec l'échange</div>
+      <div style={{ fontWeight: 600, marginBottom: 8 }}>Facture périodique « {rb.name} » — suivi de l'échange</div>
+      <Gauge rb={rb} />
       <div style={{ fontSize: 13, marginBottom: 2 }}>
         Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture ({fmtMoney(p.monthly_price)} par mois au prix actuel)
       </div>
-      {rb.last_invoice_date && rb.paid_until && (
-        <div style={{ fontSize: 13, marginBottom: 2 }}>
-          Dernière facture : {rb.last_invoice_number || 'facture'} du {longDate(rb.last_invoice_date)} — service déjà payé jusqu'au <b>{longDate(rb.paid_until)}</b>
-        </div>
-      )}
       <div style={{ fontSize: 13, marginBottom: 10 }}>
         L'échange paie le service à partir du <b>{longDate(p.since)}</b>, mois par mois{p.resume_on ? <> : <b>{full} mois{part ? ` et ${part.days} jours` : ''}</b></> : ''}.
       </div>
@@ -207,6 +235,11 @@ function ExchangeCard({ b, onEdit, onChanged }) {
         </div>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>MOIS DÉJÀ COMPTÉS</div>
+          {b.remaining <= 0 && b.applications.length > 0 && (
+            <div style={{ fontSize: 13, color: C.green, fontWeight: 600, marginBottom: 4 }}>
+              Remboursé au complet : service fourni du {longDate(b.applications[0].cycle_start)} au {longDate(b.applications[b.applications.length - 1].covered_until)}
+            </div>
+          )}
           {b.applications.length ? b.applications.map((a, i) => (
             <div key={i} style={{ fontSize: 13, marginBottom: 2 }}>{longDate(a.cycle_start)} → {longDate(a.covered_until)} : {fmtMoney(a.amount)}</div>
           )) : <div style={{ fontSize: 13, color: C.faint }}>Aucun encore — le premier mois se compte au premier jour pas encore facturé</div>}
@@ -235,7 +268,7 @@ export default function BarterTab({ companyId }) {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>
         <div style={{ fontSize: 13, color: C.muted, maxWidth: 640 }}>
-          Ce que la compagnie donne en échange de nos services. Le crédit hors taxes repousse sa facture périodique, à partir du premier cycle pas encore facturé.
+          Ce que la compagnie donne en échange de nos services. Le crédit hors taxes paie ses mois de service à partir du premier jour pas encore facturé ; sa facturation repart quand le crédit est épuisé.
         </div>
         <button className="btn-primary" onClick={() => setEdit('new')}>+ Nouvel échange</button>
       </div>

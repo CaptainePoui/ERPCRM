@@ -917,3 +917,17 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : migration renommée avec un identifiant aléatoire vérifié unique (`9559265c75e8`) ; `upgrade head` a recréé les colonnes de TASK-042.2 puis ajouté celles des retraits ; down/up retesté avec la révision explicite (`downgrade 9559265c75e8-1`) après contrôle « une seule tête ». Perte limitée aux propositions de l'IA (règles, compagnies attribuées, factures et paiements intacts — autres colonnes/tables) : 152 dépôts remis en file, régénérés par la comparaison des noms et l'IA.
 
 **Leçon (à ne pas refaire)** : générer l'identifiant de révision (`uuid4().hex[:12]` ou `alembic revision`) et vérifier `grep` + `alembic heads` = 1 avant d'appliquer ; ne jamais enchaîner un `downgrade` après un `upgrade` qui a échoué — s'arrêter et lire l'erreur ; tester le down/up avec une révision **explicite** (`downgrade <rev>-1`), jamais `-1` seul. Avant une migration sur des données qui ont coûté du calcul (propositions de l'IA), prendre une sauvegarde des tables touchées.
+
+## TASK-005.13 — Échange (troc) : « repousser la facture » construit comme une facture au prorata au lieu d'un cycle déplacé
+
+**Date** : 2026-10-07 (construit), 2026-10-08 (corrigé)
+
+**On croyait** : que « je rentre le montant hors taxes qui se retrouve à repousser la facture » voulait dire garder le cycle habituel (12 nov. / 12 mai) et émettre, au cycle où le crédit s'épuise, une facture au prorata datée du jour d'épuisement (277,30 $ HT le 3 août 2027, ligne négative « Échange (troc) »), puis revenir au 12 novembre.
+
+**Preuve** : Philippe, après avoir vu le calendrier : « l'échange ne fait que retarder les paiements de service, ça ne change pas son cycle… il recommence à payer sa facture de service 3 mois et 8 jours plus tard (le 20) et ce à chaque mois… pour D'Astous le 6 mois va partir je ne sais pas quand (une fois que ses services vont rembourser le troc) et repartent de là des cycles de 6 mois… si les services augmentent avec l'inflation je veux que le troc s'ajuste ».
+
+**Cause réelle** : le plan proposé décrivait le mécanisme (« facture repoussée au prorata ») mais pas le résultat concret pour SON cas sur plusieurs cycles (date de la facture suivante, rythme ensuite) ; Philippe a donné le GO sur un plan dont il ne pouvait pas voir la conséquence. Aucune question sur l'inflation, alors qu'un crédit en dollars qui court 9 mois y est exposé.
+
+**Correction** : avant que rien n'ait servi (0 mois comptés, aucune facture), logique refaite : crédit consommé mois par mois au prix du mois (inflation → reprise plus tôt), dernier mois en jours (jour entamé au client), puis la facture périodique repart à la date de reprise (`start_date`), même rythme ; plus de facture au prorata. Migration c7616746abbd (`barter_since`, `barter_cursor`). Suivi du jour (jauge) ajouté à sa demande.
+
+**Leçon (à ne pas refaire)** : pour toute règle de facturation, montrer AVANT de coder le calendrier concret du cas réel sur au moins deux cycles après l'événement (« factures le X, puis le Y, puis le Z ») et poser la question des prix qui changent pendant la durée — c'est ce qui révèle un malentendu, pas la description du mécanisme.

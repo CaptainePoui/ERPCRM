@@ -97,6 +97,7 @@ async def list_barters(company_id: uuid.UUID, db: AsyncSession = Depends(get_db)
         recurrences.append({"id": str(rb.id), "name": names[rb.id], "frequency": rb.frequency, "is_active": rb.is_active,
                             "cycle_amount": float(bt.cycle_amount(rb)), "months_per_cycle": bt.MONTHS_PER_CYCLE.get(rb.frequency),
                             "last_invoice_date": rb.last_invoice_date, "last_invoice_number": last_number, "paid_until": paid_until,
+                            "paid_from": rb.last_invoice_date if paid_until else None,
                             "projection": await bt.projection(db, rb) if rb.is_active else None})
     return {"exchanges": [await _out(db, b, names) for b in rows], "recurrences": recurrences}
 

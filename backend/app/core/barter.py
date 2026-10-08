@@ -147,6 +147,7 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
         months = list(by_start.values())
     else:
         since = cursor = next_missing_cycle(rb)[0]
+    credit_total = sum((m["amount"] for m in months), Decimal("0")) + sum((c[1] for c in credits), Decimal("0"))
     resume = None
     for _ in range(max_months):
         if not credits:
@@ -160,6 +161,23 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
             break
         cursor = s["end"]
     delta = FREQUENCIES[rb.frequency]
+    # Suivi du jour (2026-10-08, Philippe : « voir ou on en est de la dette peu importe le jour que je regarde ») :
+    # mois termines au complet + le mois en cours au prorata des jours deja passes
+    today = date.today()
+    consumed = Decimal("0")
+    for m in months:
+        if m["start"] > today:
+            continue
+        length = (m["covered_until"] - m["start"]).days + 1
+        elapsed = min((today - m["start"]).days + 1, length)
+        consumed += Decimal(m["amount"]) * elapsed / length
+    consumed = _m(consumed)
+    last_day = resume - timedelta(days=1) if resume else None
+    total_days = (resume - since).days if resume else None
+    gauge = {"today": today, "credit_total": float(_m(credit_total)), "consumed": float(consumed),
+             "remaining": float(_m(credit_total - consumed)), "last_day": last_day, "total_days": total_days,
+             "day_index": max(0, min((today - since).days + 1, total_days or 0)) if today >= since else 0,
+             "state": "a_venir" if today < since else ("termine" if last_day and today > last_day else "en_cours")}
     # Factures habituelles qui ne seront pas faites : dates de l'ancien cycle entre le debut de la couverture et la reprise
     skipped, d, k = [], rb.start_date, 0
     while d < since:
@@ -176,4 +194,5 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
                    for m in months],
         "skipped": skipped,
         "next_invoices": [resume + delta * i for i in range(3)] if resume else [],
+        "gauge": gauge,
     }
