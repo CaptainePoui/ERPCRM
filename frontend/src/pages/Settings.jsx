@@ -239,7 +239,7 @@ function LateFeesSection() {
   async function save(extra = {}) {
     setMsg('')
     const body = { ...cfg, ...extra }
-    if (extra.late_fees_enabled && !confirm(`Allumer les frais de retard ? ERPCRM créera tout de suite ${preview?.notices.length || 0} avis de retard (non transmis), puis les suivants au fil des jours. Assure-toi que l'ancien logiciel n'en fait plus.`)) return
+    if (extra.late_fees_enabled && !confirm(`Allumer les frais de retard ? ERPCRM créera et enverra par courriel ${preview?.notices.length || 0} avis de retard, puis les suivants au fil des jours. Assure-toi que l'ancien logiciel n'en fait plus.`)) return
     try {
       await api.put('/v1/settings', { ...body, late_fee_monthly_rate: Number(body.late_fee_monthly_rate), late_fee_admin: Number(body.late_fee_admin),
         late_fee_grace_days: Number(body.late_fee_grace_days), late_fee_interval_days: Number(body.late_fee_interval_days) })
@@ -263,7 +263,7 @@ function LateFeesSection() {
       <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
         Un avis de retard par client : {cfg.late_fee_monthly_rate} % de tout son solde en retard (avis précédents compris) + frais de gestion,
         {' '}{cfg.late_fee_grace_days} jours après l'échéance, puis chaque {cfg.late_fee_interval_days} jours tant que c'est impayé. Sans taxes.
-        Jamais sur une facture marquée « À régler en troc ». Les avis sont émis mais non transmis : c'est toi qui les envoies.
+        Jamais sur une facture marquée « À régler en troc ». Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
       </p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         {field('late_fee_monthly_rate', '% par mois')}
@@ -292,6 +292,7 @@ function LateFeesSection() {
                 {cfg.late_fee_monthly_rate} % de {money(n.base)} en retard — {n.invoices.map(i => `${i.number} (${money(i.balance)})`).join(', ')}
                 {n.last_notice ? ` — dernier avis le ${n.last_notice}` : ''}
               </div>
+              <div style={{ fontSize: 12, color: n.email ? '#6B7280' : '#B45309' }}>{n.email ? `Envoyé à ${n.email}` : 'Aucun courriel de facturation : restera non transmis'}</div>
             </div>
           ))}
         </div>

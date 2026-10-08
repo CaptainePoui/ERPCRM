@@ -394,9 +394,9 @@ async def delete_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_d
     inv = await _get_inv(invoice_id, db)
     if inv.status not in ("brouillon",):
         raise HTTPException(status_code=400, detail="Seules les factures en brouillon peuvent être supprimées")
-    lock = await _tax_lock_date(db)
-    if lock and inv.issue_date <= lock:
-        raise HTTPException(status_code=400, detail=f"Facture datée dans une période de taxes déjà déclarée (jusqu'au {lock}) : elle ne peut plus être supprimée, seulement créditée")
+    # Pas de verrou de periode declaree ici (2026-10-07, Philippe : « s'ils sont en brouillon, ils ne faisaient pas
+    # partie des taxes ou impots ») : un brouillon n'entre jamais dans les rapports de taxes ; une facture emise d'une
+    # periode declaree ne peut toujours pas revenir en brouillon (_check_can_revert_to_draft), donc jamais etre supprimee.
     await db.delete(inv)
     await db.commit()
 
@@ -465,6 +465,7 @@ async def late_fees_preview(db: AsyncSession = Depends(get_db), _: User = Depend
     out = []
     for c in await late_fees.candidates(db, cfg):
         out.append({"company_id": str(c["company_id"]), "company_name": c["company_name"], "base": float(c["base"]),
+                    "email": await late_fees.billing_email(db, c["company_id"]),
                     "interest": float(c["interest"]), "admin": float(c["admin"]), "total": float(c["interest"] + c["admin"]),
                     "last_notice": c["last_notice"], "oldest_number": c["oldest"].number, "oldest_due": c["oldest"].due_date,
                     "invoices": [{"id": str(i.id), "number": i.number, "due_date": i.due_date, "balance": float(b),

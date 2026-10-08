@@ -9,7 +9,8 @@ Aucune taxe (des frais exiges pour un paiement en retard ne sont pas une vente d
 facture « a regler en troc » (la marque est sur la facture, pas sur le client : une facture sans la marque se paie
 comme tout le monde), un brouillon, une facture annulee ou payee, un avoir, une facture pas encore echue.
 Mise en marche par Philippe dans Parametres (eteinte au depart : « pas tant que tout n'est pas fluide ») ; les
-factures creees sont emises mais non transmises (c'est Philippe qui les envoie). Les avis deja faits, y compris par
+avis sont emis ET envoyes par courriel (« je veux automatiser les choses ») au contact comptes payables/facturation
+de la compagnie (sinon le principal, sinon le premier avec un courriel) ; sans courriel, l'avis reste non transmis. Les avis deja faits, y compris par
 l'ancien logiciel (factures de retard reliees par la migration 8e756bdf15d8), comptent : jamais deux avis au meme
 client a moins de 30 jours ; les periodes manquees ne sont pas rattrapees d'un coup.
 """
@@ -111,17 +112,70 @@ async def create_fee_invoice(db, c: dict, cfg: dict, today: date | None = None):
     return inv
 
 
+BILLING_FUNCTIONS = ("comptes payables", "facturation")
+
+
+async def billing_email(db, company_id) -> str | None:
+    """Courriel d'envoi des factures : contact comptes payables/facturation, sinon principal, sinon le premier."""
+    from sqlalchemy.orm import selectinload
+    from app.models.contact_company import ContactCompany, ContactCompanyFunction
+    rows = (await db.execute(select(ContactCompany).options(
+        selectinload(ContactCompany.contact), selectinload(ContactCompany.functions).selectinload(ContactCompanyFunction.function))
+        .where(ContactCompany.company_id == company_id, ContactCompany.is_active.is_not(False)))).scalars().all()
+
+    def mail(cc):
+        return (cc.email or (cc.contact.email if cc.contact else None) or "").strip()
+
+    def rank(cc):
+        names = {(f.function.name or "").lower() for f in cc.functions if f.function}
+        return 0 if names & set(BILLING_FUNCTIONS) else (1 if cc.is_primary else 2)
+    for cc in sorted(rows, key=rank):
+        if mail(cc):
+            return mail(cc)
+    return None
+
+
+async def send_notice(db, inv) -> str | None:
+    """Envoie l'avis par courriel (meme envoi que le bouton « Envoyer »). Retourne le courriel, ou None si aucun."""
+    from app.core.email import send_invoice_email
+    to = await billing_email(db, inv.company_id)
+    if not to:
+        return None
+    await send_invoice_email(to_email=to, invoice_id=str(inv.id), invoice_number=inv.number, company_name=inv.company.name,
+                             due_date=inv.due_date.strftime("%Y-%m-%d"),
+                             lines=[{"description": l.description, "qty": l.qty, "unit_price": l.unit_price, "line_total": l.line_total} for l in inv.lines],
+                             total=inv.total)
+    inv.transmission_status = "courriel"
+    return to
+
+
 async def run(db) -> int:
     """Cree les avis de retard dus (seulement si la mise en marche est activee). Retourne le nombre cree."""
     cfg = await config(db)
     if not cfg["enabled"]:
         return 0
     n = 0
+    import logging
+    log = logging.getLogger("late_fees")
     for c in await candidates(db, cfg):
-        await create_fee_invoice(db, c, cfg)
+        inv = await create_fee_invoice(db, c, cfg)
         await db.commit()
         n += 1
+        try:
+            inv = await _reload(db, inv.id)
+            to = await send_notice(db, inv)
+            await db.commit()
+            if not to:
+                log.warning("Avis %s (%s) : aucun courriel de facturation, laisse non transmis", inv.number, c["company_name"])
+        except Exception:
+            await db.rollback()
+            log.exception("Avis %s : envoi par courriel echoue, laisse non transmis", inv.number)
     return n
+
+
+async def _reload(db, invoice_id):
+    from app.api.v1.endpoints.invoices import _get_inv
+    return await _get_inv(invoice_id, db)
 
 
 def terms_text(cfg: dict) -> str:
