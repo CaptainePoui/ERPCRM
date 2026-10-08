@@ -159,6 +159,7 @@ async def _get_devis(devis_id: uuid.UUID, db: AsyncSession) -> Devis:
         select(Devis)
         .options(selectinload(Devis.lines), selectinload(Devis.company))
         .where(Devis.id == devis_id)
+        .execution_options(populate_existing=True)   # lignes a jour apres ajout/suppression (meme defaut que les factures, 2026-10-07)
     )
     d = result.scalar_one_or_none()
     if not d:
