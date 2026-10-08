@@ -220,10 +220,13 @@ def _site_address_text(site: CompanySite) -> str:
 
 
 async def _get_inv(invoice_id: uuid.UUID, db: AsyncSession) -> Invoice:
+    # populate_existing : relit les lignes a jour (2026-10-08 : sans ca, une ligne ajoutee ou supprimee dans la meme
+    # requete n'etait pas vue par _recalc -- totaux restes a 0 sur INV-112253 apres l'ajout de sa ligne)
     result = await db.execute(
         select(Invoice)
         .options(selectinload(Invoice.lines), selectinload(Invoice.company))
         .where(Invoice.id == invoice_id)
+        .execution_options(populate_existing=True)
     )
     inv = result.scalar_one_or_none()
     if not inv:
