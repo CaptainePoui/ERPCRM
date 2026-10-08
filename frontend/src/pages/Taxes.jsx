@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
+import { todayIso } from '../utils/date'
 
 // Onglet « Impôts et formulaires » (TASK-043)
 
@@ -220,7 +221,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
 
 function AdjustmentModal({ initial, categories, onClose, onSaved }) {
   const [f, setF] = useState({
-    adjustment_date: initial?.adjustment_date || new Date().toISOString().slice(0, 10),
+    adjustment_date: initial?.adjustment_date || todayIso(),
     category: initial?.category || 'correction',
     tps_amount: initial?.tps_amount ?? '', tvq_amount: initial?.tvq_amount ?? '', description: initial?.description || '',
   })
@@ -295,7 +296,7 @@ function AdjustmentsSection({ refreshKey, onEdit, onChanged }) {
 function PaymentModal({ initial, onClose, onSaved }) {
   const [periods, setPeriods] = useState([])
   const [f, setF] = useState({
-    payment_date: initial?.payment_date || new Date().toISOString().slice(0, 10),
+    payment_date: initial?.payment_date || todayIso(),
     period: initial?.period_start ? `${initial.period_start}|${initial.period_end}` : '',
     tps_amount: initial?.tps_amount ?? '', tvq_amount: initial?.tvq_amount ?? '',
     method: initial?.method || '', reference: initial?.reference || '', notes: initial?.notes || '',
@@ -442,7 +443,7 @@ export default function Taxes() {
         </nav>
         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
           {section === 'declaration' && <DeclarationSection refreshKey={refreshKey}
-            onAddAdjustment={p => setAdjEdit({ adjustment_date: p.end < new Date().toISOString().slice(0, 10) ? p.end : new Date().toISOString().slice(0, 10) })}
+            onAddAdjustment={p => setAdjEdit({ adjustment_date: p.end < todayIso() ? p.end : todayIso() })}
             onAddPayment={p => setPayEdit({ period_start: p.start, period_end: p.end })} />}
           {section === 'adjustments' && <AdjustmentsSection refreshKey={refreshKey} onEdit={setAdjEdit} onChanged={refresh} />}
           {section === 'payments' && <PaymentsSection refreshKey={refreshKey} onEdit={setPayEdit} onChanged={refresh} />}

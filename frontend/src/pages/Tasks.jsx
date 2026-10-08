@@ -6,6 +6,7 @@ import QuickNewCompany from '../components/QuickNewCompany'
 import QuickNewContact from '../components/QuickNewContact'
 import UnsavedChangesPrompt from '../components/UnsavedChangesPrompt'
 import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
+import { parseDay } from '../utils/date'
 
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const PRIORITY_COLORS = { basse: '#6B7280', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
@@ -44,7 +45,7 @@ function StatusBadge({ value }) {
 }
 
 function TaskRow({ task, onToggle, onSelect }) {
-  const overdue = task.due_date && !task.completed && new Date(task.due_date) < new Date(new Date().toDateString())
+  const overdue = task.due_date && !task.completed && parseDay(task.due_date) < new Date(new Date().toDateString())
   return (
     <tr style={{ background: task.completed ? '#F9FAFB' : '#fff', cursor: 'pointer' }} onClick={() => onSelect(task)}>
       <td style={{ width: 36, padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
@@ -1204,7 +1205,7 @@ export default function Tasks({ defaultView = 'list' }) {
       : calDay.toLocaleDateString('fr-CA', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
 
   const pending = tasks.filter(t => !t.completed && t.status !== 'annule').length
-  const overdue = tasks.filter(t => !t.completed && t.due_date && new Date(t.due_date) < new Date(new Date().toDateString())).length
+  const overdue = tasks.filter(t => !t.completed && t.due_date && parseDay(t.due_date) < new Date(new Date().toDateString())).length
 
   return (
     <div style={{ padding: 24, maxWidth: isAgenda ? '100%' : 1100, margin: isAgenda ? 0 : '0 auto', height: isAgenda ? '100%' : 'auto', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>

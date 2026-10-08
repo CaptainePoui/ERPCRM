@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
 from pydantic import BaseModel, field_validator
+from app.core import clock
 from app.core.database import get_db
 from app.core.bank_statement_parser import parse_statement, StatementParseError
 from app.core.bank_chart import GRANULARITIES, AccountSeries, build_chart
@@ -1131,4 +1132,4 @@ async def bank_chart(
         ))
 
     fiscal_start = int(await get_setting(db, "fiscal_year_start_month") or 1)
-    return build_chart(series, granularity, date.today(), offset, fiscal_start)
+    return build_chart(series, granularity, clock.today(), offset, fiscal_start)

@@ -3,12 +3,13 @@ import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import KnowledgeGraphViewer from '../components/KnowledgeGraphViewer'
 import './Admin.css'
+import { parseDay } from '../utils/date'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
 const ROLE_COLORS = { admin: '#DC2626', manager: '#7C3AED', tech: 'var(--brand)', billing: '#059669', readonly: '#6B7280' }
 
-const fmtDate = s => s ? new Date(s).toLocaleDateString('fr-CA', { year:'numeric', month:'short', day:'numeric' }) : '—'
+const fmtDate = s => s ? parseDay(s).toLocaleDateString('fr-CA', { year:'numeric', month:'short', day:'numeric' }) : '—'
 
 // Arbre de privilèges (TASK-S053) : cocher le "maître" d'une branche coche/décoche
 // aussi tous ses sous-items en un clic (cascade), révèle/cache la branche

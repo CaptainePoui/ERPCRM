@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.invoice import Invoice, InvoiceLine
@@ -279,7 +280,7 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
         site_label_snapshot = site.label
         site_address_snapshot = _site_address_text(site)
 
-    today = date.today()
+    today = clock.today()
     inv = Invoice(
         transmission_status="non_transmise",
         number=await _next_number(db),
@@ -449,7 +450,7 @@ async def delete_line(invoice_id: uuid.UUID, line_id: uuid.UUID, db: AsyncSessio
 
 @router.post("/mark-overdue", status_code=status.HTTP_200_OK)
 async def mark_overdue(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    today = date.today()
+    today = clock.today()
     result = await db.execute(
         select(Invoice).where(
             and_(Invoice.status == "envoyee", Invoice.due_date < today)
@@ -470,8 +471,8 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     credit = Invoice(
         number=await _next_credit_number(db),
         company_id=original.company_id,
-        issue_date=date.today(),
-        due_date=date.today(),
+        issue_date=clock.today(),
+        due_date=clock.today(),
         notes=f"Avoir pour facture {original.number}",
         apply_tps=original.apply_tps,
         apply_tvq=original.apply_tvq,

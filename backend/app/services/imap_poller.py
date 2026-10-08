@@ -14,6 +14,7 @@ from sqlalchemy import select, cast, Text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.ticket import Ticket, TicketEntry
@@ -112,7 +113,7 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
                 user_id=None,
                 description=f"[Réponse client] {body}",
                 duration_minutes=0,
-                worked_at=date.today(),
+                worked_at=clock.today(),
                 is_billable=False,
             )
             db.add(entry)

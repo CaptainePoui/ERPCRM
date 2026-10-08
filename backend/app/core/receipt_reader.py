@@ -22,6 +22,7 @@ from pathlib import Path
 
 import httpx
 
+from app.core import clock
 from app.core.config import settings
 from app.models.purchases import LINE_CLASSES
 
@@ -172,7 +173,7 @@ def check(r: dict) -> list[dict]:
     if r.get("correction"):
         add(False, r["correction"])
     add(r["fournisseur"], "Fournisseur trouvé")
-    add(r["date"] and r["date"] <= date.today(), "Date trouvée")
+    add(r["date"] and r["date"] <= clock.today(), "Date trouvée")
     add(total and total > 0, "Total trouvé")
     add(lines and all(l["montant"] is not None for l in lines), "Montant de chaque ligne lu")
     if not (total and lines and all(l["montant"] is not None for l in lines)):

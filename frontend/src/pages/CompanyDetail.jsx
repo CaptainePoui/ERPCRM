@@ -13,6 +13,7 @@ import CdrReportsSection from '../components/CdrReportsSection'
 import BarterTab from './barter/BarterTab'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
+import { todayIso, parseDay } from '../utils/date'
 
 const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
 const TAB_SLUGS = ['general', 'transactions', 'echanges', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
@@ -465,7 +466,7 @@ export default function CompanyDetail({ isNew }) {
   const [sipvError, setSipvError] = useState('')
   // TASK-021/S032 : facturation récurrente obligatoire à l'activation -- date
   // du jour par défaut (modifiable), fréquence mensuelle par défaut.
-  const [billingStartDate, setBillingStartDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [billingStartDate, setBillingStartDate] = useState(() => todayIso())
   const [billingFrequency, setBillingFrequency] = useState('mensuel')
 
   async function toggleSipvTenant() {
@@ -1393,7 +1394,7 @@ function TachesTab({ companyId, companyName, onShowTask }) {
         <div className="empty-tab">Aucune tâche en cours pour ce client.</div>
       ) : (
         filtered.map(t => {
-          const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+          const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
           return (
             <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 8, background: t.completed ? '#F9FAFB' : '#fff' }}>
               <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 15, height: 15, accentColor: 'var(--brand)', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />

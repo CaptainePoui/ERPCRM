@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.invoices import _money
 from app.api.v1.endpoints.auth import get_current_user
@@ -197,7 +198,7 @@ async def create_devis(payload: DevisCreate, db: AsyncSession = Depends(get_db),
     comp = await db.get(Company, payload.company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
-    today = date.today()
+    today = clock.today()
     d = Devis(
         number=await _next_number(db),
         company_id=payload.company_id,

@@ -5695,6 +5695,17 @@ Date(s) de travail : 2026-10-07
 
 ---
 
+## TASK-045 [ERPCRM] [x] Fuseau horaire de l'entreprise — « quel jour on est » à l'heure de Montréal partout
+Date de demande : 2026-10-07 (Philippe, au soir : « pourquoi elle est demain ?? » sur la facture des textos ; puis « oui go pour le fuseau horaire, c'est super important que tout le ERPCRM et le SIPV soit au bon fuseau horaire… le serveur est ici à Montréal »)
+Date(s) de travail : 2026-10-07 (soir, heure du Québec)
+
+- Cause : serveurs ERPCRM et SIPV en UTC (Etc/UTC) ; le code prenait `date.today()` → après 20 h (heure du Québec), « aujourd'hui » = lendemain (INV-112253 et son paiement Troc datés du 8 oct. ; la facture périodique INV-112252 créée à 20 h 24 la veille de son cycle).
+- `backend/app/core/clock.py` : `today()` / `now()` au fuseau de l'entreprise (défaut **America/Toronto** = Montréal) ; fuseau lu au démarrage puis chaque minute par chaque processus (8010 et 8011), immédiatement après un changement dans Paramètres. Les **34** `date.today()` du backend remplacés par `clock.today()` (factures, paiements, périodiques, échanges, taxes, banque, numérotation PAY-AAAA, tickets, devis, achats, reçus, sauvegardes, rappels). Horodatages techniques inchangés (UTC, colonnes avec fuseau). Les sauvegardes et rapports CDR gardent leur propre fuseau (déjà America/Toronto).
+- Paramètres : réglage **« Fuseau horaire de l'entreprise »** (`business_timezone`, liste des fuseaux, « il est HH:MM selon ce fuseau », fuseau inconnu refusé) ; `GET /settings/timezones`.
+- Écran (`frontend/src/utils/date.js`) : `todayIso()` remplace `new Date().toISOString().slice(0, 10)` (9 endroits : taxes, avoirs, périodiques, facturation d'un contact/compagnie, échanges, achats) ; `parseDay()` lit une date seule à minuit local — avant, « 2026-10-07 » s'affichait le 6 au Québec (`fmtDate` de Banque/Achats, Admin, bons de commande, portail) et une tâche due aujourd'hui passait « en retard » dès 20 h (tâches, ticket, compagnie, contact). Les filtres CDR (date et heure locales) étaient déjà corrects.
+- Vérifié à 21 h 41 (1 h 41 UTC le 8) : Paramètres « 2026-10-07 21:41 », jauge du troc « 7 octobre », port 8011 aussi à America/Toronto, « Mars/Olympus » refusé.
+- SIPV (lecture seule) : serveur et FreeSWITCH en UTC ; horaires d'ouverture déjà calculés avec le fuseau de chaque horaire (défaut America/Montreal, `xml_curl.py`, `schedules.py`) ; seules conditions d'heure fixes dans le plan d'appel d'exemple `dialplan/default.xml`. Changement côté SIPV proposé à part (en attente du GO).
+
 ## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture
 Date de demande : 2026-09-10 (Philippe : "fais le SIPV", suite à TASK-040.14 côté ERPCRM)
 Date(s) de travail : 2026-09-10

@@ -20,6 +20,7 @@ from decimal import Decimal
 import httpx
 from sqlalchemy import select
 
+from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.bank_matching import invoice_balances, OPEN_STATUSES, name_similarity, _tokens
@@ -41,7 +42,7 @@ async def _context(db) -> tuple[list[dict], list[str]]:
     """Clients factures dans les 13 derniers mois (nom + soldes ouverts s'il y en a) et exemples de
     beneficiaires deja reconnus. Pas seulement les soldes ouverts : un depot peut correspondre a une
     facture deja marquee payee (paiement anterieur importe)."""
-    since = date.today() - timedelta(days=400)
+    since = clock.today() - timedelta(days=400)
     invs = (await db.execute(select(Invoice).where(Invoice.credit_of_id.is_(None), Invoice.issue_date >= since,
                                                    Invoice.status.not_in(["brouillon", "annulee"])))).scalars().all()
     open_invs = [i for i in invs if i.status in OPEN_STATUSES]

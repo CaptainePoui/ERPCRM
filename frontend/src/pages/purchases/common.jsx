@@ -4,10 +4,11 @@ import { useState, useEffect, useCallback } from 'react'
 import api from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
 import { C, EMPTY, fmtMoney, fmtDate } from '../Bank'
+import { todayIso } from '../../utils/date'
 
 export { C, EMPTY, fmtMoney }
 export const fmtD = d => d ? fmtDate(d + 'T00:00:00') : EMPTY
-export const today = () => new Date().toISOString().slice(0, 10)
+export const today = () => todayIso()
 
 export const th = { padding: '10px 8px', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'left' }
 export const thR = { ...th, textAlign: 'right' }

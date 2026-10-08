@@ -5,8 +5,9 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney } from '../Bank'
+import { todayIso } from '../../utils/date'
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => todayIso()
 const errText = e => e.response?.data?.detail || 'Erreur'
 const small = { padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, minWidth: 0 }
 const box = { border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 14, background: '#fff' }

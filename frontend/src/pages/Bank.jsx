@@ -4,6 +4,7 @@ import { ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import { IconBank, IconCreditCard, IconCash, IconSearch, IconChevronDown, IconCalendar } from '../components/Icons'
+import { parseDay } from '../utils/date'
 
 // Onglet Banque (TASK-042) -- interface et options. Aucune source de transactions
 // n'est branchee : soldes, non classees et graphique affichent un etat vide.
@@ -49,7 +50,7 @@ export function fmtMoney(v) {
 }
 
 export function fmtDate(iso) {
-  return iso ? new Date(iso).toLocaleDateString('fr-CA') : null
+  return iso ? parseDay(iso).toLocaleDateString('fr-CA') : null
 }
 
 export function Dropdown({ label, children, align = 'left', buttonStyle }) {

@@ -62,6 +62,8 @@ export default function Settings() {
 
       {msg && <div style={{ background: '#ECFDF5', color: '#065F46', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
+      <TimezoneSection />
+
       {/* ── Taux de service ── */}
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Taux de service Simple IP</h3>
@@ -220,6 +222,37 @@ export default function Settings() {
 
 // Numerotation des documents (2026-10-04) : le compteur ne peut jamais reculer -- le serveur refuse
 // tout prochain numero plus petit que le compteur actuel ou deja utilise avec ce prefixe.
+// Fuseau horaire de l'entreprise (2026-10-08) : le serveur tourne en UTC ; tout ERPCRM decide « quel jour on est »
+// avec ce fuseau (factures, paiements, periodiques, echanges...). Voir backend/app/core/clock.py.
+function TimezoneSection() {
+  const [data, setData] = useState(null)
+  const [value, setValue] = useState('')
+  const [msg, setMsg] = useState('')
+  const load = () => api.get('/v1/settings/timezones').then(r => { setData(r.data); setValue(r.data.current) })
+  useEffect(() => { load() }, [])
+  async function save() {
+    setMsg('')
+    try { await api.put('/v1/settings', { business_timezone: value }); setMsg('Enregistré'); load() }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') }
+  }
+  if (!data) return null
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Fuseau horaire de l'entreprise</h3>
+      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+        Sert à savoir quel jour on est : date des factures et des paiements, factures périodiques, échanges… Il est <b>{data.now}</b> selon ce fuseau.
+      </p>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+        <select value={value} onChange={e => setValue(e.target.value)} style={{ minWidth: 260 }}>
+          {data.zones.map(z => <option key={z} value={z}>{z === 'America/Toronto' ? 'America/Toronto (Montréal, Québec, Ontario)' : z}</option>)}
+        </select>
+        <button className="btn-primary" onClick={save} disabled={value === data.current}>Enregistrer</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 function NumberingSection() {
   const [rows, setRows] = useState(null)
   const [edit, setEdit] = useState({})

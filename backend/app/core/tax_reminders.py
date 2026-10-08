@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.models.task import Task, TaskReminder
 
 FREQ_MONTHS = {"mensuelle": 1, "trimestrielle": 3, "annuelle": 12}
@@ -67,7 +68,7 @@ async def ensure_tax_filing_tasks(db: AsyncSession) -> int:
     fiscal = int(await get_setting(db, "fiscal_year_start_month") or 1)
 
     created = 0
-    for start, end in ended_periods(date.today(), freq, fiscal):
+    for start, end in ended_periods(clock.today(), freq, fiscal):
         if lock and end <= lock:
             continue
         key = f"{MARK}{end.isoformat()}"

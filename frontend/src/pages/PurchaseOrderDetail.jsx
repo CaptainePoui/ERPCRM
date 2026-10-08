@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../services/api'
 import './PurchaseOrderDetail.css'
+import { parseDay } from '../utils/date'
 
 const STATUS_STYLES = {
   brouillon:          { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
@@ -20,7 +21,7 @@ const STATUS_TRANSITIONS = {
 }
 
 const fmt = n => `${parseFloat(n || 0).toFixed(2)} $`
-const fmtDate = s => s ? new Date(s).toLocaleDateString('fr-CA') : '—'
+const fmtDate = s => s ? parseDay(s).toLocaleDateString('fr-CA') : '—'
 
 export default function PurchaseOrderDetail() {
   const { id } = useParams()

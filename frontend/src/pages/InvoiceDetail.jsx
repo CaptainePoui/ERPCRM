@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
 import './Invoices.css'
+import { todayIso } from '../utils/date'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -608,7 +609,7 @@ function SendInvoiceModal({ invoiceId, companyId, onClose, onSent }) {
 //  - depuis une facture (invoice) : y appliquer un ou plusieurs avoirs ouverts du client
 function ApplyCreditModal({ credit, invoice, openCredits, onClose, onSaved }) {
   const [rows, setRows] = useState(null)
-  const [appliedAt, setAppliedAt] = useState(new Date().toISOString().slice(0, 10))
+  const [appliedAt, setAppliedAt] = useState(todayIso())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 

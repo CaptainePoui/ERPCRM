@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text, cast, Integer
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.payment import PaymentMethod
@@ -269,7 +270,7 @@ async def add_payment(invoice_id: uuid.UUID, payload: PaymentCreate, db: AsyncSe
         notes=payload.notes,
         card_token=payload.card_token,
         card_last4=payload.card_last4,
-        received_at=payload.paid_at or date.today(),
+        received_at=payload.paid_at or clock.today(),
     )
     db.add(cp)
     await db.flush()
@@ -328,7 +329,7 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
         portal_notes=payload.portal_notes,
         card_token=payload.card_token,
         card_last4=payload.card_last4,
-        received_at=payload.received_at or (date.today() if payload.status == "confirmed" else None),
+        received_at=payload.received_at or (clock.today() if payload.status == "confirmed" else None),
     )
     db.add(cp)
     await db.flush()
@@ -368,7 +369,7 @@ async def confirm_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=400, detail="Deja confirme")
 
     cp.status = "confirmed"
-    cp.received_at = cp.received_at or date.today()
+    cp.received_at = cp.received_at or clock.today()
     for alloc in cp.allocations:
         await _recalculate_invoice_status(alloc.invoice_id, db)
 
@@ -483,7 +484,7 @@ async def apply_credit(credit_id: uuid.UUID, payload: CreditApplyIn, db: AsyncSe
         if Decimal(str(a.amount)) > left + Decimal("0.005"):
             raise HTTPException(status_code=400, detail=f"Facture {inv.number} : il ne reste que {left} $ à régler")
         db.add(CreditAllocation(credit_invoice_id=credit.id, invoice_id=inv.id, amount=Decimal(str(a.amount)),
-                                applied_at=payload.applied_at or date.today()))
+                                applied_at=payload.applied_at or clock.today()))
     await db.flush()
     for a in payload.allocations:
         await _recalculate_invoice_status(a.invoice_id, db)

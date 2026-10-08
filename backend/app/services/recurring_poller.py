@@ -18,6 +18,7 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from app.core import clock
 from app.core.database import AsyncSessionLocal
 from app.api.v1.endpoints.settings import get_setting
 from app.api.v1.endpoints.purchases import (NothingDue, _lock, create_recurring_bill, create_recurring_expense)
@@ -71,7 +72,7 @@ async def _next_due_sale(tax_lock: date | None, skip: set):
             if rb.id in skip or not rb.lines:
                 continue
             start, _end = next_missing_cycle(rb)
-            if start > date.today() or (rb.end_date and start > rb.end_date):
+            if start > clock.today() or (rb.end_date and start > rb.end_date):
                 continue
             if tax_lock and start <= tax_lock:
                 log.warning("Facture periodique %s : cycle du %s dans une periode de taxes declaree, non cree", rb.name, start)

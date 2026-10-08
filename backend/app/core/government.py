@@ -12,6 +12,7 @@ from decimal import Decimal
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.models.tax import TaxObligation, TaxPayment
 
 KINDS = {"tps_tvq": "TPS/TVQ", "impot_societe": "Impôt des sociétés", "das": "Retenues à la source", "autre": "Autre versement"}
@@ -56,7 +57,7 @@ def split(amount: Decimal, status: dict, kind: str, fallback_ratio: Decimal | No
 def period_options(kind: str, fiscal_start_month: int, today: date | None = None) -> list[dict]:
     """Periodes proposees : trimestres (TPS/TVQ), annees d'imposition, mois (retenues)."""
     from app.core.tax_reminders import _add_months
-    today = today or date.today()
+    today = today or clock.today()
     out = []
     if kind == "tps_tvq":
         start = date(today.year if today.month >= fiscal_start_month else today.year - 1, fiscal_start_month, 1)

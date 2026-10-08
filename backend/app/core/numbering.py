@@ -14,6 +14,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.models.document_counter import DocumentCounter
 
 # type -> (valeurs par defaut, modele/colonne ou vivent les numeros)
@@ -47,7 +48,7 @@ def _column(key: str):
 
 
 def render_prefix(prefix: str) -> str:
-    return prefix.replace("{year}", str(date.today().year))
+    return prefix.replace("{year}", str(clock.today().year))
 
 
 async def _highest(db: AsyncSession, key: str, prefix: str) -> int:

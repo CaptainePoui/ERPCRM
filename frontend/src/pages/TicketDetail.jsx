@@ -4,6 +4,7 @@ import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
 import TimerNavigationPrompt from '../components/TimerNavigationPrompt'
 import './Tickets.css'
+import { parseDay } from '../utils/date'
 
 const PRIORITY_LABELS = {
   faible:   { label: 'Faible',    color: '#6B7280' },
@@ -894,7 +895,7 @@ function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
         <div style={{ color: '#9CA3AF', fontSize: 13, padding: '8px 0' }}>Aucune tâche liée à ce ticket.</div>
       )}
       {filtered.map(t => {
-        const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+        const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
         return (
           <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'center' }}>
             <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0 }} />

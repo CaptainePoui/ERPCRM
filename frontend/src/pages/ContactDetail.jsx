@@ -12,6 +12,7 @@ import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import CdrReportsSection from '../components/CdrReportsSection'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
+import { todayIso, parseDay } from '../utils/date'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
 function InlineField({ label, value, onSave, type = 'text', multiline }) {
@@ -356,7 +357,7 @@ export default function ContactDetail({ isNew }) {
   const [confirmSipv, setConfirmSipv] = useState(false)
   const [sipvError, setSipvError] = useState('')
   const [sipvCreating, setSipvCreating] = useState(false)
-  const [billingStartDate, setBillingStartDate] = useState(() => new Date().toISOString().slice(0, 10))
+  const [billingStartDate, setBillingStartDate] = useState(() => todayIso())
   const [billingFrequency, setBillingFrequency] = useState('mensuel')
   const [extensionNumber, setExtensionNumber] = useState('')
   // Demande de Philippe (2026-08-19) : un vrai onglet CDR (pas un bouton
@@ -1506,7 +1507,7 @@ function ContactTachesSection({ contactId, onNewTask }) {
       {filtered.length === 0 ? (
         <div style={{ fontSize: 13, color: '#9CA3AF', padding: '12px 0' }}>Aucune tâche en cours.</div>
       ) : filtered.map(t => {
-        const overdue = t.due_date && !t.completed && new Date(t.due_date) < new Date(new Date().toDateString())
+        const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
         return (
           <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'flex-start' }}>
             <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />

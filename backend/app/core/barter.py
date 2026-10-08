@@ -24,6 +24,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from sqlalchemy import select
 
+from app.core import clock
 from app.models.barter import BarterExchange, BarterApplication
 
 CENT = Decimal("0.01")
@@ -84,7 +85,7 @@ async def pay_open_invoices(db, company_id) -> int:
         Invoice.company_id == company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None), Invoice.total > 0)
         .order_by(Invoice.issue_date, Invoice.number))).scalars().all()
     paid = await settled_amounts(db, [i.id for i in invoices])
-    today, n = date.today(), 0
+    today, n = clock.today(), 0
     for inv in invoices:
         total_left = sum((c[1] for c in credits), Decimal("0"))
         balance = _m(Decimal(inv.total) - (paid.get(inv.id) or Decimal("0")))
@@ -237,7 +238,7 @@ async def projection(db, rb, max_months: int = 240) -> dict | None:
     delta = FREQUENCIES[rb.frequency]
     # Suivi du jour (2026-10-08, Philippe : « voir ou on en est de la dette peu importe le jour que je regarde ») :
     # mois termines au complet + le mois en cours au prorata des jours deja passes
-    today = date.today()
+    today = clock.today()
     consumed = sum((x["amount"] for x in paid_invoices if x["date"] <= today), Decimal("0"))
     for m in months:
         if m["start"] > today:

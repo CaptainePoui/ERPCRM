@@ -29,6 +29,9 @@ from app.services.interac_poller import run_interac_poller
 async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
         await seed_defaults(db)
+    from app.core import clock
+    await clock.load()                      # fuseau horaire de l'entreprise avant tout poller
+    clock_task = asyncio.create_task(clock.run_refresher())
     poller_task = asyncio.create_task(run_poller())
     reminder_task = asyncio.create_task(run_reminder_poller())
     backup_task = asyncio.create_task(run_backup_poller())
@@ -40,6 +43,7 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
+        clock_task.cancel()
         poller_task.cancel()
         reminder_task.cancel()
         backup_task.cancel()
@@ -48,7 +52,7 @@ async def lifespan(app: FastAPI):
         bank_ai_task.cancel()
         receipt_task.cancel()
         interac_task.cancel()
-        for t in (poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task):
+        for t in (clock_task, poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task):
             try:
                 await t
             except asyncio.CancelledError:

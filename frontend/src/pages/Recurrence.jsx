@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import AutoRecurringToggle from '../components/AutoRecurringToggle'
+import { todayIso } from '../utils/date'
 
 const FREQ_LABELS = { hebdomadaire: 'Hebdomadaire', mensuel: 'Mensuelle', bimestriel: 'Bimestrielle', trimestriel: 'Trimestrielle', biannuel: 'Biannuelle', annuel: 'Annuelle' }
 
@@ -78,7 +79,7 @@ export default function Recurrence() {
               <span style={{ fontSize: 12, color: '#6B7280', whiteSpace: 'nowrap' }} title="Début du dernier cycle facturé">{rb.last_invoice_date ? `dernière : ${rb.last_invoice_date}` : 'jamais facturée'}</span>
               <span style={{ fontSize: 12, color: rb.is_active ? '#059669' : '#9CA3AF' }}>{rb.is_active ? 'Active' : 'Inactive'}</span>
               <span style={{ fontSize: 12, color: '#6B7280' }}>{FREQ_LABELS[rb.frequency] || rb.frequency}</span>
-              <span style={{ fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: rb.is_active && rb.current_cycle_start <= new Date().toISOString().slice(0, 10) && rb.lines.length ? '#D97706' : '#6B7280' }}
+              <span style={{ fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: rb.is_active && rb.current_cycle_start <= todayIso() && rb.lines.length ? '#D97706' : '#6B7280' }}
                 title="Prochain cycle à facturer (le plus ancien pas encore facturé)">
                 prochaine : {rb.current_cycle_start}
               </span>

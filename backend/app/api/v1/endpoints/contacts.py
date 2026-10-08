@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
+from app.core import clock
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
@@ -365,7 +366,7 @@ async def create_contact_sip_extension(
     rb = await telephony_recurrence(db, company.id)
     if rb:
         from app.api.v1.endpoints.recurring_billing import _cycle_bounds
-        effective = payload.billing_start_date or date.today()
+        effective = payload.billing_start_date or clock.today()
         period_start, period_end = _cycle_bounds(rb.start_date, rb.frequency, effective)
         days_billed = (period_end - effective).days
 

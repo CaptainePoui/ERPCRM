@@ -20,6 +20,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 
+from app.core import clock
 from app.core.config import settings
 from app.core.crypto import decrypt
 from app.core.database import AsyncSessionLocal
@@ -102,7 +103,7 @@ def _is_cycle_due(cycle: BackupCycle, today: date) -> bool:
 async def _rotate_and_upload(db, connection: CloudBackupConnection, cycle: BackupCycle, archive_path: Path, manual: bool):
     refresh_token = decrypt(connection.refresh_token_enc)
     client_id, client_secret = backup_cloud.resolve_credentials(connection)
-    filename = _remote_filename(cycle.frequency_type, date.today())
+    filename = _remote_filename(cycle.frequency_type, clock.today())
     prefix = f"erpcrm_{cycle.frequency_type}_"
 
     log_row = BackupRunLog(cycle_id=cycle.id, provider=connection.provider, filename=filename, success=False, triggered_manually=manual)

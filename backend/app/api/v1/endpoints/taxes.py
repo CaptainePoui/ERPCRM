@@ -20,6 +20,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.settings import get_setting, set_setting
@@ -145,7 +146,7 @@ def _state(start: date, end: date, lock: date | None, today: date) -> str:
 @router.get("/periods")
 async def list_periods(frequency: str | None = None, count: int = 8, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     freq, lock, fiscal = await _context(db, frequency)
-    today = date.today()
+    today = clock.today()
     out = []
     for start, end in _periods(today, freq, fiscal, max(1, min(count, 36))):
         out.append({"start": start, "end": end, "deadline": deadline(end, freq), "state": _state(start, end, lock, today),
@@ -168,7 +169,7 @@ async def period_report(start: date, end: date, db: AsyncSession = Depends(get_d
     pays = (await db.execute(select(TaxPayment).where(TaxPayment.period_start == start, TaxPayment.period_end == end, TaxPayment.kind == "tps_tvq")
                              .order_by(TaxPayment.payment_date))).scalars().all()
     return {
-        "start": start, "end": end, "state": _state(start, end, lock, date.today()),
+        "start": start, "end": end, "state": _state(start, end, lock, clock.today()),
         "summary": await _summary(db, start, end),
         "invoices": [{"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "company_name": i.company.name,
                       "status": i.status, "is_credit": i.credit_of_id is not None, "subtotal": float(i.subtotal),
@@ -207,7 +208,7 @@ async def declare_period(payload: DeclareIn, db: AsyncSession = Depends(get_db),
     """Marque la période comme déclarée : « Taxes déclarées jusqu'au » avance à sa fin
     (les factures de la période sont verrouillées) et la tâche de rappel se ferme."""
     _, lock, _ = await _context(db, None)
-    if payload.end >= date.today():
+    if payload.end >= clock.today():
         raise HTTPException(status_code=400, detail="La période n'est pas terminée")
     if lock and payload.end <= lock:
         raise HTTPException(status_code=400, detail=f"Déjà déclarée (taxes déclarées jusqu'au {lock})")

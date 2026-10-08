@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
+from app.core import clock
 from app.core.database import get_db
 from app.core.config import settings
 from app.api.v1.endpoints.auth import get_current_user
@@ -267,7 +268,7 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     # date de reprise (start_date deplace). Jamais avant la toute premiere facture (facturee d'avance).
     barter_changed = False
     if rb.first_invoice_generated:
-        barter_changed = await barter.advance(db, rb, date.today())
+        barter_changed = await barter.advance(db, rb, clock.today())
         if rb.barter_cursor is not None:
             await db.flush()
             msg = f"Service payé par l'échange (troc) jusqu'au {rb.barter_cursor - timedelta(days=1)}"
@@ -275,12 +276,12 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
                 raise CycleCoveredByBarter(msg)
             raise NothingToGenerate(msg)
     cycle_start, cycle_end = next_missing_cycle(rb)
-    if barter_changed and cycle_start > date.today():
+    if barter_changed and cycle_start > clock.today():
         await db.flush()
         raise CycleCoveredByBarter(f"Échange (troc) épuisé : la facturation reprend le {cycle_start}")
     if rb.end_date and cycle_start > rb.end_date:
         raise NothingToGenerate(f"Facture périodique terminée le {rb.end_date} : plus aucune facture à générer")
-    if cycle_start > date.today():
+    if cycle_start > clock.today():
         raise NothingToGenerate(f"Rien à facturer : le prochain cycle commence le {cycle_start}")
     is_first_invoice = not rb.first_invoice_generated
     next_cycle_start, next_cycle_end = _cycle_bounds(rb.start_date, rb.frequency, cycle_end)
@@ -402,7 +403,7 @@ async def sipv_billing_event(payload: SipvBillingEvent, db: AsyncSession = Depen
     if not rb or not rb.is_active:
         return {"status": "ignored", "reason": "pas de récurrence active pour cette compagnie"}
 
-    effective = payload.effective_date or date.today()
+    effective = payload.effective_date or clock.today()
 
     if payload.action.endswith("_added"):
         cat_result = await db.execute(select(CatalogueItem).where(CatalogueItem.sipv_service_type == payload.service_type, CatalogueItem.is_active == True))

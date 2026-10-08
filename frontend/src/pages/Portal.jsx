@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
 import './Portal.css'
+import { parseDay } from '../utils/date'
 
 const PORTAL_KEY = 'portal_session'
 
@@ -402,7 +403,7 @@ function PortalDashboard({ session, onLogout }) {
   }, [tab])
 
   const fmt = n => `${parseFloat(n || 0).toFixed(2)} $`
-  const fmtDate = s => s ? new Date(s).toLocaleDateString('fr-CA') : '—'
+  const fmtDate = s => s ? parseDay(s).toLocaleDateString('fr-CA') : '—'
 
   return (
     <div className="portal-page">

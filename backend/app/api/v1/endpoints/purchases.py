@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.invoices import _money
@@ -310,7 +311,7 @@ def _cycle(start: date, freq: str, end: date | None, last: date | None) -> dict:
     nxt = start if not last else _cycle_bounds(start, freq, last)[1]
     cs, ce = _cycle_bounds(start, freq, nxt)
     return {"current_cycle_start": cs, "current_cycle_end": ce, "next_date": cs,
-            "can_generate": not (end and cs > end) and cs <= date.today()}
+            "can_generate": not (end and cs > end) and cs <= clock.today()}
 
 
 def _why_not(r, c: dict) -> str:
@@ -449,7 +450,7 @@ def _bill_status(b: Bill, paid: Decimal) -> str:
         return "payee"
     if paid > 0:
         return "partielle"
-    return "en_retard" if b.due_date and b.due_date < date.today() else "ouverte"
+    return "en_retard" if b.due_date and b.due_date < clock.today() else "ouverte"
 
 
 async def recalc_bill_status(db: AsyncSession, bill_id: uuid.UUID) -> None:

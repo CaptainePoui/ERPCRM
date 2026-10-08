@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
+from app.core import clock
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
@@ -303,7 +304,7 @@ async def toggle_sipv_tenant(
         else:
             db.add(CompanyRecurringBilling(
                 company_id=company_id, is_telephony=True,
-                start_date=payload.billing_start_date or date.today(),
+                start_date=payload.billing_start_date or clock.today(),
                 frequency=payload.billing_frequency if payload.billing_frequency in ("mensuel", "bimestriel", "trimestriel", "biannuel", "annuel") else "mensuel",
             ))
     else:
@@ -1467,7 +1468,7 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
         select(CreditAllocation.invoice_id, func.sum(CreditAllocation.amount))
         .where(CreditAllocation.invoice_id.in_(ids)).group_by(CreditAllocation.invoice_id))).all()) if ids else {}
 
-    today = date.today()
+    today = clock.today()
     month = int(await get_setting(db, "fiscal_year_start_month") or 1)
     fy_start = date(today.year if today.month >= month else today.year - 1, month, 1)
     zero = Decimal("0.00")

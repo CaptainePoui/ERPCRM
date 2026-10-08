@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
+from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.ticket import Ticket, TicketEntry
@@ -334,7 +335,7 @@ async def add_entry(ticket_id: uuid.UUID, payload: EntryCreate, current_user: Us
         catalogue_item_id=payload.catalogue_item_id,
         description=payload.description,
         duration_minutes=payload.duration_minutes,
-        worked_at=payload.worked_at or date.today(),
+        worked_at=payload.worked_at or clock.today(),
         is_billable=payload.is_billable,
     )
     db.add(entry)
@@ -550,7 +551,7 @@ async def _generate_invoice(t: Ticket, db: AsyncSession, catalogue_item_id: uuid
     from app.core.numbering import next_document_number
     inv_number = await next_document_number(db, "invoice")
 
-    today = date.today()
+    today = clock.today()
     inv = Invoice(
         number=inv_number,
         company_id=t.company_id,

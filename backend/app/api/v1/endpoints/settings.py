@@ -32,6 +32,7 @@ DEFAULTS = {
     # Creation automatique des periodiques (services/recurring_poller.py, 2026-10-04)
     "recurring_auto_sales": "false",      # factures clients : emises « non transmises », jamais envoyees seules
     "recurring_auto_purchases": "true",   # factures fournisseurs et depenses periodiques
+    "business_timezone": "America/Toronto",   # fuseau de l'entreprise (Montreal) : quel jour on est (core/clock.py)
 }
 
 
@@ -71,6 +72,7 @@ class SettingsOut(BaseModel):
     tax_reminder_user_id: str
     recurring_auto_sales: bool
     recurring_auto_purchases: bool
+    business_timezone: str
 
 
 class SettingsIn(BaseModel):
@@ -85,6 +87,7 @@ class SettingsIn(BaseModel):
     tax_reminder_user_id: str | None = None
     recurring_auto_sales: bool | None = None
     recurring_auto_purchases: bool | None = None
+    business_timezone: str | None = None
 
 
 class InflationPayload(BaseModel):
@@ -105,6 +108,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         tax_reminder_user_id=await get_setting(db, "tax_reminder_user_id"),
         recurring_auto_sales=(await get_setting(db, "recurring_auto_sales")) == "true",
         recurring_auto_purchases=(await get_setting(db, "recurring_auto_purchases")) == "true",
+        business_timezone=await get_setting(db, "business_timezone"),
     )
 
 
@@ -146,6 +150,14 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "recurring_auto_sales", "true" if payload.recurring_auto_sales else "false")
     if payload.recurring_auto_purchases is not None:
         await set_setting(db, "recurring_auto_purchases", "true" if payload.recurring_auto_purchases else "false")
+    if payload.business_timezone is not None:
+        from app.core import clock
+        try:
+            name = clock.validate(payload.business_timezone)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        await set_setting(db, "business_timezone", name)
+        clock.set_business_tz(name)          # tout de suite dans ce processus ; l'autre le relit dans la minute
     if payload.tax_filing_frequency is not None or payload.tax_reminder_user_id is not None:
         from app.core.tax_reminders import ensure_tax_filing_tasks
         await ensure_tax_filing_tasks(db)
@@ -188,6 +200,13 @@ class NumberingIn(BaseModel):
     prefix: str
     next_value: int
     padding: int = 4
+
+
+@router.get("/timezones")
+async def list_timezones(_: User = Depends(get_current_user)):
+    """Fuseaux horaires proposes pour l'entreprise + l'heure qu'il est selon le fuseau actuel."""
+    from app.core import clock
+    return {"current": str(clock.business_tz()), "now": clock.now().strftime("%Y-%m-%d %H:%M"), "zones": clock.zones()}
 
 
 @router.get("/numbering")
