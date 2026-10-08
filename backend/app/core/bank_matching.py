@@ -67,7 +67,7 @@ def invoice_dict(inv: Invoice, paid: Decimal, company_name: str) -> dict:
         "id": str(inv.id), "number": inv.number, "company_id": str(inv.company_id), "company_name": company_name,
         "status": inv.status, "issue_date": inv.issue_date, "due_date": inv.due_date,
         "total": float(inv.total), "paid": float(paid), "balance": float(inv.total - paid),
-        "site_label": inv.site_label_snapshot,
+        "site_label": inv.site_label_snapshot, "barter_settlement": inv.barter_settlement,
     }
 
 
@@ -154,6 +154,11 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
             score += 8
         elif -10 <= age < 0:
             score += 2
+        # 2026-10-08 (Philippe) : une facture deja payee en partie n'est plus « la plus vieille » -- les differences de
+        # paiement restent sur leur facture ; seulement si le depot egale exactement son solde. (La marque troc ne
+        # compte que pour les frais de retard : une facture troc qui n'a rien recu se paie normalement.)
+        if bal != amount and (paid.get(inv.id) or 0) > 0:
+            score -= 40
         if score >= 40:
             d = invoice_dict(inv, paid.get(inv.id) or Decimal("0"), names.get(inv.company_id, ""))
             d["score"] = round(score)
@@ -210,23 +215,44 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # Regle de Philippe (2026-10-06) : un depot paie la plus vieille facture ouverte du client, ou les
     # plus vieilles dans l'ordre. Sur seulement si le montant egale exactement la plus vieille, ou la
     # somme des 2, 3... plus vieilles -- sinon (paiement partiel, autre facture) : suggestion, pas automatique.
+    # 2026-10-08 (Philippe : « si la facture a eu un paiement elle ne compte plus pour la plus ancienne, sinon je
+    # perds les differences de paiement » ; « si le client paie sa facture et 3 retards, il prend les 3 retards les
+    # plus vieux ») : deux files -- les factures qui n'ont encore rien recu (les plus vieilles d'abord) et les restes
+    # des factures deja payees en partie (hors troc : un reste a regler en troc ne se paie pas a la banque), les plus
+    # vieux d'abord. Sur si le depot egale exactement : les j plus vieilles factures + les k plus vieux restes, ou le
+    # reste d'une seule facture ; une seule possibilite -> associe, plusieurs -> suggestion seulement.
     open_invs = (await db.execute(select(Invoice).where(
         Invoice.company_id == tx.company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
         Invoice.issue_date <= tx.posted_date + timedelta(days=10)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
     paid = await invoice_balances(db, [i.id for i in open_invs])
-    amount, run, picked = Decimal(tx.amount), Decimal("0"), []
+    amount = Decimal(tx.amount)
+    fresh, rests = [], []
     for inv in open_invs:
-        bal = inv.total - (paid.get(inv.id) or Decimal("0"))
+        already = paid.get(inv.id) or Decimal("0")
+        bal = inv.total - already
         if bal <= 0:
             continue
-        run += bal
-        picked.append((inv, bal))
-        if run == amount:
-            return {"kind": "invoice", "id": str(picked[0][0].id), "number": ", ".join(i.number for i, _ in picked),
-                    "balance": float(amount), "company_id": str(tx.company_id), "oldest_first": True,
-                    "allocations": [{"invoice_id": str(i.id), "number": i.number, "amount": float(b)} for i, b in picked]}
-        if run > amount:
-            break
+        if already <= 0:
+            fresh.append((inv, bal))
+        elif not inv.barter_settlement:
+            rests.append((inv, bal))
+    fresh, rests = fresh[:12], rests[:12]
+    options = {}
+    for j in range(len(fresh) + 1):
+        for k in range(len(rests) + 1):
+            if j + k == 0:
+                continue
+            combo = fresh[:j] + rests[:k]
+            if sum((b for _i, b in combo), Decimal("0")) == amount:
+                options[tuple(sorted(str(i.id) for i, _b in combo))] = combo
+    for i, b in rests:                      # client qui paie le reste d'une facture precise
+        if b == amount:
+            options[(str(i.id),)] = [(i, b)]
+    if len(options) == 1:
+        combo = sorted(next(iter(options.values())), key=lambda x: (x[0].issue_date, x[0].number))
+        return {"kind": "invoice", "id": str(combo[0][0].id), "number": ", ".join(i.number for i, _ in combo),
+                "balance": float(amount), "company_id": str(tx.company_id), "oldest_first": True,
+                "allocations": [{"invoice_id": str(i.id), "number": i.number, "amount": float(b)} for i, b in combo]}
     return None
 
 
