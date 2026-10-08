@@ -970,3 +970,13 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : un calcul qui lit une relation déjà chargée ne voit pas ce qui a été ajouté seulement à la session — ajouter à la relation ; et tout nouvel enchaînement d'une fonction existante se teste avec des montants qui révéleraient un double comptage.
 
+**2026-10-08 (après livraison) — Maj+clic sur les cases ne cochait qu'une ligne**
+
+**Preuve** : Philippe : « le Shift ne marche pas, il ne me permet pas de sélectionner tout entre… avec les boîtes plus besoin du Ctrl, par contre le Shift est important ».
+
+**Cause réelle** : dans `useRowSelection.toggle`, la plage était calculée à l'intérieur de la mise à jour de l'état (exécutée plus tard par React), après que le point de départ eut déjà été déplacé sur la case cliquée → plage d'une seule ligne. Le test de livraison faisait Ctrl+clic puis Maj+clic **sur les lignes** (autre chemin, qui marchait), jamais Maj+clic **sur une case** — le geste réel de Philippe.
+
+**Correction** : plage calculée avant la mise à jour. Test refait avec son geste (case 2 puis Maj+case 7 = 6 cochées) dans les 4 listes : Transactions, Échanges, Ventes, Banque.
+
+**Leçon (à ne pas refaire)** : tester le geste que Philippe va réellement faire (ici la case, puisqu'il a demandé des cases partout), pas seulement un chemin équivalent ; dans un composant React, ne jamais lire un `ref` modifié juste après dans une fonction de mise à jour d'état.
+

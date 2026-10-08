@@ -17,9 +17,12 @@ export default function useRowSelection(rows) {
 
   // Case a cocher (Maj sur la case = plage aussi)
   function toggle(id, e) {
+    // plage calculee AVANT de deplacer le point de depart (la mise a jour de l'etat s'execute plus tard :
+    // lue dedans, anchor valait deja la case cliquee et Maj+clic ne cochait qu'une ligne -- 2026-10-08)
+    const span = e?.shiftKey && anchor.current ? range(id) : null
     setSelected(prev => {
       const n = new Set(prev)
-      if (e?.shiftKey && anchor.current) range(id).forEach(x => n.add(x))
+      if (span) span.forEach(x => n.add(x))
       else if (n.has(id)) n.delete(id)
       else n.add(id)
       return n
@@ -31,7 +34,8 @@ export default function useRowSelection(rows) {
   function rowClick(e, id, open) {
     if (e.ctrlKey || e.metaKey) { toggle(id); return }
     if (e.shiftKey) {
-      setSelected(prev => { const n = new Set(prev); range(id).forEach(x => n.add(x)); return n })
+      const span = range(id)
+      setSelected(prev => { const n = new Set(prev); span.forEach(x => n.add(x)); return n })
       if (!anchor.current) anchor.current = id
       return
     }
