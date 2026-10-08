@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
+import SignatureEditor from '../components/SignatureEditor'
 
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n) }
@@ -11,6 +12,7 @@ export default function Employees() {
   const [contacts, setContacts] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   const [showPay, setShowPay] = useState(null) // employee contact_id
+  const [signatureOf, setSignatureOf] = useState(null) // employe dont on modifie la signature (TASK-007.1)
   const [payForm, setPayForm] = useState({ amount: '', period_year: new Date().getFullYear(), period_month: new Date().getMonth() + 1, notes: '' })
   const [markingPaid, setMarkingPaid] = useState(null) // payment id
   const [interacRef, setInteracRef] = useState({})
@@ -85,12 +87,17 @@ export default function Employees() {
             </div>
             {e.hourly_rate && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.hourly_rate)}/h</div>}
             {e.monthly_salary && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.monthly_salary)}/mois</div>}
+            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setSignatureOf(e)} title="Signature ajoutée aux courriels de communication (tickets, tâches)">
+              ✉ Signature{e.has_signature ? ' ✓' : ''}
+            </button>
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
               + Salaire
             </button>
           </div>
         ))}
       </div>
+
+      {signatureOf && <SignatureModal employee={signatureOf} onClose={() => setSignatureOf(null)} onSaved={() => { setSignatureOf(null); load() }} />}
 
       {/* ── À payer ── */}
       {pending.length > 0 && (
@@ -182,6 +189,62 @@ export default function Employees() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Signature des courriels de communication d'un employe (TASK-007.1, 2026-10-08) : reliee a son compte de connexion,
+// ajoutee aux courriels de tickets et de taches qu'il envoie -- jamais aux factures, devis ni avis de retard.
+function SignatureModal({ employee, onClose, onSaved }) {
+  const [users, setUsers] = useState([])
+  const [userId, setUserId] = useState(employee.user_id || '')
+  const [html, setHtml] = useState(null)
+  const [preview, setPreview] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  useEffect(() => {
+    api.get('/v1/employees/users').then(r => setUsers(r.data))
+    api.get(`/v1/employees/${employee.contact_id}/signature`).then(r => setHtml(r.data.html))
+  }, [employee.contact_id])
+
+  async function save() {
+    setSaving(true); setError('')
+    try {
+      if ((employee.user_id || '') !== userId) await api.patch(`/v1/employees/${employee.contact_id}`, { user_id: userId || null })
+      await api.put(`/v1/employees/${employee.contact_id}/signature`, { html })
+      onSaved()
+    } catch (e) { setError(e.response?.data?.detail || 'Erreur : non enregistré'); setSaving(false) }
+  }
+
+  const previewDoc = `<!doctype html><html><head><meta charset="utf-8"><style>body{margin:16px;font-family:Arial,sans-serif;font-size:14px;color:#333}p{margin:0}img{max-width:100%}a{color:#1D4ED8}hr{border:none;border-top:1px solid #D1D5DB;margin:8px 0}</style></head><body>${(html || '').replace(/<p([^>]*)><\/p>/g, '<p$1><br></p>')}</body></html>`
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ maxWidth: 820, width: '100%' }}>
+        <h3 className="modal-title">Signature de courriel — {employee.first_name} {employee.last_name}</h3>
+        <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
+          Ajoutée au bas des courriels de communication (tickets, tâches) envoyés par son compte de connexion. Jamais sur les factures, devis ou avis de retard.
+          Vous pouvez coller votre signature actuelle (Outlook, Gmail) : la mise en forme est gardée.
+        </p>
+        <div className="form-group">
+          <label>Compte de connexion de cet employé</label>
+          <select value={userId} onChange={e => setUserId(e.target.value)} style={{ width: '100%' }}>
+            <option value="">— Aucun (la signature ne sera pas utilisée) —</option>
+            {users.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
+          </select>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+          <button type="button" className={preview ? 'btn-secondary' : 'btn-primary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(false)}>Modifier</button>
+          <button type="button" className={preview ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(true)}>Aperçu</button>
+        </div>
+        {html === null ? <div style={{ padding: 20, color: '#9CA3AF' }}>Chargement…</div>
+          : preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff' }} />
+          : <SignatureEditor value={html} onChange={setHtml} />}
+        {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>{error}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving || html === null}>{saving ? '…' : 'Enregistrer'}</button>
+        </div>
+      </div>
     </div>
   )
 }

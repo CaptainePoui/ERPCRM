@@ -237,7 +237,7 @@ async def list_tickets(
 
 
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
-async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     comp = await db.get(Company, payload.company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
@@ -251,7 +251,10 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
     contact_email = _contact_email(t)
     if contact_email:
         portal_url = f"http://{settings.ERPCRM_HOST}:3010/portal"
+        from app.core.signature import for_user
+        signature = await for_user(db, current_user.id)      # TASK-007.1
         asyncio.create_task(send_ticket_open_email(
+            signature=signature,
             to_email=contact_email,
             ticket_id=str(t.id),
             ticket_title=t.title,
@@ -407,7 +410,7 @@ async def send_summary(
     ticket_id: uuid.UUID,
     payload: SendSummaryPayload,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     t = await _get_ticket(ticket_id, db)
     contact_email = _contact_email(t)
@@ -426,7 +429,9 @@ async def send_summary(
         for e in sorted(t.entries, key=lambda e: e.worked_at)
     ]
 
+    from app.core.signature import for_user
     await send_ticket_close_email(
+        signature=await for_user(db, current_user.id),      # TASK-007.1
         to_email=contact_email,
         ticket_id=str(t.id),
         ticket_title=t.title,

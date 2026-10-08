@@ -14,6 +14,10 @@ class Employee(Base):
     monthly_salary: Mapped[float | None] = mapped_column(Float)
     hire_date: Mapped[date | None] = mapped_column(Date)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Signature des courriels de communication (TASK-007.1, 2026-10-08) : compte de connexion de l'employe (celui qui
+    # envoie depuis ERPCRM) et signature HTML (images en data:, converties en pieces integrees a l'envoi)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), unique=True, nullable=True)
+    email_signature: Mapped[str | None] = mapped_column(Text)
 
     contact: Mapped["Contact"] = relationship("Contact")
     salary_payments: Mapped[list["SalaryPayment"]] = relationship("SalaryPayment", back_populates="employee", cascade="all, delete-orphan")

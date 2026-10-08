@@ -619,6 +619,16 @@ Classification: HISTORICAL
 
 **Description (table) :** Employés — depuis contacts, salaires, confirmation Interac
 
+### TASK-007.1 [x] Signature de courriel par employé (texte, images, polices, liens)
+Date de demande : 2026-10-08 (Philippe : « mets aussi une signature par employé où je peux mettre texte et image avec différentes typos et tous les outils pour faire une petite présentation » ; « ne le fais pas, je vais l'importer moi-même dans employé Philippe » ; « par contre pas les factures envoyées avec une signature, juste les courriels de communication »)
+Date(s) de travail : 2026-10-08
+
+- Migration cc4ad27cbd32 (id généré, une seule tête, up/down/up testés) : `employees.user_id` (compte de connexion, FK `users` SET NULL, unique) et `employees.email_signature` (HTML).
+- Employés : bouton « ✉ Signature » (✓ quand remplie) → fenêtre : compte de connexion de l'employé, éditeur `components/SignatureEditor.jsx` (TipTap 3 : police, taille, gras/italique/souligné/barré, couleur, surligné, alignement, puces, lien https/mailto/tel, image redimensionnable, ligne, enlever le format, annuler/rétablir), Aperçu (iframe isolée). Coller depuis Outlook/Gmail garde polices/tailles/couleurs ; image collée seule (capture) insérée ; images `file:`/`cid:` d'Outlook retirées avec un avertissement (illisibles hors de l'ordinateur). Images réduites à 600 px de large, gardées en `data:` ; 3 Mo maximum.
+- Routes : `GET /employees/users` (comptes actifs, pour tout utilisateur — Philippe est « manager », `/admin/users` est réservé à admin), `GET/PUT /employees/{id}/signature`, `PATCH /employees/{id}` accepte `user_id` (refus si le compte est déjà relié à un autre employé).
+- Envoi (`core/signature.py`, `core/email.py`) : signature de l'employé relié au compte qui envoie, insérée avant le pied de page du gabarit ; chaque image `data:` devient une pièce intégrée (multipart/related, Content-ID) ; paragraphes sans marge. Seulement les courriels de communication : ticket ouvert, résumé de ticket, tâche envoyée. Jamais facture, devis, avis de retard, confirmation de rendez-vous (automatique), rapports.
+- Vérifié : Playwright (collage HTML type Outlook → police/taille/couleur gardées, avertissement d'image, lien, image, aperçu, enregistrement, ✓) ; construction du courriel avec la signature enregistrée (signature avant le pied de page, image en pièce intégrée). Aucun courriel réel envoyé. Signature de test effacée ; compte de connexion de Philippe laissé relié à sa fiche Employé (seul compte possible).
+
 ---
 
 ## TASK-008 [ERPCRM] [x] Commandes fournisseurs — PO + lignes
@@ -5801,6 +5811,14 @@ Philippe voulait activer l'écoute des messages vocaux reçus dans le portail ("
 - Option B : scanner le répertoire de stockage par défaut du module (à localiser précisément) pour découvrir les fichiers sans toucher à la config FreeSWITCH — moins invasif, mais plus fragile (dépend de la structure de dossiers interne du module).
 - Dans les deux cas : nouvel endpoint SIPV pour servir le fichier audio d'un message (n'existe pas, seul `GET /{vm_id}/greetings/{type}` existe pour le message d'accueil sortant, pas pour les messages reçus).
 Fichiers concernés (pas touchés) : `/usr/local/freeswitch/conf/autoload_configs/voicemail.conf.xml`, `backend/app/models/voicemail.py`, `backend/app/api/v1/endpoints/voicemail.py` (SIPV).
+
+## TASK-047 [ERPCRM] [ ] Courriels dans ERPCRM — boîte de réception, envoi, courriel reçu → ticket
+Date de demande : 2026-10-08 (Philippe : « je veux mettre les courriels dans le ERPCRM comme ça tout est à la même place, on peut prendre un courriel reçu et en faire un ticket, etc. »)
+Date(s) de travail : —
+
+- Demandé pendant la signature par employé (TASK-007.1, Signature de courriel par employé). Pas commencé : plan à proposer et GO à obtenir (fournisseur de courriel, IMAP/API, quelles boîtes, lien compagnie/contact par adresse, courriel → ticket/tâche, réponses avec la signature de l'employé).
+
+---
 
 ## TASK-046 [ERPCRM] [x] Sélection multiple dans les listes (Maj / Ctrl) et actions de masse
 Date de demande : 2026-10-08 (Philippe : « si je garde enfoncé le Shift ou le Ctrl je peux sélectionner plusieurs transactions ; Shift = le premier et le dernier ciblés et tout entre les deux ; Ctrl = plusieurs factures/transactions séparément… un genre de popup pour faire des changements de masse ; ex. Physotech : je sélectionnerais les factures avec un paiement partiel et j'aurais l'option (si activée dans les réglages admin) de créer un échange (troc), de créditer… en vois-tu d'autres qui seraient pratiques ? »)

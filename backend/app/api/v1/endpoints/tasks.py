@@ -481,7 +481,9 @@ async def send_task(
     current_user: User = Depends(get_current_user),
 ):
     task = await _get_task(task_id, db)
+    from app.core.signature import for_user
     await send_task_email(
+        signature=await for_user(db, current_user.id),      # TASK-007.1
         to_email=payload.to_email,
         task_id=str(task.id),
         title=task.title,

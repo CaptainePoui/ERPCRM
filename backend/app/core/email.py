@@ -1,6 +1,7 @@
 import aiosmtplib
 from datetime import datetime, timezone
 from email.mime.base import MIMEBase
+from email.mime.image import MIMEImage
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email import encoders
@@ -441,18 +442,37 @@ def build_ics_invite(
     return "\r\n".join(lines) + "\r\n"
 
 
-async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None, attachment: tuple[str, bytes, str] | None = None) -> bool:
+def _html_part(html_body: str, images: list[tuple[str, bytes, str]]):
+    """Corps HTML ; avec images integrees (signature, TASK-007.1) : multipart/related qui les porte."""
+    alt = MIMEMultipart("alternative")
+    alt.attach(MIMEText(html_body, "html", "utf-8"))
+    if not images:
+        return alt
+    rel = MIMEMultipart("related")
+    rel.attach(alt)
+    for cid, content, subtype in images:
+        img = MIMEImage(content, _subtype=subtype)
+        img.add_header("Content-ID", f"<{cid}>")
+        img.add_header("Content-Disposition", "inline")
+        rel.attach(img)
+    return rel
+
+
+async def _send(to_email: str, subject: str, html_body: str, tracking_entity_type: str | None = None, tracking_entity_id=None, ics_content: str | None = None, attachment: tuple[str, bytes, str] | None = None, signature: str | None = None) -> bool:
     """Send email. Returns True on success, False if SMTP not configured or on error.
-    attachment: (filename, content_bytes, mime_subtype) -- ex: ("rapport.csv", b"...", "csv")."""
+    attachment: (filename, content_bytes, mime_subtype) -- ex: ("rapport.csv", b"...", "csv").
+    signature: HTML de la signature de l'employe (courriels de communication seulement, core/signature.py)."""
     if not settings.SMTP_HOST:
         return False
+    images = []
+    if signature:
+        from app.core.signature import add_to_email
+        html_body, images = add_to_email(html_body, signature)
     if tracking_entity_type and tracking_entity_id:
         html_body = html_body + _tracking_pixel(tracking_entity_type, tracking_entity_id)
     if ics_content or attachment:
         msg = MIMEMultipart("mixed")
-        alt = MIMEMultipart("alternative")
-        alt.attach(MIMEText(html_body, "html", "utf-8"))
-        msg.attach(alt)
+        msg.attach(_html_part(html_body, images))
         if ics_content:
             ics_part = MIMEText(ics_content, "calendar; method=REQUEST", "utf-8")
             ics_part.add_header("Content-Disposition", "attachment", filename="invite.ics")
@@ -464,6 +484,8 @@ async def _send(to_email: str, subject: str, html_body: str, tracking_entity_typ
             encoders.encode_base64(part)
             part.add_header("Content-Disposition", "attachment", filename=filename)
             msg.attach(part)
+    elif images:
+        msg = _html_part(html_body, images)
     else:
         msg = MIMEMultipart("alternative")
         msg.attach(MIMEText(html_body, "html", "utf-8"))
@@ -500,6 +522,7 @@ async def send_ticket_open_email(
     priority: str,
     description: str | None,
     portal_url: str,
+    signature: str | None = None,
 ) -> bool:
     ctx = dict(
         ticket_id_short=ticket_id[:8].upper(),
@@ -512,7 +535,7 @@ async def send_ticket_open_email(
     )
     html = _render(_TICKET_OPEN_TMPL, ctx)
     subject = f"[Ticket #{ticket_id[:8].upper()}] Ticket ouvert — {ticket_title}"
-    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature)
 
 
 async def send_ticket_entry_email(
@@ -559,6 +582,7 @@ async def send_ticket_close_email(
     contact_name: str | None,
     total_minutes: int,
     entries: list[dict],
+    signature: str | None = None,
 ) -> bool:
     ctx = dict(
         ticket_id_short=ticket_id[:8].upper(),
@@ -580,7 +604,7 @@ async def send_ticket_close_email(
     # du client -- "[Ticket fermé #...]" ne matchait jamais, brisant la reouverture
     # automatique par reponse courriel sur un ticket ferme/facture.
     subject = f"[Ticket #{ticket_id[:8].upper()}] {ticket_title} — Résumé"
-    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id)
+    return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature)
 
 
 async def send_invoice_email(
@@ -633,6 +657,7 @@ async def send_task_email(
     due_date: str | None,
     due_time: str | None,
     description: str | None,
+    signature: str | None = None,
 ) -> bool:
     ctx = dict(
         title=title,
@@ -643,7 +668,7 @@ async def send_task_email(
     )
     html = _render(_TASK_TMPL, ctx)
     subject = f"Rendez-vous — {title}"
-    return await _send(to_email, subject, html, tracking_entity_type="task", tracking_entity_id=task_id)
+    return await _send(to_email, subject, html, tracking_entity_type="task", tracking_entity_id=task_id, signature=signature)
 
 
 async def send_task_reminder_email(

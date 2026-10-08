@@ -27,6 +27,8 @@ class EmployeeOut(BaseModel):
     monthly_salary: float | None
     hire_date: date | None
     is_active: bool
+    user_id: uuid.UUID | None = None
+    has_signature: bool = False
 
 class EmployeeCreate(BaseModel):
     contact_id: uuid.UUID
@@ -35,6 +37,7 @@ class EmployeeCreate(BaseModel):
     hire_date: date | None = None
 
 class EmployeeUpdate(BaseModel):
+    user_id: uuid.UUID | None = None      # compte de connexion (TASK-007.1)
     hourly_rate: float | None = None
     monthly_salary: float | None = None
     hire_date: date | None = None
@@ -98,6 +101,8 @@ def _emp_out(emp: Employee) -> EmployeeOut:
         monthly_salary=emp.monthly_salary,
         hire_date=emp.hire_date,
         is_active=emp.is_active,
+        user_id=emp.user_id,
+        has_signature=bool((emp.email_signature or "").strip()),
     )
 
 
@@ -124,10 +129,53 @@ async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(ge
 @router.patch("/{contact_id}", response_model=EmployeeOut)
 async def update_employee(contact_id: uuid.UUID, payload: EmployeeUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     emp = await _get_employee(contact_id, db)
-    for k, v in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if data.get("user_id"):
+        if not await db.get(User, data["user_id"]):
+            raise HTTPException(status_code=400, detail="Compte de connexion introuvable")
+        other = (await db.execute(select(Employee).where(Employee.user_id == data["user_id"], Employee.contact_id != contact_id))).scalar_one_or_none()
+        if other:
+            raise HTTPException(status_code=409, detail="Ce compte de connexion est déjà relié à un autre employé")
+    for k, v in data.items():
         setattr(emp, k, v)
     await db.commit()
     return _emp_out(await _get_employee(contact_id, db))
+
+
+# ── Signature des courriels de communication (TASK-007.1, 2026-10-08) ─────────
+# Philippe : une signature par employé, texte et images, polices au choix ; ajoutée aux courriels de communication
+# (tickets, tâches) envoyés par son compte de connexion -- jamais aux factures (« pas les factures envoyées avec une
+# signature, juste les courriels de communication »). Images gardées en data: dans le HTML, converties en pièces
+# intégrées à l'envoi (core/signature.py).
+
+MAX_SIGNATURE_BYTES = 3 * 1024 * 1024
+
+
+class SignatureIO(BaseModel):
+    html: str = ""
+
+
+@router.get("/users")
+async def list_login_accounts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Comptes de connexion actifs, pour relier un employé à celui qu'il utilise."""
+    rows = (await db.execute(select(User).where(User.is_active == True).order_by(User.full_name))).scalars().all()
+    return [{"id": str(u.id), "full_name": u.full_name, "email": u.email} for u in rows]
+
+
+@router.get("/{contact_id}/signature", response_model=SignatureIO)
+async def get_signature(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return SignatureIO(html=(await _get_employee(contact_id, db)).email_signature or "")
+
+
+@router.put("/{contact_id}/signature", response_model=SignatureIO)
+async def save_signature(contact_id: uuid.UUID, payload: SignatureIO, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    if len(payload.html.encode()) > MAX_SIGNATURE_BYTES:
+        raise HTTPException(status_code=400, detail="Signature trop lourde (3 Mo maximum) : réduisez la taille des images")
+    emp = await _get_employee(contact_id, db)
+    from app.core.signature import is_empty
+    emp.email_signature = None if is_empty(payload.html) else payload.html
+    await db.commit()
+    return SignatureIO(html=emp.email_signature or "")
 
 
 # ── Salary payments ───────────────────────────────────────────────────────────
