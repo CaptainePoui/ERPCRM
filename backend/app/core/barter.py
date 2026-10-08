@@ -106,4 +106,9 @@ async def projection(db, rb, max_cycles: int = 40) -> list[dict]:
         if not plan["full"]:
             break
         start, end = _cycle_bounds(rb.start_date, rb.frequency, end)
+    if out:
+        # Retour au rythme habituel : la facture du cycle suivant, a sa date normale
+        nxt, nxt_end = _cycle_bounds(rb.start_date, rb.frequency, out[-1]["cycle_end"])
+        if not (rb.end_date and nxt > rb.end_date):
+            out.append({"cycle_start": nxt, "cycle_end": nxt_end, "normal": True, "to_bill": float(amount)})
     return out

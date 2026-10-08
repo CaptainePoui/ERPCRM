@@ -2,7 +2,7 @@
 periodique (TASK-005.13). Le calcul des cycles couverts est dans app/core/barter.py."""
 import re
 import uuid
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -26,6 +26,7 @@ router = APIRouter()
 
 FILES_DIR = Path(__file__).resolve().parents[4] / "storage" / "barter"
 MAX_FILE_BYTES = 25 * 1024 * 1024
+MONTHS_PER_CYCLE = {"mensuel": 1, "bimestriel": 2, "trimestriel": 3, "biannuel": 6, "annuel": 12}
 
 
 class DeductionIn(BaseModel):
@@ -85,10 +86,17 @@ async def list_barters(company_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     names = {rb.id: (rb.name or "Facture périodique") for rb in rbs}
     rows = (await db.execute(select(BarterExchange).where(BarterExchange.company_id == company_id)
                              .order_by(BarterExchange.exchange_date.desc(), BarterExchange.created_at.desc()))).scalars().all()
+    from app.api.v1.endpoints.recurring_billing import _cycle_bounds
     recurrences = []
     for rb in rbs:
+        # Deja facture jusqu'au : fin du cycle de la derniere facture (le troc ne commence qu'apres)
+        paid_until = (_cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1] - timedelta(days=1)) if rb.last_invoice_date else None
+        last_number = (await db.execute(select(Invoice.number).where(
+            Invoice.company_id == company_id, Invoice.issue_date == rb.last_invoice_date,
+            Invoice.credit_of_id.is_(None)).order_by(Invoice.number.desc()).limit(1))).scalar_one_or_none() if rb.last_invoice_date else None
         recurrences.append({"id": str(rb.id), "name": names[rb.id], "frequency": rb.frequency, "is_active": rb.is_active,
-                            "cycle_amount": float(bt.cycle_amount(rb)), "last_invoice_date": rb.last_invoice_date,
+                            "cycle_amount": float(bt.cycle_amount(rb)), "months_per_cycle": MONTHS_PER_CYCLE.get(rb.frequency),
+                            "last_invoice_date": rb.last_invoice_date, "last_invoice_number": last_number, "paid_until": paid_until,
                             "projection": await bt.projection(db, rb) if rb.is_active else []})
     return {"exchanges": [await _out(db, b, names) for b in rows], "recurrences": recurrences}
 

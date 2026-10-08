@@ -105,18 +105,106 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
   )
 }
 
+const FREQ_LABEL = { mensuel: 'chaque mois', bimestriel: 'aux 2 mois', trimestriel: 'aux 3 mois', biannuel: 'aux 6 mois', annuel: 'chaque année', hebdomadaire: 'chaque semaine' }
+
+// Dates « AAAA-MM-JJ » manipulees en UTC (pas de decalage de fuseau)
+const toD = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d)) }
+const toIso = d => d.toISOString().slice(0, 10)
+const addDays = (iso, n) => { const d = toD(iso); d.setUTCDate(d.getUTCDate() + n); return toIso(d) }
+function addMonths(iso, n) {
+  const d = toD(iso), day = d.getUTCDate()
+  const r = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1))
+  const last = new Date(Date.UTC(r.getUTCFullYear(), r.getUTCMonth() + 1, 0)).getUTCDate()
+  r.setUTCDate(Math.min(day, last))
+  return toIso(r)
+}
+const longDate = iso => iso ? toD(iso).toLocaleDateString('fr-CA', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : EMPTY
+const dayCount = (a, b) => Math.round((toD(b) - toD(a)) / 86400000) + 1
+
+// Mois de service couverts par le credit : du premier jour non facture au dernier jour couvert, mois par mois
+function coveredMonths(rb) {
+  const covered = rb.projection.filter(p => !p.normal)
+  if (!covered.length || !rb.months_per_cycle) return []
+  const first = covered[0].cycle_start, lastDay = covered[covered.length - 1].covered_until
+  const monthly = rb.cycle_amount / rb.months_per_cycle
+  const totalUsed = covered.reduce((s, p) => s + p.used, 0)
+  const out = []
+  let from = first, used = 0
+  while (from <= lastDay && out.length < 120) {
+    const to = addDays(addMonths(from, 1), -1)
+    if (to <= lastDay) { out.push({ from, to, amount: monthly }); used += monthly }
+    else { out.push({ from, to: lastDay, amount: Math.max(totalUsed - used, 0), partial: dayCount(from, lastDay) }); break }
+    from = addMonths(from, 1)
+  }
+  return out
+}
+
 function Projection({ rb }) {
   if (!rb.projection.length) return null
+  const th = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }
+  const td = { padding: '7px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13, verticalAlign: 'top' }
+  const months = coveredMonths(rb)
+  const covered = rb.projection.filter(p => !p.normal)
+  const pushed = covered.find(p => !p.full)
+  const normal = rb.projection.find(p => p.normal)
   return (
     <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Facture périodique « {rb.name} » — effet du crédit restant</div>
-      {rb.projection.map(p => (
-        <div key={p.cycle_start} style={{ fontSize: 13, marginBottom: 2 }}>
-          {p.full
-            ? <>Cycle du {p.cycle_start} au {p.covered_until} : <b>couvert au complet</b> ({fmtMoney(p.used)}) — aucune facture</>
-            : <>Cycle du {p.cycle_start} : couvert jusqu'au {p.covered_until} ({fmtMoney(p.used)}) — <b>facture repoussée au {p.billed_from}</b> : {fmtMoney(p.to_bill)} hors taxes</>}
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>Facture périodique « {rb.name} » — calendrier avec l'échange</div>
+      <div style={{ fontSize: 13, marginBottom: 2 }}>
+        Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture
+        {rb.months_per_cycle > 1 && <> ({fmtMoney(rb.cycle_amount / rb.months_per_cycle)} par mois)</>}
+      </div>
+      {rb.last_invoice_date && (
+        <div style={{ fontSize: 13, marginBottom: 10 }}>
+          Dernière facture : {rb.last_invoice_number || 'facture'} du {longDate(rb.last_invoice_date)} — service déjà payé jusqu'au <b>{longDate(rb.paid_until)}</b> (le troc commence après)
         </div>
-      ))}
+      )}
+      <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
+        <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse' }}>
+          <thead><tr>
+            <th style={th}>Date habituelle</th><th style={th}>Période</th><th style={{ ...th, textAlign: 'right' }}>Habituel (HT)</th>
+            <th style={{ ...th, textAlign: 'right' }}>Payé par l'échange</th><th style={th}>Ce qui arrive</th>
+          </tr></thead>
+          <tbody>
+            {rb.projection.map(p => (
+              <tr key={p.cycle_start}>
+                <td style={td}>{longDate(p.cycle_start)}</td>
+                <td style={td}>{longDate(p.cycle_start)} au {longDate(addDays(p.cycle_end, -1))}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{fmtMoney(rb.cycle_amount)}</td>
+                <td style={{ ...td, textAlign: 'right' }}>{p.normal ? EMPTY : fmtMoney(p.used)}</td>
+                <td style={td}>
+                  {p.normal ? <span>Facture normale — retour au rythme habituel</span>
+                    : p.full ? <b style={{ color: C.green }}>Facture sautée — aucune facture</b>
+                    : <><b>Repoussée au {longDate(p.billed_from)}</b> : {fmtMoney(p.to_bill)} hors taxes<div style={{ fontSize: 12, color: C.muted }}>couvert jusqu'au {longDate(p.covered_until)}, facturé du {longDate(p.billed_from)} au {longDate(addDays(p.cycle_end, -1))}</div></>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {months.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+            Mois de service payés par l'échange : du {longDate(covered[0].cycle_start)} au {longDate(covered[covered.length - 1].covered_until)}
+            {' '}({months.filter(m => !m.partial).length} mois{months.some(m => m.partial) ? ` et ${months.find(m => m.partial).partial} jours` : ''})
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 4 }}>
+            {months.map(m => (
+              <div key={m.from} style={{ fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, padding: '4px 8px' }}>
+                <span>{longDate(m.from)} → {longDate(m.to)}{m.partial ? ` (${m.partial} j)` : ''}</span><span>{fmtMoney(m.amount)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 13, marginTop: 12 }}>
+        {pushed
+          ? <>Nouvelle date de facturation : <b>{longDate(pushed.billed_from)}</b> ({fmtMoney(pushed.to_bill)} hors taxes + taxes)</>
+          : <>Prochaine facture : <b>{normal ? longDate(normal.cycle_start) : EMPTY}</b></>}
+        {pushed && normal && <>, puis le {longDate(normal.cycle_start)} au rythme habituel ({fmtMoney(normal.to_bill)} hors taxes + taxes).</>}
+      </div>
     </div>
   )
 }
