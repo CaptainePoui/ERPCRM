@@ -442,6 +442,15 @@ Date(s) de travail : 2026-10-08
 
 - Les notes étaient verrouillées dès que la facture n'est plus un brouillon (`InvoiceDetail.jsx`, `disabled={!editable}`) ; elles ne changent ni montants ni taxes → modifiables en tout temps (le serveur les acceptait déjà). Défaut corrigé au passage : enregistrement à chaque lettre tapée (une requête par touche, caractères perdables) → enregistrement en sortant du champ, avec « ✓ Enregistré ». Composant `NotesBox`.
 - Vérifié (Playwright) sur INV-112254 émise : champ modifiable, texte tapé vite enregistré en entier, note d'origine remise ensuite (statut et total inchangés).
+### TASK-005.17 [x] PDF à télécharger : facture, avoir, devis, entente d'échange (troc)
+Date de demande : 2026-10-08 (Philippe : « sur les factures ou avoirs ou ententes j'aimerais pouvoir en faire des PDF à télécharger » ; « je veux des PDF pour tout échange : facture, avoir, devis, entente (troc) »)
+Date(s) de travail : 2026-10-08
+
+- Facture/avoir : le PDF existait déjà (`core/invoice_pdf.py`, courriel et portail), seul le bouton manquait ; nom du fichier `avoir-…pdf` pour un avoir (`facture-…pdf` sinon). Générateur de facture inchangé.
+- Nouveau `core/doc_pdf.py` (même feuille de style et mêmes coordonnées vendeur) : `generate_devis_pdf` (« Préparé pour », date, valide jusqu'au, lignes, taxes, notes, bandeau ACCEPTÉ) et `generate_barter_pdf` (« Entente d'échange » : compagnie, facture périodique visée, ce qui a été reçu et sa valeur hors taxes, utilisation du crédit — factures payées, mois de service couverts —, crédit/utilisé/reste, notes, pièces justificatives). Texte échappé (HTML).
+- Routes `GET /devis/{id}/pdf`, `GET /barter/{id}/pdf`. Bouton « ⬇ PDF » : fiche facture/avoir et devis (à côté de « Envoyer »), carte de chaque échange (à côté de « Modifier ») ; `utils/download.js`.
+- Vérifié : les 4 PDF téléchargés depuis l'écran (INV-112254, avoir CN-00308, devis 2026-D0001, échange D'Astous Auto) et relus en image.
+- Constat signalé à Philippe (pas corrigé, attend son GO) : les coordonnées du vendeur (`pdf_seller_*` : adresse, n° TPS/TVQ, téléphone, courriel) ne sont pas remplies et n'ont aucun écran → tous les PDF, y compris ceux envoyés aux clients, n'affichent que « Simple IP inc. ».
 ### TASK-005.16 [x] Colonne « Taxable » retirée des factures et des devis
 Date de demande : 2026-10-08 (Philippe : « pourquoi dans taxable il y a oui?? les taxes ne sont qu'en bas pas à chaque ligne... moi tout est taxable tps tvq » ; « oui enlève ça go »)
 Date(s) de travail : 2026-10-08

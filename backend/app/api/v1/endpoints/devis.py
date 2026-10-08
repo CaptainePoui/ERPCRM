@@ -224,6 +224,18 @@ async def get_devis(devis_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: 
     return await _build_out(await _get_devis(devis_id, db), db)
 
 
+@router.get("/{devis_id}/pdf")
+async def download_devis_pdf(devis_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """PDF du devis a telecharger (TASK-005.17)."""
+    from fastapi.responses import Response
+    from app.core.doc_pdf import generate_devis_pdf
+    try:
+        pdf, filename = await generate_devis_pdf(devis_id, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.post("/{devis_id}/send", response_model=DevisOut)
 async def send_devis(devis_id: uuid.UUID, payload: SendDevisPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Envoie le devis par courriel (pixel de suivi integre -- TASK module Devis)."""

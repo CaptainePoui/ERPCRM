@@ -8,6 +8,7 @@ import { C, EMPTY, fmtMoney } from '../Bank'
 import { todayIso } from '../../utils/date'
 import useRowSelection from '../../hooks/useRowSelection'
 import BulkInvoiceBar from '../../components/BulkInvoiceBar'
+import { downloadFile } from '../../utils/download'
 
 const today = () => todayIso()
 const errText = e => e.response?.data?.detail || 'Erreur'
@@ -212,7 +213,7 @@ function MonthsBox({ rb }) {
   )
 }
 
-function ExchangeCard({ b, onEdit, onChanged }) {
+function ExchangeCard({ b, companyName, onEdit, onChanged }) {
   const navigate = useNavigate()
   const fileRef = useRef()
   const [busy, setBusy] = useState(false)
@@ -240,6 +241,7 @@ function ExchangeCard({ b, onEdit, onChanged }) {
           <div style={{ fontSize: 12, color: C.muted }}>Échange du {b.exchange_date}{b.recurring_name ? ` · paie « ${b.recurring_name} »` : ' · aucune facture périodique'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={() => downloadFile(`/v1/barter/${b.id}/pdf`, `echange-${(companyName || '').replace(/[^\p{L}\p{N}]+/gu, '-')}-${b.exchange_date}.pdf`).catch(() => alert('PDF non disponible'))}>⬇ PDF</button>
           <button className="btn-secondary" onClick={onEdit}>Modifier</button>
           {!b.applications.length && <button className="btn-secondary" style={{ color: C.red }} onClick={remove}>Supprimer</button>}
         </div>
@@ -335,13 +337,13 @@ export default function BarterTab({ companyId, companyName }) {
       {data.recurrences.filter(rb => rb.projection).map(rb => (
         <Fragment key={rb.id}>
           <Projection rb={rb}>
-            {data.exchanges.filter(b => b.recurring_billing_id === rb.id).map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)}
+            {data.exchanges.filter(b => b.recurring_billing_id === rb.id).map(b => <ExchangeCard key={b.id} b={b} companyName={companyName} onEdit={() => setEdit(b)} onChanged={load} />)}
           </Projection>
           <MonthsBox rb={rb} />
         </Fragment>
       ))}
       {data.exchanges.filter(b => !data.recurrences.some(rb => rb.projection && rb.id === b.recurring_billing_id))
-        .map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)}
+        .map(b => <ExchangeCard key={b.id} b={b} companyName={companyName} onEdit={() => setEdit(b)} onChanged={load} />)}
       {!data.exchanges.length && <div style={{ color: C.faint, fontSize: 13, padding: '20px 0' }}>Aucun échange.</div>}
       {edit && (
         <BarterModal companyId={companyId} initial={edit === 'new' ? null : edit} recurrences={data.recurrences.filter(r => r.is_active || r.id === edit?.recurring_billing_id)}

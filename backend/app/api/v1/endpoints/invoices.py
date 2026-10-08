@@ -700,7 +700,7 @@ async def download_invoice_pdf(invoice_id: uuid.UUID, db: AsyncSession = Depends
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     inv = await db.get(Invoice, invoice_id)
-    filename = f"facture-{inv.number}.pdf" if inv else f"facture-{invoice_id}.pdf"
+    filename = f"{'avoir' if inv and inv.credit_of_id else 'facture'}-{inv.number if inv else invoice_id}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

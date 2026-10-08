@@ -177,6 +177,18 @@ async def delete_barter(bid: uuid.UUID, db: AsyncSession = Depends(get_db), _: U
     return {"deleted": True}
 
 
+@router.get("/{bid}/pdf")
+async def download_barter_pdf(bid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """PDF de l'entente d'echange a telecharger (TASK-005.17)."""
+    from fastapi.responses import Response
+    from app.core.doc_pdf import generate_barter_pdf
+    try:
+        pdf, filename = await generate_barter_pdf(bid, db)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
 @router.post("/{bid}/files")
 async def upload_files(bid: uuid.UUID, files: list[UploadFile] = File(...), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     from app.api.v1.endpoints.settings import require_barter
