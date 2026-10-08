@@ -5766,3 +5766,10 @@ Philippe voulait activer l'écoute des messages vocaux reçus dans le portail ("
 - Option B : scanner le répertoire de stockage par défaut du module (à localiser précisément) pour découvrir les fichiers sans toucher à la config FreeSWITCH — moins invasif, mais plus fragile (dépend de la structure de dossiers interne du module).
 - Dans les deux cas : nouvel endpoint SIPV pour servir le fichier audio d'un message (n'existe pas, seul `GET /{vm_id}/greetings/{type}` existe pour le message d'accueil sortant, pas pour les messages reçus).
 Fichiers concernés (pas touchés) : `/usr/local/freeswitch/conf/autoload_configs/voicemail.conf.xml`, `backend/app/models/voicemail.py`, `backend/app/api/v1/endpoints/voicemail.py` (SIPV).
+
+## TASK-046 [ERPCRM] [ ] Sélection multiple dans les listes (Maj / Ctrl) et actions de masse
+Date de demande : 2026-10-08 (Philippe : « si je garde enfoncé le Shift ou le Ctrl je peux sélectionner plusieurs transactions ; Shift = le premier et le dernier ciblés et tout entre les deux ; Ctrl = plusieurs factures/transactions séparément… un genre de popup pour faire des changements de masse ; ex. Physotech : je sélectionnerais les factures avec un paiement partiel et j'aurais l'option (si activée dans les réglages admin) de créer un échange (troc), de créditer… en vois-tu d'autres qui seraient pratiques ? »)
+Date(s) de travail : —
+
+- En attente du GO sur la proposition (2026-10-08) : barre d'actions qui apparaît dès qu'une ligne est sélectionnée (plutôt qu'un popup au relâchement de la touche) ; Maj+clic = plage, Ctrl+clic = une à une, comme dans l'Explorateur ; d'abord dans l'onglet Transactions de la fiche compagnie et la liste des Ventes, puis Banque (qui a déjà des cases) et Achats.
+- Actions proposées : créer un échange (troc) qui paie exactement les factures choisies (option Échanges cochée seulement — aujourd'hui un échange paie toutes les factures ouvertes, la plus vieille d'abord) ; créditer le reste (avoir) ; marquer / retirer « À régler en troc » ; enregistrer un paiement groupé ; envoyer par courriel ; émettre ou supprimer des brouillons ; télécharger les PDF.
