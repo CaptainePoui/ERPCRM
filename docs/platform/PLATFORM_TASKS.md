@@ -5704,7 +5704,15 @@ Date(s) de travail : 2026-10-07 (soir, heure du Québec)
 - Paramètres : réglage **« Fuseau horaire de l'entreprise »** (`business_timezone`, liste des fuseaux, « il est HH:MM selon ce fuseau », fuseau inconnu refusé) ; `GET /settings/timezones`.
 - Écran (`frontend/src/utils/date.js`) : `todayIso()` remplace `new Date().toISOString().slice(0, 10)` (9 endroits : taxes, avoirs, périodiques, facturation d'un contact/compagnie, échanges, achats) ; `parseDay()` lit une date seule à minuit local — avant, « 2026-10-07 » s'affichait le 6 au Québec (`fmtDate` de Banque/Achats, Admin, bons de commande, portail) et une tâche due aujourd'hui passait « en retard » dès 20 h (tâches, ticket, compagnie, contact). Les filtres CDR (date et heure locales) étaient déjà corrects.
 - Vérifié à 21 h 41 (1 h 41 UTC le 8) : Paramètres « 2026-10-07 21:41 », jauge du troc « 7 octobre », port 8011 aussi à America/Toronto, « Mars/Olympus » refusé.
-- SIPV (lecture seule) : serveur et FreeSWITCH en UTC ; horaires d'ouverture déjà calculés avec le fuseau de chaque horaire (défaut America/Montreal, `xml_curl.py`, `schedules.py`) ; seules conditions d'heure fixes dans le plan d'appel d'exemple `dialplan/default.xml`. Changement côté SIPV proposé à part (en attente du GO).
+- SIPV : voir TASK-S064 (serveur SIPV mis à l'heure de Montréal le même soir).
+
+## TASK-S064 [SIPV] [x] Serveur SIPV à l'heure de Montréal (fuseau horaire)
+Date de demande : 2026-10-07 (Philippe : « c'est super important que tout le ERPCRM et le SIPV soit au bon fuseau horaire… le serveur est ici à Montréal » ; GO sur les 3 étapes proposées) — suite de TASK-045
+Date(s) de travail : 2026-10-07 (soir)
+
+- Vérifié avant (lecture seule) : CDR enregistrés avec `start_epoch`/`answer_epoch` (`cdr.py`, aucun décalage possible) ; messages vocaux et horodatages en base en UTC (colonnes avec fuseau) ; aucun code ne lit la date dans le nom des enregistrements (`${strftime(%Y%m%d-%H%M%S)}`, `xml_curl.py:112` — désormais heure de Montréal) ; horaires d'ouverture déjà calculés avec le fuseau de chaque horaire ; PostgreSQL laissé en UTC ; seule tâche planifiée : envoi Graphiti chaque minute (sans date).
+- Fait : `timedatectl set-timezone America/Toronto` sur 192.168.1.55 ; FreeSWITCH redémarré à **0 appel en cours** (vérifié juste avant) → `strftime` donne 21:46 EDT ; services `sipv-backend` et `sipv-backend-tls` redémarrés (leur `date.today()` des sauvegardes suit maintenant Montréal). Vérifié après : 8 profils SIP en marche, 4 postes réenregistrés (t1001-100 à 103), appel test `originate null/test &echo()` → +OK ; Kamailio et RTPengine actifs (non redémarrés).
+- Postes : déjà à l'heure de l'Est — modèle GXP2135 (seul en service, 3 postes) : `P64 = EST5EDT`, `P246 = EST+5EDT+4,M3.2.0,M11.1.0`, serveurs de temps pool.ntp.org. Choix d'un autre fuseau par poste/compagnie : à ajouter au catalogue d'options des postes (héritage système → compagnie → poste) quand les codes Grandstream exacts des autres fuseaux seront vérifiés sur un poste du labo — pas deviné.
 
 ## TASK-S062 [TOOLING] [x] Graphiti EN PREMIER côté SIPV — lecture ET écriture
 Date de demande : 2026-09-10 (Philippe : "fais le SIPV", suite à TASK-040.14 côté ERPCRM)
