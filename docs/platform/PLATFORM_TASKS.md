@@ -2497,7 +2497,7 @@ Date de demande : 2026-10-08 (Philippe, sur le devis 2026-D0001 de Physotech : �
 Date(s) de travail : —
 
 - En attente du GO sur la proposition : pas un 3e type de document — le devis existant (taxes affichées, jamais dans les ventes ni la déclaration) reçoit la marque « À régler en troc » ; il apparaît dans la boîte « À régler en troc » de l'onglet Échanges (en attente, hors taxes déclarées) ; « Créer un échange » sur ce devis le convertit en facture datée du jour de l'échange (taxes alors comptées), reliée au devis et à l'échange, et payée par lui ; bouton « Convertir en facture » aussi seul. Condition légale dite à Philippe : la facture doit être faite au moment de l'échange (paiement en services = paiement), pas laissée indéfiniment.
-- Décision en suspens : INV-112254 (Physotech, 1 069,16 $, émise le 2026-10-08, troc, non envoyée) — gardée, ou remise en brouillon et supprimée pour revenir au devis 2026-D0001.
+- Décision 2026-10-08 pour Physotech (Philippe, après explication — un échange se déclare de chaque côté ; coiffure/laser pour lui = services personnels, aucune taxe récupérable : « je comprends maintenant, ok fais la facture à la date d'aujourd'hui, j'aurais dû payer ces taxes en 2021, je les paierai dans le prochain rapport ») : **INV-112254 gardée** (2026-10-08, 929,90 $ + 139,26 $ = 1 069,16 $, à régler en troc, non envoyée) ; devis 2026-D0001 « Accepté » et relié à la facture (`devis.invoice_id`, pas modifiable par l'API — écrit par un court script, à la demande). Le devis troc (facture d'échange) reste à évaluer par Philippe (« on va évaluer ça »).
 ## TASK-026 [ERPCRM] [~] Prise de RDV en ligne
 Classification: CURRENT
 
