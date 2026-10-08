@@ -218,8 +218,8 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # 2026-10-08 (Philippe : « si la facture a eu un paiement elle ne compte plus pour la plus ancienne, sinon je
     # perds les differences de paiement » ; « si le client paie sa facture et 3 retards, il prend les 3 retards les
     # plus vieux ») : deux files -- les factures qui n'ont encore rien recu (les plus vieilles d'abord) et les restes
-    # des factures deja payees en partie (hors troc : un reste a regler en troc ne se paie pas a la banque), les plus
-    # vieux d'abord. Sur si le depot egale exactement : les j plus vieilles factures + les k plus vieux restes, ou le
+    # des factures deja payees en partie, les plus vieux d'abord -- restes « a regler en troc » compris (Philippe :
+    # « la mention troc c'est juste pour ne pas recevoir de facture de retard et identifier une dette »). Sur si le depot egale exactement : les j plus vieilles factures + les k plus vieux restes, ou le
     # reste d'une seule facture ; une seule possibilite -> associe, plusieurs -> suggestion seulement.
     open_invs = (await db.execute(select(Invoice).where(
         Invoice.company_id == tx.company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
@@ -234,7 +234,7 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
             continue
         if already <= 0:
             fresh.append((inv, bal))
-        elif not inv.barter_settlement:
+        else:
             rests.append((inv, bal))
     fresh, rests = fresh[:12], rests[:12]
     options = {}

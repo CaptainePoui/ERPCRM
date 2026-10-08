@@ -205,13 +205,13 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
 
   // Regle de Philippe : le depot paie les plus vieilles factures ouvertes du client, dans l'ordre
   // (la derniere peut etre payee en partie). 2026-10-08 : d'abord les factures qui n'ont encore rien recu, puis
-  // les plus vieux restes des factures deja payees en partie (« sa facture et 3 retards ») -- jamais un reste a
-  // regler en troc ; un depot egal au reste d'une seule facture va sur ce reste.
+  // les plus vieux restes des factures deja payees en partie (« sa facture et 3 retards »), troc compris ; un depot
+  // egal au reste d'une seule facture va sur ce reste.
   function oldestFirst() {
     const cents = v => Math.round(v * 100)
     const byDate = (a, b) => a.issue_date.localeCompare(b.issue_date) || a.number.localeCompare(b.number)
     const fresh = invoices.filter(i => i.balance > 0 && !(i.paid > 0)).sort(byDate)
-    const rests = invoices.filter(i => i.balance > 0 && i.paid > 0 && !i.barter_settlement).sort(byDate)
+    const rests = invoices.filter(i => i.balance > 0 && i.paid > 0).sort(byDate)
     const exact = rests.filter(i => cents(i.balance) === cents(tx.amount))
     if (exact.length === 1 && !fresh.some(i => cents(i.balance) === cents(tx.amount))) { setAlloc({ [exact[0].id]: exact[0].balance.toFixed(2) }); return }
     const n = {}; let left = tx.amount
