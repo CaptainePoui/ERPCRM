@@ -1,4 +1,4 @@
-"""Echanges (troc) d'une compagnie -- fiche, deductions, pieces justificatives, effet sur la facture
+"""Echanges (troc) d'une compagnie -- fiche, pieces justificatives, effet sur la facture
 periodique (TASK-005.13). Le calcul des cycles couverts est dans app/core/barter.py."""
 import re
 import uuid
@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.endpoints.auth import get_current_user
 from app.core import barter as bt
 from app.core.database import get_db
-from app.models.barter import BarterExchange, BarterDeduction, BarterFile
+from app.models.barter import BarterExchange, BarterFile
 from app.models.company import Company
 from app.models.invoice import Invoice
 from app.models.recurring_billing import CompanyRecurringBilling
@@ -28,22 +28,12 @@ FILES_DIR = Path(__file__).resolve().parents[4] / "storage" / "barter"
 MAX_FILE_BYTES = 25 * 1024 * 1024
 
 
-class DeductionIn(BaseModel):
-    """Ajustement : en faveur de Simple IP (retire du credit) ou du client (ajoute), avec une note."""
-    description: str
-    qty: float = 1
-    unit_price: float
-    direction: str = "simpleip"
-    note: str | None = None
-
-
 class BarterIn(BaseModel):
     exchange_date: date
     description: str
     received_value: float
     recurring_billing_id: uuid.UUID | None = None
     notes: str | None = None
-    deductions: list[DeductionIn] = []
 
 
 async def _rb(db, rb_id) -> CompanyRecurringBilling:
@@ -66,9 +56,6 @@ async def _out(db, b: BarterExchange, rb_names: dict) -> dict:
         "received_value": float(b.received_value), "notes": b.notes,
         "recurring_billing_id": str(b.recurring_billing_id) if b.recurring_billing_id else None,
         "recurring_name": rb_names.get(b.recurring_billing_id),
-        "deductions": [{"id": str(d.id), "description": d.description, "qty": float(d.qty), "unit_price": float(d.unit_price),
-                        "direction": d.direction, "note": d.note, "total": float(bt.adjustment_amount(d))} for d in b.deductions],
-        "adjustments_total": float(bt.adjustments_of(b)),
         "credit": float(bt.credit_of(b)), "used": float(bt.used_of(b)), "remaining": float(bt.remaining_of(b)),
         "files": [{"id": str(f.id), "filename": f.filename, "size": f.size} for f in b.files],
         "applications": [{"cycle_start": a.cycle_start, "cycle_end": a.cycle_end, "covered_until": a.covered_until,
@@ -120,15 +107,6 @@ async def _apply(db, b: BarterExchange, payload: BarterIn) -> None:
     b.exchange_date, b.description = payload.exchange_date, payload.description.strip()[:500]
     b.received_value, b.notes = bt._m(payload.received_value), (payload.notes or "").strip() or None
     b.recurring_billing_id = payload.recurring_billing_id
-    b.deductions.clear()
-    for i, d in enumerate(payload.deductions):
-        if d.description.strip() and d.unit_price:
-            if d.direction not in ("simpleip", "client"):
-                raise HTTPException(status_code=400, detail="Sens d'ajustement inconnu")
-            b.deductions.append(BarterDeduction(description=d.description.strip()[:500], qty=bt._m(d.qty), unit_price=bt._m(abs(d.unit_price)),
-                                                direction=d.direction, note=(d.note or "").strip() or None, sort_order=i))
-    if bt.credit_of(b) < 0:
-        raise HTTPException(status_code=400, detail="Les ajustements dépassent la valeur de l'échange")
     if bt.credit_of(b) < bt.used_of(b):
         raise HTTPException(status_code=400, detail=f"Le crédit ne peut pas être plus petit que ce qui a déjà servi ({bt.used_of(b)} $)")
 

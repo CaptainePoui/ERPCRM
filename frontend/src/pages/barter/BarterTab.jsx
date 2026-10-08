@@ -1,4 +1,4 @@
-// Echanges (troc) d'une compagnie -- TASK-005.13. Le credit hors taxes (valeur de l'echange + ajustements) paie
+// Echanges (troc) d'une compagnie -- TASK-005.13. Le credit hors taxes (la valeur de l'echange) paie
 // des mois de service de la facture periodique ; sa facturation repart a la date de reprise. Suivi du jour en haut.
 // Les pieces justificatives (facture du fournisseur, photo) restent jointes : preuve de l'echange.
 import { useState, useEffect, useRef, Fragment } from 'react'
@@ -19,20 +19,15 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
   const [f, setF] = useState(() => initial ? {
     exchange_date: initial.exchange_date, description: initial.description, received_value: String(initial.received_value),
     recurring_billing_id: initial.recurring_billing_id || '', notes: initial.notes || '',
-    deductions: initial.deductions.map(d => ({ description: d.description, qty: String(d.qty), unit_price: String(d.unit_price), direction: d.direction, note: d.note || '' })),
   } : {
     exchange_date: today(), description: '', received_value: '', recurring_billing_id: recurrences.length === 1 ? recurrences[0].id : '',
-    notes: '', deductions: [],
+    notes: '',
   })
   const [files, setFiles] = useState([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const setDed = (i, k, v) => setF(p => ({ ...p, deductions: p.deductions.map((d, j) => j === i ? { ...d, [k]: v } : d) }))
   const num = v => parseFloat(String(v).replace(',', '.')) || 0
-  const signed = d => (d.direction === 'client' ? 1 : -1) * num(d.qty) * num(d.unit_price)
-  const adjTotal = f.deductions.reduce((s, d) => s + signed(d), 0)
-  const credit = num(f.received_value) + adjTotal
   const locked = initial?.applications?.length > 0
 
   async function save() {
@@ -40,7 +35,6 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
     const body = {
       exchange_date: f.exchange_date, description: f.description, received_value: num(f.received_value),
       recurring_billing_id: f.recurring_billing_id || null, notes: f.notes,
-      deductions: f.deductions.map(d => ({ description: d.description, qty: num(d.qty), unit_price: num(d.unit_price), direction: d.direction, note: d.note })),
     }
     try {
       const r = initial ? await api.put(`/v1/barter/${initial.id}`, body) : await api.post(`/v1/barter/companies/${companyId}`, body)
@@ -72,29 +66,6 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
             </select>
             {locked && <div style={{ fontSize: 11, color: C.muted, marginTop: 4 }}>Le crédit a déjà servi : la facture périodique ne peut plus changer.</div>}
           </div>
-        </div>
-
-        <div style={{ fontWeight: 600, fontSize: 13, margin: '6px 0' }}>Ajustements <span style={{ fontWeight: 400, color: C.muted }}>(à part de l'échange : ex. un service oublié de facturer)</span></div>
-        {f.deductions.map((d, i) => (
-          <div key={i} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 8, marginBottom: 8 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 150px 60px 90px 90px 28px', gap: 8, alignItems: 'center' }}>
-              <input style={small} value={d.description} placeholder="ex. Texto 500 non facturé" onChange={e => setDed(i, 'description', e.target.value)} />
-              <select style={small} value={d.direction} onChange={e => setDed(i, 'direction', e.target.value)}>
-                <option value="simpleip">En ma faveur (−)</option>
-                <option value="client">En faveur du client (+)</option>
-              </select>
-              <input style={small} inputMode="decimal" value={d.qty} title="Quantité" onChange={e => setDed(i, 'qty', e.target.value)} />
-              <input style={small} inputMode="decimal" value={d.unit_price} title="Prix unitaire" placeholder="Prix" onChange={e => setDed(i, 'unit_price', e.target.value)} />
-              <span style={{ textAlign: 'right', fontSize: 13, color: d.direction === 'client' ? C.green : C.red }}>{signed(d) >= 0 ? '+' : '−'}{fmtMoney(Math.abs(signed(d)))}</span>
-              <button type="button" className="btn-secondary" style={{ padding: '2px 6px' }} onClick={() => set('deductions', f.deductions.filter((_, j) => j !== i))}>×</button>
-            </div>
-            <input style={{ ...small, width: '100%', boxSizing: 'border-box', marginTop: 6 }} value={d.note} placeholder="Note : pourquoi cet ajustement" onChange={e => setDed(i, 'note', e.target.value)} />
-          </div>
-        ))}
-        <button type="button" className="btn-secondary" style={{ fontSize: 12 }} onClick={() => set('deductions', [...f.deductions, { description: '', qty: '1', unit_price: '', direction: 'simpleip', note: '' }])}>+ Ajouter un ajustement</button>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 24, margin: '12px 0', fontSize: 14 }}>
-          <span>Valeur {fmtMoney(num(f.received_value))} {adjTotal >= 0 ? '+' : '−'} ajustements {fmtMoney(Math.abs(adjTotal))} = crédit pour le service : <b style={{ color: credit < 0 ? C.red : C.green }}>{fmtMoney(credit)}</b></span>
         </div>
 
         <div className="form-group"><label>Notes</label><textarea rows={2} style={input} value={f.notes} onChange={e => set('notes', e.target.value)} /></div>
@@ -251,27 +222,10 @@ function ExchangeCard({ b, onEdit, onChanged }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 24 }}>
         <div>
           {row("Valeur de l'échange (hors taxes)", fmtMoney(b.received_value), { bold: true })}
-          {b.deductions.length > 0 && row('Ajustements (voir ci-dessous)', `${b.adjustments_total >= 0 ? '+' : '−'}${fmtMoney(Math.abs(b.adjustments_total))}`, { color: C.muted })}
           <div style={{ borderTop: `1px solid ${C.border}`, margin: '4px 0' }} />
-          {row('Crédit pour le service', fmtMoney(b.credit), { bold: true })}
           {row('Utilisé', fmtMoney(b.used))}
           {row('Restant', fmtMoney(b.remaining), { bold: true, color: b.remaining > 0 ? C.green : C.muted })}
           {b.notes && <div style={{ fontSize: 12, color: C.muted, marginTop: 8, whiteSpace: 'pre-wrap' }}>{b.notes}</div>}
-          {b.deductions.length > 0 && (
-            <div style={{ marginTop: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>AJUSTEMENTS</div>
-              {b.deductions.map(d => (
-                <div key={d.id} style={{ fontSize: 13, background: '#F9FAFB', border: `1px solid ${C.border}`, borderRadius: 6, padding: '6px 8px', marginBottom: 6 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                    <span>{d.description}{d.qty !== 1 ? ` (${d.qty} × ${fmtMoney(d.unit_price)})` : ''}</span>
-                    <b style={{ color: d.total >= 0 ? C.green : C.red, whiteSpace: 'nowrap' }}>{d.total >= 0 ? '+' : '−'}{fmtMoney(Math.abs(d.total))}</b>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.muted }}>{d.direction === 'client' ? 'En faveur du client' : 'En faveur de Simple IP'}</div>
-                  {d.note && <div style={{ fontSize: 12, marginTop: 2, whiteSpace: 'pre-wrap' }}>{d.note}</div>}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
         <div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.muted, marginBottom: 4 }}>MOIS DÉJÀ COMPTÉS</div>
