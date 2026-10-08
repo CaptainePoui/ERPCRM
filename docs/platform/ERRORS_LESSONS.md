@@ -931,3 +931,27 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : avant que rien n'ait servi (0 mois comptés, aucune facture), logique refaite : crédit consommé mois par mois au prix du mois (inflation → reprise plus tôt), dernier mois en jours (jour entamé au client), puis la facture périodique repart à la date de reprise (`start_date`), même rythme ; plus de facture au prorata. Migration c7616746abbd (`barter_since`, `barter_cursor`). Suivi du jour (jauge) ajouté à sa demande.
 
 **Leçon (à ne pas refaire)** : pour toute règle de facturation, montrer AVANT de coder le calendrier concret du cas réel sur au moins deux cycles après l'événement (« factures le X, puis le Y, puis le Z ») et poser la question des prix qui changent pendant la durée — c'est ce qui révèle un malentendu, pas la description du mécanisme.
+
+**2026-10-08 — Retouche d'écran qui a refait toute la disposition de l'onglet Échanges**
+
+**On croyait** : qu'une demande de nettoyage (« pas besoin de la ligne Rythme… mets-le ailleurs… je veux les factures sautées en bas ») autorisait à réorganiser l'onglet au complet.
+
+**Preuve** : Philippe : « pourquoi tu as tout changé la disposition !!! la rien n'est bien !!! reviens à la version avant et fais juste les changements ».
+
+**Correction** : `BarterTab.jsx` remis à la version 7df83d5, puis seulement les changements demandés, un par un.
+
+**Leçon (à ne pas refaire)** : une retouche d'écran ne change que les éléments nommés ; la disposition, l'ordre et les boîtes restent tels quels (aussi dans la mémoire `feedback_scope_discipline`, point 4).
+
+## TASK-042.2 — Banque : la marque « troc » appliquée plus loin que les frais de retard ; dépôt partiel étalé sur les restes
+
+**Date** : 2026-10-08
+
+**On croyait** : (1) qu'une facture « à régler en troc » ne devait jamais être payée par un dépôt bancaire (restes troc exclus de l'association, puis « jamais payés par la banque ») ; (2) en construisant le surplus, qu'un dépôt plus petit que la plus vieille facture devait d'abord aller aux vieux restes.
+
+**Preuve** : (1) Philippe, deux corrections de suite : « même les restes en troc, s'il me paie je l'attribue à une facture ou des restes ou le crédit ; la mention troc c'est juste pour ne pas recevoir de facture de retard et identifier une dette » ; (2) simulation avant livraison : Physotech 49,33 $ réparti sur 11 restes troc de 4,60 $ au lieu d'INV-112252 — alors que l'exemple donné à Philippe, et accepté par lui, était justement « 49,33 $ sur sa plus vieille facture ».
+
+**Cause réelle** : (1) le sens d'une marque a été déduit de son nom (« troc » = hors banque) au lieu de la définition donnée par Philippe lors de sa création (TASK-005.14 : exclusion des frais de retard seulement) ; (2) la règle a été codée à partir du principe général (« le surplus va aux restes ») sans la repasser contre l'exemple concret déjà validé.
+
+**Correction** : (1) restes troc remis dans les deux files de `best_exact` et dans « Appliquer aux plus vieilles d'abord » (commit b06b628) ; (2) cas « ne couvre aucune facture au complet → en partie sur la plus vieille » ajouté avant la livraison (commit 7ace679), re-simulé.
+
+**Leçon (à ne pas refaire)** : une marque ou un statut n'a que l'effet que Philippe lui a donné à sa création — relire cette définition avant de l'utiliser ailleurs ; et toute règle codée se teste d'abord contre les exemples chiffrés déjà acceptés par Philippe, avant les cas nouveaux.
