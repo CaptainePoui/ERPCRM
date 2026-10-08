@@ -1,7 +1,7 @@
 // Echanges (troc) d'une compagnie -- TASK-005.13. Le credit hors taxes (valeur de l'echange + ajustements) paie
 // des mois de service de la facture periodique ; sa facturation repart a la date de reprise. Suivi du jour en haut.
 // Les pieces justificatives (facture du fournisseur, photo) restent jointes : preuve de l'echange.
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, Fragment } from 'react'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney } from '../Bank'
 
@@ -149,13 +149,9 @@ function Gauge({ rb }) {
   )
 }
 
-function Projection({ rb }) {
+function Projection({ rb, children }) {
   const p = rb.projection
   if (!p) return null
-  const th = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }
-  const td = { padding: '6px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13 }
-  const full = p.months.filter(m => !m.days).length
-  const part = p.months.find(m => m.days)
   return (
     <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
@@ -175,6 +171,19 @@ function Projection({ rb }) {
         </div>
       )}
 
+      {children}
+    </div>
+  )
+}
+
+function MonthsBox({ rb }) {
+  const p = rb.projection
+  const th = { textAlign: 'left', padding: '6px 8px', fontSize: 11, color: C.muted, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }
+  const td = { padding: '6px 8px', borderBottom: `1px solid ${C.border}`, fontSize: 13 }
+  const full = p.months.filter(m => !m.days).length
+  const part = p.months.find(m => m.days)
+  return (
+    <div style={box}>
       <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
         <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
           <thead><tr>
@@ -303,10 +312,18 @@ export default function BarterTab({ companyId }) {
         </div>
         <button className="btn-primary" onClick={() => setEdit('new')}>+ Nouvel échange</button>
       </div>
-      {data.recurrences.map(rb => <Projection key={rb.id} rb={rb} />)}
-      {data.exchanges.length
-        ? data.exchanges.map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)
-        : <div style={{ color: C.faint, fontSize: 13, padding: '20px 0' }}>Aucun échange.</div>}
+      {/* Boite verte : suivi, puis la fiche de l'echange ; le tableau des mois en dessous */}
+      {data.recurrences.filter(rb => rb.projection).map(rb => (
+        <Fragment key={rb.id}>
+          <Projection rb={rb}>
+            {data.exchanges.filter(b => b.recurring_billing_id === rb.id).map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)}
+          </Projection>
+          <MonthsBox rb={rb} />
+        </Fragment>
+      ))}
+      {data.exchanges.filter(b => !data.recurrences.some(rb => rb.projection && rb.id === b.recurring_billing_id))
+        .map(b => <ExchangeCard key={b.id} b={b} onEdit={() => setEdit(b)} onChanged={load} />)}
+      {!data.exchanges.length && <div style={{ color: C.faint, fontSize: 13, padding: '20px 0' }}>Aucun échange.</div>}
       {edit && (
         <BarterModal companyId={companyId} initial={edit === 'new' ? null : edit} recurrences={data.recurrences.filter(r => r.is_active || r.id === edit?.recurring_billing_id)}
           onClose={() => setEdit(null)} onSaved={async () => { setEdit(null); await load() }} />
