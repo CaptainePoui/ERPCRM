@@ -442,6 +442,12 @@ Date(s) de travail : 2026-10-08
 
 - Les notes étaient verrouillées dès que la facture n'est plus un brouillon (`InvoiceDetail.jsx`, `disabled={!editable}`) ; elles ne changent ni montants ni taxes → modifiables en tout temps (le serveur les acceptait déjà). Défaut corrigé au passage : enregistrement à chaque lettre tapée (une requête par touche, caractères perdables) → enregistrement en sortant du champ, avec « ✓ Enregistré ». Composant `NotesBox`.
 - Vérifié (Playwright) sur INV-112254 émise : champ modifiable, texte tapé vite enregistré en entier, note d'origine remise ensuite (statut et total inchangés).
+### TASK-005.16 [x] Colonne « Taxable » retirée des factures et des devis
+Date de demande : 2026-10-08 (Philippe : « pourquoi dans taxable il y a oui?? les taxes ne sont qu'en bas pas à chaque ligne... moi tout est taxable tps tvq » ; « oui enlève ça go »)
+Date(s) de travail : 2026-10-08
+
+- Le choix par ligne (TASK-005.9) servait à reproduire les factures importées ; dans les ventes, les seules lignes non taxables sont les frais de retard (mises non taxables automatiquement). Retirés de `InvoiceDetail.jsx` et `DevisDetail.jsx` : colonne « Taxable », case dans la modification d'une ligne (n'envoie plus `is_taxable` → valeur existante gardée, le schéma de mise à jour est optionnel), case « Taxable (TPS/TVQ) » à l'ajout (nouvelle ligne = taxable). Une ligne non taxable affiche « (non taxable) » après sa description, comme le PDF. Calcul des taxes et `is_taxable` inchangés côté serveur ; le choix par ligne reste dans les dépenses/factures fournisseurs.
+- Vérifié (Playwright) : INV-111387 (frais de retard « (non taxable) », taxes inchangées), INV-112254 et devis 2026-D0001 sans la colonne, aucune erreur.
 ### TASK-005.13 [x] Échanges (troc) : fiche d'échange, montant hors taxes qui repousse la facturation périodique, preuve gardée
 Date de demande : 2026-10-07 (Philippe : D'Astous Auto a réparé sa voiture, 860 $ hors taxes ; « j'ai oublié de lui charger les textos 500 à 19,95 $ pendant 6 mois, on déduit ça… et le reste sur sa facture habituelle » ; puis « il me faudrait aussi cette option (troc) pour certaines entreprises qui acceptent l'échange, ça resterait dans l'ERPCRM pour garder une trace de la transaction et prouver l'échange »)
 Date(s) de travail : 2026-10-07, 2026-10-08
