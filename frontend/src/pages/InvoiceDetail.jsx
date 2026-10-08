@@ -218,6 +218,8 @@ export default function InvoiceDetail() {
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
+              {inv.barter_settlement && <span className="inv-recur-badge" style={{ background: '#ECFDF5', color: '#047857', whiteSpace: 'nowrap' }}>Troc</span>}
+              {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: '#FEF2F2', color: '#B91C1C', whiteSpace: 'nowrap' }}>Avis de retard</span>}
             </h1>
             <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
             {inv.site_address_snapshot && <p className="page-sub" style={{ fontSize: 12, color: '#9CA3AF', marginTop: 0 }}>{inv.site_address_snapshot}</p>}
@@ -247,6 +249,18 @@ export default function InvoiceDetail() {
             <div className="inv-info-row">
               <span>Avoir pour</span>
               <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.credit_of_id}`)}>Voir facture originale</strong>
+            </div>
+          )}
+          {inv.late_fee_for_id && (
+            <div className="inv-info-row">
+              <span>Avis de retard pour</span>
+              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.late_fee_for_id}`)}>Voir la facture en retard</strong>
+            </div>
+          )}
+          {!inv.credit_of_id && !inv.late_fee_for_id && (
+            <div className="inv-info-row">
+              <span title="Une facture à régler en troc n'a jamais de frais de retard">À régler en troc</span>
+              <input type="checkbox" checked={!!inv.barter_settlement} onChange={e => saveField('barter_settlement', e.target.checked)} />
             </div>
           )}
           <div className="inv-info-row">

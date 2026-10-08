@@ -116,8 +116,17 @@ async def run_recurring_once() -> dict:
     async with AsyncSessionLocal() as db:
         purchases_on = (await get_setting(db, "recurring_auto_purchases")) == "true"
         sales_on = (await get_setting(db, "recurring_auto_sales")) == "true"
-    return {"purchases": await _purchases() if purchases_on else None,
-            "sales": await _sales() if sales_on else None}
+    out = {"purchases": await _purchases() if purchases_on else None,
+           "sales": await _sales() if sales_on else None}
+    # Avis de frais de retard (TASK-005.14) : apres les ventes du jour ; ne fait rien tant que c'est eteint
+    from app.core import late_fees
+    async with AsyncSessionLocal() as db:
+        try:
+            out["late_fees"] = await late_fees.run(db)
+        except Exception:
+            await db.rollback()
+            log.exception("Avis de frais de retard : creation echouee")
+    return out
 
 
 async def run_recurring_poller():

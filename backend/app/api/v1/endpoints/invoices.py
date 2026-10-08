@@ -63,6 +63,8 @@ class InvoiceOut(BaseModel):
     transmission_status: str | None = None
     last_opened_at: datetime | None = None
     open_count: int = 0
+    barter_settlement: bool = False          # TASK-005.14 : « a regler en troc », jamais de frais de retard
+    late_fee_for_id: uuid.UUID | None = None  # facture de frais de retard : la facture en retard qu'elle vise
 
 
 class InvoiceListItem(BaseModel):
@@ -80,6 +82,8 @@ class InvoiceListItem(BaseModel):
     transmission_status: str | None = None
     last_opened_at: datetime | None = None
     open_count: int = 0
+    barter_settlement: bool = False
+    late_fee_for_id: uuid.UUID | None = None
 
 
 class InvoiceCreate(BaseModel):
@@ -107,6 +111,7 @@ class InvoiceUpdate(BaseModel):
     site_id: uuid.UUID | None = None
     clear_site: bool = False  # distingue "site_id absent du payload" de "retirer la succursale"
     transmission_status: str | None = None  # non_transmise | courriel | autre (TASK-005.8)
+    barter_settlement: bool | None = None   # « a regler en troc » (TASK-005.14)
 
 
 class LineCreate(BaseModel):
@@ -206,6 +211,8 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         recurrence_frequency=inv.recurrence_frequency,
         recurrence_next_date=inv.recurrence_next_date,
         credit_of_id=inv.credit_of_id,
+        barter_settlement=inv.barter_settlement,
+        late_fee_for_id=inv.late_fee_for_id,
         site_id=inv.site_id,
         site_label_snapshot=inv.site_label_snapshot,
         site_address_snapshot=inv.site_address_snapshot,
@@ -258,6 +265,8 @@ async def list_invoices(
         issue_date=i.issue_date, due_date=i.due_date,
         total=i.total, is_recurring=i.is_recurring,
         credit_of_id=i.credit_of_id,
+        barter_settlement=i.barter_settlement,
+        late_fee_for_id=i.late_fee_for_id,
         site_label_snapshot=i.site_label_snapshot,
         transmission_status=i.transmission_status,
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
@@ -447,6 +456,21 @@ async def delete_line(invoice_id: uuid.UUID, line_id: uuid.UUID, db: AsyncSessio
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
+
+@router.get("/late-fees/preview")
+async def late_fees_preview(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Avis de retard qui seraient crees aujourd'hui (TASK-005.14) -- rien n'est ecrit, meme si c'est eteint."""
+    from app.core import late_fees
+    cfg = await late_fees.config(db)
+    out = []
+    for c in await late_fees.candidates(db, cfg):
+        out.append({"company_id": str(c["company_id"]), "company_name": c["company_name"], "base": float(c["base"]),
+                    "interest": float(c["interest"]), "admin": float(c["admin"]), "total": float(c["interest"] + c["admin"]),
+                    "last_notice": c["last_notice"], "oldest_number": c["oldest"].number, "oldest_due": c["oldest"].due_date,
+                    "invoices": [{"id": str(i.id), "number": i.number, "due_date": i.due_date, "balance": float(b),
+                                  "late_fee": i.late_fee_for_id is not None} for i, b in c["invoices"]]})
+    return {"enabled": cfg["enabled"], "today": clock.today(), "notices": out}
+
 
 @router.post("/mark-overdue", status_code=status.HTTP_200_OK)
 async def mark_overdue(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):

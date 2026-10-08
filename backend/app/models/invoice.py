@@ -44,6 +44,11 @@ class Invoice(Base):
 
     # Credit (avoir)
     credit_of_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
+    # TASK-005.14 : facture « a regler en troc » -- jamais de frais de retard (la marque est sur la facture, pas
+    # sur le client : une facture sans la marque se paie comme tout le monde)
+    barter_settlement: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    # Facture de frais de retard : la facture en retard qu'elle vise (jamais de frais sur une facture de retard)
+    late_fee_for_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
 
     # Succursale -- snapshot fige a la creation
     site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("company_sites.id", ondelete="SET NULL"), nullable=True)

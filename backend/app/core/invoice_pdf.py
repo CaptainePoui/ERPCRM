@@ -56,6 +56,7 @@ tbody td:nth-child(2), tbody td:nth-child(3), tbody td:last-child { text-align: 
 .banner-pending { background: #e0f2fe; color: #0c4a6e; }
 .notes { margin-top: 16px; font-size: 9pt; color: #555; border-left: 3px solid #e5e7eb; padding-left: 8px; }
 .footer { margin-top: 30px; font-size: 8pt; color: #aaa; text-align: center; }
+.terms { margin-top: 18px; font-size: 6.5pt; color: #999; text-align: center; }
 """
 
 _FMT = lambda v: f"${float(v):,.2f}"
@@ -98,7 +99,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
     from sqlalchemy.orm import selectinload
     r = await db.execute(
         select(Invoice).where(Invoice.id == invoice_id)
-        .options(selectinload(Invoice.lines))
+        .options(selectinload(Invoice.lines), selectinload(Invoice.company))   # nom du client lu plus bas
     )
     inv = r.scalar_one()
 
@@ -185,6 +186,11 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
     doc_label = "Avoir" if inv.credit_of_id else "Facture"
     overdue_class = " overdue" if inv.status == "en_retard" else ""
     notes_html = f'<div class="notes">{inv.notes}</div>' if inv.notes else ""
+    # TASK-005.14 : taux annuel obligatoire (Loi sur l'interet), en tout petit -- pas sur un avoir
+    terms_html = ""
+    if not inv.credit_of_id:
+        from app.core import late_fees
+        terms_html = f'<div class="terms">{late_fees.terms_text(await late_fees.config(db))}</div>'
 
     html = f"""<!DOCTYPE html>
 <html lang="fr">
@@ -232,6 +238,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
   </div>
   {payments_html}
   {notes_html}
+  {terms_html}
   <div class="footer">{seller_name} &mdash; {inv.number}</div>
 </body>
 </html>"""

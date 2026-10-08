@@ -63,6 +63,7 @@ export default function Settings() {
       {msg && <div style={{ background: '#ECFDF5', color: '#065F46', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
       <TimezoneSection />
+      <LateFeesSection />
 
       {/* ── Taux de service ── */}
       <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
@@ -222,6 +223,83 @@ export default function Settings() {
 
 // Numerotation des documents (2026-10-04) : le compteur ne peut jamais reculer -- le serveur refuse
 // tout prochain numero plus petit que le compteur actuel ou deja utilise avec ce prefixe.
+// Factures de frais de retard (TASK-005.14) : 2 % par mois du solde en retard du client + frais de gestion, a
+// l'echeance + 15 jours puis chaque 30 jours. Eteint au depart ; l'apercu montre ce qui serait facture aujourd'hui.
+function LateFeesSection() {
+  const [cfg, setCfg] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [msg, setMsg] = useState('')
+  const money = v => new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(v)
+  const load = () => {
+    api.get('/v1/settings').then(r => setCfg({ late_fees_enabled: r.data.late_fees_enabled, late_fee_monthly_rate: r.data.late_fee_monthly_rate,
+      late_fee_admin: r.data.late_fee_admin, late_fee_grace_days: r.data.late_fee_grace_days, late_fee_interval_days: r.data.late_fee_interval_days }))
+    api.get('/v1/invoices/late-fees/preview').then(r => setPreview(r.data))
+  }
+  useEffect(() => { load() }, [])
+  async function save(extra = {}) {
+    setMsg('')
+    const body = { ...cfg, ...extra }
+    if (extra.late_fees_enabled && !confirm(`Allumer les frais de retard ? ERPCRM créera tout de suite ${preview?.notices.length || 0} avis de retard (non transmis), puis les suivants au fil des jours. Assure-toi que l'ancien logiciel n'en fait plus.`)) return
+    try {
+      await api.put('/v1/settings', { ...body, late_fee_monthly_rate: Number(body.late_fee_monthly_rate), late_fee_admin: Number(body.late_fee_admin),
+        late_fee_grace_days: Number(body.late_fee_grace_days), late_fee_interval_days: Number(body.late_fee_interval_days) })
+      setMsg('Enregistré'); load()
+    } catch (e) { setMsg(e.response?.data?.detail?.[0]?.msg || e.response?.data?.detail || 'Refusé') }
+  }
+  if (!cfg) return null
+  const set = (k, v) => setCfg(p => ({ ...p, [k]: v }))
+  const field = (k, label, w = 80) => (
+    <div className="form-group" style={{ marginBottom: 0 }}><label>{label}</label>
+      <input type="number" step="0.01" value={cfg[k]} onChange={e => set(k, e.target.value)} style={{ width: w }} /></div>
+  )
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Frais de retard</h3>
+        <span style={{ fontSize: 13, fontWeight: 600, color: cfg.late_fees_enabled ? '#059669' : '#B45309' }}>
+          {cfg.late_fees_enabled ? 'Allumé' : 'Éteint — rien n\'est facturé'}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+        Un avis de retard par client : {cfg.late_fee_monthly_rate} % de tout son solde en retard (avis précédents compris) + frais de gestion,
+        {' '}{cfg.late_fee_grace_days} jours après l'échéance, puis chaque {cfg.late_fee_interval_days} jours tant que c'est impayé. Sans taxes.
+        Jamais sur une facture marquée « À régler en troc ». Les avis sont émis mais non transmis : c'est toi qui les envoies.
+      </p>
+      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        {field('late_fee_monthly_rate', '% par mois')}
+        {field('late_fee_admin', 'Frais de gestion ($)', 100)}
+        {field('late_fee_grace_days', 'Jours après l\'échéance')}
+        {field('late_fee_interval_days', 'Jours entre 2 avis')}
+        <button className="btn-secondary" onClick={() => save()}>Enregistrer</button>
+        {cfg.late_fees_enabled
+          ? <button className="btn-secondary" style={{ color: '#B45309' }} onClick={() => save({ late_fees_enabled: false })}>Éteindre</button>
+          : <button className="btn-primary" onClick={() => save({ late_fees_enabled: true })}>Allumer</button>}
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
+      {preview && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
+            Aperçu : avis qui {cfg.late_fees_enabled ? 'seront créés' : 'seraient créés'} aujourd'hui ({preview.notices.length})
+          </div>
+          {preview.notices.length === 0 && <div style={{ fontSize: 13, color: '#9CA3AF' }}>Aucun.</div>}
+          {preview.notices.map(n => (
+            <div key={n.company_id} style={{ fontSize: 13, borderTop: '1px solid #F3F4F6', padding: '6px 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <b>{n.company_name}</b>
+                <span>{money(n.interest)} + {money(n.admin)} = <b>{money(n.total)}</b></span>
+              </div>
+              <div style={{ fontSize: 12, color: '#6B7280' }}>
+                {cfg.late_fee_monthly_rate} % de {money(n.base)} en retard — {n.invoices.map(i => `${i.number} (${money(i.balance)})`).join(', ')}
+                {n.last_notice ? ` — dernier avis le ${n.last_notice}` : ''}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Fuseau horaire de l'entreprise (2026-10-08) : le serveur tourne en UTC ; tout ERPCRM decide « quel jour on est »
 // avec ce fuseau (factures, paiements, periodiques, echanges...). Voir backend/app/core/clock.py.
 function TimezoneSection() {

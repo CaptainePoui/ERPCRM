@@ -32,7 +32,13 @@ DEFAULTS = {
     # Creation automatique des periodiques (services/recurring_poller.py, 2026-10-04)
     "recurring_auto_sales": "false",      # factures clients : emises « non transmises », jamais envoyees seules
     "recurring_auto_purchases": "true",   # factures fournisseurs et depenses periodiques
-    "business_timezone": "America/Toronto",   # fuseau de l'entreprise (Montreal) : quel jour on est (core/clock.py)
+    "business_timezone": "America/Toronto",
+    # Factures de frais de retard (TASK-005.14, core/late_fees.py) -- eteintes au depart
+    "late_fees_enabled": "false",
+    "late_fee_monthly_rate": "2",
+    "late_fee_admin": "9.95",
+    "late_fee_grace_days": "15",
+    "late_fee_interval_days": "30",   # fuseau de l'entreprise (Montreal) : quel jour on est (core/clock.py)
 }
 
 
@@ -73,6 +79,11 @@ class SettingsOut(BaseModel):
     recurring_auto_sales: bool
     recurring_auto_purchases: bool
     business_timezone: str
+    late_fees_enabled: bool
+    late_fee_monthly_rate: float
+    late_fee_admin: float
+    late_fee_grace_days: int
+    late_fee_interval_days: int
 
 
 class SettingsIn(BaseModel):
@@ -88,6 +99,11 @@ class SettingsIn(BaseModel):
     recurring_auto_sales: bool | None = None
     recurring_auto_purchases: bool | None = None
     business_timezone: str | None = None
+    late_fees_enabled: bool | None = None
+    late_fee_monthly_rate: float | None = Field(default=None, ge=0, le=10)
+    late_fee_admin: float | None = Field(default=None, ge=0, le=1000)
+    late_fee_grace_days: int | None = Field(default=None, ge=0, le=365)
+    late_fee_interval_days: int | None = Field(default=None, ge=7, le=365)
 
 
 class InflationPayload(BaseModel):
@@ -109,6 +125,11 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         recurring_auto_sales=(await get_setting(db, "recurring_auto_sales")) == "true",
         recurring_auto_purchases=(await get_setting(db, "recurring_auto_purchases")) == "true",
         business_timezone=await get_setting(db, "business_timezone"),
+        late_fees_enabled=(await get_setting(db, "late_fees_enabled")) == "true",
+        late_fee_monthly_rate=float(await get_setting(db, "late_fee_monthly_rate")),
+        late_fee_admin=float(await get_setting(db, "late_fee_admin")),
+        late_fee_grace_days=int(await get_setting(db, "late_fee_grace_days")),
+        late_fee_interval_days=int(await get_setting(db, "late_fee_interval_days")),
     )
 
 
@@ -150,6 +171,11 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "recurring_auto_sales", "true" if payload.recurring_auto_sales else "false")
     if payload.recurring_auto_purchases is not None:
         await set_setting(db, "recurring_auto_purchases", "true" if payload.recurring_auto_purchases else "false")
+    if payload.late_fees_enabled is not None:
+        await set_setting(db, "late_fees_enabled", "true" if payload.late_fees_enabled else "false")
+    for key in ("late_fee_monthly_rate", "late_fee_admin", "late_fee_grace_days", "late_fee_interval_days"):
+        if getattr(payload, key) is not None:
+            await set_setting(db, key, str(getattr(payload, key)))
     if payload.business_timezone is not None:
         from app.core import clock
         try:
