@@ -746,7 +746,18 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
   const allChecked = pageRows.length > 0 && pageRows.every(t => selected.has(t.id))
   const sel = [...selected].filter(id => base.some(t => t.id === id))
-  function toggle(id) { setSelected(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n }) }
+  // TASK-046 : case, Ctrl+clic (une a la fois) ou Maj+clic (tout entre la derniere ligne ciblee et celle-ci)
+  const anchor = useRef(null)
+  function toggle(id, e) {
+    const ids = pageRows.map(t => t.id), a = ids.indexOf(anchor.current), b = ids.indexOf(id)
+    setSelected(s => {
+      const n = new Set(s)
+      if (e?.shiftKey && a >= 0 && b >= 0) ids.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(x => n.add(x))
+      else n.has(id) ? n.delete(id) : n.add(id)
+      return n
+    })
+    anchor.current = id
+  }
   function toggleAll() { setSelected(s => { const n = new Set(s); pageRows.forEach(t => allChecked ? n.delete(t.id) : n.add(t.id)); return n }) }
 
   async function bulk(action) {
@@ -805,9 +816,11 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
           </thead>
           <tbody>
             {pageRows.map(t => (
-              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setDetail(t.id)}
-                onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'} onMouseLeave={e => e.currentTarget.style.background = ''}>
-                <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(t.id)} onChange={() => toggle(t.id)} /></td>
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: selected.has(t.id) ? '#EFF6FF' : undefined }}
+                onClick={e => (e.ctrlKey || e.metaKey || e.shiftKey) ? toggle(t.id, e) : setDetail(t.id)}
+                onMouseDown={e => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault() }}
+                onMouseEnter={e => { if (!selected.has(t.id)) e.currentTarget.style.background = '#F9FAFB' }} onMouseLeave={e => { if (!selected.has(t.id)) e.currentTarget.style.background = '' }}>
+                <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(t.id)} onChange={e => toggle(t.id, e.nativeEvent)} /></td>
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>
                   <div>Description : {t.description || EMPTY}</div>

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import useRowSelection from '../hooks/useRowSelection'
+import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewInvoiceModal from '../components/NewInvoiceModal'
@@ -68,6 +70,10 @@ export default function Invoices({ creditsOnly = false }) {
     i.company_name.toLowerCase().includes(search.toLowerCase()) ||
     i.number.toLowerCase().includes(search.toLowerCase())
   )
+  // Selection multiple (TASK-046) : case, Ctrl+clic, Maj+clic -> barre d'actions en bas
+  const sel = useRowSelection(filtered)
+  const picked = sel.visible.map(i => ({ ...i, paid: i.paid || 0, is_credit: !!i.credit_of_id, late_fee: !!i.late_fee_for_id,
+    remaining: i.credit_of_id || ['brouillon', 'annulee'].includes(i.status) ? 0 : Math.max(0, Math.round((i.total - (i.paid || 0)) * 100) / 100) }))
 
   function fmt(val) {
     return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(val)
@@ -110,6 +116,7 @@ export default function Invoices({ creditsOnly = false }) {
           <table className="inv-table">
             <thead>
               <tr>
+                <th style={{ width: 28 }}><input type="checkbox" checked={sel.allChecked} onChange={sel.toggleAll} title="Tout sélectionner" /></th>
                 <th>Date</th>
                 <th>Numéro</th>
                 <th>Compagnie</th>
@@ -124,7 +131,9 @@ export default function Invoices({ creditsOnly = false }) {
               {filtered.map(inv => {
                 const s = (inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon
                 return (
-                  <tr key={inv.id} className="inv-row" onClick={() => navigate(`/invoices/${inv.id}`)}>
+                  <tr key={inv.id} className="inv-row" onClick={e => sel.rowClick(e, inv.id, () => navigate(`/invoices/${inv.id}`))}
+                    onMouseDown={sel.noTextSelect} style={sel.selected.has(inv.id) ? { background: '#EFF6FF' } : undefined}>
+                    <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(inv.id)} onChange={e => sel.toggle(inv.id, e.nativeEvent)} /></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.issue_date)}</td>
                     <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
                     <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{inv.site_label_snapshot}</div>}</td>
@@ -144,13 +153,14 @@ export default function Invoices({ creditsOnly = false }) {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucune facture</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucune facture</td></tr>
               )}
             </tbody>
           </table>
         </div>
       )}
 
+      <BulkInvoiceBar items={picked} onClear={sel.clear} onDone={load} />
       {showNew && <NewInvoiceModal onClose={() => setShowNew(false)} />}
     </div>
   )

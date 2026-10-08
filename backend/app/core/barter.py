@@ -70,9 +70,10 @@ async def credits_for(db, rb) -> list[list]:
 OPEN_STATUSES = ("envoyee", "en_retard", "partiellement_payee")
 
 
-async def pay_open_invoices(db, company_id) -> int:
+async def pay_open_invoices(db, company_id, only_ids=None) -> int:
     """Le credit restant des echanges de la compagnie (plus vieux d'abord) paie ses factures emises non payees, la plus
-    vieille d'abord. Un paiement « Troc » par facture. Retourne le nombre de factures touchees. Ne fait pas le commit."""
+    vieille d'abord. Un paiement « Troc » par facture. only_ids : seulement ces factures (echange cree depuis des
+    factures cochees, TASK-046). Retourne le nombre de factures touchees. Ne fait pas le commit."""
     from app.models.invoice import Invoice
     from app.models.client_payment import ClientPayment, PaymentAllocation
     from app.api.v1.endpoints.payments import settled_amounts, _recalculate_invoice_status, next_payment_reference
@@ -81,9 +82,11 @@ async def pay_open_invoices(db, company_id) -> int:
     credits = [[b, r] for b in rows if (r := remaining_of(b)) > 0]
     if not credits:
         return 0
-    invoices = (await db.execute(select(Invoice).where(
+    q = select(Invoice).where(
         Invoice.company_id == company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None), Invoice.total > 0)
-        .order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    if only_ids is not None:
+        q = q.where(Invoice.id.in_(list(only_ids)))
+    invoices = (await db.execute(q.order_by(Invoice.issue_date, Invoice.number))).scalars().all()
     paid = await settled_amounts(db, [i.id for i in invoices])
     today, n = clock.today(), 0
     for inv in invoices:
@@ -104,8 +107,10 @@ async def pay_open_invoices(db, company_id) -> int:
         await db.flush()
         db.add(PaymentAllocation(payment_id=cp.id, invoice_id=inv.id, amount_allocated=_m(take)))
         for b, t in uses:
-            db.add(BarterApplication(barter_id=b.id, cycle_start=today, cycle_end=today, covered_until=today,
-                                     amount=_m(t), invoice_id=inv.id, client_payment_id=cp.id))
+            # ajoutee a b.applications (pas seulement a la session) : un 2e appel dans la meme operation voit le
+            # credit deja utilise (echange cree depuis des factures cochees, TASK-046 -- sinon il servait deux fois)
+            b.applications.append(BarterApplication(barter_id=b.id, cycle_start=today, cycle_end=today, covered_until=today,
+                                                    amount=_m(t), invoice_id=inv.id, client_payment_id=cp.id))
         await db.flush()
         await _recalculate_invoice_status(inv.id, db)
         n += 1
@@ -170,8 +175,8 @@ async def advance(db, rb, today: date) -> bool:
             return True
         s = step(credits, monthly, rb.barter_cursor)
         for b, take in s["uses"]:
-            db.add(BarterApplication(barter_id=b.id, recurring_billing_id=rb.id, cycle_start=s["start"], cycle_end=s["end"],
-                                     covered_until=s["covered_until"], amount=_m(take)))
+            b.applications.append(BarterApplication(barter_id=b.id, recurring_billing_id=rb.id, cycle_start=s["start"],
+                                                    cycle_end=s["end"], covered_until=s["covered_until"], amount=_m(take)))
         changed = True
         credits = [c for c in credits if c[1] > 0]
         if s["resume"]:

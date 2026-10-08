@@ -34,6 +34,8 @@ class BarterIn(BaseModel):
     received_value: float
     recurring_billing_id: uuid.UUID | None = None
     notes: str | None = None
+    # Echange cree depuis des factures cochees (TASK-046) : il paie d'abord exactement celles-ci
+    invoice_ids: list[uuid.UUID] = []
 
 
 async def _rb(db, rb_id) -> CompanyRecurringBilling:
@@ -88,7 +90,26 @@ async def list_barters(company_id: uuid.UUID, db: AsyncSession = Depends(get_db)
                             "last_invoice_date": rb.last_invoice_date, "last_invoice_number": last_number, "paid_until": paid_until,
                             "paid_from": rb.last_invoice_date if paid_until else None,
                             "projection": await bt.projection(db, rb) if rb.is_active else None})
-    return {"exchanges": [await _out(db, b, names) for b in rows], "recurrences": recurrences}
+    return {"exchanges": [await _out(db, b, names) for b in rows], "recurrences": recurrences,
+            "troc_invoices": await troc_debt(db, company_id)}
+
+
+async def troc_debt(db, company_id) -> list[dict]:
+    """Factures « a regler en troc » encore ouvertes, avec leur reste calcule a l'instant (TASK-046, 2026-10-08,
+    Philippe : « ca le met dans Echanges mais de facon dynamique : si une facture est payee, un retard ou un credit est
+    fait, tout s'ajuste ») -- rien n'est copie : un paiement, un avoir ou un echange change le reste aussitot."""
+    from app.api.v1.endpoints.payments import settled_amounts
+    invs = (await db.execute(select(Invoice).where(
+        Invoice.company_id == company_id, Invoice.barter_settlement.is_(True), Invoice.credit_of_id.is_(None),
+        Invoice.status.in_(bt.OPEN_STATUSES)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    paid = await settled_amounts(db, [i.id for i in invs])
+    out = []
+    for i in invs:
+        left = bt._m(Decimal(i.total) - (paid.get(i.id) or Decimal("0")))
+        if left > 0:
+            out.append({"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "total": float(i.total),
+                        "paid": float(paid.get(i.id) or 0), "remaining": float(left), "company_id": str(company_id)})
+    return out
 
 
 async def _apply(db, b: BarterExchange, payload: BarterIn) -> None:
@@ -121,6 +142,11 @@ async def create_barter(company_id: uuid.UUID, payload: BarterIn, db: AsyncSessi
     await _apply(db, b, payload)
     db.add(b)
     await db.flush()
+    if payload.invoice_ids:
+        invs = (await db.execute(select(Invoice).where(Invoice.id.in_(payload.invoice_ids)))).scalars().all()
+        if len(invs) != len(set(payload.invoice_ids)) or any(i.company_id != company_id for i in invs):
+            raise HTTPException(status_code=400, detail="Les factures choisies doivent toutes appartenir à cette compagnie")
+        await bt.pay_open_invoices(db, company_id, only_ids=payload.invoice_ids)
     await bt.pay_open_invoices(db, company_id)      # le troc paie d'abord les factures ouvertes
     await db.commit()
     return {"id": str(b.id)}

@@ -6,6 +6,8 @@ import { useNavigate } from 'react-router-dom'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney } from '../Bank'
 import { todayIso } from '../../utils/date'
+import useRowSelection from '../../hooks/useRowSelection'
+import BulkInvoiceBar from '../../components/BulkInvoiceBar'
 
 const today = () => todayIso()
 const errText = e => e.response?.data?.detail || 'Erreur'
@@ -17,12 +19,15 @@ async function openFile(id) {
   window.open(URL.createObjectURL(r.data), '_blank')
 }
 
-function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
+// invoices (TASK-046) : echange cree depuis des factures cochees -- il paie d'abord exactement celles-ci ; valeur
+// proposee = leur reste.
+export function BarterModal({ companyId, initial, recurrences, invoices, onClose, onSaved }) {
   const [f, setF] = useState(() => initial ? {
     exchange_date: initial.exchange_date, description: initial.description, received_value: String(initial.received_value),
     recurring_billing_id: initial.recurring_billing_id || '', notes: initial.notes || '',
   } : {
-    exchange_date: today(), description: '', received_value: '', recurring_billing_id: recurrences.length === 1 ? recurrences[0].id : '',
+    exchange_date: today(), description: '', recurring_billing_id: recurrences.length === 1 ? recurrences[0].id : '',
+    received_value: invoices?.length ? invoices.reduce((t, i) => t + i.remaining, 0).toFixed(2) : '',
     notes: '',
   })
   const [files, setFiles] = useState([])
@@ -37,6 +42,7 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
     const body = {
       exchange_date: f.exchange_date, description: f.description, received_value: num(f.received_value),
       recurring_billing_id: f.recurring_billing_id || null, notes: f.notes,
+      ...(invoices?.length && !initial ? { invoice_ids: invoices.map(i => i.id) } : {}),
     }
     try {
       const r = initial ? await api.put(`/v1/barter/${initial.id}`, body) : await api.post(`/v1/barter/companies/${companyId}`, body)
@@ -70,6 +76,12 @@ function BarterModal({ companyId, initial, recurrences, onClose, onSaved }) {
           </div>
         </div>
 
+        {invoices?.length > 0 && !initial && (
+          <div style={{ fontSize: 13, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+            Paie d'abord {invoices.length > 1 ? 'les factures choisies' : 'la facture choisie'} : {invoices.map(i => `${i.number} (${fmtMoney(i.remaining)})`).join(', ')}.
+            {' '}Ce qui dépasse paie ses autres factures ouvertes, puis ses mois de service.
+          </div>
+        )}
         <div className="form-group"><label>Notes</label><textarea rows={2} style={input} value={f.notes} onChange={e => set('notes', e.target.value)} /></div>
         <div className="form-group">
           <label>Pièces justificatives (facture, photo…)</label>
@@ -269,7 +281,42 @@ function ExchangeCard({ b, onEdit, onChanged }) {
   )
 }
 
-export default function BarterTab({ companyId }) {
+// Factures « a regler en troc » encore ouvertes (TASK-046) : leur reste est calcule par le serveur a chaque
+// affichage -- un paiement, un avoir ou un echange l'ajuste tout seul. Cocher -> barre d'actions (creer un echange...).
+function TrocDebt({ rows, companyId, companyName, onChanged }) {
+  const navigate = useNavigate()
+  const sel = useRowSelection(rows)
+  if (!rows.length) return null
+  const total = rows.reduce((t, i) => t + i.remaining, 0)
+  const picked = sel.visible.map(i => ({ ...i, company_id: companyId, company_name: companyName, status: 'envoyee', is_credit: false, barter_settlement: true, late_fee: false }))
+  return (
+    <div style={{ ...box, borderColor: '#FCD34D', background: '#FFFBEB' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
+        <label style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <input type="checkbox" checked={sel.allChecked} onChange={sel.toggleAll} title="Tout sélectionner" /> À régler en troc
+        </label>
+        <div style={{ fontWeight: 700, fontSize: 15 }}>{fmtMoney(total)}</div>
+      </div>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <tbody>
+          {rows.map(i => (
+            <tr key={i.id} style={{ borderTop: `1px solid #FDE68A`, cursor: 'pointer', background: sel.selected.has(i.id) ? '#EFF6FF' : undefined }}
+              onClick={e => sel.rowClick(e, i.id, () => navigate(`/invoices/${i.id}`))} onMouseDown={sel.noTextSelect}>
+              <td style={{ padding: '5px 6px', width: 24 }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(i.id)} onChange={e => sel.toggle(i.id, e.nativeEvent)} /></td>
+              <td style={{ padding: '5px 6px', fontWeight: 600 }}>{i.number}</td>
+              <td style={{ padding: '5px 6px', color: C.muted }}>{longDate(i.issue_date)}</td>
+              <td style={{ padding: '5px 6px', textAlign: 'right', color: C.muted }}>{fmtMoney(i.total)}{i.paid > 0 && ` · payé ${fmtMoney(i.paid)}`}</td>
+              <td style={{ padding: '5px 6px', textAlign: 'right', fontWeight: 600, whiteSpace: 'nowrap' }}>reste {fmtMoney(i.remaining)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <BulkInvoiceBar items={picked} onClear={sel.clear} onDone={onChanged} />
+    </div>
+  )
+}
+
+export default function BarterTab({ companyId, companyName }) {
   const [data, setData] = useState(null)
   const [edit, setEdit] = useState(null)        // null | 'new' | echange
   const load = () => api.get(`/v1/barter/companies/${companyId}`).then(r => setData(r.data))
@@ -283,6 +330,7 @@ export default function BarterTab({ companyId }) {
         </div>
         <button className="btn-primary" onClick={() => setEdit('new')}>+ Nouvel échange</button>
       </div>
+      <TrocDebt rows={data.troc_invoices || []} companyId={companyId} companyName={companyName} onChanged={load} />
       {/* Boite verte : suivi, puis la fiche de l'echange ; le tableau des mois en dessous */}
       {data.recurrences.filter(rb => rb.projection).map(rb => (
         <Fragment key={rb.id}>

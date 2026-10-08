@@ -321,6 +321,12 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
             raise HTTPException(status_code=404, detail=f"Facture {alloc_in.invoice_id} introuvable")
         if inv.status == "annulee":
             raise HTTPException(status_code=400, detail=f"Facture {alloc_in.invoice_id} annulee")
+        if payload.status == "confirmed" and payload.source == "manual":      # paiement groupe de l'ecran (TASK-046)
+            if inv.status == "brouillon" or inv.credit_of_id is not None:
+                raise HTTPException(status_code=400, detail=f"Facture {inv.number} : brouillon ou avoir")
+            left = inv.total - ((await settled_amounts(db, [inv.id])).get(inv.id) or Decimal("0"))
+            if Decimal(str(alloc_in.amount)) > left + Decimal("0.005"):
+                raise HTTPException(status_code=400, detail=f"Facture {inv.number} : il ne reste que {left} $ à payer")
         if company_id is None:
             company_id = inv.company_id
         elif company_id != inv.company_id:

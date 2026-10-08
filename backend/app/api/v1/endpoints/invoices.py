@@ -84,6 +84,7 @@ class InvoiceListItem(BaseModel):
     open_count: int = 0
     barter_settlement: bool = False
     late_fee_for_id: uuid.UUID | None = None
+    paid: float = 0                      # regle (paiements confirmes + avoirs) : actions de masse (TASK-046)
 
 
 class InvoiceCreate(BaseModel):
@@ -259,7 +260,10 @@ async def list_invoices(
     result = await db.execute(q)
     invs = result.scalars().all()
     open_stats = await get_open_stats(db, "invoice", [i.id for i in invs])
+    from app.api.v1.endpoints.payments import settled_amounts
+    settled = await settled_amounts(db, [i.id for i in invs])
     return [InvoiceListItem(
+        paid=float(settled.get(i.id) or 0),
         id=i.id, number=i.number, company_id=i.company_id,
         company_name=i.company.name, status=i.status,
         issue_date=i.issue_date, due_date=i.due_date,
@@ -459,6 +463,114 @@ async def delete_line(invoice_id: uuid.UUID, line_id: uuid.UUID, db: AsyncSessio
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
+
+# ── Actions de masse (TASK-046, 2026-10-08) ──────────────────────────────────
+# Lignes cochees dans une liste (case, Ctrl+clic, Maj+clic) -> barre d'actions. Ici : marquer « a regler en troc »
+# et crediter le reste. Le paiement groupe passe par POST /payments/multi, l'echange par POST /barter/companies/{id}.
+
+class BulkIdsIn(BaseModel):
+    ids: list[uuid.UUID]
+
+
+class BulkBarterFlagIn(BulkIdsIn):
+    value: bool
+
+
+async def _bulk_invoices(db: AsyncSession, ids: list) -> list[Invoice]:
+    if not ids:
+        raise HTTPException(status_code=400, detail="Aucune facture choisie")
+    invs = (await db.execute(select(Invoice).options(selectinload(Invoice.lines)).where(Invoice.id.in_(ids))
+                             .order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    if len(invs) != len(set(ids)):
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    return invs
+
+
+@router.post("/bulk/barter-flag")
+async def bulk_barter_flag(payload: BulkBarterFlagIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Marque (ou retire) « a regler en troc » sur les factures choisies (jamais sur un avoir ni un avis de retard)."""
+    if payload.value:
+        from app.api.v1.endpoints.settings import require_barter
+        await require_barter(db)
+    done = skipped = 0
+    for inv in await _bulk_invoices(db, payload.ids):
+        if inv.credit_of_id is not None or inv.late_fee_for_id is not None:
+            skipped += 1
+            continue
+        if inv.barter_settlement != payload.value:
+            inv.barter_settlement = payload.value
+            done += 1
+    await db.commit()
+    return {"done": done, "skipped": skipped}
+
+
+async def credit_remainder(db: AsyncSession, inv: Invoice, remainder: Decimal) -> Invoice:
+    """Avoir emis du reste impaye d'une facture, applique aussitot. Les taxes suivent la facture : le reste (taxes
+    comprises) est reparti en part taxable / non taxable au prorata, puis la base est ajustee au cent pres pour que
+    l'avoir egale exactement le reste. Ne fait pas le commit."""
+    from app.models.client_payment import CreditAllocation
+    from app.api.v1.endpoints.payments import _recalculate_invoice_status, recalc_credit_status
+    today = clock.today()
+    ratio = remainder / Decimal(inv.total)
+    taxable = sum((Decimal(str(l.line_total)) for l in inv.lines if l.is_taxable is not False), Decimal("0"))
+    other = sum((Decimal(str(l.line_total)) for l in inv.lines if l.is_taxable is False), Decimal("0"))
+    credit = Invoice(number=await _next_credit_number(db), company_id=inv.company_id, issue_date=today, due_date=today,
+                     status="envoyee", transmission_status="non_transmise",
+                     notes=f"Avoir du solde impayé de la facture {inv.number}", apply_tps=inv.apply_tps, apply_tvq=inv.apply_tvq,
+                     tps_rate=inv.tps_rate, tvq_rate=inv.tvq_rate, is_recurring=False, credit_of_id=inv.id)
+    db.add(credit)
+    await db.flush()
+    label = f"Crédit du solde impayé de la facture {inv.number}"
+    parts = [(p, flag) for p, flag in ((_money(taxable * ratio), True), (_money(other * ratio), False)) if p]
+    lines = [InvoiceLine(invoice_id=credit.id, description=label + ("" if flag or len(parts) == 1 else " (non taxable)"),
+                         qty=1, unit_price=-float(p), line_total=-p, sort_order=k, is_taxable=flag) for k, (p, flag) in enumerate(parts)]
+    for l in lines:
+        db.add(l)
+    await db.flush()
+    credit = await _get_inv(credit.id, db)
+    _recalc(credit)
+    target = -remainder
+    if credit.total != target and lines:
+        first = credit.lines[0]
+        base = Decimal(str(first.line_total))
+        for step in sorted((Decimal(k) / 100 for k in range(-5, 6)), key=abs):
+            first.line_total, first.unit_price = base + step, float(base + step)
+            _recalc(credit)
+            if credit.total == target:
+                break
+        if credit.total != target:                    # aucun montant de base ne tombe pile : ligne d'arrondi
+            first.line_total, first.unit_price = base, float(base)
+            _recalc(credit)
+            diff = target - credit.total
+            db.add(InvoiceLine(invoice_id=credit.id, description="Ajustement d'arrondi", qty=1, unit_price=float(diff),
+                               line_total=diff, sort_order=9, is_taxable=False))
+            await db.flush()
+            credit = await _get_inv(credit.id, db)
+            _recalc(credit)
+    db.add(CreditAllocation(credit_invoice_id=credit.id, invoice_id=inv.id, amount=remainder, applied_at=today))
+    await db.flush()
+    await _recalculate_invoice_status(inv.id, db)
+    await recalc_credit_status(credit.id, db)
+    return credit
+
+
+@router.post("/bulk/credit-remainder")
+async def bulk_credit_remainder(payload: BulkIdsIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Credite le reste impaye de chaque facture choisie : un avoir emis par facture, applique aussitot."""
+    from app.api.v1.endpoints.payments import settled_amounts
+    invs = await _bulk_invoices(db, payload.ids)
+    paid = await settled_amounts(db, [i.id for i in invs])
+    out, skipped = [], 0
+    for inv in invs:
+        remainder = _money(Decimal(inv.total) - (paid.get(inv.id) or Decimal("0")))
+        if inv.credit_of_id is not None or inv.status in ("brouillon", "annulee") or remainder <= 0:
+            skipped += 1
+            continue
+        credit = await credit_remainder(db, inv, remainder)
+        out.append({"invoice": inv.number, "credit": credit.number, "amount": float(remainder)})
+    await db.commit()
+    return {"credits": out, "skipped": skipped}
+
 
 @router.get("/late-fees/preview")
 async def late_fees_preview(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):

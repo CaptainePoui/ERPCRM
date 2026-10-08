@@ -12,6 +12,8 @@ import TelephonyTab, { CdrSection, E911AddressesSection } from './telephony/Tele
 import CdrReportsSection from '../components/CdrReportsSection'
 import BarterTab from './barter/BarterTab'
 import useFeatures from '../hooks/useFeatures'
+import useRowSelection from '../hooks/useRowSelection'
+import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import { todayIso, parseDay } from '../utils/date'
@@ -346,19 +348,23 @@ function payState(t) {
 
 const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payées'], ['retard', 'En retard'], ['avoirs', 'Avoirs']]
 
-function TransactionsTab({ companyId, filter, setFilter }) {
+function TransactionsTab({ companyId, companyName, filter, setFilter }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
-  useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions)) }, [companyId])
-  if (!rows) return <div className="loading">Chargement...</div>
+  const reload = () => api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions))
+  useEffect(() => { reload() }, [companyId])
   const live = t => t.status !== 'brouillon' && t.status !== 'annulee'
-  const shown = rows.filter(t => {
+  const shown = (rows || []).filter(t => {
     if (filter === 'ouvertes') return t.kind === 'invoice' && live(t) && t.remaining > 0.005
     if (filter === 'payees') return t.kind === 'invoice' && live(t) && t.remaining <= 0.005
     if (filter === 'retard') return t.overdue
     if (filter === 'avoirs') return t.kind === 'credit'
     return true
   })
+  // Selection multiple (TASK-046) : case, Ctrl+clic, Maj+clic -> barre d'actions en bas
+  const sel = useRowSelection(shown)
+  if (!rows) return <div className="loading">Chargement...</div>
+  const picked = sel.visible.map(t => ({ ...t, company_id: companyId, company_name: companyName, is_credit: t.kind === 'credit' }))
   // Totaux sur les factures seulement : un avoir applique est deja compte dans le « Payé » de sa facture
   const invs = shown.filter(t => live(t) && t.kind === 'invoice')
   const sum = k => invs.reduce((s, t) => s + t[k], 0)
@@ -373,6 +379,7 @@ function TransactionsTab({ companyId, filter, setFilter }) {
         <table className="cd-tx-table">
           <thead>
             <tr>
+              <th style={{ width: 28 }}><input type="checkbox" checked={sel.allChecked} onChange={sel.toggleAll} title="Tout sélectionner" /></th>
               <th>Date</th><th>Numéro</th><th>Paiement</th><th>Échéance</th>
               <th style={{ textAlign: 'right' }}>Total</th>
               <th style={{ textAlign: 'right' }}>Payé / appliqué</th>
@@ -383,7 +390,9 @@ function TransactionsTab({ companyId, filter, setFilter }) {
             {shown.map(t => {
               const st = payState(t)
               return (
-                <tr key={t.id} onClick={() => navigate(`/invoices/${t.id}`)} className="cd-tx-row">
+                <tr key={t.id} onClick={e => sel.rowClick(e, t.id, () => navigate(`/invoices/${t.id}`))} onMouseDown={sel.noTextSelect}
+                  className="cd-tx-row" style={sel.selected.has(t.id) ? { background: '#EFF6FF' } : undefined}>
+                  <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(t.id)} onChange={e => sel.toggle(t.id, e.nativeEvent)} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtD(t.issue_date)}</td>
                   <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
                     {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}{t.number}
@@ -400,12 +409,12 @@ function TransactionsTab({ companyId, filter, setFilter }) {
                 </tr>
               )
             })}
-            {shown.length === 0 && <tr><td colSpan={7} className="empty-tab">Aucune transaction</td></tr>}
+            {shown.length === 0 && <tr><td colSpan={8} className="empty-tab">Aucune transaction</td></tr>}
           </tbody>
           {shown.length > 0 && (
             <tfoot>
               <tr>
-                <td colSpan={4}>Total des {invs.length} facture{invs.length > 1 ? 's' : ''} (avoirs compris dans « Payé », brouillons et annulées exclus)</td>
+                <td colSpan={5}>Total des {invs.length} facture{invs.length > 1 ? 's' : ''} (avoirs compris dans « Payé », brouillons et annulées exclus)</td>
                 <td style={{ textAlign: 'right' }}>{money(sum('total'))}</td>
                 <td style={{ textAlign: 'right' }}>{money(sum('paid'))}</td>
                 <td style={{ textAlign: 'right' }}>{money(sum('remaining'))}</td>
@@ -414,6 +423,7 @@ function TransactionsTab({ companyId, filter, setFilter }) {
           )}
         </table>
       </div>
+      <BulkInvoiceBar items={picked} onClear={sel.clear} onDone={reload} />
     </div>
   )
 }
@@ -663,8 +673,8 @@ export default function CompanyDetail({ isNew }) {
               </div>
             )}
 
-            {slug === 'transactions' && <TransactionsTab companyId={id} filter={txFilter} setFilter={setTxFilter} />}
-            {slug === 'echanges' && features.barter && <BarterTab companyId={id} />}
+            {slug === 'transactions' && <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter} />}
+            {slug === 'echanges' && features.barter && <BarterTab companyId={id} companyName={c.name} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}

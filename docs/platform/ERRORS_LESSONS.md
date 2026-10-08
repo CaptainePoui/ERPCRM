@@ -955,3 +955,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : (1) restes troc remis dans les deux files de `best_exact` et dans « Appliquer aux plus vieilles d'abord » (commit b06b628) ; (2) cas « ne couvre aucune facture au complet → en partie sur la plus vieille » ajouté avant la livraison (commit 7ace679), re-simulé.
 
 **Leçon (à ne pas refaire)** : une marque ou un statut n'a que l'effet que Philippe lui a donné à sa création — relire cette définition avant de l'utiliser ailleurs ; et toute règle codée se teste d'abord contre les exemples chiffrés déjà acceptés par Philippe, avant les cas nouveaux.
+
+## TASK-046 — Crédit d'un échange utilisé deux fois dans la même opération
+
+**Date** : 2026-10-08 (trouvé en test, avant livraison)
+
+**On croyait** : qu'appeler deux fois `pay_open_invoices` dans la même opération (d'abord les factures cochées, puis la règle habituelle pour le surplus) était sans risque, le 2e appel voyant le crédit déjà utilisé.
+
+**Preuve** : simulation (transaction annulée) — échange de 9,20 $ créé depuis INV-111490 et INV-111656 (4,60 $ chacune) : 4 factures payées (aussi INV-111288 et INV-111324).
+
+**Cause réelle** : l'utilisation (`BarterApplication`) était ajoutée à la session (`db.add`) mais pas à la liste `b.applications` déjà chargée ; `remaining_of(b)` lit cette liste → le crédit semblait intact au 2e appel.
+
+**Correction** : `b.applications.append(...)` dans `pay_open_invoices` et `advance`. Simulation refaite : exactement les 2 factures. D'Astous au 29 juillet 2027 vérifié identique avec l'ancien et le nouveau code.
+
+**Leçon (à ne pas refaire)** : un calcul qui lit une relation déjà chargée ne voit pas ce qui a été ajouté seulement à la session — ajouter à la relation ; et tout nouvel enchaînement d'une fonction existante se teste avec des montants qui révéleraient un double comptage.
+
