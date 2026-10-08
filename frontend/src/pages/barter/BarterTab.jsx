@@ -145,7 +145,6 @@ function Gauge({ rb }) {
         <div><div style={{ color: C.muted, fontSize: 11 }}>ENCORE DÛ AU CLIENT</div><b style={{ color: g.remaining > 0 ? C.red : C.green }}>{fmtMoney(g.remaining)}</b>{g.last_day && g.remaining > 0 && <div style={{ fontSize: 12, color: C.muted }}>service jusqu'au {longDate(g.last_day)}</div>}</div>
         <div><div style={{ color: C.muted, fontSize: 11 }}>IL RECOMMENCE À PAYER</div><b>{longDate(rb.projection.resume_on)}</b></div>
       </div>
-      {g.state === 'a_venir' && <div style={{ fontSize: 12, color: C.muted, marginTop: 8 }}>Rien n'est encore fourni : il est dans sa période déjà payée. La dette commence à diminuer le {longDate(rb.projection.since)}.</div>}
     </div>
   )
 }
@@ -167,9 +166,6 @@ function Projection({ rb }) {
         </div>
       </div>
       <Gauge rb={rb} />
-      <div style={{ fontSize: 13, marginBottom: 2 }}>
-        Rythme : <b>{FREQ_LABEL[rb.frequency] || rb.frequency}</b> · {fmtMoney(rb.cycle_amount)} hors taxes par facture ({fmtMoney(p.monthly_price)} par mois au prix actuel)
-      </div>
       <div style={{ marginBottom: 10 }} />
 
       {p.resume_on && (
