@@ -5190,6 +5190,14 @@ Dépend de : TASK-S055. `CDR.src` stocké préfixé tenant ("t1001-103") — le 
 #### TASK-S055.7 [x] Filtre CDR par recherche libre (search) sur src/dst
 Paramètre `search` (`ILIKE '%...%'`) sur `GET /cdr/tenant/{id}`.
 
+#### TASK-S055.8 [ ] « Appeler » (écouter une phrase / une musique d'attente sur un poste) en échec depuis le 2026-08-14 — permission refusée sur le cache
+Date de demande : 2026-10-09 (Philippe : « le ERPCRM qui envoie la commande de faire sonner le poste pour faire écouter la musique en attente » ne marche pas quand il est à l'extérieur du bureau)
+Date(s) de travail : 2026-10-09 (diagnostic seulement)
+
+- Pas lié à l'extérieur : la commande passe par le serveur (navigateur → ERPCRM → SIPV 8022 → FreeSWITCH). Journal ERPCRM : derniers succès le 2026-08-12, puis 4 échecs sur 4 (502) : 2026-08-14 (phrase), 08-29 et 08-30 (musique d'attente), 10-07 (phrase).
+- Cause (journal sipv-backend-tls) : `PermissionError: [Errno 13]` à l'écriture de la copie dans `/usr/local/freeswitch/conf/prompts_cache/` et `/usr/local/freeswitch/conf/moh_call_cache/` (prompts.py `_copy_with_lead_silence`, moh.py `shutil.copy2`). Dossiers et fichiers appartiennent à `freeswitch:freeswitch` (755 / 644) ; le service SIPV tourne en `sipv` → ne peut ni créer ni réécrire.
+- Correction proposée (en attente du GO) : déplacer ces deux caches hors de la configuration FreeSWITCH, dans un dossier appartenant à `sipv` et lisible par FreeSWITCH, plutôt que de rouvrir les droits sur conf/ (un prochain changement de propriétaire de conf/ recasserait la fonction).
+
 ### TASK-S056 [SIPV] [x] Audit config centralisée — éliminer les IPs/chemins codés en dur restants
 **Classification: HISTORICAL**
 13 chemins absolus codés en dur trouvés à travers 6 fichiers SIPV (ERPCRM déjà propre) — tous éliminés via `APP_DIR`/`FREESWITCH_DIR` centralisés dans `config.py`. Vérifié avant déploiement (assert Python, aucun changement de comportement). Non touchés volontairement : chemins d'installation système standards (kamailio.cfg, vars.xml). Audit ponctuel fermé, aucune évolution depuis.
