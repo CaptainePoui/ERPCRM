@@ -259,7 +259,7 @@ async def get_mail(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: Use
         MailMessage.direction == "out", MailMessage.in_reply_to == m.message_id, _visible(user))
         .order_by(MailMessage.sent_at))).scalars().all() if m.message_id else []
     users = await _users(db, [m.sent_by_user_id] + [r.sent_by_user_id for r in replies])
-    own = {e.lower() for e in (await db.execute(select(Mailbox.email))).scalars().all()}
+    own = {box.email.lower()}                # « Repondre a tous » : pas a la boite qui a recu le courriel
     out.update({"to_addrs": m.to_addrs, "cc_addrs": m.cc_addrs, "body_text": m.body_text, "body_html": m.body_html,
                 "attachments": m.attachments, "can_share": box.kind == "personal" and (box.owner_user_id == user.id or mbx.sees_all(user)),
                 "sent_by": users.get(m.sent_by_user_id), **mail_send.reply_targets(m.stored_path, m.direction == "out", own),

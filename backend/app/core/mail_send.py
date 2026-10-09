@@ -139,8 +139,10 @@ def references_of(stored_path: str | None) -> str | None:
 
 
 def reply_targets(stored_path: str | None, outgoing: bool, own: set[str]) -> dict:
-    """Destinataires de « Repondre » / « Repondre a tous », lus dans le courriel garde (en-tetes exacts) : on repond a
-    Reply-To s'il existe, sinon a l'expediteur ; nos propres adresses sont retirees. Courriel envoye d'ici : ses destinataires."""
+    """Destinataires de « Repondre » / « Repondre a tous », lus dans le courriel garde (en-tetes exacts), comme Outlook :
+    Repondre -> Reply-To s'il existe, sinon l'expediteur (meme une de nos boites, ex. service@ qui ecrit a philippe@) ;
+    Repondre a tous -> en plus les destinataires, sauf la boite ou le courriel est arrive (own). Courriel envoye d'ici :
+    ses destinataires."""
     try:
         e = email.message_from_bytes(Path(stored_path).read_bytes())
     except Exception:
@@ -150,21 +152,17 @@ def reply_targets(stored_path: str | None, outgoing: bool, own: set[str]) -> dic
         vals = [mail_store.decode(v) for h in headers for v in (e.get_all(h) or [])]
         return [(n, a.strip().lower()) for n, a in email.utils.getaddresses(vals) if a and "@" in a]
 
-    def keep(pairs, seen):
+    def keep(pairs, seen, drop=own):
         out = []
         for n, a in pairs:
-            if a not in own and a not in seen:
+            if a not in drop and a not in seen:
                 seen.add(a)
                 out.append((n, a))
         return out
-    if outgoing:
-        first = get("To")
-        seen: set[str] = set()
-        return {"reply_to": fmt(keep(first, set())), "all_to": fmt(keep(first, seen)), "all_cc": fmt(keep(get("Cc"), seen))}
-    first = get("Reply-To") or get("From")
-    seen = set()
-    to = keep(first, seen) + keep(get("To"), seen)
-    return {"reply_to": fmt(keep(first, set())), "all_to": fmt(to), "all_cc": fmt(keep(get("Cc"), seen))}
+    first = get("To") if outgoing else (get("Reply-To") or get("From"))
+    seen: set[str] = set()
+    to = keep(first, seen, set()) + ([] if outgoing else keep(get("To"), seen))
+    return {"reply_to": fmt(keep(first, set(), set())), "all_to": fmt(to), "all_cc": fmt(keep(get("Cc"), seen))}
 
 
 def send_sync(box: dict, raw: bytes, recipients: list[str]) -> None:
