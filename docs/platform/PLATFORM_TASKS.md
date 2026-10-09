@@ -5825,6 +5825,7 @@ Date(s) de travail : —
   - facturation@ : factures, avoirs, avis de retard, liens Interac ;
   - portabilite@ : portabilité des DID, quand elle sera gérée dans ERPCRM (module à venir).
   - Plan révisé proposé (en attente du GO) : étape 2 boîte de réception (partagées + personnelles, classement automatique dans la fiche par adresse, « à classer » sinon, ticket/tâche) ; étape 3 répondre/écrire ; étape 4 annonces groupées depuis nepasrepondre@ ; portabilité plus tard avec le module DID.
+  - Étape 4 précisée le 2026-10-09 (Philippe : « oui, un endroit dans le courriel pour se désabonner, et dans le portail un endroit pour s'abonner, être au courant des nouveaux services disponibles pour eux, exemple : les textos sont maintenant disponibles pour le numéro de votre entreprise ») : lien de désabonnement dans chaque promotion (LCAP) ; préférence « Nouveautés et promotions » dans le portail client (s'abonner/se désabonner), par contact ; date et source du consentement gardées (preuve LCAP) ; les avis de service (hausse de prix, panne) ne dépendent pas de l'abonnement.
 
 ### TASK-047.1 [x] Boîtes de courriel et leurs fonctions (Administration → Intégrations)
 Date de demande : 2026-10-08 (Philippe : « oui, dans admin / intégration, et j'aimerais pouvoir les attribuer à certaines fonctions comme facturation à facture, mais sans empêcher que si quelqu'un me fait un paiement dans service je puisse le reconnaître »)
