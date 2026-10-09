@@ -5881,6 +5881,14 @@ Date(s) de travail : 2026-10-09
 
 ---
 
+## TASK-048 [ERPCRM+SIPV] [ ] Installation chez un client : un seul endroit pour savoir quoi changer
+Date de demande : 2026-10-09 (Philippe, après TASK-S055.8 : « c'est important d'être dynamique : si on installe chez un client, il faut savoir quoi changer et ne pas chercher partout dans le projet »)
+Date(s) de travail : —
+
+- Constaté le 2026-10-09 : les réglages sont déjà centralisés (`config.py` / `.env` de chaque serveur, TASK-031 et TASK-S056), mais aucun document ne dit, pour une nouvelle installation, quoi régler, quels dossiers créer et dans quel ordre. Le script `scripts/install.sh` de SIPV est périmé (installe Asterisk, pas FreeSWITCH ; ne crée aucun service ni dossier).
+- Exemple qui a déjà cassé : TASK-S055.8 (dossier créé à la main, perdu). À faire par le code plutôt qu'à la main quand c'est possible : `StateDirectory=sipv` dans les services systemd SIPV crée `/var/lib/sipv` au démarrage, avec le bon propriétaire.
+- À proposer à Philippe avant de construire : un guide d'installation par serveur (ERPCRM, SIPV) généré à partir des réglages réels, plus une vérification au démarrage qui signale en clair un réglage ou un dossier manquant.
+
 ## TASK-046 [ERPCRM] [x] Sélection multiple dans les listes (Maj / Ctrl) et actions de masse
 Date de demande : 2026-10-08 (Philippe : « si je garde enfoncé le Shift ou le Ctrl je peux sélectionner plusieurs transactions ; Shift = le premier et le dernier ciblés et tout entre les deux ; Ctrl = plusieurs factures/transactions séparément… un genre de popup pour faire des changements de masse ; ex. Physotech : je sélectionnerais les factures avec un paiement partiel et j'aurais l'option (si activée dans les réglages admin) de créer un échange (troc), de créditer… en vois-tu d'autres qui seraient pratiques ? »)
 Date(s) de travail : 2026-10-08
