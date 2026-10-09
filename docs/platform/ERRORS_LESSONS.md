@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-049 — Journal des actions : un NIP inscrit en clair et une lecture « en lot » qui plantait
+
+**Date** : 2026-10-09
+
+**On croyait** : (1) que masquer les champs « password / secret / token » suffisait pour ne jamais inscrire de secret ; (2) que `select(stmt.table)` dans l'événement `do_orm_execute` donnait des lignes lisibles par le nom de colonne.
+
+**Preuve** : essai annulé — `{"pin": "1234"}` inscrit tel quel ; suppression d'un contact → `KeyError: 'id'`, puis `KeyError: Column('id'…)`.
+
+**Cause réelle** : (1) le NIP de boîte vocale s'appelle `pin`, absent de la liste ; (2) dans une requête ORM, `stmt.table` est une version « annotée » de la table : ses colonnes ne sont pas les clés des lignes rendues.
+
+**Correction** : `pin` / `passcode` / `passwd` ajoutés aux secrets ; la table est reprise de `Base.metadata.tables[nom]` et les lignes lues par position.
+
+**Leçon (à ne pas refaire)** : une liste de secrets se vérifie contre les vrais noms de champs envoyés (portail, téléphonie), pas seulement contre les noms de colonnes ; tout ce qui s'accroche à chaque requête de la base doit être essayé sur une suppression en lot avant d'être mis en ligne.
+
+---
+
 ## TASK-S055.8 — Un dossier créé à la main, hors du code, a cassé « Appeler » en silence pendant 2 mois
 
 **Date** : 2026-10-09

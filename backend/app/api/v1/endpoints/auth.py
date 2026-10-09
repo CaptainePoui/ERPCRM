@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from jose import JWTError
 from app.core.database import get_db
+from app.core import audit
 from app.core.config import settings
 from app.core.security import verify_password, create_access_token, decode_token, hash_password
 from app.models.user import User
@@ -27,6 +28,7 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Compte desactive")
 
+    audit.set_user(user.id)          # la connexion est inscrite au nom de la personne
     user.last_login = datetime.now(timezone.utc)
     await db.commit()
 
@@ -53,6 +55,7 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: AsyncSession
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
 
+    audit.set_user(user.id)          # journal des actions (TASK-049) : qui fait cette requete
     return user
 
 
@@ -95,6 +98,7 @@ async def get_current_user_or_service(
     if x_api_key:
         if not settings.SIPV_API_KEY or x_api_key != settings.SIPV_API_KEY:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Cle API invalide")
+        audit.set_service("sipv")
         return None
     if token:
         try:
@@ -106,6 +110,7 @@ async def get_current_user_or_service(
         user = result.scalar_one_or_none()
         if not user or not user.is_active:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+        audit.set_user(user.id)
         return user
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentification requise")
 

@@ -12,6 +12,7 @@ from app.api.v1.endpoints.payments import next_payment_reference, settled_amount
 from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
+from app.core import audit
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
 from app.core import sipv_client, voicebox_client
 from app.core.telephony_lock import acquire_telephony_lock
@@ -172,6 +173,7 @@ async def get_portal_user(token: str = Depends(portal_oauth2), db: AsyncSession 
     u = result.scalar_one_or_none()
     if not u or not u.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Accès portail refusé")
+    audit.set_portal_user(u.id)      # journal des actions (TASK-049) : ce client du portail
     return u
 
 
@@ -198,6 +200,7 @@ async def get_portal_user_media(
     u = result.scalar_one_or_none()
     if not u or not u.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Accès portail refusé")
+    audit.set_portal_user(u.id)      # journal des actions (TASK-049) : ce client du portail
     return u
 
 
@@ -213,6 +216,7 @@ async def portal_login(payload: PortalLoginRequest, db: AsyncSession = Depends(g
         raise HTTPException(status_code=401, detail="Identifiants invalides")
     if not u.is_active:
         raise HTTPException(status_code=403, detail="Compte portail désactivé")
+    audit.set_portal_user(u.id)      # la connexion est inscrite au nom du client
     u.last_login = datetime.now(timezone.utc)
     await db.commit()
     token = create_access_token({"sub": str(u.id), "type": "portal", "company_id": str(u.company_id)}, expires_minutes=60 * 24 * 7)

@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
+from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
 from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
@@ -77,6 +78,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ActorMiddleware)
 
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
