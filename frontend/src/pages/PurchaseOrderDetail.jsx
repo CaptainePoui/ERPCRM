@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import api from '../services/api'
 import './PurchaseOrderDetail.css'
 import { parseDay } from '../utils/date'
+import HistoryButton from '../components/HistoryButton'
 
 const STATUS_STYLES = {
   brouillon:          { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
@@ -84,6 +85,7 @@ export default function PurchaseOrderDetail() {
           <span className="pod-badge" style={{ color: st.color, background: st.bg }}>{st.label}</span>
         </div>
         <div className="pod-actions">
+          <HistoryButton objectType="purchase_orders" objectId={id} title={po.po_number} />
           {transitions.map(s => (
             <button key={s} className={s === 'annule' ? 'btn-danger' : 'btn-primary'} style={{ fontSize: 13 }}
               onClick={() => changeStatus(s)} disabled={actioning}>

@@ -7,6 +7,7 @@ import { parseDay } from '../utils/date'
 import { invalidateFeatures } from '../hooks/useFeatures'
 import MailboxesPanel from '../components/MailboxesPanel'
 import CompanySettingsPanel from '../components/CompanySettingsPanel'
+import JournalPanel from '../components/JournalPanel'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
@@ -52,9 +53,9 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets', 'Graphe de connaissance', 'Entreprise']
+const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets', 'Graphe de connaissance', 'Entreprise', 'Journal']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets', 'graphe-connaissance', 'entreprise']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets', 'graphe-connaissance', 'entreprise', 'journal']
 
 export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -94,6 +95,7 @@ export default function Admin() {
         {tab === 5 && <TicketsSettingsPanel />}
         {tab === 6 && <KnowledgeGraphViewer />}
         {tab === 7 && <CompanySettingsPanel />}
+        {tab === 8 && <JournalPanel />}
       </div>
     </div>
   )

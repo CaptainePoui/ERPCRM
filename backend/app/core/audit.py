@@ -84,12 +84,54 @@ class ActorMiddleware:
             await self.app(scope, recv, snd)
         finally:
             _actor.reset(token)
+        if method == "GET" and status.get("code") == 200 and d.get("source") in ("ecran", "portail"):
+            m = _VIEW_PATH.match(scope.get("path", ""))
+            if m:
+                try:
+                    await _log_view(d, VIEW_ROUTES[m.group(1)], m.group(2))
+                except Exception as e:
+                    print(f"[audit] consultation non inscrite ({scope.get('path')}): {e}")
         if method in WRITE_METHODS and status.get("code", 500) < 400 and not d.get("logged") and d.get("source") in ("ecran", "portail"):
             headers = {k.decode().lower(): v.decode(errors="replace") for k, v in scope.get("headers", [])}
             try:
                 await _log_request(d, method, scope.get("path", ""), headers.get("content-type", ""), bytes(body))
             except Exception as e:                      # le journal ne doit jamais casser une action deja faite
                 print(f"[audit] action non inscrite ({method} {scope.get('path')}): {e}")
+
+
+# Consultations (qui a ouvert telle fiche) : seulement si l'option est allumee (Administration -> Journal), eteinte au depart
+VIEW_ROUTES = {"companies": "companies", "contacts": "contacts", "catalogue": "catalogue_items", "invoices": "invoices",
+               "devis": "devis", "tickets": "tickets", "purchase-orders": "purchase_orders", "purchases/bills": "bills",
+               "employees": "employees", "tasks": "tasks", "portal/invoices": "invoices"}
+_VIEW_PATH = re.compile(r"^/api/v1/(" + "|".join(re.escape(k) for k in sorted(VIEW_ROUTES, key=len, reverse=True))
+                        + r")/([0-9a-fA-F-]{36})$")
+_views = {"on": False, "at": 0.0}
+
+
+def views_changed(on: bool) -> None:
+    _views.update(on=on, at=__import__("time").monotonic())
+
+
+async def _views_on() -> bool:
+    import time
+    if time.monotonic() - _views["at"] > 30:              # relu chaque 30 s (l'autre serveur, -tls, voit le changement)
+        from app.core.database import AsyncSessionLocal
+        from app.api.v1.endpoints.settings import get_setting
+        async with AsyncSessionLocal() as s:
+            _views.update(on=(await get_setting(s, "audit_views_enabled")) == "true", at=time.monotonic())
+    return _views["on"]
+
+
+async def _log_view(d: dict, table: str, object_id: str) -> None:
+    if not await _views_on():
+        return
+    from app.core.database import AsyncSessionLocal
+    from app.models.entity_log import EntityLog
+    row = _row({"user_id": d.get("user_id"), "portal_user_id": d.get("portal_user_id"), "source": d.get("source")},
+               table, object_id.lower(), "viewed", now=datetime.now(timezone.utc))
+    async with AsyncSessionLocal() as s:
+        await s.execute(EntityLog.__table__.insert(), [row])
+        await s.commit()
 
 
 def _mask(v):
@@ -185,14 +227,40 @@ def _key(obj, mapper) -> str | None:
     return str(pk[0]) if len(pk) == 1 else "/".join(str(p) for p in pk)
 
 
+# Fiche parente : la premiere de cette liste vers laquelle l'objet pointe (une ligne de facture -> sa facture)
+PARENT_TABLES = ["invoices", "devis", "tickets", "purchase_orders", "bills", "tasks", "expenses", "recurring_bills",
+                 "recurring_expenses", "company_recurring_billings", "ecom_orders", "barter_exchanges", "vendor_credits",
+                 "client_payments", "vendor_payments", "bank_statement_imports", "employees"]
+
+
+def _parent(obj, mapper, table_name: str | None = None, values: dict | None = None):
+    """(table, cle) de la fiche parente, lue sur l'objet (ou sur la ligne lue avant une modification en lot)."""
+    table = mapper.persist_selectable if mapper is not None else None
+    fks = table.foreign_keys if table is not None else ()
+    best = None
+    for fk in fks:
+        target = fk.column.table.name
+        if target not in PARENT_TABLES or target == (table_name or table.name):
+            continue
+        if values is not None:
+            val = values.get(fk.parent.name)
+        else:
+            prop = mapper.get_property_by_column(fk.parent)
+            val = getattr(obj, prop.key, None)
+        if val is not None and (best is None or PARENT_TABLES.index(target) < PARENT_TABLES.index(best[0])):
+            best = (target, str(val))
+    return best or (None, None)
+
+
 def _entity_id(obj):
     from app.models.company import Company
     from app.models.contact import Contact
     return obj.id if isinstance(obj, (Company, Contact)) else None
 
 
-def _row(who, table, object_id, action, *, field=None, old=None, new=None, description=None, entity_id=None, now=None):
-    return {"id": uuid.uuid4(), "entity_id": entity_id, "contact_id": None, "user_id": who["user_id"],
+def _row(who, table, object_id, action, *, field=None, old=None, new=None, description=None, entity_id=None, now=None,
+         parent=(None, None)):
+    return {"id": uuid.uuid4(), "parent_type": parent[0], "parent_id": parent[1], "entity_id": entity_id, "contact_id": None, "user_id": who["user_id"],
             "portal_user_id": who["portal_user_id"], "source": who["source"], "action": action, "field_name": field,
             "old_value": old, "new_value": new, "description": description, "object_type": table, "object_id": object_id,
             "created_at": now}
@@ -242,7 +310,7 @@ def _after_flush(session, flush_context):
                 m = inspect(o).mapper
                 # une fiche supprimee n'existe plus : la ligne garde seulement sa sorte et sa cle
                 rows.append(_row(who, table, _key(o, m), kind, description=_label(o),
-                                 entity_id=_entity_id(o) if kind == "created" else None, now=now))
+                                 entity_id=_entity_id(o) if kind == "created" else None, now=now, parent=_parent(o, m)))
 
     for obj in session.dirty:
         if not session.is_modified(obj, include_collections=False):
@@ -255,6 +323,7 @@ def _after_flush(session, flush_context):
         skip_cols = SKIP_COLUMNS | SKIP_TABLE_COLUMNS.get(table, set())
         ent = _entity_id(obj)
         oid = _key(obj, mapper)
+        par = _parent(obj, mapper)
         for attr in mapper.column_attrs:
             if attr.key in skip_cols or (ent is not None and (ent, attr.key) in hand):
                 continue
@@ -268,9 +337,10 @@ def _after_flush(session, flush_context):
             field = attr.key if table != "app_settings" else (getattr(obj, "key", None) or attr.key)
             if _secret(table, attr.key, obj):
                 rows.append(_row(who, table, oid, "field_change", field=field, description="Modifié (valeur secrète, non inscrite)",
-                                 entity_id=ent, now=now))
+                                 entity_id=ent, now=now, parent=par))
             else:
-                rows.append(_row(who, table, oid, "field_change", field=field, old=_fmt(old), new=_fmt(new), entity_id=ent, now=now))
+                rows.append(_row(who, table, oid, "field_change", field=field, old=_fmt(old), new=_fmt(new), entity_id=ent, now=now,
+                                 parent=par))
 
     conn = session.connection()
     if rows or manual:
@@ -308,7 +378,9 @@ def _bulk(state):
                                               execution_options={"_audit_skip": True}).all()]
     pk = [c.name for c in table.primary_key.columns]
     rows = []
+    bulk_mapper = next((m for m in Base.registry.mappers if m.persist_selectable is table), None)
     for r in found:
+        par = _parent(None, bulk_mapper, values=r) if bulk_mapper is not None else (None, None)
         oid = "/".join(str(r[c]) for c in pk) if pk else None
         ent = r.get("id") if table.name in ("companies", "contacts") else None
         if state.is_delete:
@@ -322,7 +394,7 @@ def _bulk(state):
                     if hit:
                         label, kind = _label(dict(zip([c.name for c in t.c], hit))), t.name
                         break
-            rows.append(_row(who, kind, oid, "deleted", description=label, now=now))
+            rows.append(_row(who, kind, oid, "deleted", description=label, now=now, parent=par))
             continue
         skip_cols = SKIP_COLUMNS | SKIP_TABLE_COLUMNS.get(table.name, set())
         for col, val in (stmt._values or {}).items():
@@ -334,9 +406,9 @@ def _bulk(state):
             if old == new:
                 continue
             if _secret(table.name, name):
-                rows.append(_row(who, table.name, oid, "field_change", field=name, description="Modifié (valeur secrète, non inscrite)", entity_id=ent, now=now))
+                rows.append(_row(who, table.name, oid, "field_change", field=name, description="Modifié (valeur secrète, non inscrite)", entity_id=ent, now=now, parent=par))
             else:
-                rows.append(_row(who, table.name, oid, "field_change", field=name, old=_fmt(old), new=_fmt(new), entity_id=ent, now=now))
+                rows.append(_row(who, table.name, oid, "field_change", field=name, old=_fmt(old), new=_fmt(new), entity_id=ent, now=now, parent=par))
     if rows:
         _note_logged(len(rows))
         state.session.connection().execute(EntityLog.__table__.insert(), rows)

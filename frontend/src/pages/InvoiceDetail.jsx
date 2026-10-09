@@ -6,6 +6,7 @@ import './Invoices.css'
 import { todayIso } from '../utils/date'
 import useFeatures from '../hooks/useFeatures'
 import { downloadFile } from '../utils/download'
+import HistoryButton from '../components/HistoryButton'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -240,6 +241,7 @@ export default function InvoiceDetail() {
           <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
+          <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
           {editable && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
         </div>
       </div>

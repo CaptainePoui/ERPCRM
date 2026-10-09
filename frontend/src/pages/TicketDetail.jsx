@@ -5,6 +5,7 @@ import NewTaskModal from '../components/NewTaskModal'
 import TimerNavigationPrompt from '../components/TimerNavigationPrompt'
 import './Tickets.css'
 import { parseDay } from '../utils/date'
+import HistoryButton from '../components/HistoryButton'
 
 const PRIORITY_LABELS = {
   faible:   { label: 'Faible',    color: '#6B7280' },
@@ -424,6 +425,7 @@ export default function TicketDetail() {
             : <button className="btn-primary" onClick={() => changeStatus('ferme')} style={{ fontSize: 12 }}>✓ Fermer</button>
           }
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
+          <HistoryButton objectType="tickets" objectId={id} title={ticket.title} compact />
           {!closed && <button className="btn-danger" onClick={deleteTicket}>Supprimer</button>}
         </div>
       </div>

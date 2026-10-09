@@ -22,8 +22,11 @@ class EntityLog(Base):
     description: Mapped[str | None] = mapped_column(Text)
     object_type: Mapped[str | None] = mapped_column(String(60))       # table de l'objet (catalogue_items, invoices...)
     object_id: Mapped[str | None] = mapped_column(String(100))        # sa cle
+    parent_type: Mapped[str | None] = mapped_column(String(60))       # fiche parente (ligne -> sa facture, note -> son ticket)
+    parent_id: Mapped[str | None] = mapped_column(String(100))
     portal_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("portal_users.id", ondelete="SET NULL"))
     source: Mapped[str] = mapped_column(String(20), default="ecran", server_default="ecran")  # ecran | portail | automatique | sipv
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     user: Mapped["User"] = relationship("User", foreign_keys=[user_id])
+    portal_user: Mapped["PortalUser"] = relationship("PortalUser", foreign_keys=[portal_user_id])

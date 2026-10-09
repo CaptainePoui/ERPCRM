@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './CatalogueDetail.css'
+import HistoryButton from '../components/HistoryButton'
 
 const API_BASE = '/api'   // photos servies sous /api/uploads : visibles au bureau comme a l'exterieur
 
@@ -98,12 +99,15 @@ export default function CatalogueDetail() {
             </p>
           </div>
         </div>
-        <button
-          className={item.is_active ? 'btn-secondary' : 'btn-primary'}
-          onClick={() => save('is_active', !item.is_active)}
-        >
-          {item.is_active ? 'Désactiver' : 'Activer'}
-        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <HistoryButton objectType="catalogue_items" objectId={id} title={item.name} />
+          <button
+            className={item.is_active ? 'btn-secondary' : 'btn-primary'}
+            onClick={() => save('is_active', !item.is_active)}
+          >
+            {item.is_active ? 'Désactiver' : 'Activer'}
+          </button>
+        </div>
       </div>
 
       <div className="catd-grid">

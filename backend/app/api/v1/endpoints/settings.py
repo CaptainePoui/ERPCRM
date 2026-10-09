@@ -44,6 +44,8 @@ DEFAULTS = {
     # Avis Interac lus dans toutes les boites de courriel (TASK-047.1, Administration -> Integrations)
     "interac_mail_enabled": "true",
     "interac_mail_since": "",
+    # Journal des actions (TASK-049) : noter aussi qui a ouvert telle fiche -- eteint au depart
+    "audit_views_enabled": "false",
 }
 
 

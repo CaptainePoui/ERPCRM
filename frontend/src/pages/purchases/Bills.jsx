@@ -8,6 +8,7 @@ import {
 } from './common'
 import { recurringState } from './Expenses'
 import { PaymentModal } from './Payments'
+import HistoryButton from '../../components/HistoryButton'
 
 const toNum = v => parseFloat(v) || 0
 const lineAmount = l => Math.round(toNum(l.qty) * toNum(l.rate) * 100) / 100
@@ -167,6 +168,7 @@ export function PurchaseBillDetail() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {!isNew && bill.balance > 0 && <button className="btn-primary" onClick={() => setPaying(true)}>Enregistrer un paiement</button>}
+          {!isNew && <HistoryButton objectType="bills" objectId={id} title={bill.bill_number || bill.vendor_name} />}
           {!isNew && settled === 0 && <button className="btn-danger" onClick={remove}>Supprimer</button>}
         </div>
       </div>

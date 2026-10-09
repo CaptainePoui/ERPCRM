@@ -16,6 +16,7 @@ from app.api.v1.endpoints import bank
 from app.api.v1.endpoints import taxes
 from app.api.v1.endpoints import purchases
 from app.api.v1.endpoints import barter
+from app.api.v1.endpoints import journal
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
@@ -86,6 +87,7 @@ app.include_router(companies.router, prefix="/api/v1/companies", tags=["companie
 app.include_router(contacts.router, prefix="/api/v1/contacts", tags=["contacts"])
 app.include_router(ref_data.router, prefix="/api/v1/ref", tags=["ref"])
 app.include_router(logs.router, prefix="/api/v1/entities", tags=["logs"])
+app.include_router(journal.router, prefix="/api/v1/journal", tags=["journal"])
 app.include_router(search.router, prefix="/api/v1/search", tags=["search"])
 app.include_router(catalogue.router, prefix="/api/v1/catalogue", tags=["catalogue"])
 app.include_router(invoices.router, prefix="/api/v1/invoices", tags=["invoices"])

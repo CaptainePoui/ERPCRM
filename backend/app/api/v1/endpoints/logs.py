@@ -59,6 +59,9 @@ ACTION_LABELS = {
     "photo_added": "Photo d'installation ajoutée",
     "photo_removed": "Photo d'installation retirée",
     "created": "Création",
+    "deleted": "Suppression",
+    "request": "Action",
+    "viewed": "Consultation",
 }
 
 
@@ -92,7 +95,7 @@ def _out(l: EntityLog) -> LogEntryOut:
         old_value=l.old_value,
         new_value=l.new_value,
         description=l.description,
-        user_name=l.user.full_name if l.user else "Système",
+        user_name=l.user.full_name if l.user else f"{l.portal_user.full_name} (portail)" if l.portal_user else {"sipv": "SIPV"}.get(l.source, "Système"),
         created_at=l.created_at,
         can_revert=l.action == "field_change" and bool(l.field_name),
     )
@@ -110,7 +113,7 @@ async def get_logs(
     q = (
         select(EntityLog)
         .where(or_(EntityLog.entity_id == entity_id, EntityLog.contact_id == entity_id))
-        .options(selectinload(EntityLog.user))
+        .options(selectinload(EntityLog.user), selectinload(EntityLog.portal_user))
         .order_by(EntityLog.created_at.desc())
     )
     if search:
@@ -189,5 +192,5 @@ async def revert_log(log_id: uuid.UUID, db: AsyncSession = Depends(get_db), curr
     )
     db.add(new_log)
     await db.commit()
-    result = await db.execute(select(EntityLog).where(EntityLog.id == new_log.id).options(selectinload(EntityLog.user)))
+    result = await db.execute(select(EntityLog).where(EntityLog.id == new_log.id).options(selectinload(EntityLog.user), selectinload(EntityLog.portal_user)))
     return _out(result.scalar_one())

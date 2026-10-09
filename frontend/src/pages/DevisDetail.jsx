@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './Invoices.css'
 import { downloadFile } from '../utils/download'
+import HistoryButton from '../components/HistoryButton'
 
 const STATUS_LABELS = {
   brouillon: { label: 'Brouillon', color: '#6B7280' },
@@ -113,6 +114,7 @@ export default function DevisDetail() {
           ))}
           <button className="btn-secondary" onClick={() => downloadFile(`/v1/devis/${id}/pdf`, `devis-${d.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
+          <HistoryButton objectType="devis" objectId={id} title={`Devis ${d.number}`} />
           {editable && <button className="btn-danger" onClick={deleteDevis}>Supprimer</button>}
         </div>
       </div>
