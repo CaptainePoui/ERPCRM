@@ -875,7 +875,11 @@ async def update_contact(contact_id: uuid.UUID, payload: ContactUpdate, db: Asyn
     contact = result.scalar_one_or_none()
     if not contact:
         raise HTTPException(status_code=404, detail="Contact introuvable")
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    if "email" in changes and (changes["email"] or "").strip().lower() != (contact.email or "").strip().lower():
+        from app.core.portal_access import guard_contact_email
+        await guard_contact_email(db, contact_id, changes["email"])     # sa connexion au portail suit ce courriel
+    for field, value in changes.items():
         old_value = getattr(contact, field, None)
         if str(old_value) != str(value):
             db.add(EntityLog(entity_id=contact_id, user_id=user.id if user else None, action="field_change",

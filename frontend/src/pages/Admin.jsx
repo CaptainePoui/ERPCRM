@@ -866,7 +866,7 @@ function PortalUsersPanel() {
 function PortalUserModal({ onClose, onSaved }) {
   const [companies, setCompanies] = useState([])
   const [form, setForm] = useState({
-    company_id: '', full_name: '', email: '', password: '',
+    company_id: '', contact_id: '', password: '',
     can_view_invoices: true, can_view_tickets: true, can_create_tickets: false, can_view_equipment: false,
     // Défauts TASK-S055 (demande explicite 2026-08-07) : les options utiles au
     // quotidien activées d'emblée, le reste (nom du poste, DND, écoute des
@@ -881,12 +881,18 @@ function PortalUserModal({ onClose, onSaved }) {
   const [error, setError] = useState('')
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  const [contacts, setContacts] = useState([])
   useEffect(() => {
-    api.get('/v1/companies/').then(r => setCompanies(r.data))
+    api.get('/v1/companies').then(r => setCompanies(r.data))
+    api.get('/v1/contacts').then(r => setContacts(r.data))
   }, [])
+  // Nom et courriel : ceux de la fiche contact (lies, jamais copies -- TASK-014.2)
+  const companyContacts = contacts.filter(c => (c.companies || []).some(co => co.company_id === form.company_id))
+  const picked = contacts.find(c => c.id === form.contact_id)
 
   async function save() {
-    if (!form.company_id || !form.email || !form.full_name || !form.password) { setError('Tous les champs obligatoires'); return }
+    if (!form.company_id || !form.contact_id || !form.password) { setError('Tous les champs obligatoires'); return }
+    if (!picked?.email) { setError('Ce contact n’a pas de courriel : ajoutez-le à sa fiche, il sert à se connecter au portail'); return }
     setSaving(true)
     setError('')
     try {
@@ -904,13 +910,20 @@ function PortalUserModal({ onClose, onSaved }) {
         {error && <div className="adm-form-error">{error}</div>}
         <div className="form-group">
           <label>Compagnie *</label>
-          <select value={form.company_id} onChange={e => f('company_id', e.target.value)} autoFocus>
+          <select value={form.company_id} onChange={e => { f('company_id', e.target.value); f('contact_id', '') }} autoFocus>
             <option value="">— Sélectionner —</option>
             {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <div className="form-group"><label>Nom complet *</label><input value={form.full_name} onChange={e => f('full_name', e.target.value)} /></div>
-        <div className="form-group"><label>Courriel *</label><input type="email" value={form.email} onChange={e => f('email', e.target.value)} /></div>
+        <div className="form-group">
+          <label>Contact *</label>
+          <select value={form.contact_id} onChange={e => f('contact_id', e.target.value)} disabled={!form.company_id}>
+            <option value="">— Sélectionner —</option>
+            {companyContacts.map(c => <option key={c.id} value={c.id}>{`${c.first_name || ''} ${c.last_name || ''}`.trim()}{c.email ? ` · ${c.email}` : ' · (aucun courriel)'}</option>)}
+          </select>
+          {picked && <div style={{ fontSize: 12, color: picked.email ? '#6B7280' : '#DC2626', marginTop: 4 }}>
+            {picked.email ? `Se connectera avec ${picked.email} — le courriel de sa fiche : s’il change dans la fiche, sa connexion suit.` : 'Aucun courriel dans sa fiche : ajoutez-le d’abord.'}</div>}
+        </div>
         <div className="form-group"><label>Mot de passe *</label><input type="password" value={form.password} onChange={e => f('password', e.target.value)} /></div>
         <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>PERMISSIONS</div>

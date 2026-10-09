@@ -203,8 +203,8 @@ async def _work_box(db, emp):
     return (await db.execute(select(Mailbox).where(Mailbox.kind == "personal", Mailbox.owner_user_id == emp.user_id))).scalars().first()
 
 
-def _mail_out(emp, mb) -> dict:
-    return {"personal_email": emp.contact.email, "work_email": mb.email if mb else None,
+def _mail_out(emp, mb, login: str | None = None) -> dict:
+    return {"personal_email": emp.contact.email, "work_email": login or (mb.email if mb else None), "login_email": login,
             "mailbox_id": str(mb.id) if mb else None, "has_password": bool(mb and mb.password_enc),
             "sync_since": mb.sync_since.isoformat() if mb and mb.sync_since else None,
             "last_sync_at": mb.last_sync_at if mb else None, "sync_error": mb.sync_error if mb else None,
@@ -214,18 +214,30 @@ def _mail_out(emp, mb) -> dict:
 @router.get("/{contact_id}/mail")
 async def get_employee_mail(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     emp = await _get_employee(contact_id, db)
-    return _mail_out(emp, await _work_box(db, emp))
+    return _mail_out(emp, await _work_box(db, emp), await _login(db, emp))
+
+
+async def _login(db, emp) -> str | None:
+    if not emp.user_id:
+        return None
+    return (await db.execute(select(User.email).where(User.id == emp.user_id))).scalar_one_or_none()
 
 
 @router.put("/{contact_id}/mail")
-async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
+    """Courriel professionnel = son courriel de connexion a ERPCRM (un seul endroit, core/accounts.py) et l'adresse de sa
+    boite personnelle ; courriel personnel = celui de sa fiche contact."""
     from app.core import mailboxes as mbx
+    from app.core.accounts import set_login_email
+    from app.core.portal_access import guard_contact_email
     from app.core.crypto import encrypt
     from app.models.mailbox import Mailbox
     emp = await _get_employee(contact_id, db)
     personal = (p.personal_email or "").strip().lower() or None
     if personal and "@" not in personal:
         raise HTTPException(status_code=400, detail="Courriel personnel invalide")
+    if personal != (emp.contact.email or "").lower() or None:
+        await guard_contact_email(db, emp.contact.id, personal)
     emp.contact.email = personal
     work = (p.work_email or "").strip().lower() or None
     mb = await _work_box(db, emp)
@@ -242,9 +254,12 @@ async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: Async
                 await db.delete(mb)
             mb = other                                  # deja ajoutee dans Administration : elle devient sa boite personnelle
             mb.kind, mb.owner_user_id = "personal", emp.user_id
+        if not mb and not p.password:
+            await set_login_email(db, await db.get(User, emp.user_id), work, me)
+            await db.commit()                          # courriel de connexion seulement, sans boite copiee ici
+            emp = await _get_employee(contact_id, db)
+            return _mail_out(emp, None, await _login(db, emp))
         if not mb:
-            if not p.password:
-                raise HTTPException(status_code=400, detail="Entrez le mot de passe de la boîte")
             host = mbx.default_host()
             if not host:
                 raise HTTPException(status_code=400, detail="Serveur de courriel inconnu : ajoutez d'abord une boîte dans Administration → Intégrations")
@@ -260,9 +275,12 @@ async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: Async
     elif mb:
         await db.delete(mb)                            # rien n'est touche dans la boite elle-meme
         mb = None
+    if work:
+        await db.flush()
+        await set_login_email(db, await db.get(User, emp.user_id), work, me)   # sa connexion suit (boite deja a jour)
     await db.commit()
     emp = await _get_employee(contact_id, db)
-    return _mail_out(emp, await _work_box(db, emp))
+    return _mail_out(emp, await _work_box(db, emp), await _login(db, emp))
 
 
 # ── Salary payments ───────────────────────────────────────────────────────────

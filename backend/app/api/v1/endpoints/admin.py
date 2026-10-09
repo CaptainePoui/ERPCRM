@@ -70,7 +70,9 @@ async def list_users(db: AsyncSession = Depends(get_db), _: User = Depends(requi
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)
 async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
-    existing = await db.execute(select(User).where(User.email == payload.email))
+    from sqlalchemy import func
+    payload.email = payload.email.strip().lower()
+    existing = await db.execute(select(User).where(func.lower(User.email) == payload.email))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Adresse courriel déjà utilisée")
     try:
@@ -97,6 +99,9 @@ async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession 
     data = payload.model_dump(exclude_unset=True)
     if "password" in data:
         u.hashed_password = hash_password(data.pop("password"))
+    if "email" in data:                     # courriel de connexion : sa boite personnelle suit, inscrit au journal
+        from app.core.accounts import set_login_email
+        await set_login_email(db, u, data.pop("email"), admin)
     if "role" in data:
         try:
             data["role"] = UserRole(data["role"])

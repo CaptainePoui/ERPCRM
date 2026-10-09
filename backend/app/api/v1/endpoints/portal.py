@@ -55,7 +55,7 @@ class PortalUserOut(BaseModel):
     id: uuid.UUID
     contact_id: uuid.UUID | None
     company_id: uuid.UUID
-    email: str
+    email: str | None          # celui de la fiche contact (jamais copie)
     full_name: str
     is_active: bool
     can_view_invoices: bool
@@ -83,11 +83,9 @@ class PortalUserOut(BaseModel):
     last_login: datetime | None
 
 class PortalUserCreate(BaseModel):
-    contact_id: uuid.UUID | None = None
+    contact_id: uuid.UUID                  # courriel et nom : ceux de la fiche contact
     company_id: uuid.UUID
-    email: str
     password: str
-    full_name: str
     can_view_invoices: bool = True
     can_view_tickets: bool = True
     can_create_tickets: bool = False
@@ -111,8 +109,6 @@ class PortalUserCreate(BaseModel):
     notes: str | None = None
 
 class PortalUserUpdate(BaseModel):
-    email: str | None = None
-    full_name: str | None = None
     password: str | None = None
     is_active: bool | None = None
     can_view_invoices: bool | None = None
@@ -146,6 +142,12 @@ def _perms(u: PortalUser) -> dict:
         "can_view_equipment": u.can_view_equipment,
         **{f: getattr(u, f) for f in TELEPHONY_PERM_FIELDS},
     }
+
+async def _reload(db, uid) -> PortalUser:
+    """Relu avec sa fiche contact (nom et courriel lus a la source)."""
+    return (await db.execute(select(PortalUser).where(PortalUser.id == uid)
+                             .execution_options(populate_existing=True))).unique().scalar_one()
+
 
 def _out(u: PortalUser) -> PortalUserOut:
     return PortalUserOut(
@@ -203,8 +205,10 @@ async def get_portal_user_media(
 
 @router.post("/login", response_model=PortalTokenResponse)
 async def portal_login(payload: PortalLoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(PortalUser).where(PortalUser.email == payload.email))
-    u = result.scalar_one_or_none()
+    # courriel de la fiche contact (lie, jamais copie) ; un meme courriel ne sert qu'a un seul acces portail
+    rows = (await db.execute(select(PortalUser).join(Contact, Contact.id == PortalUser.contact_id)
+                             .where(func.lower(Contact.email) == (payload.email or "").strip().lower()))).unique().scalars().all()
+    u = rows[0] if len(rows) == 1 else None
     if not u or not verify_password(payload.password, u.hashed_password):
         raise HTTPException(status_code=401, detail="Identifiants invalides")
     if not u.is_active:
@@ -1068,26 +1072,29 @@ async def telephony_company_cdr(page: int = 1, extension: str | None = None, u: 
 
 @router.get("/users", response_model=list[PortalUserOut])
 async def list_portal_users(company_id: uuid.UUID | None = None, contact_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    q = select(PortalUser).order_by(PortalUser.full_name)
+    q = select(PortalUser).join(Contact, Contact.id == PortalUser.contact_id).order_by(Contact.first_name, Contact.last_name)
     if company_id:
         q = q.where(PortalUser.company_id == company_id)
     if contact_id:
         q = q.where(PortalUser.contact_id == contact_id)
     result = await db.execute(q)
-    return [_out(u) for u in result.scalars().all()]
+    return [_out(u) for u in result.unique().scalars().all()]
 
 @router.post("/users", response_model=PortalUserOut, status_code=status.HTTP_201_CREATED)
 async def create_portal_user(payload: PortalUserCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    existing = await db.execute(select(PortalUser).where(PortalUser.email == payload.email))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Courriel déjà utilisé")
+    from app.core.portal_access import check_email_free
+    contact = await db.get(Contact, payload.contact_id)
+    if not contact:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    if (await db.execute(select(PortalUser.id).where(PortalUser.contact_id == contact.id))).first():
+        raise HTTPException(status_code=400, detail="Ce contact a déjà un accès portail")
+    await check_email_free(db, contact.email, contact.id)
     data = payload.model_dump()
     pw = data.pop("password")
     u = PortalUser(**data, hashed_password=hash_password(pw))
     db.add(u)
     await db.commit()
-    await db.refresh(u)
-    return _out(u)
+    return _out(await _reload(db, u.id))
 
 @router.put("/users/{user_id}", response_model=PortalUserOut)
 async def update_portal_user(user_id: uuid.UUID, payload: PortalUserUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
@@ -1101,8 +1108,7 @@ async def update_portal_user(user_id: uuid.UUID, payload: PortalUserUpdate, db: 
     for k, v in data.items():
         setattr(u, k, v)
     await db.commit()
-    await db.refresh(u)
-    return _out(u)
+    return _out(await _reload(db, u.id))
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_portal_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):

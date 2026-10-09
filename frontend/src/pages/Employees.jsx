@@ -256,16 +256,16 @@ function SignatureModal({ employee, onClose, onSaved }) {
         {mail && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <div className="form-group" style={{ margin: 0 }}>
-              <label>Courriel professionnel (sa boîte)</label>
+              <label>Courriel professionnel (connexion et sa boîte)</label>
               <input style={{ width: '100%', boxSizing: 'border-box' }} value={mailForm.work_email} placeholder="prenom@simpleip.tel"
                 onChange={e => setMailForm({ ...mailForm, work_email: e.target.value })} />
               {mailForm.work_email && (
                 <input style={{ width: '100%', boxSizing: 'border-box', marginTop: 6 }} type="password" autoComplete="new-password" value={mailForm.password}
-                  placeholder={mail.has_password && mailForm.work_email === mail.work_email ? '•••••••• (enregistré, chiffré — vide = le garder)' : 'Mot de passe de la boîte'}
+                  placeholder={mail.has_password && mailForm.work_email === mail.work_email ? '•••••••• (enregistré, chiffré — vide = le garder)' : 'Mot de passe de la boîte (pour la voir dans Courriels)'}
                   onChange={e => setMailForm({ ...mailForm, password: e.target.value })} />
               )}
               <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
-                Apparaît dans Courriels, visible seulement par cet employé et le patron.
+                Sert à se connecter à ERPCRM ; sa boîte apparaît dans Courriels, visible seulement par lui et le patron.
                 {mail.mailbox_id && <> {' '}<button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '1px 8px' }} onClick={testBox} disabled={testMsg?.busy}>{testMsg?.busy ? '…' : 'Tester'}</button></>}
               </div>
               {mail.sync_error && <div style={{ fontSize: 12, color: '#DC2626' }}>Copie impossible : {mail.sync_error}</div>}

@@ -1647,8 +1647,9 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
   const isEdit = !!existing
   const primaryCompany = contact.companies?.find(x => x.is_primary) || contact.companies?.[0]
   const [companyId, setCompanyId] = useState(existing?.company_id || primaryCompany?.company_id || '')
-  const [fullName, setFullName] = useState(existing?.full_name || `${contact.first_name} ${contact.last_name}`.trim())
-  const [email, setEmail] = useState(existing?.email || contact.email || '')
+  // Nom et courriel : ceux de la fiche (lies, jamais copies -- TASK-014.2) ; le client change son courriel dans sa fiche
+  const fullName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+  const email = contact.email || ''
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [form, setForm] = useState(() => {
@@ -1667,8 +1668,9 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
   }
 
   async function save() {
-    if (!companyId || !fullName.trim() || !email.trim() || (!isEdit && !password)) {
-      setError('Compagnie, nom, courriel et mot de passe sont requis')
+    if (!email) { setError('Ce contact n’a pas de courriel : ajoutez-le à sa fiche, il sert à se connecter au portail'); return }
+    if (!companyId || (!isEdit && !password)) {
+      setError('Compagnie et mot de passe sont requis')
       return
     }
     setSaving(true)
@@ -1676,13 +1678,13 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
     try {
       let r
       if (isEdit) {
-        const payload = { full_name: fullName, email, ...form }
+        const payload = { ...form }
         if (password) payload.password = password
         r = await api.put(`/v1/portal/users/${existing.id}`, payload)
       } else {
         r = await api.post('/v1/portal/users', {
           contact_id: contact.id, company_id: companyId,
-          full_name: fullName, email, password, ...form,
+          password, ...form,
         })
       }
       onSaved(r.data)
@@ -1703,8 +1705,11 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
             {(contact.companies || []).map(co => <option key={co.company_id} value={co.company_id}>{co.company_name}</option>)}
           </select>
         </div>
-        <div className="form-group"><label>Nom complet *</label><input value={fullName} onChange={e => setFullName(e.target.value)} /></div>
-        <div className="form-group"><label>Courriel *</label><input type="email" value={email} onChange={e => setEmail(e.target.value)} /></div>
+        <div className="form-group">
+          <label>Se connecte avec</label>
+          <div style={{ fontSize: 14 }}>{fullName} · {email || <span style={{ color: '#DC2626' }}>aucun courriel dans la fiche</span>}</div>
+          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Le courriel de la fiche : s’il change dans la fiche, sa connexion suit.</div>
+        </div>
         <div className="form-group">
           <label>{isEdit ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe *'}</label>
           <div style={{ display: 'flex', gap: 8 }}>

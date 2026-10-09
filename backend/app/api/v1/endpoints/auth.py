@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import func, select
 from jose import JWTError
 from app.core.database import get_db
 from app.core.config import settings
@@ -18,7 +18,7 @@ oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", aut
 
 @router.post("/login", response_model=TokenResponse)
 async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == payload.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == (payload.email or "").strip().lower()))
     user = result.scalar_one_or_none()
 
     if not user or not verify_password(payload.password, user.hashed_password):
