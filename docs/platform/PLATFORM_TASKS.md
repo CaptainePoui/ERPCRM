@@ -751,6 +751,17 @@ Date(s) de travail : 2026-10-09
   - Vérifié (transactions annulées, rien gardé) : portail — création, 2e accès refusé, connexion en majuscules, courriel changé dans la fiche → ancien refusé / nouveau accepté, conflit 409, courriel vidé refusé, liste et /me lisent la fiche, journal ; employé — courriel de connexion changé → boîte suit + journal, doublon refusé. Écrans (Playwright) : les deux fenêtres d'accès portail, en-tête « Philippe Normandeau ».
   - Défaut trouvé en chemin et corrigé : la fenêtre « Nouvel accès » d'Administration appelait `/v1/companies/` → redirigé sans l'autorisation → 401 → déconnexion ; corrigé (`/v1/companies`). Même défaut repéré, non touché (hors demande) : `PurchaseOrderDetail.jsx` appelle `/v1/catalogue/` (307 → 401).
 
+### TASK-014.3 [x] ⚙ Mon compte dans l'engrenage, réglages de l'entreprise dans Admin, inflation retirée
+Date de demande : 2026-10-09 (Philippe : « j'ai entré l'adresse de Simple IP!!! ça c'est l'entreprise ? ça pas rapport avec mon user ?? … enlève cette petite boîte [Inflation] … Rapport de commissions vendeurs, ça va dans "employé", et toutes ces autres options vont dans "admin", pas dans un engrenage » ; puis « l'engrenage, c'est pour les settings du user… mon user c'est tout » ; « enlève tout l'inflation… les prix changent différemment de chaque fournisseur, je gère les articles séparément »)
+Date(s) de travail : 2026-10-09
+
+- ⚙ (à côté du nom) = « Mon compte », seulement la personne connectée (`pages/MyAccount.jsx`, route /settings gardée) : nom, rôle et courriel de connexion lus sur le compte (`/auth/me`, pas la copie gardée à la connexion) ; « Changer mon mot de passe » (le nom en haut n'est plus cliquable) ; « Ma signature de courriel » = la signature de sa fiche Employé (`GET/PUT /employees/me/signature`, même règle que la fiche, 404 si le compte n'est relié à aucun employé).
+- Administration → nouvel onglet « Entreprise » (`components/CompanySettingsPanel.jsx`, ex-`pages/Settings.jsx`) : coordonnées (PDF), fuseau horaire, frais de retard (toujours éteints), taux de service et taxes, numérotation — inchangés, seulement déplacés.
+- Employés → « Commissions vendeurs » : le % (déplacé du taux de service) et le rapport au même endroit.
+- Inflation retirée en entier : boîte et `POST /settings/apply-inflation` (+ arrondi X4,95/X9,95) — elle changeait d'un coup le prix de tout le catalogue, sans retour ; Philippe fixe chaque prix à la main selon le fournisseur.
+- Vérifié : /employees/me/signature, /auth/me, /settings = 200 ; apply-inflation = 404 ; écrans Mon compte, Admin → Entreprise, Employés → rapport (Playwright, aucune erreur). Enregistrer la signature depuis Mon compte non essayé (aurait réécrit sa vraie signature).
+- Constaté, non touché : un changement de prix d'article du catalogue n'est PAS inscrit au journal (`catalogue.py` n'écrit aucune entrée) — Philippe croyait que oui.
+
 ## TASK-015 [ERPCRM] [x] Tâches & Agenda — liste, vues mois/semaine/jour, checklist, templates, rappels
 Classification: CURRENT
 

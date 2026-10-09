@@ -167,6 +167,30 @@ async def list_login_accounts(db: AsyncSession = Depends(get_db), _: User = Depe
     return [{"id": str(u.id), "full_name": u.full_name, "email": u.email} for u in rows]
 
 
+# Ma signature (⚙ Mon compte, TASK-014.3) : la meme signature, celle de la fiche employe reliee au compte connecte.
+async def _my_employee(db: AsyncSession, user: User) -> Employee:
+    emp = (await db.execute(select(Employee).where(Employee.user_id == user.id))).scalar_one_or_none()
+    if not emp:
+        raise HTTPException(status_code=404, detail="Votre compte n'est relié à aucune fiche employé (Employés → ✉ Courriels et signature)")
+    return emp
+
+
+@router.get("/me/signature", response_model=SignatureIO)
+async def get_my_signature(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    return SignatureIO(html=(await _my_employee(db, user)).email_signature or "")
+
+
+@router.put("/me/signature", response_model=SignatureIO)
+async def save_my_signature(payload: SignatureIO, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    if len(payload.html.encode()) > MAX_SIGNATURE_BYTES:
+        raise HTTPException(status_code=400, detail="Signature trop lourde (3 Mo maximum) : réduisez la taille des images")
+    emp = await _my_employee(db, user)
+    from app.core.signature import is_empty
+    emp.email_signature = None if is_empty(payload.html) else payload.html
+    await db.commit()
+    return SignatureIO(html=emp.email_signature or "")
+
+
 @router.get("/{contact_id}/signature", response_model=SignatureIO)
 async def get_signature(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     return SignatureIO(html=(await _get_employee(contact_id, db)).email_signature or "")

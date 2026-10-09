@@ -144,6 +144,8 @@ export default function Employees() {
         </div>
       )}
 
+      <CommissionsSection />
+
       {/* ── Modal ajouter employé ── */}
       {showAdd && (
         <div className="modal-overlay">
@@ -188,6 +190,81 @@ export default function Employees() {
             </div>
           </div>
         </div>
+      )}
+    </div>
+  )
+}
+
+// Commissions vendeurs (deplacees de l'engrenage, TASK-014.3, 2026-10-09) : le % et le rapport au meme endroit.
+function CommissionsSection() {
+  const [rate, setRate] = useState('')
+  const [saved, setSaved] = useState('')
+  const [msg, setMsg] = useState('')
+  const [year, setYear] = useState(new Date().getFullYear())
+  const [month, setMonth] = useState(new Date().getMonth() + 1)
+  const [rows, setRows] = useState(null)
+  useEffect(() => { api.get('/v1/settings').then(r => { setRate(String(r.data.commission_rate)); setSaved(String(r.data.commission_rate)) }) }, [])
+
+  async function saveRate() {
+    setMsg('')
+    try {
+      const r = await api.put('/v1/settings', { commission_rate: parseFloat(rate) })
+      setRate(String(r.data.commission_rate)); setSaved(String(r.data.commission_rate)); setMsg('Enregistré')
+    } catch (e) { setMsg(e.response?.data?.detail?.[0]?.msg || e.response?.data?.detail || 'Refusé') }
+  }
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Commissions vendeurs</h3>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>Commission vendeur (%)</label>
+          <input type="number" step="0.1" value={rate} onChange={e => setRate(e.target.value)} style={{ width: 80 }} />
+        </div>
+        <button className="btn-primary" onClick={saveRate} disabled={rate === '' || rate === saved}>Sauvegarder</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>Année</label>
+          <input type="number" value={year} onChange={e => setYear(+e.target.value)} style={{ width: 90 }} />
+        </div>
+        <div className="form-group" style={{ marginBottom: 0 }}>
+          <label>Mois</label>
+          <select value={month} onChange={e => setMonth(+e.target.value)}>
+            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+          </select>
+        </div>
+        <button className="btn-secondary" onClick={() => api.get(`/v1/employees/commissions?year=${year}&month=${month}`).then(r => setRows(r.data))}>Générer le rapport</button>
+      </div>
+      {rows !== null && (
+        rows.length === 0
+          ? <div style={{ marginTop: 16, color: '#9CA3AF', fontSize: 14 }}>Aucune commission pour cette période.</div>
+          : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
+              <thead>
+                <tr style={{ background: '#F9FAFB' }}>
+                  {['Vendeur', 'Facturation clients', `Commission (${saved}%)`, ''].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Vendeur' ? 'left' : 'right', fontWeight: 600, color: '#374151' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((c, i) => (
+                  <tr key={i} style={{ borderTop: '1px solid #F3F4F6' }}>
+                    <td style={{ padding: '8px 12px', fontWeight: 500 }}>{c.first_name} {c.last_name}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6B7280' }}>{fmt(c.invoiced_total)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{fmt(c.commission_amount)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                      <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => alert(`Commission à payer: ${fmt(c.commission_amount)} à ${c.first_name} ${c.last_name}`)}>
+                        Payer
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
       )}
     </div>
   )

@@ -5,7 +5,6 @@ import {
   IconBuilding, IconUser, IconPackage, IconReceipt, IconTicket, IconFileText,
   IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank, IconPercent, IconCart, IconMail,
 } from './Icons'
-import ChangePasswordModal from './ChangePasswordModal'
 import './Layout.css'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
@@ -151,7 +150,6 @@ function GlobalSearch() {
 
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [pwd, setPwd] = useState(false)
   const location = useLocation()
   const group = activeGroup(location.pathname)
 
@@ -165,13 +163,12 @@ export default function Layout({ user, onLogout, children }) {
         </div>
         <GlobalSearch />
         <div className="layout-user">
-          <NavLink to="/settings" className={({ isActive }) => `settings-btn${isActive ? ' active' : ''}`} title="Paramètres">⚙</NavLink>
-          <span className="user-name" onClick={() => setPwd(true)} style={{ cursor: 'pointer' }} title="Changer mon mot de passe">{user.full_name}</span>
+          <NavLink to="/settings" className={({ isActive }) => `settings-btn${isActive ? ' active' : ''}`} title="Mon compte">⚙</NavLink>
+          <span className="user-name">{user.full_name}</span>
           <span className="user-role">{user.role}</span>
           <button onClick={onLogout} className="logout-btn">Déconnexion</button>
         </div>
       </header>
-      {pwd && <ChangePasswordModal onClose={() => setPwd(false)} />}
 
       <div className="layout-body">
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}

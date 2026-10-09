@@ -1,4 +1,3 @@
-import math
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -73,14 +72,6 @@ async def require_barter(db: AsyncSession) -> None:
         raise HTTPException(status_code=400, detail="Les échanges (troc) ne sont pas activés (Administration → Intégrations)")
 
 
-def _round_psychological(price: float) -> float:
-    """Round UP to nearest price ending in X4.95 or X9.95 (i.e. n*5 - 0.05)."""
-    n = math.ceil((price + 0.05) / 5)
-    if n < 1:
-        n = 1
-    return round(n * 5 - 0.05, 2)
-
-
 class SettingsOut(BaseModel):
     hourly_rate: float
     labour_round_minutes: int
@@ -121,10 +112,6 @@ class SettingsIn(BaseModel):
     late_fee_grace_days: int | None = Field(default=None, ge=0, le=365)
     late_fee_interval_days: int | None = Field(default=None, ge=7, le=365)
     barter_enabled: bool | None = None
-
-
-class InflationPayload(BaseModel):
-    percent: float  # e.g. 3.5 for 3.5%
 
 
 @router.get("", response_model=SettingsOut)
@@ -208,32 +195,6 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         from app.core.tax_reminders import ensure_tax_filing_tasks
         await ensure_tax_filing_tasks(db)
     return await get_settings(db)
-
-
-class InflationResult(BaseModel):
-    updated: int
-    preview: list[dict]
-
-
-@router.post("/apply-inflation", response_model=InflationResult)
-async def apply_inflation(payload: InflationPayload, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Apply inflation % to all catalogue items NOT in the "connaissance" family (exclues -- leur prix suit le taux horaire, pas l'inflation)."""
-    r = await db.execute(
-        select(CatalogueItem).where(
-            CatalogueItem.type != "connaissance",
-            CatalogueItem.is_active == True,
-            CatalogueItem.price > 0,
-        )
-    )
-    items = r.scalars().all()
-    preview = []
-    for item in items:
-        old_price = item.price
-        new_price = _round_psychological(old_price * (1 + payload.percent / 100))
-        preview.append({"id": str(item.id), "name": item.name, "old_price": old_price, "new_price": new_price})
-        item.price = new_price
-    await db.commit()
-    return InflationResult(updated=len(items), preview=preview)
 
 
 # ── Numerotation des documents (2026-10-04) ──────────────────────────────────

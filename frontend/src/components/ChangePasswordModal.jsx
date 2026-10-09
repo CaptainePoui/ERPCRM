@@ -1,4 +1,4 @@
-// Changer son propre mot de passe (clic sur son nom, en haut a droite -- 2026-10-09). Le mot de passe actuel est
+// Changer son propre mot de passe (⚙ Mon compte, en haut a droite -- 2026-10-09). Le mot de passe actuel est
 // demande ; jamais affiche ni envoye ailleurs.
 import { useState } from 'react'
 import api from '../services/api'

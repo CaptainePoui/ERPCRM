@@ -23,7 +23,7 @@ import Shop from './pages/Shop'
 import RDV from './pages/RDV'
 import Privacy from './pages/Privacy'
 import { EcomOrderDetail } from './pages/EcomOrders'
-import Settings from './pages/Settings'
+import MyAccount from './pages/MyAccount'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
 import Mail from './pages/Mail'
@@ -78,7 +78,7 @@ function InternalApp() {
         <Route path="/admin" element={<Admin />} />
         <Route path="/ecom-orders" element={<Navigate to="/commandes?tab=web" replace />} />
         <Route path="/ecom-orders/:id" element={<EcomOrderDetail />} />
-        <Route path="/settings" element={<Settings />} />
+        <Route path="/settings" element={<MyAccount />} />
         <Route path="/employees" element={<Employees />} />
         <Route path="/tasks" element={<Tasks />} />
         <Route path="/mail" element={<Mail />} />
