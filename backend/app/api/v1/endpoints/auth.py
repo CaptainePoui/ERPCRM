@@ -1,12 +1,13 @@
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Header, status
 from fastapi.security import OAuth2PasswordBearer
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from jose import JWTError
 from app.core.database import get_db
 from app.core.config import settings
-from app.core.security import verify_password, create_access_token, decode_token
+from app.core.security import verify_password, create_access_token, decode_token, hash_password
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse, UserMe
 
@@ -118,3 +119,23 @@ async def me(current_user: User = Depends(get_current_user)):
         role=current_user.role,
         is_active=current_user.is_active,
     )
+
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
+
+@router.post("/change-password")
+async def change_password(payload: PasswordChange, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Chaque utilisateur change son propre mot de passe (en haut a droite, clic sur son nom -- 2026-10-09)."""
+    if not verify_password(payload.current_password, user.hashed_password):
+        raise HTTPException(status_code=400, detail="Mot de passe actuel incorrect")
+    new = payload.new_password
+    if len(new) < 10:
+        raise HTTPException(status_code=400, detail="Au moins 10 caractères")
+    if new == payload.current_password:
+        raise HTTPException(status_code=400, detail="Le nouveau mot de passe doit être différent de l'actuel")
+    user.hashed_password = hash_password(new)
+    await db.commit()
+    return {"ok": True}

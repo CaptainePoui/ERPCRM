@@ -732,6 +732,15 @@ Fichier : frontend/src/pages/Admin.jsx (commit a29bfdc).
 
 ---
 
+
+### TASK-014.2 [~] Comptes de connexion — changer son mot de passe, compte de départ jamais recréé, un seul compte pour Philippe
+Date de demande : 2026-10-09 (Philippe : « admin@simpleip.ca n'existe même pas comme adresse… mets philippe@ comme administrateur et enlève admin@simpleip.ca, et je veux une place pour changer mon mot de passe, SimpleIP2026! c'est trop facile » ; puis « on peut aussi juste changer le courriel et effacer celui que je n'ai jamais utilisé »)
+Date(s) de travail : 2026-10-09
+
+- Constaté : Philippe se connecte depuis toujours avec admin@simpleip.ca (« Administrateur ») ; philippe@simpleip.ca (gestionnaire) n'a jamais servi à se connecter, mais sa fiche Employé, sa boîte philippe@ et sa signature y sont reliées (TASK-047.3 : philippe@ non proposée à l'envoi, signature absente). Les deux comptes portent de l'historique (admin@ : 67 entrées de journal, 12 entrées de tickets, 5 reçus, 4 relevés, 5 paiements de taxes ; philippe@ : 147 entrées de journal, fiche Employé, boîte, 2 tâches, gestionnaire de 2 compagnies, 1 courriel envoyé) — liens sans suppression en cascade : un compte ne peut pas être effacé sans d'abord déplacer ces liens.
+- `core/seed.py` recréait admin@simpleip.ca (et philippe@simpleip.ca) au démarrage s'il manquait, avec le mot de passe par défaut : un compte retiré serait revenu avec un mot de passe connu. Corrigé : le premier compte n'est créé que sur une installation neuve (aucun utilisateur), jamais recréé ensuite.
+- Changer son mot de passe : clic sur son nom en haut à droite → fenêtre (actuel, nouveau ×2, afficher) ; `POST /auth/change-password` (actuel vérifié, 10 caractères ou plus, différent de l'actuel). Vérifié : refus mot de passe actuel incorrect / trop court / identique ; changement réussi sur un compte factice en mémoire (aucun vrai mot de passe touché) ; écran (Playwright, aucune erreur).
+- Fusion des deux comptes : plan présenté à Philippe, en attente de son GO.
 ## TASK-015 [ERPCRM] [x] Tâches & Agenda — liste, vues mois/semaine/jour, checklist, templates, rappels
 Classification: CURRENT
 

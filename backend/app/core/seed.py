@@ -62,22 +62,15 @@ async def seed_defaults(db: AsyncSession) -> None:
         if not result.scalar_one_or_none():
             db.add(Function(name=name))
 
-    result = await db.execute(select(User).where(User.email == "admin@simpleip.ca"))
-    if not result.scalar_one_or_none():
+    # Premier compte : seulement sur une installation neuve (aucun utilisateur). Jamais recree ensuite -- un compte
+    # retire ou renomme ne doit pas revenir au redemarrage avec un mot de passe connu (2026-10-09). A changer des la
+    # premiere connexion (clic sur son nom, en haut a droite).
+    if not (await db.execute(select(User.id).limit(1))).first():
         db.add(User(
             email="admin@simpleip.ca",
             full_name="Administrateur",
             hashed_password=hash_password("SimpleIP2026!"),
             role=UserRole.admin,
-        ))
-
-    result = await db.execute(select(User).where(User.email == "philippe@simpleip.ca"))
-    if not result.scalar_one_or_none():
-        db.add(User(
-            email="philippe@simpleip.ca",
-            full_name="Philippe Normandeau",
-            hashed_password=hash_password("SimpleIP2026!"),
-            role=UserRole.manager,
         ))
 
     await db.commit()
