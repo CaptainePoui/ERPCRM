@@ -291,6 +291,14 @@ mémoire infra).
 
 ---
 
+### TASK-004.4 [x] Photos des articles visibles hors du bureau (et photos d'installation)
+Date de demande : 2026-10-09 (Philippe : « pourquoi je n'ai pas accès aux photos des articles quand je me connecte à l'extérieur du bureau ? »)
+Date(s) de travail : 2026-10-09
+
+- Cause : Catalogue.jsx / CatalogueDetail.jsx chargeaient les images depuis `VITE_API_BASE` (http://192.168.1.9:8010, adresse interne du bureau), alors que l'API passe par `/api` (portail.simpleip.tel → vite preview → proxy `/api`). Même famille : Shop.jsx (`/uploads/…` sans proxy → page HTML) et photos d'installation de la fiche compagnie (`/api/uploads/…` → 404, n'existait pas).
+- Correction : `main.py` sert aussi le dossier `uploads/` sous `/api/uploads` ; catalogue, fiche article et boutique utilisent `/api` + `image_url` (rien changé en base).
+- Vérifié : par https://portail.simpleip.tel, 128 images sur 128 chargées dans le catalogue.
+
 ## TASK-005 [ERPCRM] [x] Factures — création, lignes, paiements, modal mise à jour prix
 Classification: HISTORICAL
 
@@ -4308,6 +4316,13 @@ plus besoin d'accès SSH pour connecter son propre Dropbox/Google Drive.
 
 ---
 
+### TASK-035.1 [x] Le dossier storage/ ajouté à la sauvegarde
+Date de demande : 2026-10-09 (Philippe : « corrige les sauvegardes »)
+Date(s) de travail : 2026-10-09
+
+- Constaté pendant TASK-047.2 (Boîte de réception) : l'archive (`workers/backup_runner.py` `_build_dump`) ne contenait que la base, `uploads/` et la configuration. `storage/` (pièces des échanges en troc, reçus d'achats, relevés bancaires, courriels copiés .eml) n'était pas sauvegardé.
+- Ajout de `STORAGE_DIR` à l'archive (sous `storage/`). Vérifié : une archive de test contient bien les 233 fichiers de `storage/` (≈ 55 Mo au total), puis a été supprimée.
+
 ## TASK-036 [ERPCRM] [x] Aucun popup ne doit se fermer au clic extérieur (règle globale, tous les modaux)
 Classification: HISTORICAL
 
@@ -5851,8 +5866,8 @@ Date(s) de travail : 2026-10-09
 - Qui voit quoi : partagées → toute l'équipe ; personnelle → son propriétaire et le patron (rôles gestionnaire/administrateur, `mailboxes.sees_all`) ; « Partager avec l'équipe » par courriel. Envoi seulement (nepasrepondre@) → jamais lue.
 - Fiche Employé : bouton « ✉ Courriels et signature » : courriel professionnel (sa boîte personnelle, mot de passe chiffré, Tester ; une boîte déjà ajoutée dans Administration est reprise sans retaper le mot de passe) et courriel personnel (adresse de sa fiche contact : paies, lui écrire). Administration → Intégrations : type de boîte, « copier depuis le », nombre de courriels copiés, dernière copie, erreur.
 - Mis en place avec Philippe : philippe@ → boîte personnelle de Philippe (reprise de la boîte qu'il venait d'ajouter) ; nepasrepondre@ → envoi seulement.
-- Vérifié : 214 courriels copiés (service 132, facturation 56, philippe 22, portabilité 1), 64 classés automatiquement, 14 contacts créés ; signatures lues (ex. Thomas Pelletier : téléphone, cellulaire, titre) ; lu/non lu aller-retour prouvé sur un vrai courriel (ERPCRM → boîte et boîte → ERPCRM), remis dans son état ; écrans vérifiés (Playwright). Avant la règle des adresses de service, 3 contacts génériques ont été créés (« Services - ScopServ », « Facturation » ScopServ, « LNP SCOPCLOUD ») : à garder ou retirer selon Philippe.
-- Constaté, non corrigé (hors demande) : la sauvegarde (`workers/backup_runner.py`) n'inclut que `uploads/` — `storage/` (pièces de troc, reçus, relevés bancaires, courriels .eml) n'est pas sauvegardé.
+- Vérifié : 214 courriels copiés (service 132, facturation 56, philippe 22, portabilité 1), 64 classés automatiquement, 14 contacts créés ; signatures lues (ex. Thomas Pelletier : téléphone, cellulaire, titre) ; lu/non lu aller-retour prouvé sur un vrai courriel (ERPCRM → boîte et boîte → ERPCRM), remis dans son état ; écrans vérifiés (Playwright). Avant la règle des adresses de service, 3 contacts génériques ont été créés (« Services - ScopServ », « Facturation » ScopServ, « LNP SCOPCLOUD ») : Philippe (2026-10-09) : garder « Services » (ses techs) et « LNP SCOPCLOUD » (portabilités), retirer « Facturation » (il n'y écrit jamais) → retiré par l'écran (DELETE /contacts, copie de la base avant) ; ses 3 courriels restent dans ScopServ.
+- Constaté : la sauvegarde n'incluait pas `storage/` → corrigé dans TASK-035.1 (Le dossier storage/ ajouté à la sauvegarde).
 
 ---
 

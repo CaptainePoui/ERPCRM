@@ -97,7 +97,7 @@ function CatalogueView({ items, loading, onAdd, cart }) {
           return (
             <div key={item.id} className="shop-card">
               {item.image_url ? (
-                <img src={item.image_url} alt={item.name} className="shop-card-img" />
+                <img src={`/api${item.image_url}`} alt={item.name} className="shop-card-img" />
               ) : (
                 <div className="shop-card-img-placeholder">📦</div>
               )}

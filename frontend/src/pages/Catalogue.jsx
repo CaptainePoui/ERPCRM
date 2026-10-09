@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './Catalogue.css'
 
-const API_BASE = import.meta.env.VITE_API_BASE || ''
+const API_BASE = '/api'   // photos servies sous /api/uploads : visibles au bureau comme a l'exterieur
 
 export default function Catalogue() {
   const [items, setItems] = useState([])

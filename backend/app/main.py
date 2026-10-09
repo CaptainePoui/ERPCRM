@@ -115,6 +115,9 @@ app.include_router(taxes.router, prefix="/api/v1/taxes", tags=["taxes"])
 app.include_router(purchases.router, prefix="/api/v1/purchases", tags=["purchases"])
 app.include_router(barter.router, prefix="/api/v1/barter", tags=["barter"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
+# Meme dossier sous /api (2026-10-09) : passe par le meme chemin que l'API (portail.simpleip.tel -> /api), donc les photos
+# du catalogue et des installations s'affichent aussi hors du bureau (avant : adresse interne 192.168.1.9 seulement).
+app.mount("/api/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="api_uploads")
 
 
 @app.get("/api/health")

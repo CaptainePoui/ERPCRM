@@ -31,6 +31,9 @@ log = logging.getLogger("backup_runner")
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 UPLOADS_DIR = BACKEND_DIR / "uploads"
+# Fichiers gardes par ERPCRM hors uploads/ (TASK-035.1, 2026-10-09 : absent jusqu'ici) : pieces des echanges (troc),
+# recus d'achats, releves bancaires, courriels copies (.eml) -- certains n'existent nulle part ailleurs.
+STORAGE_DIR = BACKEND_DIR / "storage"
 
 # Capacite de reconstruction complete du serveur (TASK-035, demande de
 # Philippe 2026-08-15) : serveur neuf + restauration de cette archive +
@@ -51,7 +54,7 @@ CONFIG_PATHS = [
 
 
 def _build_dump() -> Path:
-    """pg_dump + uploads/ + config serveur (voir CONFIG_PATHS) dans une seule
+    """pg_dump + uploads/ + storage/ + config serveur (voir CONFIG_PATHS) dans une seule
     archive tar.gz temporaire."""
     parsed = urlparse(settings.DATABASE_URL_SYNC)
     tmp_dir = Path(tempfile.mkdtemp(prefix="erpcrm_backup_"))
@@ -72,6 +75,8 @@ def _build_dump() -> Path:
         tar.add(sql_path, arcname="erpcrm_db.sql")
         if UPLOADS_DIR.is_dir():
             tar.add(UPLOADS_DIR, arcname="uploads")
+        if STORAGE_DIR.is_dir():
+            tar.add(STORAGE_DIR, arcname="storage")
         for src, arcname in CONFIG_PATHS:
             try:
                 if src.exists():
