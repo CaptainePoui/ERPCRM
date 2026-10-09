@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-S055.8 — Un dossier créé à la main, hors du code, a cassé « Appeler » en silence pendant 2 mois
+
+**Date** : 2026-10-09
+
+**On croyait** : que les caches `conf/prompts_cache` et `conf/moh_call_cache` (créés une fois à la main en `sipv:sipv` dans le dossier de FreeSWITCH) resteraient en place.
+
+**Preuve** : journal ERPCRM, 4 échecs sur 4 (502) entre le 2026-08-14 et le 2026-10-07 ; journal SIPV `PermissionError [Errno 13]` ; dossiers repassés à `freeswitch:freeswitch` le 2026-08-12.
+
+**Cause réelle** : un réglage de droits fait à la main, dans un dossier qui appartient à un autre service, est défait par le premier changement de propriétaire sur ce dossier. Rien ne le signalait : l'écran montrait seulement un échec générique, et Philippe l'a pris pour un problème d'accès extérieur.
+
+**Correction** : caches déplacés dans `settings.CALL_CACHE_DIR` (`/var/lib/sipv/call_cache`, appartient à sipv, lisible par FreeSWITCH).
+
+**Leçon (à ne pas refaire)** : un dossier où un service doit écrire vit dans un dossier qui appartient à ce service, avec son chemin en réglage — jamais dans le dossier d'un autre service avec des droits rouverts à la main. Quand un symptôme est rapporté « seulement de l'extérieur », vérifier d'abord le journal des échecs partout avant d'accepter la piste réseau.
+
+---
+
 ## TASK-S061 — Tirets doubles dans un commentaire XML cassent tout le dialplan d'un tenant
 
 **Date** : 2026-08-20 (3e récidive du même piège que TASK-S050/TASK-S058)

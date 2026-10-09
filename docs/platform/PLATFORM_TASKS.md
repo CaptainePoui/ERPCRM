@@ -5190,13 +5190,15 @@ Dépend de : TASK-S055. `CDR.src` stocké préfixé tenant ("t1001-103") — le 
 #### TASK-S055.7 [x] Filtre CDR par recherche libre (search) sur src/dst
 Paramètre `search` (`ILIKE '%...%'`) sur `GET /cdr/tenant/{id}`.
 
-#### TASK-S055.8 [ ] « Appeler » (écouter une phrase / une musique d'attente sur un poste) en échec depuis le 2026-08-14 — permission refusée sur le cache
+#### TASK-S055.8 [x] « Appeler » (écouter une phrase / une musique d'attente sur un poste) en échec depuis le 2026-08-14 — permission refusée sur le cache
 Date de demande : 2026-10-09 (Philippe : « le ERPCRM qui envoie la commande de faire sonner le poste pour faire écouter la musique en attente » ne marche pas quand il est à l'extérieur du bureau)
-Date(s) de travail : 2026-10-09 (diagnostic seulement)
+Date(s) de travail : 2026-10-09 (diagnostic, puis correction après GO)
 
 - Pas lié à l'extérieur : la commande passe par le serveur (navigateur → ERPCRM → SIPV 8022 → FreeSWITCH). Journal ERPCRM : derniers succès le 2026-08-12, puis 4 échecs sur 4 (502) : 2026-08-14 (phrase), 08-29 et 08-30 (musique d'attente), 10-07 (phrase).
 - Cause (journal sipv-backend-tls) : `PermissionError: [Errno 13]` à l'écriture de la copie dans `/usr/local/freeswitch/conf/prompts_cache/` et `/usr/local/freeswitch/conf/moh_call_cache/` (prompts.py `_copy_with_lead_silence`, moh.py `shutil.copy2`). Dossiers et fichiers appartiennent à `freeswitch:freeswitch` (755 / 644) ; le service SIPV tourne en `sipv` → ne peut ni créer ni réécrire.
-- Correction proposée (en attente du GO) : déplacer ces deux caches hors de la configuration FreeSWITCH, dans un dossier appartenant à `sipv` et lisible par FreeSWITCH, plutôt que de rouvrir les droits sur conf/ (un prochain changement de propriétaire de conf/ recasserait la fonction).
+- Ces deux dossiers avaient été créés à la main en `sipv:sipv` (commentaires du code : « PAS persistant via code/migration ») et sont repassés à `freeswitch` le 2026-08-12 : la fonction a cassé sans que personne le voie pendant près de 2 mois.
+- Correction (GO de Philippe, 2026-10-09) : nouveau réglage `CALL_CACHE_DIR` dans `config.py` SIPV (défaut `/var/lib/sipv/call_cache`), `PROMPT_CACHE_DIR = CALL_CACHE_DIR/prompts` (prompts.py) et `MOH_CALL_CACHE_DIR = CALL_CACHE_DIR/moh` (moh.py). Dossier créé une fois : `sudo install -d -o sipv -g sipv -m 755 /var/lib/sipv /var/lib/sipv/call_cache` — à refaire si le serveur déménage (noté dans config.py). Plutôt que de rouvrir les droits sur conf/, qu'un prochain changement de propriétaire recasserait. Les anciens dossiers sous conf/ sont laissés en place (plus utilisés).
+- Preuve réelle, poste 102 (t1001-102) via les vrais endpoints ERPCRM : musique d'attente « decontract » (`POST /api/v1/server/moh/{id}/call` → 200, décroché, lecture de `/var/lib/sipv/call_cache/moh/…wav` sans erreur, raccroché NORMAL_CLEARING) ; phrase « sood » (`POST /api/v1/telephony/prompts/{id}/call` → 200, « done playing file » sur `/var/lib/sipv/call_cache/prompts/…wav`). Philippe a entendu l annonce au téléphone (« bonjour soud »).
 
 ### TASK-S056 [SIPV] [x] Audit config centralisée — éliminer les IPs/chemins codés en dur restants
 **Classification: HISTORICAL**
