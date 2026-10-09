@@ -2,7 +2,7 @@
 Fonctions et envoi : app/core/mailboxes.py ; avis Interac (lus dans toutes les boites) : app/core/interac_mail.py."""
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -30,6 +30,8 @@ class MailboxIn(BaseModel):
     smtp_port: int = Field(default=465, ge=1, le=65535)
     functions: list[str] = []
     is_active: bool = True
+    kind: str = Field(default="shared", pattern="^(shared|send_only)$")    # boite personnelle : fiche Employe
+    sync_since: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
 
 
 class InteracIn(BaseModel):
@@ -37,10 +39,13 @@ class InteracIn(BaseModel):
     since: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
 
 
-def _out(m: Mailbox) -> dict:
+def _out(m: Mailbox, owner: str | None = None, count: int | None = None) -> dict:
     return {"id": str(m.id), "email": m.email, "display_name": m.display_name, "username": m.username, "host": m.host,
             "imap_port": m.imap_port, "smtp_port": m.smtp_port, "functions": list(m.functions or []), "is_active": m.is_active,
-            "has_password": bool(m.password_enc), "last_check_at": m.last_check_at, "last_error": m.last_error}
+            "has_password": bool(m.password_enc), "last_check_at": m.last_check_at, "last_error": m.last_error,
+            "kind": m.kind, "owner_user_id": str(m.owner_user_id) if m.owner_user_id else None, "owner_name": owner,
+            "sync_since": m.sync_since.isoformat() if m.sync_since else None, "last_sync_at": m.last_sync_at,
+            "sync_error": m.sync_error, "message_count": count}
 
 
 async def _interac(db) -> dict:
@@ -52,12 +57,17 @@ async def _interac(db) -> dict:
 
 @router.get("")
 async def list_mailboxes(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.mailbox import MailMessage
     rows = (await db.execute(select(Mailbox).order_by(Mailbox.email))).scalars().all()
-    return {"mailboxes": [_out(m) for m in rows], "functions": mbx.FUNCTIONS, "default_host": mbx.default_host(),
+    owners = dict((await db.execute(select(User.id, User.full_name))).all())
+    counts = dict((await db.execute(select(MailMessage.mailbox_id, func.count()).group_by(MailMessage.mailbox_id))).all())
+    return {"mailboxes": [_out(m, owners.get(m.owner_user_id), counts.get(m.id, 0)) for m in rows], "functions": mbx.FUNCTIONS, "default_host": mbx.default_host(),
             "interac": await _interac(db)}
 
 
 async def _apply(db, m: Mailbox, p: MailboxIn) -> None:
+    if m.kind == "personal":
+        raise HTTPException(status_code=400, detail="Boîte personnelle : elle se règle dans la fiche de l'employé (Employés → ✉ Courriels et signature)")
     email = p.email.strip().lower()
     if "@" not in email:
         raise HTTPException(status_code=400, detail="Adresse de courriel invalide")
@@ -80,6 +90,8 @@ async def _apply(db, m: Mailbox, p: MailboxIn) -> None:
     m.username = (p.username or "").strip() or email
     m.host, m.imap_port, m.smtp_port = host, p.imap_port, p.smtp_port
     m.functions, m.is_active = sorted(set(p.functions)), p.is_active
+    m.kind = p.kind
+    mbx.set_since(m, date.fromisoformat(p.sync_since) if p.sync_since else None)
     if p.password:
         m.password_enc = encrypt(p.password)
         m.last_error = None

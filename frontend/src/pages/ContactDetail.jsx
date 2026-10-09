@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
+import MailBrowser from '../components/MailBrowser'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import NewTicketModal from '../components/NewTicketModal'
@@ -301,7 +302,7 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
   )
 }
 
-const CONTACT_TABS = ['Général', 'CDR']
+const CONTACT_TABS = ['Général', 'CDR', 'Courriels']
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
@@ -898,7 +899,9 @@ export default function ContactDetail({ isNew }) {
       )}
 
       <div className="detail-body">
-        {isNew ? <NewContactForm /> : tab === 1 ? (
+        {isNew ? <NewContactForm /> : tab === 2 ? (
+          <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)" />
+        ) : tab === 1 ? (
           <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
         ) : (
           <div>

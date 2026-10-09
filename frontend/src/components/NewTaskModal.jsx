@@ -35,6 +35,8 @@ export default function NewTaskModal({
   prefillInvoice = null,
   prefillParentTask = null,
   prefillDueDate = '',
+  prefillTitle = '',
+  prefillDescription = '',
   templateId = null,
 }) {
   const [companies, setCompanies] = useState([])
@@ -49,8 +51,8 @@ export default function NewTaskModal({
   const [selectedInvoice, setSelectedInvoice] = useState(prefillInvoice)
 
   const [form, setForm] = useState({
-    title: '',
-    description: '',
+    title: prefillTitle,
+    description: prefillDescription,
     due_date: prefillDueDate,
     due_time: '',
     priority: 'normale',

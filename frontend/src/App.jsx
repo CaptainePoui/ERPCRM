@@ -26,6 +26,7 @@ import { EcomOrderDetail } from './pages/EcomOrders'
 import Settings from './pages/Settings'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
+import Mail from './pages/Mail'
 import Server from './pages/Server'
 import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
@@ -80,6 +81,7 @@ function InternalApp() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/employees" element={<Employees />} />
         <Route path="/tasks" element={<Tasks />} />
+        <Route path="/mail" element={<Mail />} />
         <Route path="/agenda" element={<Tasks defaultView="month" />} />
         <Route path="/server" element={<Server />} />
         <Route path="/bank" element={<Bank />} />

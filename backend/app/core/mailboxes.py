@@ -100,3 +100,18 @@ async def seed_from_server_config(db) -> None:
                    display_name=settings.SMTP_FROM_NAME if settings.SMTP_FROM.lower() == settings.IMAP_USER.lower() else None,
                    functions=["tickets"], is_active=True))
     await db.commit()
+
+
+def sees_all(user) -> bool:
+    """Le patron (rôles gestionnaire et administrateur) voit toutes les boîtes, y compris les boîtes personnelles des
+    employés ; un employé voit les boîtes partagées et la sienne (Philippe, 2026-10-09)."""
+    from app.models.user import UserRole
+    return user.role in (UserRole.admin, UserRole.manager)
+
+
+def set_since(mb, since) -> None:
+    """Date de debut de la copie ; reculee -> la boite est relue depuis cette date (les courriels deja copies ne sont
+    pas retelecharges)."""
+    if since != mb.sync_since and (since is None or mb.sync_since is None or since < mb.sync_since):
+        mb.last_uid = 0
+    mb.sync_since = since

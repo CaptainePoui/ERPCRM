@@ -24,7 +24,7 @@ function CompanyPickerModal({ companies, onPick, onClose }) {
   )
 }
 
-export default function NewTicketModal({ onClose, onCreated, prefillCompany = null, prefillContact = null }) {
+export default function NewTicketModal({ onClose, onCreated, prefillCompany = null, prefillContact = null, prefillTitle = '', prefillDescription = '' }) {
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([])
   const [selectedCompany, setSelectedCompany] = useState(prefillCompany)
@@ -32,7 +32,7 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
   const [pickerCompanies, setPickerCompanies] = useState(null)
   const [quickContact, setQuickContact] = useState(null)
   const [quickCompany, setQuickCompany] = useState(null)
-  const [form, setForm] = useState({ title: '', priority: 'normal', description: '' })
+  const [form, setForm] = useState({ title: prefillTitle, priority: 'normal', description: prefillDescription })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {

@@ -6,6 +6,10 @@ import api from '../services/api'
 
 const errText = e => e.response?.data?.detail || 'Erreur'
 const short = label => label.split(' — ')[0]
+const KINDS = {
+  shared: 'Partagée — toute l\'équipe la voit dans Courriels',
+  send_only: 'Envoi seulement — jamais lue (ex. nepasrepondre@)',
+}
 
 export default function MailboxesPanel() {
   const [data, setData] = useState(null)
@@ -47,7 +51,9 @@ export default function MailboxesPanel() {
       </div>
       <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
         Donnez à chaque boîte sa fonction : les factures partent de la boîte « Factures », les tickets de la boîte « Tickets »…
-        Une boîte sans fonction est simplement connectée. Les paiements Interac sont reconnus dans <b>toutes</b> les boîtes.
+        Les boîtes partagées sont copiées dans <b>Courriels</b> et classées dans la fiche de chaque client ; la boîte « Tickets » n'y est pas
+        (ses courriels deviennent des tickets). Une boîte personnelle (philippe@) se règle dans la fiche de l'employé. Les paiements Interac
+        sont reconnus dans <b>toutes</b> les boîtes.
       </p>
       <table className="adm-table">
         <thead><tr><th>Boîte</th><th>Fonctions</th><th>État</th><th></th></tr></thead>
@@ -58,6 +64,15 @@ export default function MailboxesPanel() {
               <td>
                 <div style={{ fontWeight: 600 }}>{m.email}</div>
                 {m.display_name && <div style={{ fontSize: 12, color: '#6B7280' }}>Nom affiché : {m.display_name}</div>}
+                <div style={{ fontSize: 12, color: '#6B7280' }}>
+                  {m.kind === 'personal' ? `Personnelle — ${m.owner_name || 'employé'} (réglée dans Employés)`
+                    : m.kind === 'send_only' ? 'Envoi seulement — jamais lue'
+                    : m.functions.includes('tickets') ? 'Chaque courriel devient un ticket'
+                    : 'Partagée'}
+                  {(m.kind === 'personal' || (m.kind === 'shared' && !m.functions.includes('tickets'))) &&
+                    ` · ${m.message_count} courriel(s) copié(s)${m.sync_error ? '' : m.last_sync_at ? ` · copiée ${new Date(m.last_sync_at).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}` : ''}`}
+                </div>
+                {m.sync_error && <div style={{ fontSize: 12, color: '#DC2626' }}>Copie impossible : {m.sync_error}</div>}
                 {tests[m.id]?.text && <div style={{ fontSize: 12, marginTop: 4, color: tests[m.id].ok ? '#059669' : '#DC2626' }}>{tests[m.id].text}</div>}
               </td>
               <td>
@@ -74,7 +89,7 @@ export default function MailboxesPanel() {
               </td>
               <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                 <button className="btn-secondary" style={{ fontSize: 12, marginRight: 6 }} disabled={tests[m.id]?.busy || !m.has_password} onClick={() => test(m)}>{tests[m.id]?.busy ? '…' : 'Tester'}</button>
-                <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEdit(m)}>Modifier</button>
+                {m.kind !== 'personal' && <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEdit(m)}>Modifier</button>}
               </td>
             </tr>
           ))}
@@ -118,6 +133,7 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
     email: box.email || '', display_name: box.display_name || '', username: box.username || '', password: '',
     host: box.host || defaultHost || '', imap_port: box.imap_port || 993, smtp_port: box.smtp_port || 465,
     functions: box.functions || [], is_active: box.is_active ?? true,
+    kind: box.kind || 'shared', sync_since: box.sync_since || '',
   })
   const [advanced, setAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -127,7 +143,7 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
 
   async function save() {
     setSaving(true); setError('')
-    const body = { ...f, password: f.password || null, username: f.username || null, display_name: f.display_name || null,
+    const body = { ...f, sync_since: f.sync_since || null, password: f.password || null, username: f.username || null, display_name: f.display_name || null,
       imap_port: Number(f.imap_port) || 993, smtp_port: Number(f.smtp_port) || 465 }
     try {
       if (isNew) await api.post('/v1/mailboxes', body); else await api.put(`/v1/mailboxes/${box.id}`, body)
@@ -150,6 +166,19 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
             placeholder={box.has_password ? '•••••••• (enregistré, chiffré — vide = le garder)' : 'Mot de passe de la boîte'} />
         </div>
         <div className="form-group"><label>Nom affiché aux clients (expéditeur)</label><input style={input} value={f.display_name} placeholder="ex. Simple IP Facturation" onChange={e => set('display_name', e.target.value)} /></div>
+        <div className="form-group">
+          <label>Type</label>
+          <select style={input} value={f.kind} onChange={e => set('kind', e.target.value)}>
+            {Object.entries(KINDS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+          </select>
+        </div>
+        {f.kind === 'shared' && !f.functions.includes('tickets') && (
+          <div className="form-group">
+            <label>Copier dans Courriels les courriels reçus depuis le</label>
+            <input type="date" value={f.sync_since} onChange={e => set('sync_since', e.target.value)} />
+            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Vide = les 90 derniers jours. Reculer la date ajoute les courriels plus anciens au prochain passage (rien n'est copié deux fois).</div>
+          </div>
+        )}
         <div className="form-group">
           <label>Fonctions</label>
           {Object.entries(functions).map(([k, label]) => (

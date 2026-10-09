@@ -16,10 +16,11 @@ import useRowSelection from '../hooks/useRowSelection'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
+import MailBrowser from '../components/MailBrowser'
 import { todayIso, parseDay } from '../utils/date'
 
-const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'transactions', 'echanges', 'contacts', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
+const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Courriels', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'transactions', 'echanges', 'contacts', 'courriels', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -676,6 +677,7 @@ export default function CompanyDetail({ isNew }) {
             {slug === 'transactions' && <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter} />}
             {slug === 'echanges' && features.barter && <BarterTab companyId={id} companyName={c.name} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
+            {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}
             {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}

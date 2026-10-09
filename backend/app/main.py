@@ -7,7 +7,7 @@ from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -23,6 +23,7 @@ from app.services.recurring_poller import run_recurring_poller
 from app.services.bank_ai_poller import run_bank_ai_poller
 from app.services.receipt_poller import run_receipt_poller
 from app.services.interac_poller import run_interac_poller
+from app.services.mail_sync import run_mail_sync
 
 
 @asynccontextmanager
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI):
     bank_ai_task = asyncio.create_task(run_bank_ai_poller())
     receipt_task = asyncio.create_task(run_receipt_poller())
     interac_task = asyncio.create_task(run_interac_poller())
+    mail_task = asyncio.create_task(run_mail_sync())
     try:
         yield
     finally:
@@ -52,7 +54,8 @@ async def lifespan(app: FastAPI):
         bank_ai_task.cancel()
         receipt_task.cancel()
         interac_task.cancel()
-        for t in (clock_task, poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task):
+        mail_task.cancel()
+        for t in (clock_task, poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task, mail_task):
             try:
                 await t
             except asyncio.CancelledError:
@@ -96,6 +99,7 @@ app.include_router(portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(ecom.router, prefix="/api/v1/ecom", tags=["ecom"])
 app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(mailboxes_router.router, prefix="/api/v1/mailboxes", tags=["mailboxes"])
+app.include_router(mail_router.router, prefix="/api/v1/mail", tags=["mail"])
 app.include_router(employees.router, prefix="/api/v1/employees", tags=["employees"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(sipv_events.router, prefix="/api/v1/sipv", tags=["sipv"])

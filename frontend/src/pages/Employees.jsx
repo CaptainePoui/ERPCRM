@@ -87,8 +87,8 @@ export default function Employees() {
             </div>
             {e.hourly_rate && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.hourly_rate)}/h</div>}
             {e.monthly_salary && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.monthly_salary)}/mois</div>}
-            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setSignatureOf(e)} title="Signature ajoutée aux courriels de communication (tickets, tâches)">
-              ✉ Signature{e.has_signature ? ' ✓' : ''}
+            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setSignatureOf(e)} title="Courriel professionnel (sa boîte dans Courriels), courriel personnel (paies) et signature">
+              ✉ Courriels et signature{e.has_signature ? ' ✓' : ''}
             </button>
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
               + Salaire
@@ -202,15 +202,36 @@ function SignatureModal({ employee, onClose, onSaved }) {
   const [preview, setPreview] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [mail, setMail] = useState(null)         // courriels de l'employe (TASK-047.2)
+  const [mailForm, setMailForm] = useState({ work_email: '', password: '', personal_email: '', sync_since: '' })
+  const [testMsg, setTestMsg] = useState(null)
   useEffect(() => {
     api.get('/v1/employees/users').then(r => setUsers(r.data))
     api.get(`/v1/employees/${employee.contact_id}/signature`).then(r => setHtml(r.data.html))
+    api.get(`/v1/employees/${employee.contact_id}/mail`).then(r => {
+      setMail(r.data)
+      setMailForm({ work_email: r.data.work_email || '', password: '', personal_email: r.data.personal_email || '', sync_since: r.data.sync_since || '' })
+    })
   }, [employee.contact_id])
+
+  async function testBox() {
+    setTestMsg({ busy: true })
+    try {
+      const r = await api.post(`/v1/mailboxes/${mail.mailbox_id}/test`)
+      setTestMsg({ ok: true, text: `Connexion réussie : ${r.data.inbox_count} courriel(s) dans la boîte, envoi OK` })
+    } catch (e) { setTestMsg({ ok: false, text: e.response?.data?.detail || 'Connexion impossible' }) }
+  }
 
   async function save() {
     setSaving(true); setError('')
     try {
       if ((employee.user_id || '') !== userId) await api.patch(`/v1/employees/${employee.contact_id}`, { user_id: userId || null })
+      if (mail && (mailForm.work_email !== (mail.work_email || '') || mailForm.password || mailForm.personal_email !== (mail.personal_email || '')
+          || mailForm.sync_since !== (mail.sync_since || ''))) {
+        if (!mailForm.work_email && mail.work_email && !confirm(`Retirer la boîte ${mail.work_email} d'ERPCRM ? Ses courriels copiés n'apparaîtront plus dans Courriels (rien n'est effacé dans la boîte elle-même).`)) { setSaving(false); return }
+        await api.put(`/v1/employees/${employee.contact_id}/mail`, { work_email: mailForm.work_email || null, password: mailForm.password || null,
+          personal_email: mailForm.personal_email || null, sync_since: mailForm.sync_since || null })
+      }
       await api.put(`/v1/employees/${employee.contact_id}/signature`, { html })
       onSaved()
     } catch (e) { setError(e.response?.data?.detail || 'Erreur : non enregistré'); setSaving(false) }
@@ -220,9 +241,9 @@ function SignatureModal({ employee, onClose, onSaved }) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 820, width: '100%' }}>
-        <h3 className="modal-title">Signature de courriel — {employee.first_name} {employee.last_name}</h3>
+        <h3 className="modal-title">Courriels et signature — {employee.first_name} {employee.last_name}</h3>
         <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
-          Ajoutée au bas des courriels de communication (tickets, tâches) envoyés par son compte de connexion. Jamais sur les factures, devis ou avis de retard.
+          La signature est ajoutée au bas des courriels de communication (tickets, tâches) envoyés par son compte de connexion. Jamais sur les factures, devis ou avis de retard.
           Vous pouvez coller votre signature actuelle (Outlook, Gmail) : la mise en forme est gardée.
         </p>
         <div className="form-group">
@@ -232,6 +253,32 @@ function SignatureModal({ employee, onClose, onSaved }) {
             {users.map(u => <option key={u.id} value={u.id}>{u.full_name} ({u.email})</option>)}
           </select>
         </div>
+        {mail && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label>Courriel professionnel (sa boîte)</label>
+              <input style={{ width: '100%', boxSizing: 'border-box' }} value={mailForm.work_email} placeholder="prenom@simpleip.tel"
+                onChange={e => setMailForm({ ...mailForm, work_email: e.target.value })} />
+              {mailForm.work_email && (
+                <input style={{ width: '100%', boxSizing: 'border-box', marginTop: 6 }} type="password" autoComplete="new-password" value={mailForm.password}
+                  placeholder={mail.has_password && mailForm.work_email === mail.work_email ? '•••••••• (enregistré, chiffré — vide = le garder)' : 'Mot de passe de la boîte'}
+                  onChange={e => setMailForm({ ...mailForm, password: e.target.value })} />
+              )}
+              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                Apparaît dans Courriels, visible seulement par cet employé et le patron.
+                {mail.mailbox_id && <> {' '}<button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '1px 8px' }} onClick={testBox} disabled={testMsg?.busy}>{testMsg?.busy ? '…' : 'Tester'}</button></>}
+              </div>
+              {mail.sync_error && <div style={{ fontSize: 12, color: '#DC2626' }}>Copie impossible : {mail.sync_error}</div>}
+              {testMsg?.text && <div style={{ fontSize: 12, color: testMsg.ok ? '#059669' : '#DC2626' }}>{testMsg.text}</div>}
+            </div>
+            <div className="form-group" style={{ margin: 0 }}>
+              <label>Courriel personnel</label>
+              <input style={{ width: '100%', boxSizing: 'border-box' }} value={mailForm.personal_email} placeholder="adresse personnelle"
+                onChange={e => setMailForm({ ...mailForm, personal_email: e.target.value })} />
+              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Sert seulement à lui envoyer ses paies ou à lui écrire.</div>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
           <button type="button" className={preview ? 'btn-secondary' : 'btn-primary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(false)}>Modifier</button>
           <button type="button" className={preview ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(true)}>Aperçu</button>

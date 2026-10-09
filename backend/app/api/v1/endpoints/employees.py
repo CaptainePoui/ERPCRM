@@ -136,6 +136,11 @@ async def update_employee(contact_id: uuid.UUID, payload: EmployeeUpdate, db: As
         other = (await db.execute(select(Employee).where(Employee.user_id == data["user_id"], Employee.contact_id != contact_id))).scalar_one_or_none()
         if other:
             raise HTTPException(status_code=409, detail="Ce compte de connexion est déjà relié à un autre employé")
+    if "user_id" in data and data["user_id"] != emp.user_id and emp.user_id:
+        # sa boite personnelle (TASK-047.2) suit le compte de connexion de l'employe
+        from app.models.mailbox import Mailbox
+        for mb in (await db.execute(select(Mailbox).where(Mailbox.kind == "personal", Mailbox.owner_user_id == emp.user_id))).scalars().all():
+            mb.owner_user_id = data["user_id"]
     for k, v in data.items():
         setattr(emp, k, v)
     await db.commit()
@@ -176,6 +181,88 @@ async def save_signature(contact_id: uuid.UUID, payload: SignatureIO, db: AsyncS
     emp.email_signature = None if is_empty(payload.html) else payload.html
     await db.commit()
     return SignatureIO(html=emp.email_signature or "")
+
+
+# ── Courriels de l'employe (TASK-047.2, 2026-10-09) ───────────────────────────
+# Philippe : « philippe@ apparait a la meme place que tous les services mais juste moi je le vois ; ce courriel on va
+# le mettre dans Employe : le courriel professionnel et le courriel perso, qui va servir juste a envoyer les paies ou a
+# ecrire a l'employe ». Professionnel = sa boite personnelle (copiee dans la boite de reception, visible par lui et le
+# patron) ; personnel = l'adresse de sa fiche contact.
+
+class EmployeeMailIn(BaseModel):
+    work_email: str | None = None
+    password: str | None = None            # vide = garder celui enregistre
+    sync_since: date | None = None
+    personal_email: str | None = None
+
+
+async def _work_box(db, emp):
+    from app.models.mailbox import Mailbox
+    if not emp.user_id:
+        return None
+    return (await db.execute(select(Mailbox).where(Mailbox.kind == "personal", Mailbox.owner_user_id == emp.user_id))).scalars().first()
+
+
+def _mail_out(emp, mb) -> dict:
+    return {"personal_email": emp.contact.email, "work_email": mb.email if mb else None,
+            "mailbox_id": str(mb.id) if mb else None, "has_password": bool(mb and mb.password_enc),
+            "sync_since": mb.sync_since.isoformat() if mb and mb.sync_since else None,
+            "last_sync_at": mb.last_sync_at if mb else None, "sync_error": mb.sync_error if mb else None,
+            "last_error": mb.last_error if mb else None}
+
+
+@router.get("/{contact_id}/mail")
+async def get_employee_mail(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    emp = await _get_employee(contact_id, db)
+    return _mail_out(emp, await _work_box(db, emp))
+
+
+@router.put("/{contact_id}/mail")
+async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import mailboxes as mbx
+    from app.core.crypto import encrypt
+    from app.models.mailbox import Mailbox
+    emp = await _get_employee(contact_id, db)
+    personal = (p.personal_email or "").strip().lower() or None
+    if personal and "@" not in personal:
+        raise HTTPException(status_code=400, detail="Courriel personnel invalide")
+    emp.contact.email = personal
+    work = (p.work_email or "").strip().lower() or None
+    mb = await _work_box(db, emp)
+    if work:
+        if "@" not in work:
+            raise HTTPException(status_code=400, detail="Courriel professionnel invalide")
+        if not emp.user_id:
+            raise HTTPException(status_code=400, detail="Choisissez d'abord le compte de connexion de l'employé : sa boîte n'est visible que par lui")
+        other = (await db.execute(select(Mailbox).where(func.lower(Mailbox.email) == work))).scalars().first()
+        if other and (not mb or other.id != mb.id):
+            if other.kind == "personal" or other.functions:
+                raise HTTPException(status_code=409, detail=f"{work} est déjà une boîte de l'entreprise avec une fonction ou un autre propriétaire (Administration → Intégrations)")
+            if mb:
+                await db.delete(mb)
+            mb = other                                  # deja ajoutee dans Administration : elle devient sa boite personnelle
+            mb.kind, mb.owner_user_id = "personal", emp.user_id
+        if not mb:
+            if not p.password:
+                raise HTTPException(status_code=400, detail="Entrez le mot de passe de la boîte")
+            host = mbx.default_host()
+            if not host:
+                raise HTTPException(status_code=400, detail="Serveur de courriel inconnu : ajoutez d'abord une boîte dans Administration → Intégrations")
+            mb = Mailbox(kind="personal", owner_user_id=emp.user_id, host=host, imap_port=993, smtp_port=465, functions=[], is_active=True)
+            db.add(mb)
+        if mb.email != work:
+            mb.uidvalidity, mb.last_uid = None, 0      # autre adresse : on recopie depuis le debut
+        mb.email, mb.username = work, work
+        mb.display_name = f"{emp.contact.first_name} {emp.contact.last_name}".strip()
+        mbx.set_since(mb, p.sync_since)
+        if p.password:
+            mb.password_enc, mb.last_error = encrypt(p.password), None
+    elif mb:
+        await db.delete(mb)                            # rien n'est touche dans la boite elle-meme
+        mb = None
+    await db.commit()
+    emp = await _get_employee(contact_id, db)
+    return _mail_out(emp, await _work_box(db, emp))
 
 
 # ── Salary payments ───────────────────────────────────────────────────────────
