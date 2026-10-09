@@ -5817,6 +5817,14 @@ Date de demande : 2026-10-08 (Philippe : « je veux mettre les courriels dans le
 Date(s) de travail : —
 
 - Demandé pendant la signature par employé (TASK-007.1, Signature de courriel par employé). Boîtes : portabilite@ (portabilité), service@ (la plupart des courriels), facturation@ (factures, liens Interac), support@ (« pourrait être lié au ticket direct »). Serveur : mail.simpleip.tel (IMAP 993 / SMTP 465, certificat valide). Plan en 3 étapes proposé le 2026-10-08 : 1) connexion des boîtes et fonctions ; 2) boîte de réception dans ERPCRM (lien compagnie/contact par adresse, courriel → ticket/tâche, synchro lu/non lu avec Outlook) ; 3) répondre/écrire depuis ERPCRM (bonne adresse, signature, copie dans Envoyés). Recommandé et retenu pour l'instant : « en plus d'Outlook ».
+- Rôle de chaque boîte précisé le 2026-10-09 (Philippe : « j'aimerais que tout soit géré du ERPCRM, tout placé à la bonne place ») :
+  - nepasrepondre@ : annonces (promotions, augmentation des prix, infos) — envoi seulement, pas de réponse attendue ;
+  - support@ : chaque courriel devient automatiquement un ticket (déjà en place, TASK-047.1) ;
+  - philippe@ : boîte personnelle — Philippe répond lui-même aux clients qui lui ont écrit ;
+  - service@ : boîte partagée — n'importe quel tech lit, répond et classe le courriel dans la fiche du client ;
+  - facturation@ : factures, avoirs, avis de retard, liens Interac ;
+  - portabilite@ : portabilité des DID, quand elle sera gérée dans ERPCRM (module à venir).
+  - Plan révisé proposé (en attente du GO) : étape 2 boîte de réception (partagées + personnelles, classement automatique dans la fiche par adresse, « à classer » sinon, ticket/tâche) ; étape 3 répondre/écrire ; étape 4 annonces groupées depuis nepasrepondre@ ; portabilité plus tard avec le module DID.
 
 ### TASK-047.1 [x] Boîtes de courriel et leurs fonctions (Administration → Intégrations)
 Date de demande : 2026-10-08 (Philippe : « oui, dans admin / intégration, et j'aimerais pouvoir les attribuer à certaines fonctions comme facturation à facture, mais sans empêcher que si quelqu'un me fait un paiement dans service je puisse le reconnaître »)
