@@ -5959,4 +5959,6 @@ Date de demande : 2026-10-09 (Philippe : « je ne veux pas des journaux des prix
 Date(s) de travail : —
 
 - Constaté (2026-10-09) : ~300 actions qui modifient des données dans le serveur ; seules les fiches contact et compagnie et le courriel de connexion écrivent au journal (`entity_logs`, 214 lignes, avec « annuler ce changement ») ; rien pour le catalogue, factures, paiements, tickets, portail client, etc. Le journal ne connaît que les employés (pas les clients du portail).
-- Plan proposé, attend le GO.
+- Plan proposé (2026-10-09) : un seul journal pour tout ERPCRM (quand, qui = employé / client du portail / automatique, quoi, champ, ancien → nouveau ; personnes et objets liés, pas copiés ; les 214 lignes actuelles déplacées dedans) ; inscription automatique au niveau de la base (pas action par action) ; jamais de mot de passe ni le va-et-vient technique ; rien ne s'efface ; lecture dans Administration → Journal (filtres) et un onglet Historique par fiche. Étape 1 : le journal, prouvé sur un prix d'article et une modification au portail ; étape 2 : les écrans.
+- Décidé le 2026-10-09 (Philippe : « on note seulement ce qui est modifié, et le gestionnaire a la possibilité d'activer aussi ce qui est consulté (qui a ouvert telle fiche), par défaut pas activé ») : modifications toujours notées ; consultations = option, éteinte au départ, activable par un administrateur ou un gestionnaire.
+- Attend le GO.
