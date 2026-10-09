@@ -662,6 +662,12 @@ Fichiers : frontend/src/pages/Commandes.jsx (nouveau), frontend/src/components/L
 
 ---
 
+### TASK-008.2 [x] Fenêtre « Ajouter une ligne » d'un bon de commande : ne déconnecte plus
+Date de demande : 2026-10-09 (Philippe : « Fiche Commande fournisseur go »)
+Date(s) de travail : 2026-10-09
+
+- `PurchaseOrderDetail.jsx` (AddLineModal) appelait `/v1/catalogue/` : le serveur redirige (307) sans l'autorisation → 401 → déconnexion (même défaut que TASK-014.2). Corrigé : `/v1/catalogue`. Vérifié : `/v1/catalogue` = 200, `/v1/catalogue/` = 307 ; plus aucun appel `/v1/catalogue/` dans l'écran. Fenêtre non ouverte dans un navigateur : aucun bon de commande n'existe encore (en créer un aurait ajouté une vraie donnée).
+
 ## TASK-009 [ERPCRM] [x] Web orders — commandes boutique ecom
 Classification: HISTORICAL
 

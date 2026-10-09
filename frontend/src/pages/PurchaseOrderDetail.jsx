@@ -198,7 +198,7 @@ function AddLineModal({ poId, onClose, onAdded }) {
   const f = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   useEffect(() => {
-    api.get('/v1/catalogue/').then(r => setCatalogue(r.data.filter(i => i.is_active)))
+    api.get('/v1/catalogue').then(r => setCatalogue(r.data.filter(i => i.is_active)))
   }, [])
 
   function selectItem(id) {
