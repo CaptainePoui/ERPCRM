@@ -1,4 +1,4 @@
-"""Boite de reception dans ERPCRM (TASK-047.2, 2026-10-09).
+"""Boite de reception dans ERPCRM (TASK-047.2, 2026-10-09) ; repondre et ecrire d'ici (TASK-047.3, envoi : core/mail_send.py).
 
 Copie : app/services/mail_sync.py ; classement automatique : app/core/mail_match.py.
 Qui voit quoi : les boites partagees (service@, facturation@, portabilite@) -> toute l'equipe ; une boite personnelle
@@ -9,14 +9,14 @@ import uuid
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core import mail_match, mail_store
+from app.core import mail_match, mail_send, mail_store
 from app.core import mailboxes as mbx
 from app.core.database import get_db
 from app.models.company import Company
@@ -43,6 +43,11 @@ async def _get(db, mid: uuid.UUID, user: User) -> MailMessage:
     return row
 
 
+async def _users(db, ids) -> dict:
+    ids = {i for i in ids if i}
+    return dict((await db.execute(select(User.id, User.full_name).where(User.id.in_(ids)))).all()) if ids else {}
+
+
 async def _names(db, rows) -> tuple[dict, dict]:
     cids = {r.company_id for r in rows if r.company_id}
     pids = {r.contact_id for r in rows if r.contact_id}
@@ -60,7 +65,8 @@ def _row(m: MailMessage, box: Mailbox, companies: dict, contacts: dict) -> dict:
             "company_name": companies.get(m.company_id), "contact_id": str(m.contact_id) if m.contact_id else None,
             "contact_name": contacts.get(m.contact_id), "classified_by": m.classified_by,
             "contact_created": m.contact_created, "shared": m.shared,
-            "ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None}
+            "ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None,
+            "direction": m.direction, "to_addrs": m.to_addrs, "answered_at": m.answered_at, "copy_error": m.copy_error}
 
 
 @router.get("/folders")
@@ -88,11 +94,14 @@ async def folders(db: AsyncSession = Depends(get_db), user: User = Depends(get_c
 @router.get("")
 async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all", pattern="^(all|unread|unclassified)$"),
                     company_id: uuid.UUID | None = None, contact_id: uuid.UUID | None = None, q: str | None = None,
+                    direction: str | None = Query(None, pattern="^(in|out)$"),
                     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     qry = select(MailMessage, Mailbox).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user))
     if mailbox_id:
         qry = qry.where(MailMessage.mailbox_id == mailbox_id)
+    if direction:
+        qry = qry.where(MailMessage.direction == direction)
     if view == "unread":
         qry = qry.where(MailMessage.is_read.is_(False))
     elif view == "unclassified":
@@ -103,13 +112,123 @@ async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all"
         qry = qry.where(MailMessage.contact_id == contact_id)
     if q and q.strip():
         pat = f"%{q.strip()}%"
-        qry = qry.where(or_(MailMessage.subject.ilike(pat), MailMessage.from_email.ilike(pat),
+        qry = qry.where(or_(MailMessage.subject.ilike(pat), MailMessage.from_email.ilike(pat), MailMessage.to_addrs.ilike(pat),
                             MailMessage.from_name.ilike(pat), MailMessage.body_text.ilike(pat)))
     total = (await db.execute(select(func.count()).select_from(qry.subquery()))).scalar()
     rows = (await db.execute(qry.order_by(MailMessage.sent_at.desc().nulls_last(), MailMessage.created_at.desc())
                              .limit(limit).offset(offset))).all()
     companies, contacts = await _names(db, [m for m, _ in rows])
-    return {"total": total, "items": [_row(m, b, companies, contacts) for m, b in rows]}
+    users = await _users(db, [m.sent_by_user_id for m, _ in rows])
+    return {"total": total, "items": [{**_row(m, b, companies, contacts), "sent_by": users.get(m.sent_by_user_id)} for m, b in rows]}
+
+
+async def _senders(db, user: User) -> list:
+    """Boites d'ou cet utilisateur peut envoyer : les partagees, et sa boite personnelle (jamais celle d'un autre, meme
+    pour le patron). Pas support@ (ses courriels partent des tickets) ni nepasrepondre@ (annonces, etape 4)."""
+    rows = await mbx.active(db)
+    return [b for b in rows if "tickets" not in (b.functions or [])
+            and (b.kind == "shared" or (b.kind == "personal" and b.owner_user_id == user.id))]
+
+
+@router.get("/senders")
+async def senders(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.core import signature
+    boxes = await _senders(db, user)
+    return {"boxes": [{"id": str(b.id), "email": b.email, "name": b.display_name, "personal": b.kind == "personal"} for b in boxes],
+            "has_signature": bool(await signature.for_user(db, user.id))}
+
+
+class SendIn(BaseModel):
+    mailbox_id: uuid.UUID
+    to: str
+    cc: str | None = None
+    subject: str = ""
+    html: str = ""
+    mode: str = "new"                       # new | reply | reply_all | forward
+    source_id: uuid.UUID | None = None      # courriel auquel on repond / qu'on transfere
+    forward_attachments: list[int] = []     # pieces jointes du courriel d'origine a renvoyer
+    with_signature: bool = True
+    company_id: uuid.UUID | None = None     # ecrit depuis une fiche : classe dans cette fiche
+    contact_id: uuid.UUID | None = None
+
+
+@router.post("/send")
+async def send(data: str = Form(...), files: list[UploadFile] = File(default=[]),
+               db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Envoie de la boite choisie, avec la signature de l'employe et le courriel d'origine cite ; copie dans Envoyes
+    de la boite, courriel d'origine marque « repondu » ; copie gardee ici, classee dans la fiche du client."""
+    from app.core import signature
+    try:
+        p = SendIn.model_validate_json(data)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Courriel incomplet")
+    if p.mode not in ("new", "reply", "reply_all", "forward"):
+        raise HTTPException(status_code=422, detail="Mode inconnu")
+    box = next((b for b in await _senders(db, user) if b.id == p.mailbox_id), None)
+    if not box:
+        raise HTTPException(status_code=403, detail="Vous ne pouvez pas envoyer de cette boîte")
+    try:
+        to, cc = mail_send.addresses(p.to), mail_send.addresses(p.cc)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if not to:
+        raise HTTPException(status_code=422, detail="Indiquez au moins un destinataire")
+    src = await _get(db, p.source_id, user) if p.source_id else None
+    html = p.html or ""
+    if p.with_signature:
+        sig = await signature.for_user(db, user.id)
+        if sig:
+            html += f'<div style="margin-top:14px">{signature._email_friendly(sig)}</div>'
+    if src and p.mode != "new":
+        html += mail_send.quote_html(src)
+    attach = [(f.filename or "piece", await f.read(), f.content_type or "application/octet-stream") for f in files]
+    if src and p.mode == "forward":
+        for a in src.attachments or []:
+            if a.get("i") in p.forward_attachments and Path(src.stored_path).is_file():
+                name, ctype, content = mail_store.attachment(src.stored_path, a["i"])
+                attach.append((name, content, ctype))
+    if sum(len(c) for _, c, _ in attach) > mail_send.MAX_TOTAL:
+        raise HTTPException(status_code=413, detail="Pièces jointes trop lourdes (20 Mo au total)")
+    replying = src is not None and p.mode in ("reply", "reply_all")
+    raw, _mid = mail_send.build(sender=box.email, sender_name=box.display_name or "", to=to, cc=cc,
+                                subject=p.subject.strip() or "(sans objet)", html_body=html, files=attach,
+                                in_reply_to=src.message_id if replying else None,
+                                references=mail_send.references_of(src.stored_path) if replying else None)
+    boxd = {"host": box.host, "port": box.imap_port, "smtp_port": box.smtp_port, "user": box.username,
+            "password": mbx.password_of(box), "email": box.email}
+    try:
+        await asyncio.wait_for(asyncio.to_thread(mail_send.send_sync, boxd, raw, [a for _, a in to + cc]), 90)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Envoi impossible : {exc}")
+
+    # envoye : copie gardee ici et classee (fiche d'ou on ecrit > fiche du courriel d'origine > adresse connue)
+    company_id, contact_id, how = p.company_id, p.contact_id, "manual" if (p.company_id or p.contact_id) else None
+    if p.contact_id and not p.company_id:
+        company_id = await mail_match._company_of_contact(db, p.contact_id)
+    if not how and src and (src.company_id or src.contact_id):
+        company_id, contact_id, how = src.company_id, src.contact_id, src.classified_by or "auto"
+    if not how:
+        for _, a in to + cc:
+            c_id, p_id = await mail_match.by_address(db, a.lower())
+            if c_id or p_id:
+                company_id, contact_id, how = c_id, p_id, "auto"
+                break
+    msg = MailMessage(mailbox_id=box.id, direction="out", stored_path=mail_send.save_sent(box.id, raw), is_read=True,
+                      sent_by_user_id=user.id, company_id=company_id, contact_id=contact_id, classified_by=how,
+                      **mail_store.parse(raw))
+    db.add(msg)
+    if replying:
+        src.answered_at = mail_store.now()
+    await db.commit()
+    try:
+        same = replying and src.mailbox_id == box.id
+        await asyncio.wait_for(asyncio.to_thread(mail_send.after_send_sync, boxd, raw,
+                                                 src.uid if same else None, src.uidvalidity if same else None), 60)
+    except Exception as exc:
+        msg.copy_error = (str(exc) or exc.__class__.__name__)[:500]
+        await db.commit()
+    companies, contacts = await _names(db, [msg])
+    return {**_row(msg, box, companies, contacts), "sent_by": user.full_name}
 
 
 async def _set_seen(db, m: MailMessage, seen: bool) -> None:
@@ -136,8 +255,15 @@ async def get_mail(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: Use
     await _set_seen(db, m, True)
     companies, contacts = await _names(db, [m])
     out = _row(m, box, companies, contacts)
+    replies = (await db.execute(select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(
+        MailMessage.direction == "out", MailMessage.in_reply_to == m.message_id, _visible(user))
+        .order_by(MailMessage.sent_at))).scalars().all() if m.message_id else []
+    users = await _users(db, [m.sent_by_user_id] + [r.sent_by_user_id for r in replies])
+    own = {e.lower() for e in (await db.execute(select(Mailbox.email))).scalars().all()}
     out.update({"to_addrs": m.to_addrs, "cc_addrs": m.cc_addrs, "body_text": m.body_text, "body_html": m.body_html,
-                "attachments": m.attachments, "can_share": box.kind == "personal" and (box.owner_user_id == user.id or mbx.sees_all(user))})
+                "attachments": m.attachments, "can_share": box.kind == "personal" and (box.owner_user_id == user.id or mbx.sees_all(user)),
+                "sent_by": users.get(m.sent_by_user_id), **mail_send.reply_targets(m.stored_path, m.direction == "out", own),
+                "replies": [{"id": str(r.id), "sent_at": r.sent_at, "to_addrs": r.to_addrs, "sent_by": users.get(r.sent_by_user_id)} for r in replies]})
     return out
 
 
@@ -165,6 +291,8 @@ async def classify(mid: uuid.UUID, p: ClassifyIn, db: AsyncSession = Depends(get
     les autres courriels de cette adresse encore a classer suivent."""
     from app.models.communication import ChannelType, CommunicationChannel
     m = await _get(db, mid, user)
+    if m.direction == "out":                 # envoye d'ici : l'adresse de l'expediteur est la notre, jamais retenue
+        p.remember, p.create_contact = False, False
     company_id, contact_id = p.company_id, p.contact_id
     if contact_id and not await db.get(Contact, contact_id):
         raise HTTPException(status_code=404, detail="Contact introuvable")

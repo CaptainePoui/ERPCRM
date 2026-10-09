@@ -900,7 +900,8 @@ export default function ContactDetail({ isNew }) {
 
       <div className="detail-body">
         {isNew ? <NewContactForm /> : tab === 2 ? (
-          <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)" />
+          <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)"
+            composeDefaults={{ to: c.email ? `${`${c.first_name || ''} ${c.last_name || ''}`.trim()} <${c.email}>`.trim() : '' }} />
         ) : tab === 1 ? (
           <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
         ) : (

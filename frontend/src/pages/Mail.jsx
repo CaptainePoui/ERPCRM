@@ -1,6 +1,6 @@
 // Boite de reception (TASK-047.2, 2026-10-09) : toutes les boites au meme endroit -- partagees (service@,
 // facturation@, portabilite@) pour toute l'equipe, personnelles (philippe@) pour leur proprietaire et le patron.
-// support@ n'y est pas : ses courriels deviennent des tickets.
+// support@ n'y est pas : ses courriels deviennent des tickets. « Envoyes d'ici » : courriels envoyes depuis ERPCRM (TASK-047.3).
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import MailBrowser from '../components/MailBrowser'
@@ -43,6 +43,7 @@ export default function Mail() {
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', unread)}
           {item(sel.view === 'unclassified', () => setSel({ view: 'unclassified', mailbox_id: '' }), 'À classer', data.unclassified)}
+          {item(sel.view === 'sent', () => setSel({ view: 'sent', mailbox_id: '' }), 'Envoyés d’ici', 0)}
           <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#9CA3AF', margin: '12px 10px 4px' }}>Boîtes</div>
           {data.folders.map(f => item(sel.mailbox_id === f.id, () => setSel({ view: 'all', mailbox_id: f.id }),
             f.email.split('@')[0] + '@', f.unread, f.personal ? (f.mine ? '· à moi' : '· personnelle') : '',
@@ -50,7 +51,8 @@ export default function Mail() {
           {!data.folders.length && <div style={{ fontSize: 12, color: '#6B7280', padding: '0 10px' }}>Aucune boîte : ajoutez-les dans Administration → Intégrations.</div>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <MailBrowser filter={{ view: sel.view, mailbox_id: sel.mailbox_id }} onCounts={loadFolders} />
+          <MailBrowser filter={sel.view === 'sent' ? { direction: 'out' }
+            : { view: sel.view, mailbox_id: sel.mailbox_id, ...(sel.view === 'unclassified' ? {} : { direction: 'in' }) }} onCounts={loadFolders} />
         </div>
       </div>
     </div>

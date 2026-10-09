@@ -43,7 +43,7 @@ class Mailbox(Base):
 
 
 class MailMessage(Base):
-    """Copie d'un courriel recu (TASK-047.2, 2026-10-09). La boite reste la source : le courriel complet est garde
+    """Copie d'un courriel recu (TASK-047.2, 2026-10-09), ou envoye depuis ERPCRM (direction « out », TASK-047.3). La boite reste la source : le courriel complet est garde
     tel quel (.eml, storage/mail) et lu/non lu est synchronise dans les deux sens (Outlook et cellulaire suivent).
     Classe automatiquement dans la fiche (compagnie/contact) d'apres l'adresse de l'expediteur ; « A classer » sinon."""
     __tablename__ = "mail_messages"
@@ -52,10 +52,14 @@ class MailMessage(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mailbox_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
-    uidvalidity: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    uid: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    uidvalidity: Mapped[int | None] = mapped_column(BigInteger)          # vide pour un courriel envoye d'ici
+    uid: Mapped[int | None] = mapped_column(BigInteger)
+    direction: Mapped[str] = mapped_column(String(3), nullable=False, default="in", server_default="in")  # in | out (envoye d'ici, TASK-047.3)
+    sent_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    copy_error: Mapped[str | None] = mapped_column(String(500))       # envoye, mais copie dans Envoyes de la boite impossible
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # repondu d'ici
     message_id: Mapped[str | None] = mapped_column(String(500))
-    in_reply_to: Mapped[str | None] = mapped_column(String(500))
+    in_reply_to: Mapped[str | None] = mapped_column(String(500), index=True)
     from_email: Mapped[str | None] = mapped_column(String(255))
     from_name: Mapped[str | None] = mapped_column(String(255))
     to_addrs: Mapped[str | None] = mapped_column(Text)
