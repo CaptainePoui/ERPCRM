@@ -79,6 +79,7 @@ def _build_company_out(company: Company) -> CompanyOut:
         is_active=company.is_active,
         sipv_enabled=company.sipv_enabled,
         sipv_tenant_id=company.sipv_tenant_id,
+        is_owner=bool(company.is_owner),
         internal_manager_id=company.internal_manager_id,
         internal_manager=company.internal_manager,
         vendor_id=company.vendor_id,
@@ -296,7 +297,7 @@ async def toggle_sipv_tenant(
     # que le tenant -- jamais un tenant SIPV actif sans récurrence de
     # facturation associée (pas une option, demande explicite de Philippe
     # "je veux une facturation automatique pas le choix").
-    if payload.enabled:
+    if payload.enabled and not company.is_owner:      # TASK-002.5 : pas de facturation pour le proprietaire
         from app.models.recurring_billing import CompanyRecurringBilling
         from app.api.v1.endpoints.recurring_billing import telephony_recurrence
         rb = await telephony_recurrence(db, company_id)

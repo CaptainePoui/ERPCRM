@@ -61,6 +61,16 @@ async def seed_defaults(db: AsyncSession) -> None:
         for data in DEFAULT_STATUSES:
             db.add(Status(**data))
 
+    # Compagnie du proprietaire (TASK-002.5) : sur une installation neuve (aucune compagnie), creee tout de suite --
+    # ses coordonnees se remplissent dans Administration -> Entreprise ; jamais facturee
+    from app.models.company import Company
+    from app.models.entity import Entity, EntityType
+    if not (await db.execute(select(Company.id).limit(1))).first():
+        ent = Entity(entity_type=EntityType.company)
+        db.add(ent)
+        await db.flush()
+        db.add(Company(id=ent.id, name="Mon entreprise", is_owner=True))
+
     for name in DEFAULT_FUNCTIONS:
         result = await db.execute(select(Function).where(Function.name == name))
         if not result.scalar_one_or_none():

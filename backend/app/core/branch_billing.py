@@ -54,6 +54,8 @@ async def target_for(db: AsyncSession, holder: Company, owner: Company) -> Compa
     """Recurrence ou va la ligne : celle de la compagnie facturee pour le proprietaire du service. Pour une succursale
     sans recurrence telephonique, elle est creee (mensuelle, a partir d'aujourd'hui)."""
     payer = await billing_company(db, owner.id) or owner
+    if payer.is_owner:                                  # TASK-002.5 : la compagnie du proprietaire n'est jamais facturee
+        return None
     return await recurrence_for(db, payer, create=payer.id != holder.id)
 
 

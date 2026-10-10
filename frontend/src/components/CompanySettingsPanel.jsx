@@ -1,6 +1,7 @@
 // Reglages de l'entreprise (Administration → Entreprise, TASK-014.3, 2026-10-09) : deplaces de l'engrenage, qui ne montre
 // plus que le compte de la personne connectee (pages/MyAccount.jsx).
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import api from '../services/api'
 import useFeatures from '../hooks/useFeatures'
 
@@ -211,13 +212,15 @@ function BusinessSection() {
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Coordonnées de l'entreprise</h3>
       <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
         Imprimées en haut de tous les PDF : factures, avoirs, devis et ententes d'échange. Vos numéros de TPS et de TVQ permettent à vos clients de réclamer les taxes qu'ils vous paient.
+        {f.company_id && <> Ce sont les informations de la fiche <Link to={`/companies/${f.company_id}`}>{saved?.name}</Link> (compagnie du propriétaire, jamais facturée) : une seule copie.</>}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
         <div style={{ gridColumn: '1 / -1' }}>{field('name', "Nom de l'entreprise")}</div>
-        <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-          <label>Adresse</label>
-          <textarea rows={3} value={f.address} onChange={e => set('address', e.target.value)} style={{ width: '100%', boxSizing: 'border-box' }} placeholder={'123, rue Principale\nVille (Québec)  H0H 0H0'} />
-        </div>
+        <div style={{ gridColumn: '1 / -1' }}>{field('street', 'Adresse (numéro et rue)', { placeholder: '123 rue Principale' })}</div>
+        {field('unit', 'Local / bureau')}
+        {field('city', 'Ville')}
+        {field('province', 'Province', { placeholder: 'QC' })}
+        {field('postal_code', 'Code postal', { placeholder: 'H0H 0H0' })}
         {field('tps', 'N° de TPS', { placeholder: '123456789 RT0001' })}
         {field('tvq', 'N° de TVQ', { placeholder: '1234567890 TQ0001' })}
         {field('phone', 'Téléphone')}

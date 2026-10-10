@@ -283,6 +283,9 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
     comp = await db.get(Company, payload.company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    if comp.is_owner:                                   # TASK-002.5 : jamais facturee (son historique reste)
+        from app.core.owner import NOT_BILLED
+        raise HTTPException(status_code=400, detail=NOT_BILLED)
 
     site_label_snapshot = None
     site_address_snapshot = None

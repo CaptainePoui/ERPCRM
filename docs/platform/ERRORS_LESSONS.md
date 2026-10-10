@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-002.5 — Trois vraies factures déplacées comme « essais »
+
+**Date** : 2026-10-10
+
+**On croyait** : que les 4 factures et la facturation périodique de Simple IP inc. étaient des essais (j'avais demandé « que fait-on de ces 4 factures et de la périodique ? ça ressemble à des essais » ; Philippe a répondu « oui c'est des essais »).
+
+**Preuve** : Philippe : « non, les 4 factures c'est des vraies, on faisait des tests de connexion Elavon… je les ai vraiment payées ». Dans la base : INV-111765/111784/111971 importées de l'ancien logiciel (`zoho_import`, datées 2025-09-26, 2025-10-10, 2026-02-25) ; seul 2026-0001 portait « test de facturation » ; la périodique avait été créée par l'activation du tenant.
+
+**Cause réelle** : ma question regroupait 5 éléments de natures différentes sous une seule impression (« ça ressemble à des essais ») au lieu de montrer, pour chacun, d'où il venait ; la réponse « oui » a été appliquée aux 5.
+
+**Correction** : migration 770786fe22ba (les 3 vraies factures, leurs paiements et la périodique retournent à Simple IP inc.) ; copie de la base avant ; rien perdu.
+
+**Leçon (à ne pas refaire)** : avant de déplacer ou classer des données sur la foi d'une réponse, montrer chaque élément avec sa preuve (source, note, date de création) et demander élément par élément ; un « oui » sur un groupe ne couvre que ce qui a été montré clairement.
+
+---
+
 ## TASK-002.4 — Une migration déjà appliquée modifiée après coup, puis un journal en double
 
 **Date** : 2026-10-10

@@ -512,13 +512,13 @@ export default function CompanyDetail({ isNew }) {
       <div className="detail-header">
         <div className="detail-breadcrumb">
           <button className="back-btn" onClick={() => navigate('/companies')}>← Compagnies</button>
-          {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span>{c && <ParentBadge companyId={id} />}</>}
+          {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span>{c && <ParentBadge companyId={id} />}{c?.is_owner && <span title="Compagnie du propriétaire : jamais facturée ; ses coordonnées sont celles des PDF (Administration → Entreprise)" style={{ marginLeft: 10, fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', background: 'var(--brand-bg)', color: 'var(--brand)', borderRadius: 20, padding: '3px 10px' }}>Propriétaire</span>}</>}
           {isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">Nouvelle compagnie</span></>}
         </div>
         {!isNew && c && (
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
-            <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>
+            {!c.is_owner && <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>}
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
           </div>
         )}

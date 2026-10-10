@@ -73,8 +73,11 @@ async def candidates(db, cfg: dict | None = None, today: date | None = None) -> 
         Invoice.late_fee_for_id.is_not(None), Invoice.credit_of_id.is_(None),
         Invoice.company_id.in_(list(by_company))).group_by(Invoice.company_id))).all())
     names = dict((await db.execute(select(Company.id, Company.name).where(Company.id.in_(list(by_company))))).all())
+    owners = set((await db.execute(select(Company.id).where(Company.is_owner == True))).scalars().all())
     out = []
     for cid, items in by_company.items():
+        if cid in owners:                               # TASK-002.5 : jamais d'avis de retard au proprietaire
+            continue
         late = [(i, b) for i, b in items if i.due_date + timedelta(days=cfg["grace"]) <= today]
         if not late:
             continue

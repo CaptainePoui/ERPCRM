@@ -182,6 +182,8 @@ async def create_recurring_billing(company_id: uuid.UUID, payload: RecurringBill
     """Créée automatiquement quand le checkbox "Tenant téléphonique SIPV" est
     activé (voir companies.py::toggle_sipv_tenant) -- exposée séparément aussi
     pour pouvoir corriger la date/fréquence après coup depuis l'onglet Récurrence."""
+    from app.core.owner import refuse_if_owner
+    await refuse_if_owner(db, company_id)               # TASK-002.5 : jamais facturee
     if payload.frequency not in FREQUENCIES:
         raise HTTPException(status_code=400, detail="Fréquence invalide (mensuel/biannuel/annuel)")
     company = await db.get(Company, company_id)
@@ -264,6 +266,11 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
     Leve NothingToGenerate si rien n'est du. Ne fait pas le commit."""
     if not rb.lines:
         raise NothingToGenerate("Aucune ligne à facturer")
+    from app.models.company import Company as _Co
+    owner_co = await db.get(_Co, rb.company_id)
+    if owner_co and owner_co.is_owner:                  # TASK-002.5 : la compagnie du proprietaire n'est jamais facturee
+        from app.core.owner import NOT_BILLED
+        raise NothingToGenerate(NOT_BILLED)
     # TASK-005.13 : echange (troc) -- le credit paie des mois de service ; a l'epuisement, le cycle repart a la
     # date de reprise (start_date deplace). Jamais avant la toute premiere facture (facturee d'avance).
     barter_changed = False
