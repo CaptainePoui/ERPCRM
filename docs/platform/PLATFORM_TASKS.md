@@ -85,6 +85,14 @@ Date(s) de travail : 2026-10-10
   - Administration : la barre d'onglets passe à la ligne quand elle déborde (10 onglets ; sur cellulaire, les onglets étaient déjà coupés).
   - Vérifié (vrais écrans du serveur, essai annulé — journal 232 lignes avant et après, aucune compagnie d'essai gardée) : réseau = Nanotech + Jean-François (téléphone lu de sa fiche), Internet = Satelcom, refus 422, dépendants de Nanotech, journal lisible, annulation refusée (400), pastille créée/renommée/désactivée, doublon 409, couleur invalide 422, pastille sous-traitant sur une fiche et dans la liste, seed sans effet. Écrans (Playwright, ordinateur et cellulaire, aucune erreur) : filtre « client » (4 compagnies), Inventaire vide puis en modification, Administration → Pastilles, Général.
 
+
+### TASK-002.4 [ ] Succursale = une vraie compagnie liée à sa maison mère (facturation, paiements, voir le lien)
+Date de demande : 2026-10-10 (Philippe : « je suis dans Simple IP et je me rends compte que les succursales ne sont pas une compagnie distincte — succursale sert à lier 2 entreprises ensemble pour les recherches de facturation, de paiement ou simplement voir qu'elles sont liées… et autre bien sûr »)
+Date(s) de travail : —
+
+- Constaté (2026-10-10) : une « succursale » est aujourd'hui une adresse sous la compagnie (`company_sites` : nom, adresse 911, contact et courriel de facturation), pas une compagnie. 3 en tout : Maison Le Passeur → « Oxygene » (Sorel-Tracy, 26 factures, 1 facturation périodique, pas de 911) ; Simple IP inc. → « Simple IP inc. » (principale) et « Simple IP Rose » (adresses 911 envoyées à SIPV). Les postes, numéros, factures et périodiques peuvent pointer vers une succursale (`site_id`).
+- En attente : proposition et réponses de Philippe (qui paie les factures d'Oxygène, un seul niveau maison mère → succursales ?), puis GO.
+
 ---
 
 ## TASK-003 [ERPCRM] [x] Contacts — liste, fiche, multi-compagnies, + Ticket / + Facture / + Tâche
