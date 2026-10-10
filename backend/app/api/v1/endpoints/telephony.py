@@ -806,3 +806,16 @@ async def company_trunk_routes(trunk_id: uuid.UUID, _: User = Depends(get_curren
         return await sipv_client.get_trunk_routes(str(trunk_id))
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Redemarrer un telephone a distance (2026-10-10) ─────────────────────────
+# Bouton « Redemarrer » a cote du statut en direct (fiche du poste) et dans la liste des postes de la compagnie.
+@router.post("/extensions/{sipv_extension_id}/reboot")
+async def reboot_extension(sipv_extension_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        code, res = await sipv_client.reboot_extension(str(sipv_extension_id))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code != 200:
+        raise HTTPException(status_code=code, detail=res.get("detail", "Impossible de redémarrer"))
+    return res

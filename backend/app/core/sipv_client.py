@@ -1286,3 +1286,13 @@ async def migration_execute(selection: dict) -> tuple[int, dict]:
             return 409, resp.json().get("detail", {})
         resp.raise_for_status()
         return resp.status_code, resp.json()
+
+
+async def reboot_extension(extension_id: str) -> tuple[int, dict]:
+    """Bouton « Redemarrer » (2026-10-10) : (statut, reponse) -- 409 = aucun telephone enregistre sous ce poste."""
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/extensions/{extension_id}/reboot", headers=_headers())
+        if resp.status_code in (404, 409):
+            return resp.status_code, resp.json()
+        resp.raise_for_status()
+        return resp.status_code, resp.json()

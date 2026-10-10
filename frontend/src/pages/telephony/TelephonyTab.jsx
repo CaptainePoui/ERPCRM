@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
+import RebootButton from '../../components/RebootButton'
 import api, { getToken } from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
 import PhoneOptionsEditor from '../../components/PhoneOptionsEditor'
@@ -552,7 +553,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--c-surface-2)' }}>
-                {['','Ext.','Nom','DID associé','Messagerie','Renvoi/DND','IP publique','IP privée','Actif',''].map((h, i) => (
+                {['','Ext.','Nom','DID associé','Messagerie','Renvoi/DND','IP publique','IP privée','Redémarrer','Actif',''].map((h, i) => (
                   <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                 ))}
               </tr>
@@ -596,6 +597,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                       {sip?.registered && sip.public_ip && sip.private_ip && sip.public_ip === sip.private_ip && (
                         <span title="IP publique = IP privée : SIP ALG actif ou double NAT chez le client" style={{ marginLeft: 6, color: '#D97706', fontWeight: 700 }}>⚠</span>
                       )}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      {sip && <RebootButton sipExtId={sip.id} extension={e.extension} registered={sip.registered} compact />}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }} onClick={ev => ev.stopPropagation()}>
                       <input type="checkbox" checked={sip ? sip.is_active : e.is_active}
