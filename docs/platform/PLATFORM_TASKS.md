@@ -5991,3 +5991,13 @@ Date(s) de travail : 2026-10-09
   - Consultations (si allumé) : ouverture d'une fiche compagnie, contact, article, facture, devis, ticket, bon de commande, facture fournisseur, tâche (et facture vue au portail) ; l'option est relue chaque 30 s par les deux serveurs.
   - Bouton « 🕘 Historique » (`components/HistoryButton.jsx`) : article du catalogue, devis, bon de commande, facture fournisseur ; icône seule sur facture et ticket (en-têtes déjà pleins : mise en page gardée). Compagnie et contact gardent leur onglet Journal (qui montre maintenant aussi les changements inscrits tout seuls et le nom du client du portail).
   - Vérifié : essai annulé (rien gardé, option toujours éteinte) — prix d'article visible dans son Historique (« Prix : 300.0 → 301.0 », Philippe) ; option allumée → ouverture de l'article inscrite « Consultation », éteinte → rien ; recherche « prix » ; filtre automatique + dates ; ligne de facture modifiée puis supprimée en lot → rattachée à sa facture. Écrans (Playwright, aucune erreur) : Admin → Journal (ordinateur et cellulaire), filtres, Historique d'un article, en-tête de facture comparé avant/après.
+
+---
+
+## TASK-050 [ERPCRM] [ ] Mise en page et apparence — utiliser toute la largeur de l'écran, look moderne
+Classification: CURRENT
+Date de demande : 2026-10-10 (Philippe : « je n'aime pas les onglets de admin en 2 lignes… depuis le début je veux travailler sur l'implémentation visuelle, il y a beaucoup d'espace non utilisé, tu limites les boîtes ou les pages à je ne sais pas quelle règle et on perd plein d'espace des 2 côtés… pourquoi tu ne les mets pas en pourcentage au lieu de fixe, comme ça qu'on le regarde sur une tablette ou un téléphone ça va s'ajuster… à l'ordi j'ai plein de place… plein ! … en plus le look de ERPCRM est vraiment 1990 »)
+Date(s) de travail : —
+
+- Constaté (2026-10-10) : chaque page a sa propre largeur maximale fixe, différente d'une page à l'autre : Administration 900 px, Commandes / bon de commande / commandes web 900–1000 px, Compagnies 1200 px, fiche compagnie 1400 px, et une douzaine de boîtes à largeur fixe dans Téléphonie ; sur un grand écran, le reste est vide des deux côtés. Les onglets d'Administration passent sur 2 lignes depuis TASK-002.3 parce que la page est limitée à 900 px.
+- En attente du GO sur la proposition (étape 1 : pleine largeur ; étape 2 : nouveau look, maquettes d'abord).
