@@ -107,7 +107,9 @@ Date de demande : 2026-10-10 (Philippe : « je n'aurais peut-être pas dû mettr
 Date(s) de travail : —
 
 - Constaté (2026-10-10) : doublon — Administration → Entreprise « Coordonnées de l'entreprise » (clés `pdf_seller_*` : nom, adresse en texte libre, TPS, TVQ, téléphone, courriel ; TASK-005.18) ET la fiche compagnie « Simple IP inc. » (tenant SIPV actif, 2 adresses 911). Sur la fiche Simple IP inc. : 4 factures (2026-0001 brouillon 97,25 $ du 2026-08-29 ; INV-111765, INV-111784, INV-111971 payées 0,01 $) et 1 facturation périodique (mensuelle, inactive).
-- En attente : proposition, réponses de Philippe (que faire de ces 4 factures et de la périodique), GO.
+- Proposé (2026-10-10) : une compagnie marquée « Propriétaire » (une seule) ; Administration → Entreprise lit/écrit ses coordonnées dans cette fiche (plus de clés `pdf_seller_*` en double) ; jamais facturée (facture, périodique, frais de retard refusés ; hors comptes à recevoir) ; garde téléphonie, 911, succursales ; créée automatiquement sur une installation neuve.
+- Philippe (2026-10-10) : les 4 factures et la périodique sont des essais (facturation périodique automatique) ; adresse confirmée : 11208, rue Ontario Est, Montréal-Est (Québec) H1B 1J8. Demande s'il vaut mieux une compagnie fictive pour les essais → recommandé : oui, une compagnie « Compagnie d'essai » (pastille « essai »), et y déplacer ces 4 factures et la périodique (rien d'effacé, numéros gardés).
+- En attente du GO (TASK-002.4 puis TASK-002.5).
 
 ---
 
