@@ -109,7 +109,9 @@ Date(s) de travail : —
 - Constaté (2026-10-10) : doublon — Administration → Entreprise « Coordonnées de l'entreprise » (clés `pdf_seller_*` : nom, adresse en texte libre, TPS, TVQ, téléphone, courriel ; TASK-005.18) ET la fiche compagnie « Simple IP inc. » (tenant SIPV actif, 2 adresses 911). Sur la fiche Simple IP inc. : 4 factures (2026-0001 brouillon 97,25 $ du 2026-08-29 ; INV-111765, INV-111784, INV-111971 payées 0,01 $) et 1 facturation périodique (mensuelle, inactive).
 - Proposé (2026-10-10) : une compagnie marquée « Propriétaire » (une seule) ; Administration → Entreprise lit/écrit ses coordonnées dans cette fiche (plus de clés `pdf_seller_*` en double) ; jamais facturée (facture, périodique, frais de retard refusés ; hors comptes à recevoir) ; garde téléphonie, 911, succursales ; créée automatiquement sur une installation neuve.
 - Philippe (2026-10-10) : les 4 factures et la périodique sont des essais (facturation périodique automatique) ; adresse confirmée : 11208, rue Ontario Est, Montréal-Est (Québec) H1B 1J8. Demande s'il vaut mieux une compagnie fictive pour les essais → recommandé : oui, une compagnie « Compagnie d'essai » (pastille « essai »), et y déplacer ces 4 factures et la périodique (rien d'effacé, numéros gardés).
-- En attente du GO (TASK-002.4 puis TASK-002.5).
+- Philippe (2026-10-10) : « ERPCRM n'est pas en ligne encore ; si j'ai un truc fiscal je vais nettoyer avant » ; pas de pastille « essai » (inutile) ; créer la compagnie test, qui aura les postes mis à Simple IP « 100-102-103-104 », migrés avec elle ; adresse 11206 (rue Ontario Est, n'existe pas).
+- Constaté (2026-10-10) : dans le tenant SIPV de Simple IP : 100 « Test Un », 101 « Test Deux », 102 « Test Trois », 103 « Test SIPV » ; le 104 « test PAPA » n'existe que dans l'ancienne liste de postes d'ERPCRM (`extensions`), pas sur SIPV. SIPV n'a aucune fonction pour déplacer un poste d'un tenant à un autre (seulement créer / supprimer).
+- En attente : quels postes (101 ? 104 ?), compagnie test = son propre tenant ou succursale de Simple IP (même tenant), puis GO.
 
 ---
 
