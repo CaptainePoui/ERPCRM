@@ -101,6 +101,14 @@ Date(s) de travail : —
 - Simple IP Rose (Philippe, 2026-10-10) : « c'est moi qui paie, mais c'est mon serveur, alors je n'ai pas de facture juste pour eux ; j'ai la facture de ScopServ pour tout le serveur » → compagnie succursale de Simple IP inc., aucune facturation à créer (elle n'en a aucune aujourd'hui).
 - En attente du GO sur le plan final.
 
+
+### TASK-002.5 [ ] Compagnie du propriétaire — une seule fiche pour Simple IP (coordonnées des PDF + téléphonie), jamais facturée
+Date de demande : 2026-10-10 (Philippe : « je n'aurais peut-être pas dû mettre ma propre compagnie, au départ c'est pour les tests, mais je vais devoir avoir un 911 quand je vais migrer sur SIPV, donc c'est bien… peut-être faire le lien que la compagnie du propriétaire ne se fait pas facturer : quand on installe ERPCRM+SIPV ça crée la compagnie pour avoir les options de SIPV mais ça ne la facture pas parce que c'est lui qui a le serveur… je ne veux pas de doublon et là j'en ai dans les infos du propriétaire du ERPCRM et ma compagnie »)
+Date(s) de travail : —
+
+- Constaté (2026-10-10) : doublon — Administration → Entreprise « Coordonnées de l'entreprise » (clés `pdf_seller_*` : nom, adresse en texte libre, TPS, TVQ, téléphone, courriel ; TASK-005.18) ET la fiche compagnie « Simple IP inc. » (tenant SIPV actif, 2 adresses 911). Sur la fiche Simple IP inc. : 4 factures (2026-0001 brouillon 97,25 $ du 2026-08-29 ; INV-111765, INV-111784, INV-111971 payées 0,01 $) et 1 facturation périodique (mensuelle, inactive).
+- En attente : proposition, réponses de Philippe (que faire de ces 4 factures et de la périodique), GO.
+
 ---
 
 ## TASK-003 [ERPCRM] [x] Contacts — liste, fiche, multi-compagnies, + Ticket / + Facture / + Tâche
