@@ -111,7 +111,8 @@ Date(s) de travail : —
 - Philippe (2026-10-10) : les 4 factures et la périodique sont des essais (facturation périodique automatique) ; adresse confirmée : 11208, rue Ontario Est, Montréal-Est (Québec) H1B 1J8. Demande s'il vaut mieux une compagnie fictive pour les essais → recommandé : oui, une compagnie « Compagnie d'essai » (pastille « essai »), et y déplacer ces 4 factures et la périodique (rien d'effacé, numéros gardés).
 - Philippe (2026-10-10) : « ERPCRM n'est pas en ligne encore ; si j'ai un truc fiscal je vais nettoyer avant » ; pas de pastille « essai » (inutile) ; créer la compagnie test, qui aura les postes mis à Simple IP « 100-102-103-104 », migrés avec elle ; adresse 11206 (rue Ontario Est, n'existe pas).
 - Constaté (2026-10-10) : dans le tenant SIPV de Simple IP : 100 « Test Un », 101 « Test Deux », 102 « Test Trois », 103 « Test SIPV » ; le 104 « test PAPA » n'existe que dans l'ancienne liste de postes d'ERPCRM (`extensions`), pas sur SIPV. SIPV n'a aucune fonction pour déplacer un poste d'un tenant à un autre (seulement créer / supprimer).
-- En attente : quels postes (101 ? 104 ?), compagnie test = son propre tenant ou succursale de Simple IP (même tenant), puis GO.
+- Décision de Philippe (2026-10-10) : option B — la compagnie test a son propre tenant, **T1000** (libre dans ERPCRM ; à vérifier sur SIPV) ; postes 100-103 déplacés de Simple IP (T1001) vers T1000 par la nouvelle fonction de migration (TASK-051). Le 104 manquant sur SIPV = bogue (TASK-023.36). T1000 recevra aussi les numéros libres de Simple IP (TASK-023.37).
+- En attente du GO (ordre proposé : TASK-002.4, TASK-002.5, TASK-051, puis déplacement des postes et TASK-023.37).
 
 ---
 
@@ -2524,6 +2525,19 @@ Maintenant (`backend/app/api/v1/endpoints/companies.py`) :
 - Inchangé : assignation 911 d'un poste (refuse une succursale sans copie 911 — impossible pour une compagnie SIPV après ce correctif), `ensure_primary_site` (seulement compagnies SIPV), UI (section Succursales de l'onglet Général déjà affichée pour toutes les compagnies).
 - Preuve : succursale « Oxygene » créée et modifiée sous Maison Le Passeur (201/200, sans lien 911) ; succursale principale de Simple IP renvoyée sans changement → 200, lien 911 identique. Non testé en réel : l'activation SIPV d'une compagnie qui a déjà des succursales (aurait créé un vrai tenant).
 - Données : les 26 factures Zoho « Oxygene » (TASK-005.7) rattachées à la succursale (`site_id` + adresse figée) par script ORM, sans passer par `PUT /invoices` (qui recalcule les taxes) — totaux vérifiés inchangés ; note provisoire retirée de la fiche Maison Le Passeur.
+
+
+### TASK-023.36 [ ] Bogue : poste 104 « test PAPA » dans ERPCRM mais jamais créé sur SIPV
+Date de demande : 2026-10-10 (Philippe : « ça veut dire que l'ERPCRM n'a pas créé le 104 comme il aurait dû le faire »)
+Date(s) de travail : —
+
+- Constaté (2026-10-10) : le 104 « test PAPA » (courriel de messagerie normdenis@hotmail.com, créé le 2026-08-14) existe seulement dans l'ancienne table `extensions` d'ERPCRM, rattachée à Simple IP inc. ; le tenant SIPV de Simple IP (T1001) a 100, 101, 102, 103. Cause à trouver (ancien chemin de création qui n'envoyait pas à SIPV ? envoi en échec non signalé ?) avant de corriger.
+
+### TASK-023.37 [ ] Numéros libres de Simple IP dans le tenant T1000 : message de vente puis transfert
+Date de demande : 2026-10-10 (Philippe : « je veux que le tenant test soit le T1000, ça va être là aussi que je vais mettre mes # DID libres pour qu'ils soient dans le serveur et jouent le message « ce numéro appartient à Simple IP, vous pouvez l'acheter en restant en ligne » (destination 2) mon cell (futur app de cell IP) »)
+Date(s) de travail : —
+
+- À faire après la création de T1000 (TASK-002.5) : les numéros non vendus vont dans T1000 ; appel entrant → message enregistré → transfert vers le cellulaire de Philippe (plus tard l'application cellulaire IP). Vérifier ce que les destinations de numéros existantes (TASK-023.31) permettent déjà avant de coder.
 
 ---
 
@@ -6044,3 +6058,15 @@ Date(s) de travail : 2026-10-10
   - **Administration → Entreprise → Apparence** : Jour (par défaut) / Nuit, pour tout le monde, appliqué tout de suite (réglage `ui_theme`, `GET/PUT /settings`) ; gardé dans le navigateur pour éviter un éclair blanc ; la connexion et le portail client restent en mode jour.
   - Vérifié (Playwright, 1920 × 1080 jour et nuit, et 390 de large) : fiche compagnie, Inventaire, Compagnies, Contacts, Factures, Tickets, Courriels, Catalogue, Banque, Fiscalité, Tâches, Agenda, Bons de commande, Administration (Utilisateurs, Entreprise), Mon compte, connexion, portail : aucune erreur. Le réglage Nuit a été essayé sans changer le vrai réglage (réponse modifiée dans le navigateur d'essai).
   - Reste (étape 3, écran par écran) : réorganiser l'intérieur des fiches comme la maquette (cartes de chiffres, boîtes en grille), à commencer par la fiche compagnie.
+
+---
+
+## TASK-051 [ERPCRM+SIPV] [ ] Migration de tenant — déplacer une entreprise (ou ses postes) d'un tenant à un autre
+Classification: CURRENT
+Date de demande : 2026-10-10 (Philippe : « option B, donc on va créer le principe de migrer une entreprise, ça va servir quand une entreprise va se joindre à une autre ou la quitter, ça va être un gros travail »)
+Date(s) de travail : —
+
+- Besoin : une succursale qui se joint à une maison mère qui a déjà un tenant, une succursale qui quitte (TASK-002.4, alertes), et les postes d'essai 100-103 de Simple IP (T1001) vers la compagnie test T1000 (TASK-002.5).
+- Constaté (2026-10-10) : SIPV sait créer et supprimer un poste dans un tenant, mais rien pour le déplacer d'un tenant à un autre (`extensions.py`). Un poste déplacé change d'identifiant SIP : les téléphones doivent être reconfigurés (provisionnement).
+- À faire avant le plan : inventaire de tout ce qui appartient à un tenant sur SIPV (postes, numéros, groupes d'appel, IVR, messageries et messages, musique d'attente, adresses 911, parcage, historique d'appels, facturation) ; croiser avec l'architecture TASK-027 / TASK-S043 ; SIPV reste autonome (aucune copie de code).
+
