@@ -98,6 +98,7 @@ Date(s) de travail : —
 - Philippe (2026-10-10) : « même chose si on décoche une succursale et qu'elle était sur le même tenant (popup alerte) » → décocher une succursale dont les postes sont dans le tenant de la maison mère : fenêtre d'alerte (sa téléphonie devra être migrée vers son propre tenant).
 - Réponses de Philippe (2026-10-10) : (1) seule la succursale a un tenant → il passe à la maison mère : oui ; (2) facture téléphonique d'une succursale : un choix « facturer indépendamment » ou « facturer à la maison mère », qui peut remonter d'un niveau ou jusqu'en haut quand il y a plusieurs maisons mères ; (3) « Simple IP Rose » devient une compagnie (« pas le choix, c'est la procédure ») → règle : toute adresse 911 autre que celle de la compagnie elle-même = une compagnie succursale.
 - Précision (2026-10-10, Philippe : « elle est toujours facturée à elle-même sauf si je coche facturer à la maison mère… là j'ai le choix des maisons mères ») → par défaut facturée à elle-même ; case « Facturer à la maison mère », puis choix parmi ses maisons mères (parent direct ou plus haut).
+- Simple IP Rose (Philippe, 2026-10-10) : « c'est moi qui paie, mais c'est mon serveur, alors je n'ai pas de facture juste pour eux ; j'ai la facture de ScopServ pour tout le serveur » → compagnie succursale de Simple IP inc., aucune facturation à créer (elle n'en a aucune aujourd'hui).
 - En attente du GO sur le plan final.
 
 ---
