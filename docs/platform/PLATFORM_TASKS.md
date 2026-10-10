@@ -78,6 +78,7 @@ Date(s) de travail : —
 - Proposé (2026-10-10) : pastilles combinables gérées dans Admin ; section « Intervenants » libre (rôle + compagnie + contact + note).
 - Décision de Philippe (2026-10-10) : pastilles OK ; PAS d'intervenants libres (« je suis en téléphonie IP, je me fous de l'électricien, mais j'ai besoin et je suis dépendant de l'Internet et du réseau ») → deux cases fixes dans la fiche du client : **Internet** et **Réseau**, chacune = une compagnie + un contact préféré.
 - Précision de Philippe (2026-10-10) : « ces infos peuvent être dans un onglet Intervenants, ce serait bien » → les deux cases dans un nouvel onglet **Intervenants** de la fiche compagnie (pas dans Général).
+- Puis (2026-10-10, Philippe : « ou on le met dans inventaire parce que ça va avec son matériel ?? ») → recommandé : dans l'onglet **Inventaire** existant (liste des équipements, catégorie Routeur déjà là), un encadré « Internet et réseau » en haut, la liste des équipements dessous ; pas de nouvel onglet (la fiche en a déjà 12). Sur la fiche du fournisseur (Satelcom, Nanotech), même endroit : « Clients qui dépendent de nous ».
 - En attente du GO.
 
 ---
