@@ -77,6 +77,7 @@ Date(s) de travail : —
 - Constaté : une compagnie n'a aucun rôle (client/fournisseur/sous-traitant) ni lien vers une autre compagnie ; un contact peut déjà être dans plusieurs compagnies (TASK-003) ; dans Courriels, « Classer » permet déjà de choisir la compagnie et « Créer le contact dans cette compagnie » (TASK-047.2).
 - Proposé (2026-10-10) : pastilles combinables gérées dans Admin ; section « Intervenants » libre (rôle + compagnie + contact + note).
 - Décision de Philippe (2026-10-10) : pastilles OK ; PAS d'intervenants libres (« je suis en téléphonie IP, je me fous de l'électricien, mais j'ai besoin et je suis dépendant de l'Internet et du réseau ») → deux cases fixes dans la fiche du client : **Internet** et **Réseau**, chacune = une compagnie + un contact préféré.
+- Précision de Philippe (2026-10-10) : « ces infos peuvent être dans un onglet Intervenants, ce serait bien » → les deux cases dans un nouvel onglet **Intervenants** de la fiche compagnie (pas dans Général).
 - En attente du GO.
 
 ---
