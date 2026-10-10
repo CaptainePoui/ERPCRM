@@ -75,7 +75,9 @@ Date(s) de travail : —
 
 - Exemple réel donné (dossier Équijustice, 2026-10-10) : client Équijustice (contact Maya Fernet, 13 organismes dont l'Académie populaire à Joliette) ; Internet = Satelcom ; réseau/routeur/pare-feu = Nanotech Informatique depuis ~15 ans (450-760-9090, option « Service aux entreprises » ; Josué, Jean-François, Jérémie) ; routeur Ubiquiti EdgeRouter X, IP interne réservée .111 pour le UCM ; lignes SIP vers ScopServ (75.98.128.39) qui ne s'enregistrent plus.
 - Constaté : une compagnie n'a aucun rôle (client/fournisseur/sous-traitant) ni lien vers une autre compagnie ; un contact peut déjà être dans plusieurs compagnies (TASK-003) ; dans Courriels, « Classer » permet déjà de choisir la compagnie et « Créer le contact dans cette compagnie » (TASK-047.2).
-- En attente du GO sur la proposition.
+- Proposé (2026-10-10) : pastilles combinables gérées dans Admin ; section « Intervenants » libre (rôle + compagnie + contact + note).
+- Décision de Philippe (2026-10-10) : pastilles OK ; PAS d'intervenants libres (« je suis en téléphonie IP, je me fous de l'électricien, mais j'ai besoin et je suis dépendant de l'Internet et du réseau ») → deux cases fixes dans la fiche du client : **Internet** et **Réseau**, chacune = une compagnie + un contact préféré.
+- En attente du GO.
 
 ---
 
