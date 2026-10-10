@@ -27,13 +27,13 @@ def _e(v) -> str:
 
 async def _seller(db: AsyncSession) -> tuple[str, str]:
     """(nom, bloc HTML) du vendeur -- memes reglages que la facture."""
-    name = await _get_setting("pdf_seller_name", "Simple IP inc.", db)
+    from app.core.owner import seller_info          # fiche de la compagnie du proprietaire (TASK-002.5)
+    info = await seller_info(db)
+    name = info["name"]
     block = f"<strong>{_e(name)}</strong>"
-    for key, prefix in (("pdf_seller_address", ""), ("pdf_seller_tps", "TPS # "), ("pdf_seller_tvq", "TVQ # "),
-                        ("pdf_seller_phone", ""), ("pdf_seller_email", "")):
-        v = await _get_setting(key, "", db)
-        if v:
-            block += f"<br>{prefix}{_e(v)}"
+    for key, prefix in (("address", ""), ("tps", "TPS # "), ("tvq", "TVQ # "), ("phone", ""), ("email", "")):
+        if info[key]:
+            block += f"<br>{prefix}{_e(info[key])}"
     return name, block
 
 

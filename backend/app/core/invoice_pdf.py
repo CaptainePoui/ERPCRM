@@ -1,8 +1,7 @@
 """invoice_pdf.py -- generation PDF des factures via WeasyPrint.
 
-Utilise les cles app_settings suivantes (avec valeurs par defaut) :
-  pdf_seller_name, pdf_seller_address, pdf_seller_tps, pdf_seller_tvq,
-  pdf_seller_phone, pdf_seller_email
+Le bloc vendeur vient de la fiche de la compagnie du proprietaire (core/owner.py, TASK-002.5) -- plus des cles
+pdf_seller_* d'app_settings.
 """
 from __future__ import annotations
 import io
@@ -103,13 +102,11 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
     )
     inv = r.scalar_one()
 
-    # Infos vendeur depuis app_settings
-    seller_name = await _get_setting("pdf_seller_name", "Simple IP inc.", db)
-    seller_address = await _get_setting("pdf_seller_address", "", db)
-    seller_tps = await _get_setting("pdf_seller_tps", "", db)
-    seller_tvq = await _get_setting("pdf_seller_tvq", "", db)
-    seller_phone = await _get_setting("pdf_seller_phone", "", db)
-    seller_email = await _get_setting("pdf_seller_email", "", db)
+    # Infos vendeur : la fiche de la compagnie du proprietaire (TASK-002.5)
+    from app.core.owner import seller_info
+    info = await seller_info(db)
+    seller_name, seller_address, seller_tps = info["name"], info["address"], info["tps"]
+    seller_tvq, seller_phone, seller_email = info["tvq"], info["phone"], info["email"]
 
     confirmed = await _confirmed_total(invoice_id, db)
     pending = await _pending_total(invoice_id, db)

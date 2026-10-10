@@ -24,6 +24,11 @@ class Company(Base):
     annual_revenue: Mapped[float | None] = mapped_column(Float)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Compagnie du proprietaire (TASK-002.5) : une seule, celle qui possede le serveur -- jamais facturee ; ses coordonnees
+    # sont imprimees sur les PDF (Administration -> Entreprise les modifie ici)
+    is_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    tps_number: Mapped[str | None] = mapped_column(String(40))
+    tvq_number: Mapped[str | None] = mapped_column(String(40))
 
     # Gestionnaire interne
     internal_manager_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))

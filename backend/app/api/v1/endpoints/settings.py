@@ -219,14 +219,17 @@ class NumberingIn(BaseModel):
 
 
 # Coordonnees de l'entreprise imprimees sur tous les PDF (facture, avoir, devis, echange) -- TASK-005.18, 2026-10-08.
-# Les cles pdf_seller_* existaient (core/invoice_pdf.py) sans aucun ecran pour les remplir.
-BUSINESS_KEYS = {"name": "pdf_seller_name", "address": "pdf_seller_address", "tps": "pdf_seller_tps",
-                 "tvq": "pdf_seller_tvq", "phone": "pdf_seller_phone", "email": "pdf_seller_email"}
-
+# Depuis TASK-002.5 (2026-10-10) : lues et modifiees dans la fiche de la compagnie du proprietaire (core/owner.py),
+# plus de copie dans app_settings.
 
 class BusinessInfo(BaseModel):
+    company_id: str | None = None
     name: str = Field(default="", max_length=200)
-    address: str = Field(default="", max_length=500)
+    street: str = Field(default="", max_length=255)
+    unit: str = Field(default="", max_length=255)
+    city: str = Field(default="", max_length=100)
+    province: str = Field(default="QC", max_length=50)
+    postal_code: str = Field(default="", max_length=10)
     tps: str = Field(default="", max_length=40)
     tvq: str = Field(default="", max_length=40)
     phone: str = Field(default="", max_length=40)
@@ -234,11 +237,15 @@ class BusinessInfo(BaseModel):
 
 
 async def _business(db: AsyncSession) -> BusinessInfo:
-    out = {}
-    for field, key in BUSINESS_KEYS.items():
-        s = (await db.execute(select(AppSetting).where(AppSetting.key == key))).scalar_one_or_none()
-        out[field] = s.value if s else ("Simple IP inc." if field == "name" else "")   # meme defaut que le PDF
-    return BusinessInfo(**out)
+    from app.core import owner as ow
+    co = await ow.get_owner(db)
+    if not co:
+        return BusinessInfo()
+    a = await ow.billing_address(db, co.id)
+    em = await ow.primary_email(db, co.id)
+    return BusinessInfo(company_id=str(co.id), name=co.name, street=a.street_1 if a else "", unit=(a.street_2 or "") if a else "",
+                        city=a.city if a else "", province=a.province if a else "QC", postal_code=a.postal_code if a else "",
+                        tps=co.tps_number or "", tvq=co.tvq_number or "", phone=co.office_phone or "", email=em.value if em else "")
 
 
 @router.get("/business", response_model=BusinessInfo)
@@ -248,10 +255,31 @@ async def get_business(db: AsyncSession = Depends(get_db), _: User = Depends(get
 
 @router.put("/business", response_model=BusinessInfo)
 async def update_business(payload: BusinessInfo, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import owner as ow
+    from app.models.address import Address, AddressType
+    from app.models.communication import CommunicationChannel, ChannelType
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Le nom de l'entreprise est obligatoire")
-    for field, key in BUSINESS_KEYS.items():
-        await set_setting(db, key, getattr(payload, field).strip())
+    co = await ow.get_owner(db)
+    if not co:
+        raise HTTPException(status_code=404, detail="Aucune compagnie du propriétaire")
+    co.name = payload.name.strip()
+    co.tps_number, co.tvq_number = payload.tps.strip() or None, payload.tvq.strip() or None
+    co.office_phone = payload.phone.strip() or None
+    if payload.street.strip():
+        a = await ow.billing_address(db, co.id)
+        if not a or a.address_type != AddressType.billing:
+            a = Address(entity_id=co.id, address_type=AddressType.billing, is_primary=True, is_active=True, country="CA")
+            db.add(a)
+        a.street_1, a.street_2 = payload.street.strip(), payload.unit.strip() or None
+        a.city, a.province, a.postal_code = payload.city.strip(), (payload.province.strip() or "QC"), payload.postal_code.strip().upper()
+    if payload.email.strip():
+        em = await ow.primary_email(db, co.id)
+        if em:
+            em.value = payload.email.strip()
+        else:
+            db.add(CommunicationChannel(entity_id=co.id, channel_type=ChannelType.email, value=payload.email.strip(),
+                                        label="Facturation", is_primary=True, is_active=True))
     await db.commit()
     return await _business(db)
 
