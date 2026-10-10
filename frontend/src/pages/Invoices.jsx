@@ -7,12 +7,12 @@ import NewInvoiceModal from '../components/NewInvoiceModal'
 import './Invoices.css'
 
 const STATUS_LABELS = {
-  brouillon:  { label: 'Brouillon',  color: 'var(--c-muted)' },
+  brouillon:  { label: 'Brouillon',  color: '#6B7280' },
   envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   partiellement_payee: { label: 'Partielle', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
-  annulee:    { label: 'Annulée',    color: 'var(--c-faint)' },
+  annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
 
 // Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Fermé = entierement applique

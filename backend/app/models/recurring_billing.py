@@ -71,6 +71,9 @@ class RecurringBillingLine(Base):
     # Ligne de crédit de prorata (générée au retrait) -- affichée/traitée
     # différemment d'une ligne de service normale (jamais reconduite elle-même).
     is_prorata_credit: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Compagnie a qui appartient ce service (TASK-002.4) : une succursale dans le tenant de sa maison mere ; la ligne va dans
+    # la recurrence de la compagnie facturee pour elle (elle-meme, ou la maison mere choisie)
+    for_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 

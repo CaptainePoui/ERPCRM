@@ -12,6 +12,7 @@ from app.core import clock
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
+from app.core import branches, company_tree
 from app.core.telephony_lock import acquire_telephony_lock
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.entity import Entity, EntityType
@@ -504,6 +505,51 @@ async def set_connectivity(company_id: uuid.UUID, payload: ConnectivityIn, db: A
     return await get_connectivity(company_id, db, current_user)
 
 
+# ── Maison mère et succursales (TASK-002.4) ──────────────────────────────────
+
+class GroupIn(BaseModel):
+    parent_company_id: uuid.UUID | None = None     # None = pas une succursale
+    bill_to_company_id: uuid.UUID | None = None    # None = facturée à elle-même
+    confirm: bool = False                          # alerte de tenant acceptée
+
+
+def _ref(c: Company | None) -> dict | None:
+    return {"id": str(c.id), "name": c.name, "is_active": c.is_active} if c else None
+
+
+@router.get("/{company_id}/group")
+async def get_group(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    co = await db.get(Company, company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    chain = await company_tree.ancestors(db, company_id)
+    kids = (await db.execute(select(Company).where(Company.parent_company_id == company_id).order_by(Company.name))).scalars().all()
+    holder = await company_tree.tenant_holder(db, company_id)
+    out_kids = []
+    for k in kids:
+        sub = await company_tree.descendant_ids(db, k.id)
+        out_kids.append({**_ref(k), "branches": len(sub), "own_tenant": company_tree.has_tenant(k),
+                         "billed_here": k.bill_to_company_id == co.id})
+    return {
+        "parent": _ref(chain[0]) if chain else None,
+        "ancestors": [_ref(a) for a in chain],
+        "branches": out_kids,
+        "bill_to": _ref(await db.get(Company, co.bill_to_company_id)) if co.bill_to_company_id else None,
+        "tenant_holder": _ref(holder),
+        "own_tenant": company_tree.has_tenant(co),
+    }
+
+
+@router.put("/{company_id}/group")
+async def set_group(company_id: uuid.UUID, payload: GroupIn, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    co = await db.get(Company, company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    warnings = await branches.set_parent(db, co, payload.parent_company_id, payload.bill_to_company_id, payload.confirm, current_user)
+    await db.commit()
+    return {**await get_group(company_id, db, current_user), "warnings": warnings}
+
+
 @router.post("/{company_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Company).where(Company.id == company_id))
@@ -541,8 +587,13 @@ async def add_address(company_id: uuid.UUID, payload: dict, db: AsyncSession = D
     addr_type = payload.get("address_type", "")
     _log(db, company_id, current_user, "address_added",
          description=f"Adresse ({addr_type}) ajoutée")
+    await db.flush()
+    warning = None
+    co = await db.get(Company, company_id)
+    if co.parent_company_id or await branches.branch_site(db, company_id):   # TASK-002.4 : son adresse 911 suit
+        warning = await branches.sync_branch_site(db, co)
     await db.commit()
-    return {"ok": True}
+    return {"ok": True, "warning": warning}
 
 
 @router.post("/{company_id}/communications", status_code=status.HTTP_201_CREATED)
@@ -1394,6 +1445,8 @@ class SiteOut(BaseModel):
     notes: str | None
     is_active: bool
     is_primary: bool
+    branch_company_id: uuid.UUID | None = None
+    branch_company_name: str | None = None
 
 
 def _site_out(s: CompanySite) -> SiteOut:
@@ -1402,7 +1455,9 @@ def _site_out(s: CompanySite) -> SiteOut:
                    street_name=s.street_name, unit=s.unit, city=s.city, province=s.province,
                    postal_code=s.postal_code, country=s.country, billing_contact_id=s.billing_contact_id,
                    billing_contact_label=f"{contact.first_name} {contact.last_name}".strip() if contact else None,
-                   billing_email=s.billing_email, notes=s.notes, is_active=s.is_active, is_primary=s.is_primary)
+                   billing_email=s.billing_email, notes=s.notes, is_active=s.is_active, is_primary=s.is_primary,
+                   branch_company_id=s.branch_company_id,
+                   branch_company_name=s.branch_company.name if s.branch_company_id and s.branch_company else None)
 
 
 async def _unset_other_primaries(company_id: uuid.UUID, keep_site_id: uuid.UUID, db: AsyncSession):
@@ -1428,7 +1483,7 @@ async def _apply_billing_email_to_contact(contact_id: uuid.UUID | None, email: s
 async def list_company_sites(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     await ensure_primary_site(company_id, db)
     result = await db.execute(
-        select(CompanySite).options(selectinload(CompanySite.billing_contact))
+        select(CompanySite).options(selectinload(CompanySite.billing_contact), selectinload(CompanySite.branch_company))
         .where(CompanySite.company_id == company_id).order_by(CompanySite.label)
     )
     return [_site_out(s) for s in result.scalars().all()]
@@ -1472,7 +1527,7 @@ async def create_company_site(company_id: uuid.UUID, payload: SitePayload, db: A
         await _unset_other_primaries(company_id, site_id, db)
     await _apply_billing_email_to_contact(payload.billing_contact_id, payload.billing_email, db)
     await db.commit()
-    result = await db.execute(select(CompanySite).options(selectinload(CompanySite.billing_contact)).where(CompanySite.id == site.id))
+    result = await db.execute(select(CompanySite).options(selectinload(CompanySite.billing_contact), selectinload(CompanySite.branch_company)).where(CompanySite.id == site.id))
     return _site_out(result.scalar_one())
 
 
@@ -1507,7 +1562,7 @@ async def update_company_site(company_id: uuid.UUID, site_id: uuid.UUID, payload
         await _unset_other_primaries(company_id, site.id, db)
     await _apply_billing_email_to_contact(billing_contact_id, updates.get("billing_email", site.billing_email), db)
     await db.commit()
-    result = await db.execute(select(CompanySite).options(selectinload(CompanySite.billing_contact)).where(CompanySite.id == site.id))
+    result = await db.execute(select(CompanySite).options(selectinload(CompanySite.billing_contact), selectinload(CompanySite.branch_company)).where(CompanySite.id == site.id))
     return _site_out(result.scalar_one())
 
 

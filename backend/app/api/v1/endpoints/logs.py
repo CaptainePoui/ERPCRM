@@ -49,10 +49,13 @@ FIELD_LABELS = {
     "internet_contact_id": "Internet — contact préféré",
     "network_company_id": "Réseau — compagnie",
     "network_contact_id": "Réseau — contact préféré",
+    "parent_company_id": "Maison mère",
+    "bill_to_company_id": "Facturée à",
 }
 
 # Inscrits avec les noms (lisibles), pas les identifiants : on les rechange dans l'onglet Inventaire (TASK-002.3)
-NO_REVERT_FIELDS = {"internet_company_id", "internet_contact_id", "network_company_id", "network_contact_id"}
+NO_REVERT_FIELDS = {"internet_company_id", "internet_contact_id", "network_company_id", "network_contact_id",
+                    "parent_company_id", "bill_to_company_id"}
 
 ACTION_LABELS = {
     "field_change": "Modification",

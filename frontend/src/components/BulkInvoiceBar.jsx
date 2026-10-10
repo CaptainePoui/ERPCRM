@@ -52,7 +52,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
   return (
     <>
       <div style={{ position: 'fixed', left: 16, right: 16, margin: '0 auto', width: 'fit-content', bottom: 16, zIndex: 250,
-        background: 'var(--c-text)', color: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.25)', padding: '10px 14px',
+        background: '#0A1929', color: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.25)', padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {msg && !items.length ? (
           <>
@@ -74,7 +74,8 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
               </button>
             )}
             <button className="btn-secondary" style={btn} disabled={busy || !open.length} title={open.length ? '' : 'Aucune facture avec un reste à payer'} onClick={() => setModal('credit')}>Créditer le reste</button>
-            <button className="btn-secondary" style={btn} disabled={busy || !!why} title={why} onClick={() => setModal('payment')}>Paiement groupé</button>
+            {/* TASK-002.4 : plusieurs compagnies permises si c'est une maison mère et ses succursales (le serveur vérifie) */}
+            <button className="btn-secondary" style={btn} disabled={busy || !open.length} title={open.length ? '' : 'Aucune facture avec un reste à payer'} onClick={() => setModal('payment')}>Paiement groupé</button>
             <button onClick={onClear} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 13 }}>✕ Désélectionner</button>
             {msg && <span style={{ fontSize: 12, color: '#FCA5A5' }}>{msg}</span>}
           </>

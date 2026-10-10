@@ -585,12 +585,15 @@ async def company_invoices(company_id: uuid.UUID, db: AsyncSession = Depends(get
     comp = await db.get(Company, company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    from app.core.company_tree import family_ids
+    fam = await family_ids(db, company_id)            # TASK-002.4 : avec les factures de ses succursales
+    names = dict((await db.execute(select(Company.id, Company.name).where(Company.id.in_(fam)))).all())
     invs = (await db.execute(
-        select(Invoice).where(Invoice.company_id == company_id, Invoice.status.not_in(["brouillon", "annulee"]))
+        select(Invoice).where(Invoice.company_id.in_(fam), Invoice.status.not_in(["brouillon", "annulee"]))
         .order_by(Invoice.issue_date.desc(), Invoice.number.desc())
     )).scalars().all()
     paid = await bm.invoice_balances(db, [i.id for i in invs])
-    return [bm.invoice_dict(i, paid.get(i.id) or Decimal("0"), comp.name) for i in invs]
+    return [bm.invoice_dict(i, paid.get(i.id) or Decimal("0"), names.get(i.company_id, comp.name)) for i in invs]
 
 
 @router.post("/transactions/{tx_id}/match", response_model=TransactionOut)
@@ -629,12 +632,14 @@ async def match_transaction(tx_id: uuid.UUID, payload: MatchIn, db: AsyncSession
         invs = [await db.get(Invoice, a.invoice_id) for a in payload.allocations]
         if any(i is None for i in invs):
             raise HTTPException(status_code=404, detail="Facture introuvable")
-        companies = {i.company_id for i in invs} | ({payload.company_id} if payload.company_id else set())
-        if len(companies) != 1:
-            raise HTTPException(status_code=400, detail="Toutes les factures doivent appartenir à la même compagnie")
+        # TASK-002.4 : le depot d'une maison mere peut payer les factures de ses succursales (paiement a son nom)
+        from app.core.company_tree import payer_for
+        inv_companies = {i.company_id for i in invs}
+        company_id = await payer_for(db, inv_companies, payload.company_id) if inv_companies else payload.company_id
+        if not company_id:
+            raise HTTPException(status_code=400, detail="Les factures doivent être celles d'une même compagnie ou de ses succursales")
         if any(i.status in ("brouillon", "annulee") for i in invs):
             raise HTTPException(status_code=400, detail="Impossible d'associer un brouillon ou une facture annulée")
-        company_id = next(iter(companies))
         if not await db.get(Company, company_id):
             raise HTTPException(status_code=404, detail="Compagnie introuvable")
         code = payload.method_code or bm.guess_method(tx.description)

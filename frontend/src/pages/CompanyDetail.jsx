@@ -18,6 +18,7 @@ import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import MailBrowser from '../components/MailBrowser'
 import ConnectivityPanel from '../components/ConnectivityPanel'
+import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 
 const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Courriels', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
@@ -339,8 +340,8 @@ function CompanyDetailsSection({ c, saveField }) {
 
 // Statut de paiement lisible : on voit d'un coup d'oeil ce qui est paye ou non
 function payState(t) {
-  if (t.status === 'brouillon') return { label: 'Brouillon', color: 'var(--c-muted)' }
-  if (t.status === 'annulee') return { label: 'Annulée', color: 'var(--c-faint)' }
+  if (t.status === 'brouillon') return { label: 'Brouillon', color: '#6B7280' }
+  if (t.status === 'annulee') return { label: 'Annulée', color: '#9CA3AF' }
   if (t.kind === 'credit') return t.remaining > 0.005 ? { label: 'Avoir ouvert', color: '#D97706' } : { label: 'Avoir appliqué', color: '#059669' }
   if (t.remaining <= 0.005) return { label: t.credited >= t.total - 0.005 ? 'Créditée' : 'Payée', color: '#059669' }
   if (t.overdue) return { label: t.paid > 0 ? 'En retard (partielle)' : 'En retard', color: '#DC2626' }
@@ -511,7 +512,7 @@ export default function CompanyDetail({ isNew }) {
       <div className="detail-header">
         <div className="detail-breadcrumb">
           <button className="back-btn" onClick={() => navigate('/companies')}>← Compagnies</button>
-          {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span></>}
+          {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span>{c && <ParentBadge companyId={id} />}</>}
           {isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">Nouvelle compagnie</span></>}
         </div>
         {!isNew && c && (
@@ -667,7 +668,8 @@ export default function CompanyDetail({ isNew }) {
                   </div>
                 </div>
                 <CompanyDetailsSection c={c} saveField={saveField} />
-                <E911AddressesSection companyId={id} />
+                <BranchSection companyId={id} />
+                <E911AddressesSection companyId={id} sipvEnabled={c.sipv_enabled} />
                 <div className="record-meta">
                   Créé le {new Date(c.created_at).toLocaleString('fr-CA')}
                   {c.updated_at !== c.created_at && <> · Modifié le {new Date(c.updated_at).toLocaleString('fr-CA')}</>}
@@ -1007,7 +1009,7 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
 // ── Tickets Tab (remplace Maintenance -- filtre tous les tickets de la compagnie,
 // peu importe le contact qui les a ouverts, plus recent en premier) ──────────
 const TKT_PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
+  faible:   { label: 'Faible',    color: '#6B7280' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -1019,8 +1021,8 @@ const TKT_STATUS_LABELS = {
   en_attente:          { label: 'En attente',   color: '#D97706' },
   fermer_a_facturer:   { label: 'À facturer',   color: '#7C3AED' },
   facture:             { label: 'Facturé',      color: '#0891B2' },
-  ferme:               { label: 'Fermé',        color: 'var(--c-muted)' },
-  annule:              { label: 'Annulé',       color: 'var(--c-faint)' },
+  ferme:               { label: 'Fermé',        color: '#6B7280' },
+  annule:              { label: 'Annulé',       color: '#9CA3AF' },
 }
 
 function TicketsTab({ companyId }) {
@@ -1185,7 +1187,7 @@ function NewAccessModal({ companyId, onClose, onCreated }) {
 // ── Inventaire Tab ────────────────────────────────────────────────────────────
 const EQ_CATS = ['ordinateur','serveur','imprimante','telephone','switch','routeur','autre']
 const EQ_LABELS = { ordinateur:'Ordinateur', serveur:'Serveur', imprimante:'Imprimante', telephone:'Téléphone', switch:'Switch', routeur:'Routeur', autre:'Autre' }
-const EQ_STATUS = { actif:{label:'Actif',color:'#059669'}, inactif:{label:'Inactif',color:'var(--c-muted)'}, hors_service:{label:'Hors service',color:'#DC2626'} }
+const EQ_STATUS = { actif:{label:'Actif',color:'#059669'}, inactif:{label:'Inactif',color:'#6B7280'}, hors_service:{label:'Hors service',color:'#DC2626'} }
 
 function InventaireTab({ companyId }) {
   const [items, setItems] = useState([])

@@ -637,6 +637,12 @@ async def upsert_contact_911_assignment(contact_id: uuid.UUID, payload: E911Assi
             result = await sipv_client.create_extension_e911_assignment(ext["tenant_id"], extension_id=ext["id"], **data)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    # TASK-002.4 : le poste appartient a la compagnie de son adresse 911 -> sa ligne de facturation suit
+    from app.core import branch_billing
+    holder = (await db.execute(select(Company).where(Company.sipv_tenant_id == uuid.UUID(str(ext["tenant_id"]))))).scalar_one_or_none()
+    if holder:
+        await branch_billing.place_service(db, holder, "extension", str(ext["id"]))
+        await db.commit()
     result["e911_address_id"] = str(site.id)
     return result
 

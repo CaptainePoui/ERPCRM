@@ -1051,16 +1051,15 @@ export default function ContactDetail({ isNew }) {
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>911 — localisation d'urgence</div>
                           <div className="form-group">
-                            <label>Succursale *</label>
+                            <label>Adresse 911 *</label>
                             <select value={e911Form.e911_address_id} onChange={e => setE911Form(p => ({ ...p, e911_address_id: e.target.value }))} disabled={e911Addresses.length === 0}>
                               <option value="">— Choisir —</option>
                               {e911Addresses.map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
                             </select>
                           </div>
-                          <button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginBottom: 8 }} onClick={openNewSuccursale}>+ Nouvelle succursale</button>
-                          {e911Addresses.length === 0 && (
-                            <div style={{ fontSize: 11, color: 'var(--c-faint)', marginBottom: 8 }}>Aucune succursale pour cette compagnie.</div>
-                          )}
+                          <div style={{ fontSize: 11, color: 'var(--c-faint)', marginBottom: 8 }}>
+                            {e911Addresses.length === 0 ? 'Aucune adresse 911 pour ce tenant. ' : ''}Une autre adresse = une compagnie succursale : cochez « Succursale » dans sa fiche.
+                          </div>
                           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                             <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={saveE911} disabled={!e911Form.e911_address_id}>
                               {e911Assignment ? 'Enregistrer' : 'Assigner'}

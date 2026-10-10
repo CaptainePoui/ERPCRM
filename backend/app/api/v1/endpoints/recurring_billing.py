@@ -395,12 +395,17 @@ async def sipv_billing_event(payload: SipvBillingEvent, db: AsyncSession = Depen
     if not company:
         return {"status": "ignored", "reason": "tenant inconnu côté ERPCRM"}
 
-    rb_result = await db.execute(
-        select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines))
-        .where(CompanyRecurringBilling.company_id == company.id, CompanyRecurringBilling.is_telephony == True)
-        .order_by(CompanyRecurringBilling.created_at).limit(1)
-    )
-    rb = rb_result.scalar_one_or_none()
+    # TASK-002.4 : un service d'une succursale (son adresse 911) est facture a la compagnie choisie pour elle
+    from app.core import branch_billing
+    if payload.action.endswith("_removed"):
+        rb_line = (await db.execute(select(RecurringBillingLine).join(CompanyRecurringBilling).where(
+            CompanyRecurringBilling.is_telephony == True, RecurringBillingLine.service_ref == payload.service_ref,
+            RecurringBillingLine.is_prorata_credit == False))).scalars().first()
+        rb = await db.get(CompanyRecurringBilling, rb_line.recurring_billing_id, options=[selectinload(CompanyRecurringBilling.lines)]) if rb_line else None
+        owner = company
+    else:
+        owner = await branch_billing.service_owner(db, company, payload.service_type, payload.service_ref)
+        rb = await branch_billing.target_for(db, company, owner)
     if not rb or not rb.is_active:
         return {"status": "ignored", "reason": "pas de récurrence active pour cette compagnie"}
 
@@ -414,7 +419,7 @@ async def sipv_billing_event(payload: SipvBillingEvent, db: AsyncSession = Depen
         line = RecurringBillingLine(
             recurring_billing_id=rb.id, catalogue_item_id=cat_item.id if cat_item else None,
             description=desc, qty=1, unit_price=unit_price,
-            service_ref=payload.service_ref, service_type=payload.service_type,
+            service_ref=payload.service_ref, service_type=payload.service_type, for_company_id=owner.id,
         )
         db.add(line)
 

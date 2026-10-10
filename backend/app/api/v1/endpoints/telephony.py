@@ -226,10 +226,17 @@ async def update_did(did_id: uuid.UUID, payload: DIDUpdate, db: AsyncSession = D
 
     for k, v in updates.items():
         setattr(d, k, v)
+    site_changed = d.site_id != site_id
     d.site_id = site_id
     d.schedule_id = schedule_id
     if sipv_tenant_did_id:
         d.sipv_tenant_did_id = uuid.UUID(sipv_tenant_did_id)
+    if site_changed and d.sipv_tenant_did_id:       # TASK-002.4 : le numero suit la compagnie de son adresse 911
+        from app.core import branch_billing
+        await db.flush()
+        holder = await db.get(Company, d.company_id)
+        if holder:
+            await branch_billing.place_service(db, holder, "did", str(d.sipv_tenant_did_id))
     await db.commit()
     await db.refresh(d)
     return _build_did(d)

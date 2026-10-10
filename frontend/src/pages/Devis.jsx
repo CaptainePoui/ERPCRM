@@ -5,11 +5,11 @@ import NewDevisModal from '../components/NewDevisModal'
 import './Invoices.css'
 
 const STATUS_LABELS = {
-  brouillon: { label: 'Brouillon', color: 'var(--c-muted)' },
+  brouillon: { label: 'Brouillon', color: '#6B7280' },
   envoye:    { label: 'Envoyé',    color: 'var(--brand)' },
   accepte:   { label: 'Accepté',   color: '#059669' },
   refuse:    { label: 'Refusé',    color: '#DC2626' },
-  expire:    { label: 'Expiré',    color: 'var(--c-faint)' },
+  expire:    { label: 'Expiré',    color: '#9CA3AF' },
 }
 
 const FILTERS = [

@@ -31,6 +31,11 @@ class Company(Base):
     # Vendeur référent (contact)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"))
 
+    # Succursale (TASK-002.4) : sa maison mere (plusieurs niveaux possibles) ; facturee a elle-meme, sauf si on choisit une
+    # de ses maisons meres (bill_to_company_id)
+    parent_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    bill_to_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+
     # Internet et reseau du client (TASK-002.3) : la compagnie qui s'en occupe et son contact prefere -- liens, jamais copies
     internet_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     internet_contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)

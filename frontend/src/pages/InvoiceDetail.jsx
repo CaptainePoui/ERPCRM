@@ -9,12 +9,12 @@ import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 
 const STATUS_LABELS = {
-  brouillon:  { label: 'Brouillon',  color: 'var(--c-muted)' },
+  brouillon:  { label: 'Brouillon',  color: '#6B7280' },
   envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   partiellement_payee: { label: 'Partiellement payée', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
-  annulee:    { label: 'Annulée',    color: 'var(--c-faint)' },
+  annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
 
 const STATUS_TRANSITIONS = {
@@ -41,8 +41,8 @@ const PAYMENT_STATUS = {
   processing: { label: 'En traitement', color: '#2563EB' },
   confirmed:  { label: 'Confirmé', color: '#059669' },
   rejected:   { label: 'Rejeté', color: '#DC2626' },
-  refunded:   { label: 'Remboursé', color: 'var(--c-muted)' },
-  cancelled:  { label: 'Annulé', color: 'var(--c-muted)' },
+  refunded:   { label: 'Remboursé', color: '#6B7280' },
+  cancelled:  { label: 'Annulé', color: '#6B7280' },
 }
 
 function isPastDue(dueDate) {

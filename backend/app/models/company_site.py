@@ -45,5 +45,9 @@ class CompanySite(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    company: Mapped["Company"] = relationship("Company")
+    # Compagnie succursale dont cette adresse 911 est l'adresse (TASK-002.4) ; company_id = la compagnie qui porte le tenant
+    branch_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+
+    company: Mapped["Company"] = relationship("Company", foreign_keys=[company_id])
+    branch_company: Mapped["Company | None"] = relationship("Company", foreign_keys=[branch_company_id])
     billing_contact: Mapped["Contact | None"] = relationship("Contact")

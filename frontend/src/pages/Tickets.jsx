@@ -5,7 +5,7 @@ import NewTicketModal from '../components/NewTicketModal'
 import './Tickets.css'
 
 const PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
+  faible:   { label: 'Faible',    color: '#6B7280' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -16,7 +16,7 @@ const STATUS_LABELS = {
   en_cours:            { label: 'En cours',                 color: '#059669' },
   en_attente_client:   { label: "En attente d'une réponse",  color: '#7C3AED' },
   facture:             { label: 'Facturé',                  color: '#0891B2' },
-  ferme:               { label: 'Fermé',                    color: 'var(--c-muted)' },
+  ferme:               { label: 'Fermé',                    color: '#6B7280' },
 }
 
 // Chaque puce est un interrupteur (clic = ajoute/retire du groupe) -- plusieurs

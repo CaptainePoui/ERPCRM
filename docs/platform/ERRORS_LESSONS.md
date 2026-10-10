@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-002.4 — Une migration déjà appliquée modifiée après coup, puis un journal en double
+
+**Date** : 2026-10-10
+
+**On croyait** : (1) pouvoir ajouter une colonne (`recurring_billing_lines.for_company_id`) dans la migration 77df140c3ac4 déjà appliquée, puis la défaire et la refaire ; (2) qu'une entrée de journal écrite à la main après avoir changé un champ empêchait le journal automatique de doubler.
+
+**Preuve** : `alembic downgrade` → `index "ix_recurring_billing_lines_for_company_id" does not exist` (la base n'avait jamais eu la colonne) ; essai annulé : « Maison mère : (vide) → 11e249ec-… » en plus de « (vide) → Simple IP inc. ».
+
+**Cause réelle** : (1) le fichier modifié ne décrivait plus ce qui avait été appliqué ; (2) une requête faite entre le changement du champ et l'ajout de l'entrée à la main déclenchait l'enregistrement automatique (autoflush), et le journal automatique voyait le champ changé sans entrée écrite à la main.
+
+**Correction** : retour du fichier à l'état appliqué et nouvelle migration 164c1a7e4620 pour la colonne (up/down/up testés, aucune donnée touchée) ; dans `branches.set_parent`, les noms sont lus et les entrées du journal ajoutées **avant** de changer les champs.
+
+**Leçon (à ne pas refaire)** : une migration appliquée ne se modifie jamais — toujours une nouvelle révision (déjà dans la mémoire « Alembic : id généré, une seule tête ») ; une entrée de journal écrite à la main s'ajoute avant de modifier le champ, jamais après des lectures en base.
+
+---
+
 ## TASK-049 — Journal des actions : un NIP inscrit en clair et une lecture « en lot » qui plantait
 
 **Date** : 2026-10-09

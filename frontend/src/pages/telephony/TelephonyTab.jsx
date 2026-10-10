@@ -372,7 +372,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ background: 'var(--c-surface-2)' }}>
-                  {['','Numéro','Note','Destination','Horaire','Succursale','Actif',''].map((h, i) => (
+                  {['','Numéro','Note','Destination','Horaire','Adresse 911','Actif',''].map((h, i) => (
                     <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                   ))}
                 </tr>
@@ -2429,7 +2429,8 @@ function TenantModelTemplatesSection({ companyId, templates, loading, phoneModel
 // ── Succursales (company_sites) -- TASK-S010/S010.4, plusieurs sites par
 // compagnie, chacun avec sa propre adresse 911 ET sa propre facturation.
 // ERPCRM est maitre ici (synchronise vers SIPV pour le 911, voir sync_site).
-export function E911AddressesSection({ companyId }) {
+export function E911AddressesSection({ companyId, sipvEnabled = true }) {
+  const navigate = useNavigate()
   const [addresses, setAddresses] = useState([])
   const [loading, setLoading] = useState(true)
   const [showNew, setShowNew] = useState(false)
@@ -2505,31 +2506,36 @@ export function E911AddressesSection({ companyId }) {
     onRefresh()
   }
 
+  // Sans tenant, pas d'adresse 911 a gerer ici (celle d'une succursale vit dans le tenant de sa maison mere)
+  if (!sipvEnabled && !loading && addresses.length === 0) return null
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Succursales ({addresses.length})
+          Adresses 911 ({addresses.length})
         </div>
-        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouvelle succursale</button>
+        {sipvEnabled && !addresses.some(a => a.is_primary) && <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => { openNew(); setForm(p => ({ ...p, is_primary: true })) }}>+ Adresse principale</button>}
       </div>
       <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Une compagnie peut avoir plusieurs sites — chacun a sa propre adresse 911 (assignée ensuite par poste, fiche Contact) et peut être facturé séparément.
+        Adresses envoyées au 911 pour les postes et les numéros de ce tenant. ★ = l'adresse de la compagnie elle-même ; chaque autre adresse est celle
+        d'une compagnie succursale et suit sa fiche (pour en ajouter une : cochez « Succursale » dans la fiche de cette compagnie).
       </div>
       {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : addresses.length === 0 ? (
-        <div className="empty-tab">Aucune succursale.</div>
+        <div className="empty-tab">Aucune adresse 911.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
             <tr style={{ background: 'var(--c-surface-2)' }}>
-              {['', 'Nom', 'Adresse', 'Contact facturation', 'Statut', ''].map(h => (
+              {['', 'Nom', 'Adresse', 'Compagnie', 'Statut', ''].map(h => (
                 <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {addresses.map(a => (
-              <tr key={a.id} style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer', opacity: a.is_active ? 1 : 0.55 }} onClick={() => openEdit(a)}>
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer', opacity: a.is_active ? 1 : 0.55 }}
+                onClick={() => a.branch_company_id ? navigate(`/companies/${a.branch_company_id}`) : openEdit(a)}
+                title={a.branch_company_id ? `Adresse de ${a.branch_company_name} : elle se modifie dans sa fiche` : ''}>
                 <td style={{ padding: '10px 12px' }}>
                   {a.is_primary
                     ? <span title="Succursale principale (défaut pour le 911 des postes)" style={{ color: '#D97706' }}>★</span>
@@ -2537,10 +2543,12 @@ export function E911AddressesSection({ companyId }) {
                 </td>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>{a.label}</td>
                 <td style={{ padding: '10px 12px', color: 'var(--c-muted)' }}>{a.civic_number} {a.street_name}{a.unit ? `, ${a.unit}` : ''}, {a.city} {a.province} {a.postal_code}</td>
-                <td style={{ padding: '10px 12px', color: 'var(--c-muted)', fontSize: 12 }}>{a.billing_contact_label || a.billing_email || '—'}</td>
+                <td style={{ padding: '10px 12px', fontSize: 13 }}>{a.branch_company_id
+                  ? <span style={{ color: 'var(--brand)', fontWeight: 600 }}>{a.branch_company_name} ↗</span>
+                  : <span style={{ color: 'var(--c-muted)' }}>Cette compagnie</span>}</td>
                 <td style={{ padding: '10px 12px' }}>{a.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Active</span> : <span style={{ color: 'var(--c-faint)' }}>Désactivée</span>}</td>
                 <td style={{ padding: '10px 12px' }}>
-                  {a.is_active
+                  {a.branch_company_id ? null : a.is_active
                     ? <button className="inv-del-btn" onClick={e => { e.stopPropagation(); deactivate(a.id) }}>✕</button>
                     : <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={e => { e.stopPropagation(); reactivate(a) }}>Réactiver</button>}
                 </td>

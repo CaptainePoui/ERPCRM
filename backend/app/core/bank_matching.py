@@ -102,6 +102,19 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
         return out
     amount = Decimal(tx.amount)
     names = dict((await db.execute(select(Company.id, Company.name))).all())
+    # TASK-002.4 : la maison mere peut payer pour ses succursales -- leurs factures comptent comme les siennes, et le nom
+    # d'une maison mere dans le depot designe aussi ses succursales
+    parents = dict((await db.execute(select(Company.id, Company.parent_company_id))).all())
+    def chain(cid):
+        out, seen = [cid], {cid}
+        while parents.get(out[-1]) and parents[out[-1]] not in seen:
+            out.append(parents[out[-1]]); seen.add(out[-1])
+        return out
+    family: set = set()
+    if tx.company_id:
+        family = {c for c in names if tx.company_id in chain(c)}
+    def name_score(text, cid):
+        return max(name_similarity(text, names.get(c)) for c in chain(cid))
 
     # Paiements existants a lier
     linked = await linked_payment_ids(db)
@@ -116,8 +129,8 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
         days = abs((cp.received_at - tx.posted_date).days) if cp.received_at else 0
         if cp.received_at and days > 45:
             continue
-        s = 50 - days + (40 if tx.company_id and cp.company_id == tx.company_id else 0) \
-            + 30 * name_similarity(tx.payee, names.get(cp.company_id))
+        s = 50 - days + (40 if tx.company_id and cp.company_id in family else 0) \
+            + 30 * name_score(tx.payee, cp.company_id)
         scored.append((s, cp))
     for s, cp in sorted(scored, key=lambda x: -x[0])[:5]:
         d = await payment_dict(db, cp, names.get(cp.company_id, ""))
@@ -142,9 +155,9 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
         score = 0.0
         if bal == amount:
             score += 60
-        if tx.company_id and inv.company_id == tx.company_id:
+        if tx.company_id and inv.company_id in family:
             score += 40
-        score += 30 * name_similarity(tx.payee or tx.description, names.get(inv.company_id))
+        score += 30 * name_score(tx.payee or tx.description, inv.company_id)
         # Delai habituel (Philippe, 2026-10-06) : le client paie 1 a 30 jours apres la facture,
         # parfois plus tard s'il est en retard -- indice de classement, jamais une association seule
         age = (tx.posted_date - inv.issue_date).days
@@ -171,7 +184,8 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
     # Combinaisons pour la compagnie connue (ou la plus probable)
     company_id = tx.company_id or (cands[0] and cands[0]["company_id"] if cands else None)
     if company_id:
-        own = sorted([i for i in invs if str(i.company_id) == str(company_id)
+        fam = {str(c) for c in names if str(company_id) in {str(x) for x in chain(c)}}
+        own = sorted([i for i in invs if str(i.company_id) in fam
                       and i.total - (paid.get(i.id) or 0) > 0], key=lambda i: i.issue_date)[-12:]
         bals = [(i, i.total - (paid.get(i.id) or Decimal("0"))) for i in own]
         found = []
@@ -200,7 +214,10 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # (2026-10-07, MRST : un paiement non relie du 24 aout empechait le depot du 6 octobre).
     def gap(p):
         return abs((p["received_at"] - tx.posted_date).days) if p["received_at"] else 9999
-    pays = [p for p in s["payments"] if p["company_id"] == str(tx.company_id) and gap(p) <= 10
+    from app.core.company_tree import family_ids
+    fam_ids = await family_ids(db, tx.company_id)
+    fam = {str(c) for c in fam_ids}
+    pays = [p for p in s["payments"] if p["company_id"] in fam and gap(p) <= 10
             and not (p["invoice_date"] and p["invoice_date"] > tx.posted_date + timedelta(days=10))]
     if len(pays) == 1:
         return {"kind": "payment", **pays[0]}
@@ -222,7 +239,7 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # « la mention troc c'est juste pour ne pas recevoir de facture de retard et identifier une dette »). Sur si le depot egale exactement : les j plus vieilles factures + les k plus vieux restes, ou le
     # reste d'une seule facture ; une seule possibilite -> associe, plusieurs -> suggestion seulement.
     open_invs = (await db.execute(select(Invoice).where(
-        Invoice.company_id == tx.company_id, Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
+        Invoice.company_id.in_(fam_ids), Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
         Invoice.issue_date <= tx.posted_date + timedelta(days=10)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
     paid = await invoice_balances(db, [i.id for i in open_invs])
     amount = Decimal(tx.amount)
@@ -251,6 +268,9 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
         return _invoice_plan(tx, amount, next(iter(options.values())), Decimal("0"))
     if options:
         return None                         # plusieurs facons exactes : a Philippe de choisir
+    # Sans compte exact, seulement ses propres factures (jamais celles d'une succursale sans preuve -- TASK-002.4)
+    fresh = [(i, b) for i, b in fresh if i.company_id == tx.company_id]
+    rests = [(i, b) for i, b in rests if i.company_id == tx.company_id]
     # 2026-10-08 (Philippe) : pas de compte exact -> le depot du client reconnu s'associe quand meme tout seul : ses plus
     # vieilles factures qui n'ont rien recu au complet, puis le surplus aux plus vieux restes (troc compris), puis, s'il
     # reste de l'argent, en partie a la plus vieille facture suivante ; un depot qui ne couvre aucune facture au complet

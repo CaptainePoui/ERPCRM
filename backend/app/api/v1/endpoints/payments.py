@@ -80,6 +80,7 @@ class MultiPaymentCreate(BaseModel):
     card_last4: str | None = None
     received_at: date | None = None
     generate_reference: bool = False
+    payer_company_id: uuid.UUID | None = None   # TASK-002.4 : la maison mere qui paie pour ses succursales
 
 
 async def next_payment_reference(db: AsyncSession) -> str:
@@ -313,8 +314,8 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
     total = Decimal(str(sum(a.amount for a in payload.allocations)))
     reference = await next_payment_reference(db) if payload.generate_reference else None
 
-    # Valider que toutes les factures existent et appartiennent a la meme compagnie
-    company_id = None
+    # Valider que toutes les factures existent et appartiennent a la meme compagnie (ou a ses succursales)
+    inv_companies: set = set()
     for alloc_in in payload.allocations:
         inv = await db.get(Invoice, alloc_in.invoice_id)
         if not inv:
@@ -327,10 +328,12 @@ async def add_multi_payment(payload: MultiPaymentCreate, db: AsyncSession = Depe
             left = inv.total - ((await settled_amounts(db, [inv.id])).get(inv.id) or Decimal("0"))
             if Decimal(str(alloc_in.amount)) > left + Decimal("0.005"):
                 raise HTTPException(status_code=400, detail=f"Facture {inv.number} : il ne reste que {left} $ à payer")
-        if company_id is None:
-            company_id = inv.company_id
-        elif company_id != inv.company_id:
-            raise HTTPException(status_code=400, detail="Toutes les factures doivent appartenir a la meme compagnie")
+        inv_companies.add(inv.company_id)
+    # TASK-002.4 : une maison mere peut payer pour ses succursales (paiement a son nom)
+    from app.core.company_tree import payer_for
+    company_id = await payer_for(db, inv_companies, payload.payer_company_id)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Les factures doivent être celles d'une même compagnie ou de ses succursales")
 
     cp = ClientPayment(
         company_id=company_id,

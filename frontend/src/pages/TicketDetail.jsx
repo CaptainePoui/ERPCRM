@@ -8,7 +8,7 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 
 const PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
+  faible:   { label: 'Faible',    color: '#6B7280' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -20,7 +20,7 @@ const STATUS_LABELS = {
   en_attente:          { label: 'En attente',                color: '#D97706' },
   en_attente_client:   { label: "En attente d'une réponse",  color: '#7C3AED' },
   facture:             { label: 'Facturé',                  color: '#0891B2' },
-  ferme:               { label: 'Fermé',                    color: 'var(--c-muted)' },
+  ferme:               { label: 'Fermé',                    color: '#6B7280' },
 }
 
 // Transitions rapides -- le bouton Fermer/Ouvrir (bascule) et "En attente d'une
