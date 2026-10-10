@@ -84,6 +84,8 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : un dossier où un service doit écrire vit dans un dossier qui appartient à ce service, avec son chemin en réglage — jamais dans le dossier d'un autre service avec des droits rouverts à la main. Quand un symptôme est rapporté « seulement de l'extérieur », vérifier d'abord le journal des échecs partout avant d'accepter la piste réseau.
 
+**Mise à jour 2026-10-10 (vraie cause, trouvée sur la musique d'attente pendant TASK-051)** : le « changement de propriétaire » du 2026-08-12 n'était pas un incident isolé — le service FreeSWITCH fait `chown -R freeswitch:freeswitch /usr/local/freeswitch` à **chaque démarrage** (`ExecStartPre`). Tout dossier de SIPV sous `/usr/local/freeswitch` redevient non inscriptible au prochain redémarrage ; la musique d'attente (`sounds/sipv_moh`, `conf/local_stream`) échouait en silence depuis ce jour-là. Corrigé dans TASK-S033.4 (dossiers dans `/var/lib/sipv`). Leçon ajoutée : quand un réglage de droits « se défait », chercher ce qui le refait (unités systemd, `ExecStartPre`, tâches planifiées) au lieu de supposer un geste unique ; et une écriture « best-effort » doit laisser une trace visible à l'écran, pas seulement dans un journal.
+
 ---
 
 ## TASK-S061 — Tirets doubles dans un commentaire XML cassent tout le dialplan d'un tenant

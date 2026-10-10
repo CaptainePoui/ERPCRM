@@ -56,6 +56,16 @@ export default function TenantMigration() {
     catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Erreur') }
     finally { setBusy(false) }
   }
+  // Migrer sans avoir a ouvrir l'apercu (Philippe, 2026-10-10) : il est fait tout seul ; conflits -> montres, sinon confirmation
+  async function startMigrate() {
+    setBusy(true); setError(''); setResult(null)
+    try {
+      const p = (await api.post('/v1/migration/preview', payload)).data
+      setPreview(p)
+      if (p.ok) setConfirm(true)
+    } catch (e) { setError(typeof e.response?.data?.detail === 'string' ? e.response.data.detail : 'Erreur') }
+    finally { setBusy(false) }
+  }
   async function doExecute() {
     setBusy(true); setError('')
     try {
@@ -211,7 +221,7 @@ export default function TenantMigration() {
           <div style={{ ...box, position: 'sticky', bottom: 12 }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <button className="btn-secondary" onClick={doPreview} disabled={busy || !dst}>{busy && !confirm ? '…' : 'Voir l\'aperçu'}</button>
-              <button className="btn-primary" onClick={() => setConfirm(true)} disabled={busy || !preview?.ok}>Migrer</button>
+              <button className="btn-primary" onClick={startMigrate} disabled={busy || !dst || nOn + Object.values(objs).flatMap(o => Object.values(o)).filter(a => a !== 'leave').length === 0}>Migrer</button>
               <span style={muted}>{nOn} élément(s) coché(s){!dst ? ' — choisissez le tenant d\'arrivée' : ''}{preview && !preview.ok ? ' — réglez les conflits' : ''}</span>
             </div>
             {preview && (
@@ -249,6 +259,11 @@ export default function TenantMigration() {
               {preview?.steps.filter(s => !s.startsWith('  ')).length} étape(s). Les téléphones des postes migrés vont redémarrer et
               prendre leur nouvel identifiant. Une copie de la base du serveur téléphonique est faite juste avant.
             </p>
+            {preview?.warnings.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 220, overflowY: 'auto' }}>
+                {preview.warnings.map((w, i) => <div key={i} style={{ background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)', padding: '6px 10px', borderRadius: 8, fontSize: 13 }}>⚠ {w}</div>)}
+              </div>
+            )}
             <div className="modal-actions">
               <button className="btn-secondary" onClick={() => setConfirm(false)} disabled={busy}>Annuler</button>
               <button className="btn-primary" onClick={doExecute} disabled={busy}>{busy ? 'Migration…' : 'Migrer'}</button>

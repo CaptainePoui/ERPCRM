@@ -5177,6 +5177,14 @@ Demande de l'utilisateur (2026-08-07/08) : bibliothèque MOH gérée dans "Serve
 #### TASK-S033.3 [ ] Même délai pour les Phrases IVR — configurable, 0.5s par défaut
 Explicitement reporté par Philippe ("prochaine conversation") — jamais commencé, ne pas commencer sans nouveau GO. Reste ouvert.
 
+#### TASK-S033.4 [x] Musique d'attente : dossiers hors de /usr/local/freeswitch (écriture refusée depuis le 2026-08-12)
+Date de demande : 2026-10-10 (Philippe, après sa première migration (TASK-051) : « pour les permissions d'écriture dans musique, trouve pourquoi et note-le, parce que ce problème va sûrement revenir avec les changements de poste d'un portail… oui fais les corrections aussi »)
+Date(s) de travail : 2026-10-10
+
+- **Cause** : le service FreeSWITCH (`systemctl cat freeswitch`) contient `ExecStartPre=/bin/chown -R freeswitch:freeswitch /var/run/freeswitch /var/lib/freeswitch /var/log/freeswitch /usr/local/freeswitch` : à CHAQUE démarrage de FreeSWITCH, tout `/usr/local/freeswitch` repasse à freeswitch. Tout ce que SIPV (utilisateur sipv) écrit dedans devient non inscriptible au premier redémarrage : `sounds/sipv_moh` et `conf/local_stream` (musique d'attente, TASK-S033) depuis le 2026-08-12 — tout changement de musique d'attente (écran, portail, migration) échouait en silence (`regenerate_tenant_moh_stream` est « best-effort », seulement journalisé) ; même cause que TASK-S055.8 (« Appeler »), qui avait été vue comme « un changement de propriétaire ».
+- **Correction** (SIPV commit 361e57f) : `settings.MOH_STREAM_DIR = /var/lib/sipv/moh_streams` et `settings.MOH_INCLUDE_DIR = /var/lib/sipv/local_stream` (sipv:sipv 755, lisibles par FreeSWITCH) ; `autoload_configs/local_stream.conf.xml` inclut maintenant `/var/lib/sipv/local_stream/*.xml` (copie de l'ancien : `~/migration_backups/local_stream.conf.xml.before_moh_move`) ; sauvegarde cloud (backup_runner) suit les nouveaux chemins. Flux régénérés : `local_stream show` → moh_t1000 et moh_t1001 depuis /var/lib/sipv. Anciens fichiers (`conf/local_stream/moh_t1001.xml`, `sounds/sipv_moh/`) laissés, plus inclus. FreeSWITCH pas redémarré (couperait les appels) ; le prochain redémarrage ne touche plus ces dossiers.
+- **Règle pour la suite** (portail, migration, tout nouveau fichier écrit par SIPV) : jamais sous `/usr/local/freeswitch` — un dossier sous `/var/lib/sipv` avec son chemin en réglage. Déménager le serveur = créer `/var/lib/sipv/{call_cache,moh_streams,local_stream}` (sipv:sipv 755).
+
 ### TASK-S034 [SIPV] [ ] Alertes trunk/extension
 **Classification: CURRENT (backlog ouvert)**
 Événements ESL surveillés (trunk DOWN, extension unregistered, HEARTBEAT absent) → webhook (S015)/courriel/SMS. Simple IP toujours notifié, client selon option. Table cible `SIPAlertConfig`. Jamais construit.
@@ -5223,6 +5231,14 @@ Même contraintes que S040, techno pas scopée (Electron vs natif). Jamais comme
 ### TASK-S042 [SIPV] [~] Fondation multi-serveur SIPV (pas le dispatcheur "classe 4")
 **Classification: CURRENT**
 `SipvServer` (name/hostname/ip_address/is_active), `Tenant.server_id` (FK nullable). Migration `0044_sipv_servers` avec seed automatique + backfill (aucun tenant orphelin). Décision explicite : un seul serveur nécessaire aujourd'hui/5-6 ans, mais logiciel destiné à être vendu — fondation de données construite maintenant (coût quasi nul), dispatcheur central lui-même reporté tant qu'un 2e serveur n'est pas réellement provisionné (aucune valeur testable à un dispatcheur pour un seul serveur).
+
+
+#### TASK-S042.1 [x] Un tenant créé par ERPCRM est rattaché au serveur
+Date de demande : 2026-10-10 (trouvé pendant la correction du provisionnement, TASK-051)
+Date(s) de travail : 2026-10-10
+
+- Constaté : T1000 (créé le 2026-10-10 par l'activation de la téléphonie de Compagnie test) avait `server_id` vide — `sync/company` ne le remplissait pas — donc la configuration des téléphones de ses postes sortait sans serveur SIP (`<P47></P47>`, `<P48></P48>` Grandstream).
+- Corrigé (SIPV commit 523f551) : `sync/company` rattache le nouveau tenant au serveur actif s'il n'y en a qu'un ; migration `0067_tenant_default_server` (T1000 rattaché à sipv-lab). Plusieurs serveurs un jour : ERPCRM devra dire lequel (dispatcheur, reste à faire).
 
 ### TASK-S043 [SIPV] [ ] Architecture 3 couches (Serveur/Compagnie-Tenant/Contact-Poste) — backlog validé
 **Classification: CURRENT**
@@ -6100,4 +6116,9 @@ Date(s) de travail : 2026-10-10
   - Vérifié : essai annulé sur les vraies données de T1001 → T1000 (4 postes, groupe, horaire, parcage, 5 messages, musique copiés, 911, 23 appels marqués) ; écran jusqu'à l'aperçu (Playwright, aucune erreur).
 - **Première vraie migration faite par Philippe à l'écran (2026-10-10 15:43)** : postes 100-103 de T1001 → T1000 (t1000-100…103), 4 adresses 911 au 11206, 3 téléphones provisionnés suivis, 23 appels marqués, musique d'attente copiée, 4 lignes ajoutées à la facturation de Compagnie test (0 $ : aucun prix de poste au catalogue), journal sur les deux fiches, copie SIPV `migration_t1001_to_t1000_20261010_154358.dump`.
   - Constaté après : (1) les téléphones n'ont pas reçu l'ordre de redémarrer — le domaine d'enregistrement réel est « sipv », pas le compte → corrigé (le domaine est lu de chaque enregistrement) et redémarrage envoyé ; (2) le Grandstream GXP2135 du poste 102 (192.168.1.178) n'est plus provisionné par le serveur depuis le 2026-08-03 : il demande `/cfgc074ad31d573` à la racine et reçoit 404 (problème existant) → l'identifiant t1000-102 est à entrer dans le téléphone (même mot de passe) ou l'adresse de provisionnement à corriger ; les postes 100, 101, 103 (logiciels) : identifiant à changer à la main ; (3) musique d'attente : le dossier `/usr/local/freeswitch/sounds/sipv_moh` (propriétaire freeswitch, créé le 2026-08-12) n'est pas inscriptible par SIPV → tout changement de musique d'attente échoue en silence depuis (problème existant, même famille que TASK-S055.8) ; T1000 joue la musique par défaut.
+- Suite (Philippe, 2026-10-10 : « Voir l'aperçu : j'aimerais qu'on ne soit pas obligé de le regarder pour migrer… j'ai changé le user de mes 2 postes connectés… quand on travaillera sur le provisioning va falloir que ça marche… oui fais les corrections aussi ») :
+  - « Migrer » fait l'aperçu tout seul : conflits → montrés, rien ne part ; sinon la fenêtre de confirmation montre les avertissements. « Voir l'aperçu » reste pour regarder avant.
+  - Postes reconnectés par Philippe : t1000-102 (GXP2135) et t1000-103 (GXP2170).
+  - Musique d'attente : TASK-S033.4 (cause trouvée et corrigée). Serveur du tenant : TASK-S042.1.
+  - Provisionnement Grandstream : `/api/v1/provisioning/gs/cfg<mac>` construit (configuration complète vérifiée pour le poste 102 : serveur sipv-lab, proxy 192.168.1.55, t1000-102) ; **pas encore branché** dans le serveur web (nginx, encore le site FusionPBX abandonné, renvoie 404 sur `/cfg<mac>`) — le brancher ferait reprendre sa configuration au téléphone tout seul à sa vérification de 5 h : à faire avec Philippe présent, téléphone surveillé.
 
