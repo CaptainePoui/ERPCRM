@@ -289,7 +289,7 @@ function FinanceOverview({ companyId, onOpen }) {
   if (!f) return null
   const card = (label, value, sub, opts = {}) => (
     <div className={`cd-fin-card${opts.onClick ? ' clickable' : ''}`} onClick={opts.onClick}
-      style={opts.alert ? { borderColor: '#FCA5A5', background: '#FEF2F2' } : undefined}>
+      style={opts.alert ? { borderColor: '#FCA5A5', background: 'var(--c-tint-red)' } : undefined}>
       <div className="cd-fin-label">{label}</div>
       <div className="cd-fin-value" style={opts.color ? { color: opts.color } : undefined}>{value}</div>
       {sub && <div className="cd-fin-sub">{sub}</div>}
@@ -299,7 +299,7 @@ function FinanceOverview({ companyId, onOpen }) {
   return (
     <div className="cd-fin-row">
       {card('Solde dû', money(f.balance_due), f.balance_due > 0 ? 'Voir les factures ouvertes' : 'Rien à recevoir',
-        { color: f.balance_due > 0 ? '#111827' : '#059669', onClick: () => onOpen('ouvertes') })}
+        { color: f.balance_due > 0 ? 'var(--c-text)' : '#059669', onClick: () => onOpen('ouvertes') })}
       {f.overdue > 0 && card('En retard', money(f.overdue),
         `${f.overdue_count} facture${f.overdue_count > 1 ? 's' : ''} · la plus vieille : ${f.oldest_overdue_days} j`,
         { color: '#DC2626', alert: true, onClick: () => onOpen('retard') })}
@@ -339,8 +339,8 @@ function CompanyDetailsSection({ c, saveField }) {
 
 // Statut de paiement lisible : on voit d'un coup d'oeil ce qui est paye ou non
 function payState(t) {
-  if (t.status === 'brouillon') return { label: 'Brouillon', color: '#6B7280' }
-  if (t.status === 'annulee') return { label: 'Annulée', color: '#9CA3AF' }
+  if (t.status === 'brouillon') return { label: 'Brouillon', color: 'var(--c-muted)' }
+  if (t.status === 'annulee') return { label: 'Annulée', color: 'var(--c-faint)' }
   if (t.kind === 'credit') return t.remaining > 0.005 ? { label: 'Avoir ouvert', color: '#D97706' } : { label: 'Avoir appliqué', color: '#059669' }
   if (t.remaining <= 0.005) return { label: t.credited >= t.total - 0.005 ? 'Créditée' : 'Payée', color: '#059669' }
   if (t.overdue) return { label: t.paid > 0 ? 'En retard (partielle)' : 'En retard', color: '#DC2626' }
@@ -393,21 +393,21 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
               const st = payState(t)
               return (
                 <tr key={t.id} onClick={e => sel.rowClick(e, t.id, () => navigate(`/invoices/${t.id}`))} onMouseDown={sel.noTextSelect}
-                  className="cd-tx-row" style={sel.selected.has(t.id) ? { background: '#EFF6FF' } : undefined}>
+                  className="cd-tx-row" style={sel.selected.has(t.id) ? { background: 'var(--c-tint-blue)' } : undefined}>
                   <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(t.id)} onChange={e => sel.toggle(t.id, e.nativeEvent)} /></td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtD(t.issue_date)}</td>
                   <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
                     {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}{t.number}
-                    {t.site_label && <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 400 }}>{t.site_label}</div>}
+                    {t.site_label && <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 400 }}>{t.site_label}</div>}
                   </td>
                   <td>
                     <span className="cd-tx-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
-                    {t.credited > 0 && t.credited < t.total - 0.005 && <div style={{ fontSize: 11, color: '#9CA3AF' }}>dont avoir {money(t.credited)}</div>}
+                    {t.credited > 0 && t.credited < t.total - 0.005 && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>dont avoir {money(t.credited)}</div>}
                   </td>
                   <td style={{ whiteSpace: 'nowrap', color: t.overdue ? '#DC2626' : undefined }}>{t.kind === 'credit' ? '—' : fmtD(t.due_date)}</td>
                   <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{money(t.total)}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: '#6B7280' }}>{money(t.paid)}</td>
-                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: t.remaining > 0.005 ? (t.overdue ? '#DC2626' : '#111827') : '#9CA3AF' }}>{money(t.remaining)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', color: 'var(--c-muted)' }}>{money(t.paid)}</td>
+                  <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: t.remaining > 0.005 ? (t.overdue ? '#DC2626' : 'var(--c-text)') : 'var(--c-faint)' }}>{money(t.remaining)}</td>
                 </tr>
               )
             })}
@@ -575,7 +575,7 @@ export default function CompanyDetail({ isNew }) {
                     <option value="annuel">Annuelle</option>
                   </select>
                 </div>
-                <p style={{ fontSize: 12, color: '#6B7280' }}>
+                <p style={{ fontSize: 12, color: 'var(--c-muted)' }}>
                   La facturation récurrente est automatique et obligatoire — chaque poste/DID
                   ajouté ou retiré dans SIPV met à jour cette récurrence, avec prorata au retrait.
                 </p>
@@ -636,7 +636,7 @@ export default function CompanyDetail({ isNew }) {
                           />
                           {c.sipv_enabled
                             ? <span style={{ color: '#059669', fontWeight: 600 }}>Actif</span>
-                            : <span style={{ color: '#9CA3AF' }}>Inactif</span>}
+                            : <span style={{ color: 'var(--c-faint)' }}>Inactif</span>}
                         </label>
                       </div>
                       <InlineField label="Gestionnaire interne"
@@ -795,7 +795,7 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
           {c.channel_type === 'phone' && !c.is_primary && (
             <button
               onClick={() => setOfficePhone(c.id)}
-              style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: '1px solid #CBD5E1', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
+              style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: '1px solid var(--c-border-strong)', borderRadius: 5, padding: '2px 8px', cursor: 'pointer' }}
             >
               Définir comme principal
             </button>
@@ -933,7 +933,7 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
                     value={emailDraft}
                     onChange={e => setEmailDraft(e.target.value)}
                     placeholder="courriel@entreprise.com"
-                    style={{ fontSize: 13, padding: '3px 7px', border: '1px solid #CBD5E1', borderRadius: 5, width: 230 }}
+                    style={{ fontSize: 13, padding: '3px 7px', border: '1px solid var(--c-border-strong)', borderRadius: 5, width: 230 }}
                     onKeyDown={e => { if (e.key === 'Enter') saveEmail(c.contact_id); if (e.key === 'Escape') setEditingEmail(null) }}
                     autoFocus
                   />
@@ -946,7 +946,7 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
                   onClick={() => { setEditingEmail(c.contact_id); setEmailDraft(c.email || '') }}
                   title="Cliquer pour modifier le courriel professionnel"
                 >
-                  {c.email ? <><span style={{ color: '#6B7280', fontSize: 12 }}>✉ </span>{c.email}</> : <span style={{ color: '#CBD5E1', fontSize: 12 }}>✉ Ajouter courriel</span>}
+                  {c.email ? <><span style={{ color: 'var(--c-muted)', fontSize: 12 }}>✉ </span>{c.email}</> : <span style={{ color: 'var(--c-border-strong)', fontSize: 12 }}>✉ Ajouter courriel</span>}
                   <span className="ifield-pencil" style={{ fontSize: 11 }}>✎</span>
                 </span>
               )}
@@ -1007,7 +1007,7 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
 // ── Tickets Tab (remplace Maintenance -- filtre tous les tickets de la compagnie,
 // peu importe le contact qui les a ouverts, plus recent en premier) ──────────
 const TKT_PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: '#6B7280' },
+  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -1019,8 +1019,8 @@ const TKT_STATUS_LABELS = {
   en_attente:          { label: 'En attente',   color: '#D97706' },
   fermer_a_facturer:   { label: 'À facturer',   color: '#7C3AED' },
   facture:             { label: 'Facturé',      color: '#0891B2' },
-  ferme:               { label: 'Fermé',        color: '#6B7280' },
-  annule:              { label: 'Annulé',       color: '#9CA3AF' },
+  ferme:               { label: 'Fermé',        color: 'var(--c-muted)' },
+  annule:              { label: 'Annulé',       color: 'var(--c-faint)' },
 }
 
 function TicketsTab({ companyId }) {
@@ -1185,7 +1185,7 @@ function NewAccessModal({ companyId, onClose, onCreated }) {
 // ── Inventaire Tab ────────────────────────────────────────────────────────────
 const EQ_CATS = ['ordinateur','serveur','imprimante','telephone','switch','routeur','autre']
 const EQ_LABELS = { ordinateur:'Ordinateur', serveur:'Serveur', imprimante:'Imprimante', telephone:'Téléphone', switch:'Switch', routeur:'Routeur', autre:'Autre' }
-const EQ_STATUS = { actif:{label:'Actif',color:'#059669'}, inactif:{label:'Inactif',color:'#6B7280'}, hors_service:{label:'Hors service',color:'#DC2626'} }
+const EQ_STATUS = { actif:{label:'Actif',color:'#059669'}, inactif:{label:'Inactif',color:'var(--c-muted)'}, hors_service:{label:'Hors service',color:'#DC2626'} }
 
 function InventaireTab({ companyId }) {
   const [items, setItems] = useState([])
@@ -1213,9 +1213,9 @@ function InventaireTab({ companyId }) {
       {items.length === 0 && <div className="empty-tab">Aucun équipement enregistré.</div>}
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
         <thead>
-          <tr style={{ background: '#F9FAFB' }}>
+          <tr style={{ background: 'var(--c-surface-2)' }}>
             {['Catégorie','Nom','Marque / Modèle','SN / Asset','IP / MAC','Statut',''].map(h => (
-              <th key={h} style={{ textAlign: 'left', padding: '9px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 700, color: '#6B7280', textTransform: 'uppercase' }}>{h}</th>
+              <th key={h} style={{ textAlign: 'left', padding: '9px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase' }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -1223,12 +1223,12 @@ function InventaireTab({ companyId }) {
           {items.map(e => {
             const st = EQ_STATUS[e.status] || EQ_STATUS.actif
             return (
-              <tr key={e.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+              <tr key={e.id} style={{ borderBottom: '1px solid var(--c-surface-3)' }}>
                 <td style={{ padding: '10px 12px' }}><span style={{ background: 'var(--brand-bg)', color: 'var(--brand)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 7px', textTransform: 'uppercase' }}>{EQ_LABELS[e.category] || e.category}</span></td>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>{e.name}</td>
-                <td style={{ padding: '10px 12px', color: '#6B7280' }}>{[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--c-muted)' }}>{[e.brand, e.model].filter(Boolean).join(' ') || '—'}</td>
                 <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12 }}>{e.serial_number || e.asset_tag || '—'}</td>
-                <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12, color: '#6B7280' }}>{e.ip_address || e.mac_address || '—'}</td>
+                <td style={{ padding: '10px 12px', fontFamily: 'monospace', fontSize: 12, color: 'var(--c-muted)' }}>{e.ip_address || e.mac_address || '—'}</td>
                 <td style={{ padding: '10px 12px' }}><span style={{ background: st.color, color: '#fff', padding: '2px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700 }}>{st.label}</span></td>
                 <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={() => remove(e.id)}>✕</button></td>
               </tr>
@@ -1307,10 +1307,10 @@ function NewEquipmentModal({ companyId, onClose, onCreated }) {
 
 
 // ── Tâches Tab ────────────────────────────────────────────────────────────────
-const PRIORITY_COLORS = { basse: '#6B7280', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
+const PRIORITY_COLORS = { basse: 'var(--c-muted)', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const STATUS_LABELS_T = { en_cours: 'En cours', attente_info_client: 'Attente client', attente_info_sip: 'Attente SIP', complete: 'Complété', annule: 'Annulé' }
-const STATUS_COLORS_T = { en_cours: 'var(--brand)', attente_info_client: '#D97706', attente_info_sip: '#7C3AED', complete: '#16A34A', annule: '#9CA3AF' }
+const STATUS_COLORS_T = { en_cours: 'var(--brand)', attente_info_client: '#D97706', attente_info_sip: '#7C3AED', complete: '#16A34A', annule: 'var(--c-faint)' }
 
 // ── Photos d'installation (TASK-024) ────────────────────────────────────────────
 function PhotosTab({ companyId }) {
@@ -1357,14 +1357,14 @@ function PhotosTab({ companyId }) {
       {photos.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>
           {photos.map(p => (
-            <div key={p.id} style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', background: '#fff' }}>
+            <div key={p.id} style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', background: 'var(--c-surface)' }}>
               <a href={`${api.defaults.baseURL}${p.url}`} target="_blank" rel="noreferrer">
                 <img src={`${api.defaults.baseURL}${p.url}`} alt={p.caption || 'Photo installation'}
                   style={{ width: '100%', height: 160, objectFit: 'cover', display: 'block' }} />
               </a>
               <div style={{ padding: '8px 10px' }}>
-                <div style={{ fontSize: 13, color: '#374151' }}>{p.caption || <span style={{ color: '#9CA3AF' }}>Sans légende</span>}</div>
-                <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
+                <div style={{ fontSize: 13, color: 'var(--c-text-2)' }}>{p.caption || <span style={{ color: 'var(--c-faint)' }}>Sans légende</span>}</div>
+                <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
                   <span>{p.uploaded_by || '—'} · {new Date(p.created_at).toLocaleDateString('fr-CA')}</span>
                   <button onClick={() => remove(p.id)} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Retirer</button>
                 </div>
@@ -1403,7 +1403,7 @@ function TachesTab({ companyId, companyName, onShowTask }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#6B7280', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-muted)', cursor: 'pointer' }}>
           <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
           Afficher complétées
         </label>
@@ -1415,23 +1415,23 @@ function TachesTab({ companyId, companyName, onShowTask }) {
         filtered.map(t => {
           const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
           return (
-            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 8, background: t.completed ? '#F9FAFB' : '#fff' }}>
+            <div key={t.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px 14px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 8, background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
               <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 15, height: 15, accentColor: 'var(--brand)', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLORS[t.priority], background: '#F3F4F6', padding: '1px 6px', borderRadius: 8 }}>{PRIORITY_LABELS[t.priority]}</span>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS_T[t.status], background: '#F3F4F6', padding: '1px 6px', borderRadius: 8 }}>{STATUS_LABELS_T[t.status]}</span>
+                  <span style={{ fontSize: 14, fontWeight: 600, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLORS[t.priority], background: 'var(--c-surface-3)', padding: '1px 6px', borderRadius: 8 }}>{PRIORITY_LABELS[t.priority]}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS_T[t.status], background: 'var(--c-surface-3)', padding: '1px 6px', borderRadius: 8 }}>{STATUS_LABELS_T[t.status]}</span>
                 </div>
-                {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 3 }}>{t.description}</div>}
-                <div style={{ fontSize: 12, color: overdue ? '#DC2626' : '#9CA3AF', marginTop: 4, display: 'flex', gap: 12 }}>
+                {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 3 }}>{t.description}</div>}
+                <div style={{ fontSize: 12, color: overdue ? '#DC2626' : 'var(--c-faint)', marginTop: 4, display: 'flex', gap: 12 }}>
                   {t.due_date && <span>{overdue ? '⚠ ' : ''}Prévu : {new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}{t.due_time ? ` ${t.due_time}` : ''}</span>}
                   {t.assigned_name && <span>👤 {t.assigned_name}</span>}
                   {t.contact_name && <span>· {t.contact_name}</span>}
                   {t.ticket_title && <span>🎫 {t.ticket_title}</span>}
                 </div>
                 {t.subtasks?.length > 0 && (
-                  <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>
                     Checklist : {t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}
                     {' '}{'▓'.repeat(t.subtasks.filter(s => s.completed).length)}{'░'.repeat(t.subtasks.length - t.subtasks.filter(s => s.completed).length)}
                   </div>

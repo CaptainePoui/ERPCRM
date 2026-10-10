@@ -43,7 +43,7 @@ export default function Companies() {
           onChange={e => setSearch(e.target.value)}
         />
         <select value={pastille} onChange={e => setPastille(e.target.value)} title="Filtrer par pastille"
-          style={{ padding: '8px 10px', border: '1.5px solid #D1D5DB', borderRadius: 8, fontSize: 14, background: '#fff' }}>
+          style={{ padding: '8px 10px', border: '1.5px solid var(--c-border-strong)', borderRadius: 8, fontSize: 14, background: 'var(--c-surface)' }}>
           <option value="">Toutes les pastilles</option>
           {statuses.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>

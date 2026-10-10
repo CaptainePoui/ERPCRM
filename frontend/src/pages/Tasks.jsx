@@ -9,7 +9,7 @@ import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
 import { parseDay } from '../utils/date'
 
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
-const PRIORITY_COLORS = { basse: '#6B7280', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
+const PRIORITY_COLORS = { basse: 'var(--c-muted)', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
 const STATUS_LABELS = {
   en_cours: 'En cours',
   attente_info_client: 'Attente client',
@@ -22,7 +22,7 @@ const STATUS_COLORS = {
   attente_info_client: '#D97706',
   attente_info_sip: '#7C3AED',
   complete: '#16A34A',
-  annule: '#9CA3AF',
+  annule: 'var(--c-faint)',
 }
 
 const REMINDER_DELAYS = [
@@ -37,33 +37,33 @@ const REMINDER_DELAYS = [
 ]
 
 function PriorityBadge({ value }) {
-  return <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLORS[value] || '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>{PRIORITY_LABELS[value] || value}</span>
+  return <span style={{ fontSize: 11, fontWeight: 600, color: PRIORITY_COLORS[value] || 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>{PRIORITY_LABELS[value] || value}</span>
 }
 
 function StatusBadge({ value }) {
-  return <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS[value] || '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>{STATUS_LABELS[value] || value}</span>
+  return <span style={{ fontSize: 11, fontWeight: 600, color: STATUS_COLORS[value] || 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>{STATUS_LABELS[value] || value}</span>
 }
 
 function TaskRow({ task, onToggle, onSelect }) {
   const overdue = task.due_date && !task.completed && parseDay(task.due_date) < new Date(new Date().toDateString())
   return (
-    <tr style={{ background: task.completed ? '#F9FAFB' : '#fff', cursor: 'pointer' }} onClick={() => onSelect(task)}>
+    <tr style={{ background: task.completed ? 'var(--c-surface-2)' : 'var(--c-surface)', cursor: 'pointer' }} onClick={() => onSelect(task)}>
       <td style={{ width: 36, padding: '10px 8px' }} onClick={e => e.stopPropagation()}>
         <input type="checkbox" checked={task.completed} onChange={() => onToggle(task)} style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
       </td>
-      <td style={{ padding: '10px 8px', fontSize: 14, color: task.completed ? '#9CA3AF' : '#111827', textDecoration: task.completed ? 'line-through' : 'none', fontWeight: 500 }}>
+      <td style={{ padding: '10px 8px', fontSize: 14, color: task.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: task.completed ? 'line-through' : 'none', fontWeight: 500 }}>
         {task.title}
         {task.subtasks?.length > 0 && (
-          <span style={{ marginLeft: 8, fontSize: 11, color: '#9CA3AF' }}>
+          <span style={{ marginLeft: 8, fontSize: 11, color: 'var(--c-faint)' }}>
             {task.subtasks.filter(s => s.completed).length}/{task.subtasks.length}
           </span>
         )}
       </td>
-      <td style={{ padding: '10px 8px', fontSize: 12, color: '#6B7280' }}>{task.company_name || '—'}</td>
-      <td style={{ padding: '10px 8px', fontSize: 12, color: '#6B7280' }}>{task.assigned_name || '—'}</td>
+      <td style={{ padding: '10px 8px', fontSize: 12, color: 'var(--c-muted)' }}>{task.company_name || '—'}</td>
+      <td style={{ padding: '10px 8px', fontSize: 12, color: 'var(--c-muted)' }}>{task.assigned_name || '—'}</td>
       <td style={{ padding: '10px 8px' }}><PriorityBadge value={task.priority} /></td>
       <td style={{ padding: '10px 8px' }}><StatusBadge value={task.status} /></td>
-      <td style={{ padding: '10px 8px', fontSize: 12, color: overdue ? '#DC2626' : '#6B7280', fontWeight: overdue ? 600 : 400 }}>
+      <td style={{ padding: '10px 8px', fontSize: 12, color: overdue ? '#DC2626' : 'var(--c-muted)', fontWeight: overdue ? 600 : 400 }}>
         {task.due_date ? new Date(task.due_date + 'T12:00:00').toLocaleDateString('fr-CA') : '—'}
         {task.due_time ? ` ${task.due_time}` : ''}
       </td>
@@ -295,13 +295,13 @@ function ConfirmTimeModal({ subtask, onClose, onConfirm }) {
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Combien de temps ça a pris ?</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>{subtask.title}</p>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 12 }}>{subtask.title}</p>
         <div className="form-group">
           <label>Minutes</label>
           <input type="number" min="0" autoFocus value={minutes} onChange={e => setMinutes(parseInt(e.target.value) || 0)} />
         </div>
         {rawMinutes > 0 && rawMinutes !== minutes && (
-          <p style={{ fontSize: 12, color: '#9CA3AF' }}>Chronométré : {rawMinutes} min</p>
+          <p style={{ fontSize: 12, color: 'var(--c-faint)' }}>Chronométré : {rawMinutes} min</p>
         )}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
@@ -337,7 +337,7 @@ function SendTaskModal({ task, onClose, onSent }) {
         {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
         <div className="form-group">
           <label>Courriel du destinataire</label>
-          <input type="email" autoFocus value={email} onChange={e => setEmail(e.target.value)} placeholder="courriel@exemple.com" style={{ color: '#374151', background: '#fff' }} />
+          <input type="email" autoFocus value={email} onChange={e => setEmail(e.target.value)} placeholder="courriel@exemple.com" style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
@@ -507,16 +507,16 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
     : null
 
   return (
-    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, background: '#fff', boxShadow: '-4px 0 20px rgba(0,0,0,0.12)', zIndex: 300, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: 420, background: 'var(--c-surface)', boxShadow: '-4px 0 20px rgba(0,0,0,0.12)', zIndex: 300, display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
       <div style={{ padding: '20px 20px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           {editing ? (
-            <input value={form.title} onChange={e => set('title', e.target.value)} style={{ fontSize: 18, fontWeight: 700, width: '100%', border: '1px solid #D1D5DB', borderRadius: 6, padding: '4px 8px', color: '#111827', background: '#fff' }} />
+            <input value={form.title} onChange={e => set('title', e.target.value)} style={{ fontSize: 18, fontWeight: 700, width: '100%', border: '1px solid var(--c-border-strong)', borderRadius: 6, padding: '4px 8px', color: 'var(--c-text)', background: 'var(--c-surface)' }} />
           ) : (
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: task.completed ? '#9CA3AF' : '#111827', textDecoration: task.completed ? 'line-through' : 'none' }}>{task.title}</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: task.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: task.completed ? 'line-through' : 'none' }}>{task.title}</h2>
           )}
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#9CA3AF', marginLeft: 12, padding: 0 }}>×</button>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: 'var(--c-faint)', marginLeft: 12, padding: 0 }}>×</button>
       </div>
 
       {!editing && (
@@ -528,13 +528,13 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
               🎫 {task.ticket_title || 'Ticket lié'}
             </a>
           )}
-          {task.company_name && <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>{task.company_name}</span>}
-          {task.assigned_name && <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '2px 7px', borderRadius: 10 }}>👤 {task.assigned_name}</span>}
+          {task.company_name && <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>{task.company_name}</span>}
+          {task.assigned_name && <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>👤 {task.assigned_name}</span>}
         </div>
       )}
 
       {!editing && task.due_date && (
-        <div style={{ padding: '0 20px 12px', fontSize: 13, color: '#6B7280' }}>
+        <div style={{ padding: '0 20px 12px', fontSize: 13, color: 'var(--c-muted)' }}>
           📅 {new Date(task.due_date + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           {task.due_time && ` à ${task.due_time}`}
         </div>
@@ -543,12 +543,12 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
       {!editing && (
         <div style={{ padding: '0 20px 12px', fontSize: 13 }}>
           {task.last_opened_at ? (
-            <span style={{ color: '#6B7280', cursor: 'pointer' }} onClick={toggleOpens} title="Cliquer pour voir l'historique complet">
+            <span style={{ color: 'var(--c-muted)', cursor: 'pointer' }} onClick={toggleOpens} title="Cliquer pour voir l'historique complet">
               👁 Ouvert le {fmtOpened(task.last_opened_at)}{task.open_count > 1 ? ` (×${task.open_count})` : ''}
             </span>
-          ) : <span style={{ color: '#9CA3AF' }}>Jamais ouvert</span>}
+          ) : <span style={{ color: 'var(--c-faint)' }}>Jamais ouvert</span>}
           {showOpens && (
-            <div style={{ marginTop: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+            <div style={{ marginTop: 8, fontSize: 12, color: 'var(--c-muted)', background: 'var(--c-surface-2)', borderRadius: 6, padding: '8px 12px' }}>
               {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
                 <ul style={{ margin: 0, paddingLeft: 16 }}>
                   {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
@@ -564,22 +564,22 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
           <>
             <div className="form-group">
               <label style={{ fontSize: 12 }}>Description</label>
-              <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} style={{ color: '#374151', background: '#fff' }} />
+              <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Date</label>
-                <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={{ color: '#374151', background: '#fff' }} />
+                <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
               </div>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Heure</label>
-                <input type="time" value={form.due_time} onChange={e => set('due_time', e.target.value)} style={{ color: '#374151', background: '#fff' }} />
+                <input type="time" value={form.due_time} onChange={e => set('due_time', e.target.value)} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Priorité</label>
-                <select value={form.priority} onChange={e => set('priority', e.target.value)} style={{ color: '#374151', background: '#fff' }}>
+                <select value={form.priority} onChange={e => set('priority', e.target.value)} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }}>
                   <option value="basse">Basse</option>
                   <option value="normale">Normale</option>
                   <option value="haute">Haute</option>
@@ -588,7 +588,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
               </div>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Statut</label>
-                <select value={form.status} onChange={e => set('status', e.target.value)} style={{ color: '#374151', background: '#fff' }}>
+                <select value={form.status} onChange={e => set('status', e.target.value)} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }}>
                   <option value="en_cours">En cours</option>
                   <option value="attente_info_client">Attente client</option>
                   <option value="attente_info_sip">Attente SIP</option>
@@ -598,8 +598,8 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #E5E7EB', margin: '12px 0', paddingTop: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
+            <div style={{ borderTop: '1px solid var(--c-border)', margin: '12px 0', paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
               <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} placeholder="Rechercher une compagnie..." />
               <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
                 <div style={{ flex: 1 }}>
@@ -619,37 +619,37 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #E5E7EB', margin: '12px 0', paddingTop: 12 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Exécution</div>
+            <div style={{ borderTop: '1px solid var(--c-border)', margin: '12px 0', paddingTop: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Exécution</div>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>Page liée (optionnel)</label>
-                <input value={form.link_url} onChange={e => set('link_url', e.target.value)} placeholder="https://portail.simpleip.tel/companies" style={{ color: '#374151', background: '#fff' }} />
+                <input value={form.link_url} onChange={e => set('link_url', e.target.value)} placeholder="https://portail.simpleip.tel/companies" style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
               </div>
               <div className="form-group">
                 <label style={{ fontSize: 12 }}>
                   Durée approximative (minutes)
                   {task.suggested_estimated_minutes != null && (
-                    <span style={{ fontWeight: 400, color: '#9CA3AF' }}> — suggestion : {task.suggested_estimated_minutes} min</span>
+                    <span style={{ fontWeight: 400, color: 'var(--c-faint)' }}> — suggestion : {task.suggested_estimated_minutes} min</span>
                   )}
                 </label>
-                <input type="number" min="0" value={form.estimated_minutes} onChange={e => set('estimated_minutes', e.target.value)} style={{ color: '#374151', background: '#fff' }} />
+                <input type="number" min="0" value={form.estimated_minutes} onChange={e => set('estimated_minutes', e.target.value)} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
               </div>
             </div>
 
-            <div style={{ borderTop: '1px solid #E5E7EB', margin: '12px 0', paddingTop: 12 }}>
+            <div style={{ borderTop: '1px solid var(--c-border)', margin: '12px 0', paddingTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rappels</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rappels</div>
                 <button onClick={() => setReminders(prev => [...prev, { reminder_type: 'local', minutes_before: 0, custom_minutes: null }])} className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }}>+ Ajouter</button>
               </div>
               {reminders.map((r, i) => (
                 <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
-                  <select value={r.minutes_before} onChange={e => updateReminder(i, 'minutes_before', parseInt(e.target.value))} style={{ flex: 1, fontSize: 12, padding: '5px 6px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151', background: '#fff' }}>
+                  <select value={r.minutes_before} onChange={e => updateReminder(i, 'minutes_before', parseInt(e.target.value))} style={{ flex: 1, fontSize: 12, padding: '5px 6px', border: '1px solid var(--c-border-strong)', borderRadius: 6, color: 'var(--c-text-2)', background: 'var(--c-surface)' }}>
                     {REMINDER_DELAYS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
                   </select>
                   {r.minutes_before === -1 && (
-                    <input type="number" placeholder="Min" value={r.custom_minutes || ''} onChange={e => updateReminder(i, 'custom_minutes', parseInt(e.target.value) || null)} style={{ width: 60, fontSize: 12, padding: '5px 6px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151', background: '#fff' }} />
+                    <input type="number" placeholder="Min" value={r.custom_minutes || ''} onChange={e => updateReminder(i, 'custom_minutes', parseInt(e.target.value) || null)} style={{ width: 60, fontSize: 12, padding: '5px 6px', border: '1px solid var(--c-border-strong)', borderRadius: 6, color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
                   )}
-                  <button onClick={() => setReminders(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16 }}>×</button>
+                  <button onClick={() => setReminders(prev => prev.filter((_, idx) => idx !== i))} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>×</button>
                 </div>
               ))}
             </div>
@@ -661,19 +661,19 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
           </>
         ) : (
           <>
-            {task.description && <p style={{ fontSize: 13, color: '#374151', lineHeight: 1.6, marginBottom: 16 }}>{task.description}</p>}
+            {task.description && <p style={{ fontSize: 13, color: 'var(--c-text-2)', lineHeight: 1.6, marginBottom: 16 }}>{task.description}</p>}
 
-            <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 14, marginBottom: 16 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 Checklist
                 {task.subtasks?.length > 0 && (
-                  <span style={{ marginLeft: 6, fontWeight: 400, color: '#9CA3AF' }}>
+                  <span style={{ marginLeft: 6, fontWeight: 400, color: 'var(--c-faint)' }}>
                     ({task.subtasks.filter(s => s.completed).length}/{task.subtasks.length})
                   </span>
                 )}
               </div>
               {task.subtasks?.map(st => (
-                <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid #F3F4F6' }}>
+                <div key={st.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--c-surface-3)' }}>
                   <input
                     type="checkbox"
                     checked={st.completed}
@@ -682,7 +682,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
                   />
                   <span
                     onClick={() => openSubtask(st.id)}
-                    style={{ flex: 1, fontSize: 13, cursor: 'pointer', color: st.completed ? '#9CA3AF' : '#111827', textDecoration: st.completed ? 'line-through' : 'none', fontWeight: 500 }}
+                    style={{ flex: 1, fontSize: 13, cursor: 'pointer', color: st.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: st.completed ? 'line-through' : 'none', fontWeight: 500 }}
                   >
                     {st.title}
                   </span>
@@ -697,32 +697,32 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
                   )}
                   {st.timer_running && <span title="Chrono en cours" style={{ fontSize: 12 }}>⏱</span>}
                   {st.actual_minutes != null ? (
-                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{st.actual_minutes} min</span>
+                    <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{st.actual_minutes} min</span>
                   ) : st.estimated_minutes != null && (
                     <span style={{ fontSize: 11, color: '#C1C7D0' }}>~{st.estimated_minutes} min</span>
                   )}
-                  {st.assigned_name && <span style={{ fontSize: 11, color: '#9CA3AF' }}>{st.assigned_name}</span>}
-                  <span style={{ fontSize: 11, color: STATUS_COLORS[st.status] || '#9CA3AF', fontWeight: 600 }}>{STATUS_LABELS[st.status] || st.status}</span>
+                  {st.assigned_name && <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{st.assigned_name}</span>}
+                  <span style={{ fontSize: 11, color: STATUS_COLORS[st.status] || 'var(--c-faint)', fontWeight: 600 }}>{STATUS_LABELS[st.status] || st.status}</span>
                 </div>
               ))}
               <div style={{ marginTop: 8 }}>
                 {/* Suggestions inline above the input — avoids overflow:auto clipping */}
                 {showSubSugg && subSuggestions.length > 0 && (
-                  <div style={{ background: '#fff', border: '1px solid #D1D5DB', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto', marginBottom: 4 }}>
-                    <div style={{ padding: '5px 12px', fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #F3F4F6' }}>
+                  <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 8, boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 220, overflowY: 'auto', marginBottom: 4 }}>
+                    <div style={{ padding: '5px 12px', fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--c-surface-3)' }}>
                       Templates disponibles
                     </div>
                     {subSuggestions.map(tpl => (
                       <div
                         key={tpl.id}
                         onMouseDown={() => addSubtaskFromTemplate(tpl)}
-                        style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid #F9FAFB' }}
-                        onMouseEnter={e => e.currentTarget.style.background = '#EEF4FF'}
-                        onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                        style={{ padding: '8px 14px', cursor: 'pointer', borderBottom: '1px solid var(--c-surface-2)' }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--c-tint-blue)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'var(--c-surface)'}
                       >
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{tpl.template_name || tpl.title}</div>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{tpl.template_name || tpl.title}</div>
                         {tpl.subtasks?.length > 0 && (
-                          <span style={{ fontSize: 11, color: '#6B7280' }}>{tpl.subtasks.length} étape{tpl.subtasks.length > 1 ? 's' : ''}</span>
+                          <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>{tpl.subtasks.length} étape{tpl.subtasks.length > 1 ? 's' : ''}</span>
                         )}
                       </div>
                     ))}
@@ -736,7 +736,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
                     onBlur={() => setTimeout(() => setShowSubSugg(false), 150)}
                     onKeyDown={e => e.key === 'Enter' && addSubtask()}
                     placeholder="Ajouter ou chercher un template..."
-                    style={{ flex: 1, fontSize: 13, padding: '5px 10px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151', background: '#fff' }}
+                    style={{ flex: 1, fontSize: 13, padding: '5px 10px', border: '1px solid var(--c-border-strong)', borderRadius: 6, color: 'var(--c-text-2)', background: 'var(--c-surface)' }}
                   />
                   <button onClick={addSubtask} disabled={addingSubtask || !newSubtaskTitle.trim()} className="btn-secondary" style={{ padding: '5px 10px', fontSize: 13 }}>
                     {addingSubtask ? '...' : '+'}
@@ -746,20 +746,20 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
             </div>
 
             {(task.ticket_title || task.invoice_number || task.contact_name) && (
-              <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
-                {task.contact_name && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>👤 {task.contact_name}</div>}
-                {task.ticket_title && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>🎫 {task.ticket_title}</div>}
-                {task.invoice_number && <div style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>🧾 {task.invoice_number}</div>}
+              <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
+                {task.contact_name && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>👤 {task.contact_name}</div>}
+                {task.ticket_title && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🎫 {task.ticket_title}</div>}
+                {task.invoice_number && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🧾 {task.invoice_number}</div>}
               </div>
             )}
 
             {task.reminders?.length > 0 && (
-              <div style={{ borderTop: '1px solid #E5E7EB', paddingTop: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rappels</div>
+              <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14, marginBottom: 16 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Rappels</div>
                 {task.reminders.map(r => {
                   const delay = r.minutes_before === 0 ? "À l'heure" : r.minutes_before === 5 ? '5 min avant' : r.minutes_before === 15 ? '15 min avant' : r.minutes_before === 30 ? '30 min avant' : r.minutes_before === 60 ? '1h avant' : r.minutes_before === 1440 ? '1 jour avant' : r.minutes_before === 10080 ? '1 semaine avant' : `${r.custom_minutes} min avant`
-                  return <div key={r.id} style={{ fontSize: 13, color: '#374151', marginBottom: 4 }}>🔔 {delay} — {r.reminder_type}</div>
+                  return <div key={r.id} style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🔔 {delay} — {r.reminder_type}</div>
                 })}
               </div>
             )}
@@ -767,7 +767,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
         )}
       </div>
 
-      <div style={{ padding: 20, borderTop: '1px solid #E5E7EB', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ padding: 20, borderTop: '1px solid var(--c-border)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         {!task.completed && <button className="btn-primary" onClick={toggleComplete} style={{ fontSize: 13 }}>✓ Compléter</button>}
         {!editing && <button className="btn-secondary" onClick={startEditing} style={{ fontSize: 13 }}>Modifier</button>}
         {!editing && <button className="btn-secondary" onClick={() => setShowSend(true)} style={{ fontSize: 13 }}>📧 Envoyer</button>}
@@ -811,14 +811,14 @@ function MonthView({ year, month, googleEvents, onEventClick, onDayClick, today 
   // fausse le calcul en % des bandes multi-jours (les colonnes ne font plus
   // exactement 1/7 chacune) -- les traits de grille viennent des bordures.
   function cellBorder(colIndex, isLastRow) {
-    return { borderRight: colIndex < 6 ? '1px solid #E5E7EB' : 'none', borderBottom: isLastRow ? 'none' : '1px solid #E5E7EB' }
+    return { borderRight: colIndex < 6 ? '1px solid var(--c-border)' : 'none', borderBottom: isLastRow ? 'none' : '1px solid var(--c-border)' }
   }
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', flexShrink: 0 }}>
         {DAYS.map((d, i) => (
-          <div key={d} style={{ background: '#F9FAFB', padding: '8px 0', textAlign: 'center', fontSize: 12, fontWeight: 600, color: '#6B7280', ...cellBorder(i, false) }}>{d}</div>
+          <div key={d} style={{ background: 'var(--c-surface-2)', padding: '8px 0', textAlign: 'center', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', ...cellBorder(i, false) }}>{d}</div>
         ))}
       </div>
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -836,14 +836,14 @@ function MonthView({ year, month, googleEvents, onEventClick, onDayClick, today 
                   const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
                   const dayHolidays = dayEventsAll.filter(isHoliday)
                   return (
-                    <div key={di} onClick={() => onDayClick(date)} style={{ background: inMonth ? '#fff' : '#F9FAFB', padding: 6, position: 'relative', minWidth: 0, overflowY: 'auto', cursor: 'pointer', ...cellBorder(di, isLastRow) }}>
+                    <div key={di} onClick={() => onDayClick(date)} style={{ background: inMonth ? 'var(--c-surface)' : 'var(--c-surface-2)', padding: 6, position: 'relative', minWidth: 0, overflowY: 'auto', cursor: 'pointer', ...cellBorder(di, isLastRow) }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-                        <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : inMonth ? '#374151' : '#9CA3AF', background: isToday ? 'var(--brand)' : 'transparent', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{date.getDate()}</div>
+                        <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : inMonth ? 'var(--c-text-2)' : 'var(--c-faint)', background: isToday ? 'var(--brand)' : 'transparent', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{date.getDate()}</div>
                         {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                       </div>
                       {barsSpace > 0 && <div style={{ height: barsSpace }} />}
                       {dayGoogleEvents.slice(0, 2).map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}
-                      {dayGoogleEvents.length > 2 && <div style={{ fontSize: 10, color: '#9CA3AF', paddingLeft: 4 }}>+{dayGoogleEvents.length - 2} agenda</div>}
+                      {dayGoogleEvents.length > 2 && <div style={{ fontSize: 10, color: 'var(--c-faint)', paddingLeft: 4 }}>+{dayGoogleEvents.length - 2} agenda</div>}
                     </div>
                   )
                 })}
@@ -871,7 +871,7 @@ function WeekView({ weekStart, googleEvents, onEventClick, onDayClick, today }) 
   const WEEK_HEADER_H = 54 // jour + date, avant les bandes multi-jours
 
   return (
-    <div style={{ position: 'relative', border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+    <div style={{ position: 'relative', border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gridTemplateRows: '1fr', flex: 1, minHeight: 0 }}>
         {days.map((d, i) => {
           const isToday = isSameDay(d, today)
@@ -879,11 +879,11 @@ function WeekView({ weekStart, googleEvents, onEventClick, onDayClick, today }) 
           const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
           const dayHolidays = dayEventsAll.filter(isHoliday)
           return (
-            <div key={i} onClick={() => onDayClick(d)} style={{ background: '#fff', minWidth: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', borderRight: i < 6 ? '1px solid #E5E7EB' : 'none' }}>
-              <div style={{ padding: '8px 8px 4px', borderBottom: '1px solid #E5E7EB', textAlign: 'center', flexShrink: 0 }}>
-                <div style={{ fontSize: 11, color: '#9CA3AF', fontWeight: 600 }}>{DAYS[i]}</div>
+            <div key={i} onClick={() => onDayClick(d)} style={{ background: 'var(--c-surface)', minWidth: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', borderRight: i < 6 ? '1px solid var(--c-border)' : 'none' }}>
+              <div style={{ padding: '8px 8px 4px', borderBottom: '1px solid var(--c-border)', textAlign: 'center', flexShrink: 0 }}>
+                <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600 }}>{DAYS[i]}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                  <div style={{ fontSize: 20, fontWeight: 700, color: isToday ? 'var(--brand)' : '#111827' }}>{d.getDate()}</div>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: isToday ? 'var(--brand)' : 'var(--c-text)' }}>{d.getDate()}</div>
                   {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                 </div>
               </div>
@@ -905,13 +905,13 @@ function DayView({ day, googleEvents, onEventClick, onDayClick }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--c-text)' }}>
           {day.toLocaleDateString('fr-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </div>
         <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => onDayClick(day)}>+ Ajouter</button>
       </div>
       {dayGoogleEvents.length === 0 ? (
-        <div style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucun RDV ce jour</div>
+        <div style={{ color: 'var(--c-faint)', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucun RDV ce jour</div>
       ) : (
         <>
           {dayGoogleEvents.map(e => (
@@ -924,7 +924,7 @@ function DayView({ day, googleEvents, onEventClick, onDayClick }) {
                 {!e.all_day && <span style={{ fontSize: 13, color: e.color || '#6B7280', fontWeight: 600, minWidth: 50 }}>{googleEventDate(e).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}</span>}
                 <span style={{ fontSize: 14, fontWeight: 600, color: e.color || '#6B7280', fontStyle: 'italic' }}>{e.title}</span>
               </div>
-              {e.location && <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 4 }}>{e.location}</div>}
+              {e.location && <div style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 4 }}>{e.location}</div>}
             </div>
           ))}
         </>
@@ -953,10 +953,10 @@ function CompetencyReportSection() {
   }, {})
 
   return (
-    <div style={{ marginTop: 24, border: '1px solid #E5E7EB', borderRadius: 8 }}>
+    <div style={{ marginTop: 24, border: '1px solid var(--c-border)', borderRadius: 8 }}>
       <button
         onClick={() => setOpen(v => !v)}
-        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: '#F9FAFB', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: '#374151', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+        style={{ width: '100%', textAlign: 'left', padding: '12px 16px', background: 'var(--c-surface-2)', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: 'var(--c-text-2)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
       >
         Rapport de compétence par employé
         <span>{open ? '▾' : '▸'}</span>
@@ -964,16 +964,16 @@ function CompetencyReportSection() {
       {open && (
         <div style={{ padding: 16 }}>
           {loading ? (
-            <div style={{ color: '#9CA3AF', fontSize: 13 }}>Chargement...</div>
+            <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Chargement...</div>
           ) : Object.keys(byEmployee).length === 0 ? (
-            <div style={{ color: '#9CA3AF', fontSize: 13 }}>Pas encore assez de tâches complétées avec temps enregistré.</div>
+            <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Pas encore assez de tâches complétées avec temps enregistré.</div>
           ) : (
             Object.entries(byEmployee).map(([name, tasks]) => (
               <div key={name} style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: '#111827', marginBottom: 6 }}>{name}</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text)', marginBottom: 6 }}>{name}</div>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
-                    <tr style={{ color: '#6B7280', textAlign: 'left' }}>
+                    <tr style={{ color: 'var(--c-muted)', textAlign: 'left' }}>
                       <th style={{ padding: '4px 8px' }}>Tâche</th>
                       <th style={{ padding: '4px 8px' }}>Son temps moyen</th>
                       <th style={{ padding: '4px 8px' }}>Moyenne équipe</th>
@@ -984,11 +984,11 @@ function CompetencyReportSection() {
                     {tasks.map(t => {
                       const diff = t.employee_avg_minutes - t.team_avg_minutes
                       return (
-                        <tr key={t.template_id} style={{ borderTop: '1px solid #F3F4F6' }}>
+                        <tr key={t.template_id} style={{ borderTop: '1px solid var(--c-surface-3)' }}>
                           <td style={{ padding: '4px 8px' }}>{t.template_title}</td>
-                          <td style={{ padding: '4px 8px', color: diff > 0 ? '#DC2626' : diff < 0 ? '#059669' : '#374151', fontWeight: 600 }}>{t.employee_avg_minutes} min</td>
-                          <td style={{ padding: '4px 8px', color: '#9CA3AF' }}>{t.team_avg_minutes} min</td>
-                          <td style={{ padding: '4px 8px', color: '#9CA3AF' }}>{t.employee_count}</td>
+                          <td style={{ padding: '4px 8px', color: diff > 0 ? '#DC2626' : diff < 0 ? '#059669' : 'var(--c-text-2)', fontWeight: 600 }}>{t.employee_avg_minutes} min</td>
+                          <td style={{ padding: '4px 8px', color: 'var(--c-faint)' }}>{t.team_avg_minutes} min</td>
+                          <td style={{ padding: '4px 8px', color: 'var(--c-faint)' }}>{t.employee_count}</td>
                         </tr>
                       )
                     })}
@@ -1004,7 +1004,7 @@ function CompetencyReportSection() {
 }
 
 function ListView({ tasks, onToggle, onSelect }) {
-  if (tasks.length === 0) return <div style={{ color: '#9CA3AF', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucune tâche</div>
+  if (tasks.length === 0) return <div style={{ color: 'var(--c-faint)', fontSize: 14, textAlign: 'center', padding: '40px 0' }}>Aucune tâche</div>
   const withDate = tasks.filter(t => t.due_date).sort((a, b) => a.due_date.localeCompare(b.due_date))
   const noDate = tasks.filter(t => !t.due_date)
   const groups = {}
@@ -1017,15 +1017,15 @@ function ListView({ tasks, onToggle, onSelect }) {
     <div>
       {Object.entries(groups).map(([d, ts]) => (
         <div key={d} style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #E5E7EB' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text-2)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--c-border)' }}>
             {new Date(d + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </div>
           {ts.map(t => (
-            <div key={t.id} onClick={() => onSelect(t)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, cursor: 'pointer', background: t.completed ? '#F9FAFB' : '#fff' }}>
+            <div key={t.id} onClick={() => onSelect(t)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 6, cursor: 'pointer', background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
               <input type="checkbox" checked={t.completed} onChange={() => onToggle(t)} onClick={e => e.stopPropagation()} style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
-              {t.due_time && <span style={{ fontSize: 12, color: '#6B7280' }}>{t.due_time}</span>}
-              {t.company_name && <span style={{ fontSize: 12, color: '#6B7280' }}>{t.company_name}</span>}
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+              {t.due_time && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.due_time}</span>}
+              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.company_name}</span>}
               <PriorityBadge value={t.priority} />
               <StatusBadge value={t.status} />
             </div>
@@ -1034,12 +1034,12 @@ function ListView({ tasks, onToggle, onSelect }) {
       ))}
       {noDate.length > 0 && (
         <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid #E5E7EB' }}>Sans date</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text-2)', marginBottom: 8, paddingBottom: 4, borderBottom: '2px solid var(--c-border)' }}>Sans date</div>
           {noDate.map(t => (
-            <div key={t.id} onClick={() => onSelect(t)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, cursor: 'pointer', background: t.completed ? '#F9FAFB' : '#fff' }}>
+            <div key={t.id} onClick={() => onSelect(t)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 6, cursor: 'pointer', background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
               <input type="checkbox" checked={t.completed} onChange={() => onToggle(t)} onClick={e => e.stopPropagation()} style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
-              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
-              {t.company_name && <span style={{ fontSize: 12, color: '#6B7280' }}>{t.company_name}</span>}
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.company_name}</span>}
               <PriorityBadge value={t.priority} />
               <StatusBadge value={t.status} />
             </div>
@@ -1208,16 +1208,16 @@ export default function Tasks({ defaultView = 'list' }) {
   const overdue = tasks.filter(t => !t.completed && t.due_date && parseDay(t.due_date) < new Date(new Date().toDateString())).length
 
   return (
-    <div style={{ padding: 24, maxWidth: isAgenda ? '100%' : 1100, margin: isAgenda ? 0 : '0 auto', height: isAgenda ? '100%' : 'auto', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ padding: isAgenda ? 24 : 0, maxWidth: '100%', margin: 0, height: isAgenda ? '100%' : 'auto', boxSizing: 'border-box', display: 'flex', flexDirection: 'column' }}>
       {isAgenda ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, flexWrap: 'wrap' }}>
           <button onClick={goPrev} className="btn-secondary" style={{ fontSize: 13 }}>‹ Préc.</button>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: '#111827', whiteSpace: 'nowrap' }}>Agenda</h1>
-          <span style={{ fontWeight: 600, fontSize: 14, color: '#6B7280', whiteSpace: 'nowrap' }}>{agendaDateLabel}</span>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: 'var(--c-text)', whiteSpace: 'nowrap' }}>Agenda</h1>
+          <span style={{ fontWeight: 600, fontSize: 14, color: 'var(--c-muted)', whiteSpace: 'nowrap' }}>{agendaDateLabel}</span>
 
-          <div style={{ display: 'flex', border: '1px solid #D1D5DB', borderRadius: 8, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', border: '1px solid var(--c-border-strong)', borderRadius: 8, overflow: 'hidden' }}>
             {['month', 'week', 'day'].map(v => (
-              <button key={v} onClick={() => setView(v)} style={{ padding: '6px 14px', fontSize: 13, background: view === v ? 'var(--brand)' : '#fff', color: view === v ? '#fff' : '#374151', border: 'none', cursor: 'pointer', fontWeight: view === v ? 600 : 400 }}>
+              <button key={v} onClick={() => setView(v)} style={{ padding: '6px 14px', fontSize: 13, background: view === v ? 'var(--brand)' : 'var(--c-surface)', color: view === v ? '#fff' : 'var(--c-text-2)', border: 'none', cursor: 'pointer', fontWeight: view === v ? 600 : 400 }}>
                 {v === 'month' ? 'Mois' : v === 'week' ? 'Semaine' : 'Jour'}
               </button>
             ))}
@@ -1233,8 +1233,8 @@ export default function Tasks({ defaultView = 'list' }) {
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Tâches</h1>
-              <div style={{ fontSize: 13, color: '#6B7280', marginTop: 4 }}>
+              <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--c-text)' }}>Tâches</h1>
+              <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>
                 {pending} en cours{overdue > 0 && <span style={{ color: '#DC2626', fontWeight: 600, marginLeft: 8 }}>· {overdue} en retard</span>}
               </div>
             </div>
@@ -1242,17 +1242,17 @@ export default function Tasks({ defaultView = 'list' }) {
           </div>
 
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
-            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '7px 12px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151' }}>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ fontSize: 13, padding: '7px 12px', border: '1px solid var(--c-border-strong)', borderRadius: 6, color: 'var(--c-text-2)' }}>
               <option value="">Tous les statuts</option>
               {Object.entries(STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
 
-            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ fontSize: 13, padding: '7px 12px', border: '1px solid #D1D5DB', borderRadius: 6, color: '#374151' }}>
+            <select value={filterPriority} onChange={e => setFilterPriority(e.target.value)} style={{ fontSize: 13, padding: '7px 12px', border: '1px solid var(--c-border-strong)', borderRadius: 6, color: 'var(--c-text-2)' }}>
               <option value="">Toutes les priorités</option>
               {Object.entries(PRIORITY_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </select>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>
               <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
               Voir complétées
             </label>
@@ -1262,21 +1262,21 @@ export default function Tasks({ defaultView = 'list' }) {
 
       <div style={isAgenda ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
       {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#9CA3AF' }}>Chargement...</div>
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--c-faint)' }}>Chargement...</div>
       ) : (
         <>
           {!isAgenda && (
-            <div style={{ overflowX: 'auto', border: '1px solid #E5E7EB', borderRadius: 8 }}>
+            <div style={{ overflowX: 'auto', border: '1px solid var(--c-border)', borderRadius: 8 }}>
               <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead>
-                  <tr style={{ background: '#F9FAFB', borderBottom: '1px solid #E5E7EB' }}>
+                  <tr style={{ background: 'var(--c-surface-2)', borderBottom: '1px solid var(--c-border)' }}>
                     <th style={{ width: 36 }} />
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Titre</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Compagnie</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Assigné</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Priorité</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Statut</th>
-                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>Date prévue</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Titre</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Compagnie</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Assigné</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Priorité</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Statut</th>
+                    <th style={{ padding: '10px 8px', textAlign: 'left', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>Date prévue</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1284,7 +1284,7 @@ export default function Tasks({ defaultView = 'list' }) {
                     <TaskRow key={t.id} task={t} onToggle={handleToggle} onSelect={setSelectedTask} />
                   ))}
                   {filtered.length === 0 && (
-                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '32px 0', color: '#9CA3AF', fontSize: 14 }}>Aucune tâche</td></tr>
+                    <tr><td colSpan={7} style={{ textAlign: 'center', padding: '32px 0', color: 'var(--c-faint)', fontSize: 14 }}>Aucune tâche</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1499,14 +1499,14 @@ function GoogleEventModal({ data, onClose, onSaved }) {
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 480 }}>
         <h3 className="modal-title">{isEdit ? 'Modifier' : justCreated ? 'RDV créé ✓' : 'Ajouter'} un événement</h3>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-        <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+        <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <div className="form-group" style={{ flex: 1.3 }}><label>Date début</label><input type="date" value={date} onChange={e => changeDate(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Heure début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date début</label><input type="date" value={date} onChange={e => changeDate(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure début</label><input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
-          <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+          <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
+          <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         </div>
         {!isEdit && !justCreated && (
           <>
@@ -1531,23 +1531,23 @@ function GoogleEventModal({ data, onClose, onSaved }) {
         )}
         <div className="form-group">
           <label>Lieu (optionnel)</label>
-          <input value={location} onChange={e => setLocation(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} />
+          <input value={location} onChange={e => setLocation(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} />
           {!locked && companyAddresses.map(a => (
-            <button key={a.id} type="button" onClick={() => setLocation(formatAddress(a))} style={{ marginTop: 6, marginRight: 6, background: 'none', border: '1px solid #D1D5DB', color: 'var(--brand)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
+            <button key={a.id} type="button" onClick={() => setLocation(formatAddress(a))} style={{ marginTop: 6, marginRight: 6, background: 'none', border: '1px solid var(--c-border-strong)', color: 'var(--brand)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12 }}>
               📍 Utiliser {a.address_type === 'service' ? "l'adresse de service" : a.address_type === 'billing' ? "l'adresse de facturation" : "cette adresse"} de la compagnie
             </button>
           ))}
         </div>
-        <div className="form-group"><label>Description (optionnel)</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} disabled={locked} style={{ color: '#374151', background: '#fff' }} /></div>
+        <div className="form-group"><label>Description (optionnel)</label><textarea rows={3} value={description} onChange={e => setDescription(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         {!isEdit && !justCreated && selectedContact && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151', marginBottom: 12 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--c-text-2)', marginBottom: 12 }}>
             <input type="checkbox" checked={sendConfirmation} onChange={e => setSendConfirmation(e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
             Envoyer une confirmation de rendez-vous par courriel au client
           </label>
         )}
 
         {ticket && (
-          <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
+          <div style={{ borderTop: '1px solid var(--c-border)', margin: '16px 0', paddingTop: 16 }}>
             <a href={`/tickets/${ticket.id}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginBottom: 12, fontSize: 13, color: 'var(--brand)', textDecoration: 'none', background: 'var(--brand)11', padding: '4px 10px', borderRadius: 8 }}>
               🎫 Ticket lié : {ticket.title}
             </a>
@@ -1605,20 +1605,20 @@ function RdvTasksSection({ ticketId, ticketTitle }) {
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Tâches</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-2)' }}>Tâches</div>
         <button className="btn-secondary" onClick={() => setShowNewTask(true)} style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}>+ Tâche</button>
       </div>
       {tasks.length === 0 && (
-        <div style={{ color: '#9CA3AF', fontSize: 13, padding: '4px 0 8px' }}>Aucune tâche liée.</div>
+        <div style={{ color: 'var(--c-faint)', fontSize: 13, padding: '4px 0 8px' }}>Aucune tâche liée.</div>
       )}
       {tasks.map(t => (
-        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', borderRadius: 6, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff' }}>
+        <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 10px', borderRadius: 6, border: '1px solid var(--c-border)', marginBottom: 6, background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
           <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0 }} />
-          <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+          <span style={{ flex: 1, fontSize: 13, fontWeight: 500, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
           {t.subtasks?.length > 0 && (
-            <span style={{ fontSize: 11, color: '#9CA3AF' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
+            <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
           )}
-          <button onClick={() => unlink(t)} title="Retirer du ticket" style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
+          <button onClick={() => unlink(t)} title="Retirer du ticket" style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 15, padding: '0 4px' }}>×</button>
         </div>
       ))}
       {showNewTask && (

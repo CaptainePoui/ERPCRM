@@ -12,7 +12,7 @@ import PastillesPanel from '../components/PastillesPanel'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
-const ROLE_COLORS = { admin: '#DC2626', manager: '#7C3AED', tech: 'var(--brand)', billing: '#059669', readonly: '#6B7280' }
+const ROLE_COLORS = { admin: '#DC2626', manager: '#7C3AED', tech: 'var(--brand)', billing: '#059669', readonly: 'var(--c-muted)' }
 
 const fmtDate = s => s ? parseDay(s).toLocaleDateString('fr-CA', { year:'numeric', month:'short', day:'numeric' }) : '—'
 
@@ -32,11 +32,11 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   }
 
   return (
-    <div style={{ background: headerBg || '#F9FAFB', border: `1px solid ${headerColor ? headerColor + '55' : '#E5E7EB'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: headerColor || '#374151', cursor: 'pointer' }}>
+    <div style={{ background: headerBg || 'var(--c-surface-2)', border: `1px solid ${headerColor ? headerColor + '55' : 'var(--c-border)'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: headerColor || 'var(--c-text-2)', cursor: 'pointer' }}>
         <input type="checkbox" checked={!!form[masterKey]} onChange={e => toggleMaster(e.target.checked)} />
         <span style={{ flex: 1 }} onClick={e => { e.preventDefault(); setExpanded(v => !v) }}>{masterLabel}</span>
-        <span style={{ fontSize: 11, fontWeight: 400, color: '#9CA3AF' }}>
+        <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--c-faint)' }}>
           {checkedCount}/{items.length} · {expanded ? '▾' : '▸'}
         </span>
       </label>
@@ -134,7 +134,7 @@ function TicketsSettingsPanel() {
       <div className="adm-panel-header">
         <span className="adm-count">Chrono des tickets</span>
       </div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Au-delà de ce seuil de temps écoulé depuis la dernière note, une confirmation (avec possibilité de corriger le temps) est demandée avant d'enregistrer — protège contre le chrono laissé tourner par erreur (ex. onglet oublié ouvert). En dessous du seuil, la note s'enregistre directement sans interruption.
       </p>
       <div className="form-group" style={{ maxWidth: 260 }}>
@@ -178,7 +178,7 @@ function OptionsPanel() {
         <input type="checkbox" checked={barter} disabled={saving} onChange={e => toggle(e.target.checked)} style={{ marginTop: 3 }} />
         <span>
           <strong>Échanges (troc)</strong>
-          <span style={{ display: 'block', color: '#6B7280', fontSize: 13, marginTop: 2 }}>
+          <span style={{ display: 'block', color: 'var(--c-muted)', fontSize: 13, marginTop: 2 }}>
             Un client vous donne un bien ou un service au lieu de payer : la valeur paie ses factures ouvertes puis ses mois de service. Ajoute l'onglet Échanges aux compagnies, la marque « À régler en troc » aux factures et le mode de paiement Troc.
           </span>
         </span>
@@ -235,12 +235,12 @@ function IntegrationsPanel() {
       <div className="adm-panel-header">
         <span className="adm-count">Synchronisation Google Calendar</span>
       </div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Synchronise le module de prise de RDV en ligne avec un agenda Google : lecture des plages occupées, écriture des rendez-vous réservés.
       </p>
 
       {callbackMsg && (
-        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{callbackMsg.text}</span>
           <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
@@ -250,13 +250,13 @@ function IntegrationsPanel() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <span style={{
             fontSize: 13, fontWeight: 700, padding: '5px 12px', borderRadius: 20,
-            background: status.connected ? '#D1FAE5' : '#FEF2F2',
+            background: status.connected ? 'var(--c-tint-green)' : 'var(--c-tint-red)',
             color: status.connected ? '#059669' : '#DC2626',
           }}>
             {status.connected ? '✓ Connecté' : 'Non connecté'}
           </span>
           {!status.client_configured && (
-            <span style={{ fontSize: 12, color: '#9CA3AF' }}>
+            <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>
               GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET pas encore configurés sur le serveur.
             </span>
           )}
@@ -396,12 +396,12 @@ function BackupPanel() {
 
   return (
     <div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Backup automatique de notre propre infra ERPCRM (base de données + fichiers uploadés) vers Dropbox et/ou Google Drive. Distinct du stockage cloud offert aux clients pour leurs enregistrements d'appel.
       </p>
 
       {callbackMsg && (
-        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{callbackMsg.text(callback.provider)}</span>
           <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
@@ -412,19 +412,19 @@ function BackupPanel() {
       </div>
       <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
         {connections.map(c => (
-          <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid #E5E7EB', borderRadius: 8, padding: 16 }}>
+          <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid var(--c-border)', borderRadius: 8, padding: 16 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <strong>{PROVIDER_LABELS[c.provider]}</strong>
               <span style={{
                 fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                background: c.connected ? '#D1FAE5' : '#FEF2F2',
+                background: c.connected ? 'var(--c-tint-green)' : 'var(--c-tint-red)',
                 color: c.connected ? '#059669' : '#DC2626',
               }}>
                 {c.connected ? '✓ Connecté' : 'Non connecté'}
               </span>
             </div>
             {c.connected && c.account_label && (
-              <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 10 }}>{c.account_label}</div>
+              <div style={{ fontSize: 12, color: 'var(--c-faint)', marginBottom: 10 }}>{c.account_label}</div>
             )}
             {!c.connected ? (
               <>
@@ -433,7 +433,7 @@ function BackupPanel() {
                   Connecter {PROVIDER_LABELS[c.provider]}
                 </button>
                 {!c.has_credentials && (
-                  <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
+                  <div style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
                 )}
               </>
             ) : (
@@ -488,13 +488,13 @@ function BackupPanel() {
               </td>
             </tr>
           ))}
-          {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
+          {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
         </tbody>
       </table>
 
       <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
         <button className="btn-primary" onClick={runNow} disabled={runningNow}>{runningNow ? '...' : 'Backup maintenant'}</button>
-        {runMsg && <span style={{ fontSize: 13, color: '#6B7280' }}>{runMsg}</span>}
+        {runMsg && <span style={{ fontSize: 13, color: 'var(--c-muted)' }}>{runMsg}</span>}
       </div>
 
       {logs.length > 0 && (
@@ -505,9 +505,9 @@ function BackupPanel() {
             <tbody>
               {logs.map(l => (
                 <tr key={l.id}>
-                  <td style={{ fontSize: 12, color: '#9CA3AF' }}>{fmtDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
+                  <td style={{ fontSize: 12, color: 'var(--c-faint)' }}>{fmtDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
                   <td>{PROVIDER_LABELS[l.provider] || l.provider}</td>
-                  <td style={{ fontSize: 12, color: '#6B7280' }}>{l.filename || '—'}</td>
+                  <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{l.filename || '—'}</td>
                   <td>
                     <span style={{ fontSize: 12, fontWeight: 600, color: l.success ? '#059669' : '#DC2626' }}>
                       {l.success ? 'Succès' : (l.error_message || 'Échec')}
@@ -549,8 +549,8 @@ function CredentialsForm({ provider, initialClientId, onSaved }) {
   }
 
   return (
-    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>
+    <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8 }}>
         IDENTIFIANTS API {provider === 'dropbox' ? '(App Key / App Secret Dropbox)' : '(Client ID / Client Secret Google)'}
       </div>
       <div className="form-group">
@@ -697,7 +697,7 @@ function UsersPanel() {
           {users.map(u => (
             <tr key={u.id} className={u.is_active ? '' : 'adm-row-inactive'}>
               <td className="adm-name">{u.full_name}</td>
-              <td style={{ color: '#6B7280', fontSize: 13 }}>{u.email}</td>
+              <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{u.email}</td>
               <td>
                 <span className="adm-role" style={{ background: ROLE_COLORS[u.role] + '20', color: ROLE_COLORS[u.role] }}>
                   {ROLE_LABELS[u.role] || u.role}
@@ -708,7 +708,7 @@ function UsersPanel() {
                   {u.is_active ? 'Actif' : 'Inactif'}
                 </button>
               </td>
-              <td style={{ color: '#9CA3AF', fontSize: 13 }}>{fmtDate(u.last_login)}</td>
+              <td style={{ color: 'var(--c-faint)', fontSize: 13 }}>{fmtDate(u.last_login)}</td>
               <td>
                 <div style={{ display: 'flex', gap: 6 }}>
                   <button className="adm-edit-btn" onClick={() => setEditing(u)}>Modifier</button>
@@ -834,7 +834,7 @@ function PortalUsersPanel() {
 
   return (
     <div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Gérez les accès au portail client. URL du portail : <strong>/portal</strong>
       </p>
       <div className="adm-panel-header">
@@ -847,18 +847,18 @@ function PortalUsersPanel() {
           {users.map(u => (
             <tr key={u.id} className={u.is_active ? '' : 'adm-row-inactive'}>
               <td className="adm-name">{u.full_name}</td>
-              <td style={{ color: '#6B7280', fontSize: 13 }}>{u.email}</td>
-              <td style={{ color: '#6B7280', fontSize: 12 }}>{permLabel(u)}</td>
+              <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{u.email}</td>
+              <td style={{ color: 'var(--c-muted)', fontSize: 12 }}>{permLabel(u)}</td>
               <td>
                 <button className={`adm-toggle ${u.is_active ? 'active' : 'inactive'}`} onClick={() => toggleActive(u)}>
                   {u.is_active ? 'Actif' : 'Inactif'}
                 </button>
               </td>
-              <td style={{ color: '#9CA3AF', fontSize: 13 }}>{fmtDate(u.last_login)}</td>
+              <td style={{ color: 'var(--c-faint)', fontSize: 13 }}>{fmtDate(u.last_login)}</td>
               <td><button className="adm-del-btn" onClick={() => deleteUser(u)}>✕</button></td>
             </tr>
           ))}
-          {users.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun accès portail.</td></tr>}
+          {users.length === 0 && <tr><td colSpan={6} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun accès portail.</td></tr>}
         </tbody>
       </table>
       {showNew && (
@@ -927,12 +927,12 @@ function PortalUserModal({ onClose, onSaved }) {
             <option value="">— Sélectionner —</option>
             {companyContacts.map(c => <option key={c.id} value={c.id}>{`${c.first_name || ''} ${c.last_name || ''}`.trim()}{c.email ? ` · ${c.email}` : ' · (aucun courriel)'}</option>)}
           </select>
-          {picked && <div style={{ fontSize: 12, color: picked.email ? '#6B7280' : '#DC2626', marginTop: 4 }}>
+          {picked && <div style={{ fontSize: 12, color: picked.email ? 'var(--c-muted)' : '#DC2626', marginTop: 4 }}>
             {picked.email ? `Se connectera avec ${picked.email} — le courriel de sa fiche : s’il change dans la fiche, sa connexion suit.` : 'Aucun courriel dans sa fiche : ajoutez-le d’abord.'}</div>}
         </div>
         <div className="form-group"><label>Mot de passe *</label><input type="password" value={form.password} onChange={e => f('password', e.target.value)} /></div>
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>PERMISSIONS</div>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8 }}>PERMISSIONS</div>
           {[
             ['can_view_invoices', 'Voir les factures'],
             ['can_view_tickets', 'Voir les tickets'],
@@ -947,7 +947,7 @@ function PortalUserModal({ onClose, onSaved }) {
         </div>
         <PermissionBranch
           masterKey="can_view_own_extension" masterLabel="TÉLÉPHONIE — MON POSTE"
-          form={form} onChange={f} headerColor="#374151"
+          form={form} onChange={f} headerColor="var(--c-text-2)"
           items={[
             ['can_edit_extension_name', 'Modifier le nom affiché de son poste'],
             ['can_edit_call_forward', 'Gérer ses renvois d\'appel'],
@@ -961,7 +961,7 @@ function PortalUserModal({ onClose, onSaved }) {
         />
         <PermissionBranch
           masterKey="can_manage_telephony" masterLabel="TÉLÉPHONIE — GESTIONNAIRE (toute la compagnie)"
-          form={form} onChange={f} headerBg="#FFFBEB" headerColor="#92400E"
+          form={form} onChange={f} headerBg="var(--c-tint-amber)" headerColor="var(--c-on-amber)"
           items={[
             ['can_manage_ivr', 'Gérer les menus IVR'],
             ['can_manage_groups', 'Gérer les groupes d\'appel / ring groups'],
@@ -970,7 +970,7 @@ function PortalUserModal({ onClose, onSaved }) {
           ]}
         />
         <div style={{ marginTop: -6, marginBottom: 12 }}>
-          <div style={{ fontSize: 12, color: '#92400E' }}>
+          <div style={{ fontSize: 12, color: 'var(--c-on-amber)' }}>
             Jamais exposé au client, peu importe ces permissions : trunks, routes sortantes, DIDs principaux, 911, sécurité.
           </div>
         </div>
@@ -1024,7 +1024,7 @@ function PaymentMethodsPanel() {
 
   return (
     <div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Configurez les modes de paiement disponibles.
       </p>
       <table className="adm-table">
@@ -1034,18 +1034,18 @@ function PaymentMethodsPanel() {
         <tbody>
           {methods.map(m => (
             <tr key={m.id}>
-              <td style={{ fontFamily: 'monospace', color: '#6B7280', fontSize: 12 }}>{m.code}</td>
+              <td style={{ fontFamily: 'monospace', color: 'var(--c-muted)', fontSize: 12 }}>{m.code}</td>
               <td>
                 {editing === m.id ? (
                   <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
-                    style={{ border: '1px solid #D1D5DB', borderRadius: 4, padding: '4px 8px', fontSize: 14 }} />
+                    style={{ border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 8px', fontSize: 14 }} />
                 ) : m.name}
               </td>
               <td style={{ textAlign: 'center' }}>
                 {editing === m.id ? (
                   <input type="checkbox" checked={editForm.is_active} onChange={e => setEditForm(p => ({ ...p, is_active: e.target.checked }))} />
                 ) : (
-                  <span style={{ color: m.is_active ? '#059669' : '#9CA3AF', fontWeight: 600, fontSize: 13 }}>
+                  <span style={{ color: m.is_active ? '#059669' : 'var(--c-faint)', fontWeight: 600, fontSize: 13 }}>
                     {m.is_active ? 'Oui' : 'Non'}
                   </span>
                 )}

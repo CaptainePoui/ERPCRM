@@ -33,13 +33,13 @@ const LIST_FILTERS = [
 ]
 
 export const C = {
-  border: '#E5E7EB',
-  muted: '#6B7280',
-  faint: '#9CA3AF',
-  link: '#1F5AA6',
+  border: 'var(--c-border)',
+  muted: 'var(--c-muted)',
+  faint: 'var(--c-faint)',
+  link: 'var(--brand)',
   green: '#059669',
   red: '#DC2626',
-  cash: '#6B7280',
+  cash: 'var(--c-muted)',
   bank: '#059669',
 }
 
@@ -67,7 +67,7 @@ export function Dropdown({ label, children, align = 'left', buttonStyle }) {
         {label} <IconChevronDown width={14} height={14} />
       </button>
       {open && (
-        <div onClick={() => setOpen(false)} style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 6, background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.08)', minWidth: 200, zIndex: 20, padding: 4 }}>
+        <div onClick={() => setOpen(false)} style={{ position: 'absolute', top: '100%', [align]: 0, marginTop: 6, background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: '0 6px 20px rgba(0,0,0,.08)', minWidth: 200, zIndex: 20, padding: 4 }}>
           {children}
         </div>
       )}
@@ -77,7 +77,7 @@ export function Dropdown({ label, children, align = 'left', buttonStyle }) {
 
 export function MenuItem({ onClick, active, disabled, children }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} style={{ display: 'block', width: '100%', textAlign: 'left', background: active ? '#EFF6FF' : 'none', border: 'none', borderRadius: 6, padding: '8px 10px', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? C.faint : active ? C.link : '#111827' }}>
+    <button type="button" onClick={onClick} disabled={disabled} style={{ display: 'block', width: '100%', textAlign: 'left', background: active ? 'var(--c-tint-blue)' : 'none', border: 'none', borderRadius: 6, padding: '8px 10px', fontSize: 13, cursor: disabled ? 'not-allowed' : 'pointer', color: disabled ? C.faint : active ? C.link : 'var(--c-text)' }}>
       {children}
     </button>
   )
@@ -154,7 +154,7 @@ export default function Bank() {
           <button className="btn-secondary" onClick={() => setShowStatements(true)}>Relevés bancaires</button>
           <button className="btn-primary" onClick={() => setEditing({ mode: 'new', type: 'bank' })}>Ajouter une banque ou une carte de crédit</button>
           <button className="btn-secondary" onClick={() => setShowRules(true)}>Gérer les règles de transaction</button>
-          <Dropdown label="Plus" align="right" buttonStyle={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', background: '#fff', fontSize: 13 }}>
+          <Dropdown label="Plus" align="right" buttonStyle={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', background: 'var(--c-surface)', fontSize: 13 }}>
             <MenuItem onClick={() => setEditing({ mode: 'new', type: 'petty_cash' })}>Ajouter une petite caisse</MenuItem>
             <MenuItem onClick={() => setListFilter('inactive')}>Afficher les comptes inactifs</MenuItem>
           </Dropdown>
@@ -162,7 +162,7 @@ export default function Bank() {
       </div>
 
       {/* Grand panneau : resume, indicateurs, graphique */}
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, marginBottom: 24 }}>
+      <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 24, marginBottom: 24 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
           <Dropdown label={scopeAccount ? scopeAccount.name : 'Tous les comptes'} buttonStyle={{ fontSize: 17, fontWeight: 600 }}>
             <MenuItem active={scope === 'all'} onClick={() => setScope('all')}>Tous les comptes</MenuItem>
@@ -174,11 +174,11 @@ export default function Bank() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
-            <Indicator icon={<IconCash color={C.cash} />} iconBg="#F3F4F6" title="Espèces disponibles" value={EMPTY} />
-            <Indicator icon={<IconBank color={C.bank} />} iconBg="#ECFDF5" title="Solde bancaire" value={fmtMoney(bankBalance)} />
+            <Indicator icon={<IconCash color={C.cash} />} iconBg="var(--c-surface-3)" title="Espèces disponibles" value={EMPTY} />
+            <Indicator icon={<IconBank color={C.bank} />} iconBg="var(--c-tint-green)" title="Solde bancaire" value={fmtMoney(bankBalance)} />
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEF2F2', color: C.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>{unclassifiedTotal}</div>
+            <div style={{ width: 40, height: 40, borderRadius: 10, background: 'var(--c-tint-red)', color: C.red, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 16 }}>{unclassifiedTotal}</div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 600 }}>Transactions non classées</div>
               {/* Raccourci vers le traitement : le compte choisi, sinon le premier compte synchronisable */}
@@ -197,7 +197,7 @@ export default function Bank() {
       </div>
 
       {/* Comptes */}
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '20px 24px' }}>
+      <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '20px 24px' }}>
         <div style={{ marginBottom: 12 }}>
           <Dropdown label={LIST_FILTERS.find(f => f.value === listFilter)?.label} buttonStyle={{ fontSize: 17, fontWeight: 600 }}>
             {LIST_FILTERS.map(f => <MenuItem key={f.value} active={f.value === listFilter} onClick={() => setListFilter(f.value)}>{f.label}</MenuItem>)}
@@ -320,7 +320,7 @@ export function BankChart({ accountId, onTotals }) {
 
   const G = GRANULARITIES.find(x => x.value === granularity)
   const empty = data && data.buckets.every(b => !b.deposits && !b.withdrawals && b.balance == null)
-  const arrow = enabled => ({ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 6, width: 28, height: 28, cursor: enabled ? 'pointer' : 'default', color: enabled ? '#111827' : C.faint })
+  const arrow = enabled => ({ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 6, width: 28, height: 28, cursor: enabled ? 'pointer' : 'default', color: enabled ? 'var(--c-text)' : C.faint })
 
   return (
     <div style={{ marginTop: 12 }}>
@@ -334,7 +334,7 @@ export function BankChart({ accountId, onTotals }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.muted }}>
           Regrouper par
-          <Dropdown label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><IconCalendar width={14} height={14} /> {G?.label}</span>} align="right" buttonStyle={{ fontSize: 13, color: '#111827', border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 10px', background: '#fff' }}>
+          <Dropdown label={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><IconCalendar width={14} height={14} /> {G?.label}</span>} align="right" buttonStyle={{ fontSize: 13, color: 'var(--c-text)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '6px 10px', background: 'var(--c-surface)' }}>
             {GRANULARITIES.map(x => (
               <MenuItem key={x.value} active={x.value === granularity} onClick={() => choose(x.value)}>
                 {x.label} <span style={{ color: C.faint, fontSize: 12 }}>· {x.range}</span>
@@ -516,9 +516,9 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
         </div>
 
         {busy && <div style={{ fontSize: 13, color: C.muted }}>Lecture du fichier...</div>}
-        {error && <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', color: C.red, borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>{error}</div>}
+        {error && <div style={{ background: 'var(--c-tint-red)', border: '1px solid #FECACA', color: C.red, borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>{error}</div>}
         {done && (
-          <div style={{ background: '#ECFDF5', border: '1px solid #A7F3D0', color: '#065F46', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
+          <div style={{ background: 'var(--c-tint-green)', border: '1px solid #A7F3D0', color: 'var(--c-on-green)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
             {done.rows_new} transaction{done.rows_new > 1 ? 's' : ''} importée{done.rows_new > 1 ? 's' : ''}{done.rows_duplicate ? ` (${done.rows_duplicate} déjà présente${done.rows_duplicate > 1 ? 's' : ''}, ignorée${done.rows_duplicate > 1 ? 's' : ''})` : ''}{done.rows_zero_skipped ? `, ${done.rows_zero_skipped} ligne${done.rows_zero_skipped > 1 ? 's' : ''} à 0,00 $ ignorée${done.rows_zero_skipped > 1 ? 's' : ''}` : ''}. Elles sont dans « Transactions non classées ».
           </div>
         )}
@@ -530,7 +530,7 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
             {preview.rows_zero_skipped > 0 && <div style={{ color: C.muted }}>{preview.rows_zero_skipped} ligne{preview.rows_zero_skipped > 1 ? 's' : ''} à 0,00 $ ignorée{preview.rows_zero_skipped > 1 ? 's' : ''} (aucun montant à classer)</div>}
             {preview.ledger_balance != null && <div>Solde du relevé : {fmtMoney(preview.ledger_balance)}{preview.ledger_balance_date ? ` au ${fmtDate(preview.ledger_balance_date + 'T00:00:00')}` : ''}</div>}
             {preview.account_mismatch && (
-              <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', color: '#92400E', borderRadius: 6, padding: '6px 10px' }}>
+              <div style={{ background: 'var(--c-tint-amber)', border: '1px solid #FDE68A', color: 'var(--c-on-amber)', borderRadius: 6, padding: '6px 10px' }}>
                 Attention : ce relevé est celui du compte se terminant par {preview.file_account_last4}, pas celui du compte choisi.
               </div>
             )}

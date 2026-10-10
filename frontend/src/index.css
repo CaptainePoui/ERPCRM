@@ -1,51 +1,74 @@
+/* Apparence ERPCRM (TASK-050, 2026-10-10) : couleurs de simpleip.tel, police Manrope, mode Jour (par défaut) et
+   Nuit choisi dans Administration -> Entreprise (data-theme="dark" sur <html>). Toutes les couleurs neutres des
+   écrans passent par ces variables : changer de mode ne demande que de les redéfinir. */
 :root {
-  --text: #374151;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
   /* Bleu de marque Simple IP */
-  --brand: #1F5AA6;
-  --brand-hover: #164682;
-  --brand-bg: #EFF6FF;
-  --brand-border: #BFDBFE;
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  --brand: #0066CC;
+  --brand-hover: #004A99;
+  --brand-bg: #E6F0FB;
+  --brand-border: #B8D4F2;
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --c-bg: #F5F9FF;            /* fond de page */
+  --c-surface: #FFFFFF;       /* boîtes, tableaux, menus */
+  --c-surface-2: #F7FAFD;     /* en-têtes de tableau, zones discrètes */
+  --c-surface-3: #EEF3F9;     /* survol, zones un peu plus marquées */
+  --c-border: #E3EDF7;
+  --c-border-strong: #CFDDEE;
+  --c-text: #0A1929;
+  --c-text-2: #33445A;
+  --c-muted: #55657A;
+  --c-faint: #8494A7;
+  --c-tint-blue: #E6F0FB;   --c-on-blue: #004A99;
+  --c-tint-red: #FDECEC;    --c-on-red: #B91C1C;
+  --c-tint-green: #E7F7EE;  --c-on-green: #047857;
+  --c-tint-amber: #FFF5E0;  --c-on-amber: #92400E;
+  --c-shadow: 0 1px 2px rgba(10, 25, 41, 0.05);
+  --c-shadow-pop: 0 10px 30px rgba(10, 25, 41, 0.12);
+
+  /* anciennes variables (gardées pour les écrans qui s'en servent) */
+  --text: var(--c-text-2);
+  --text-h: var(--c-text);
+  --bg: var(--c-surface);
+  --border: var(--c-border);
+  --code-bg: var(--c-surface-3);
+
+  --sans: 'Manrope Variable', 'Segoe UI', system-ui, sans-serif;
+  --heading: 'Manrope Variable', 'Segoe UI', system-ui, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
 
   font: 15px/145% var(--sans);
   color-scheme: light;
-  color: var(--text);
-  background: var(--bg);
+  color: var(--c-text);
+  background: var(--c-bg);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --brand: #3B82F6;
-    --brand-hover: #60A5FA;
-    --brand-bg: rgba(59, 130, 246, 0.15);
-    --brand-border: rgba(59, 130, 246, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
+:root[data-theme="dark"] {
+  --brand: #3D8FE0;
+  --brand-hover: #6AAEF0;
+  --brand-bg: #163B63;
+  --brand-border: #2A5A8E;
 
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
+  --c-bg: #0B1E33;
+  --c-surface: #102A45;
+  --c-surface-2: #0E2540;
+  --c-surface-3: #163454;
+  --c-border: #1E3A5C;
+  --c-border-strong: #2A4A6E;
+  --c-text: #E6EEF7;
+  --c-text-2: #C3D2E3;
+  --c-muted: #9FB3C8;
+  --c-faint: #7A90A8;
+  --c-tint-blue: #163B63;   --c-on-blue: #8CC4FF;
+  --c-tint-red: #4A1D22;    --c-on-red: #FCA5A5;
+  --c-tint-green: #123D2E;  --c-on-green: #6EE7B7;
+  --c-tint-amber: #4A3412;  --c-on-amber: #FCD34D;
+  --c-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --c-shadow-pop: 0 10px 30px rgba(0, 0, 0, 0.5);
+  color-scheme: dark;
 }
 
 body {
@@ -74,9 +97,9 @@ h2 {
 select {
   font-family: inherit;
   font-size: 14px;
-  color: #111827;
-  background-color: #fff;
-  border: 1.5px solid #D1D5DB;
+  color: var(--c-text);
+  background-color: var(--c-surface);
+  border: 1.5px solid var(--c-border-strong);
   border-radius: 6px;
   padding: 7px 32px 7px 10px;
   appearance: none;

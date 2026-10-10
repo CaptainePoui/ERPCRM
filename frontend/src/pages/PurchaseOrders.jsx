@@ -5,11 +5,11 @@ import './PurchaseOrders.css'
 import { parseDay } from '../utils/date'
 
 const STATUS_STYLES = {
-  brouillon:           { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
+  brouillon:           { color: 'var(--c-muted)', bg: 'var(--c-surface-3)', label: 'Brouillon' },
   envoye:              { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Envoyé' },
-  partiellement_recu:  { color: '#D97706', bg: '#FFFBEB', label: 'Partiel' },
-  recu:                { color: '#059669', bg: '#F0FDF4', label: 'Reçu' },
-  annule:              { color: '#DC2626', bg: '#FEF2F2', label: 'Annulé' },
+  partiellement_recu:  { color: '#D97706', bg: 'var(--c-tint-amber)', label: 'Partiel' },
+  recu:                { color: '#059669', bg: 'var(--c-tint-green)', label: 'Reçu' },
+  annule:              { color: '#DC2626', bg: 'var(--c-tint-red)', label: 'Annulé' },
 }
 
 const fmt = n => `${parseFloat(n || 0).toFixed(2)} $`
@@ -58,9 +58,9 @@ export default function PurchaseOrders() {
                   <td className="po-num">{po.po_number}</td>
                   <td>{po.supplier_name}</td>
                   <td><span className="po-badge" style={{ color: st.color, background: st.bg }}>{st.label}</span></td>
-                  <td style={{ textAlign: 'center', color: '#6B7280' }}>{po.line_count}</td>
+                  <td style={{ textAlign: 'center', color: 'var(--c-muted)' }}>{po.line_count}</td>
                   <td className="po-total">{fmt(po.total)}</td>
-                  <td style={{ color: '#9CA3AF', fontSize: 13 }}>{fmtDate(po.created_at)}</td>
+                  <td style={{ color: 'var(--c-faint)', fontSize: 13 }}>{fmtDate(po.created_at)}</td>
                   <td><span className="po-arrow">→</span></td>
                 </tr>
               )

@@ -30,7 +30,7 @@ export default function ChangePasswordModal({ onClose }) {
         <h3 className="modal-title">Changer mon mot de passe</h3>
         {done ? (
           <>
-            <p style={{ fontSize: 14, color: '#047857' }}>✓ Mot de passe changé. Utilisez-le à votre prochaine connexion.</p>
+            <p style={{ fontSize: 14, color: 'var(--c-on-green)' }}>✓ Mot de passe changé. Utilisez-le à votre prochaine connexion.</p>
             <div className="modal-actions"><button className="btn-primary" onClick={onClose}>Fermer</button></div>
           </>
         ) : (

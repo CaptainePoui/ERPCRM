@@ -81,12 +81,12 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Parcage ({parkingLots.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Composer l'extension pilote place l'appel dans le premier slot libre de la plage ; composer un slot précis le parque directement ou le récupère s'il est occupé. Par défaut, le timeout rappelle le poste qui a parqué -- coche "Poste dédié" pour toujours renvoyer vers un poste précis à la place.
         {onGoToAudio && (
           <>
@@ -96,7 +96,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
         )}
       </div>
       {showNew && (
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group"><label>Nom</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
           <div className="form-group"><label>Pilote</label><input value={form.park_extension} onChange={e => setForm(p => ({ ...p, park_extension: e.target.value }))} style={{ width: 70 }} /></div>
           <div className="form-group"><label>Début plage</label><input type="number" value={form.parking_slots_start} onChange={e => setForm(p => ({ ...p, parking_slots_start: parseInt(e.target.value, 10) }))} style={{ width: 70 }} /></div>
@@ -123,14 +123,14 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createLot}>Créer</button>
         </div>
       )}
-      {parkingLotsLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : parkingLots.length === 0 ? (
+      {parkingLotsLoading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : parkingLots.length === 0 ? (
         <div className="empty-tab">Aucun lot de parcage.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Actif', 'Nom', 'Pilote', 'Plage', 'Timeout avant rappel', 'Poste de rappel', 'Annonce', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -139,7 +139,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
               const isFixed = lot.timeout_return_mode === 'fixed'
               const showPicker = isFixed || pendingDedicated.has(lot.id)
               return (
-                <tr key={lot.id} style={{ borderBottom: '1px solid #F3F4F6', opacity: lot.is_active ? 1 : 0.55 }}>
+                <tr key={lot.id} style={{ borderBottom: '1px solid var(--c-surface-3)', opacity: lot.is_active ? 1 : 0.55 }}>
                   <td style={{ padding: '10px 12px' }}>
                     <input type="checkbox" checked={lot.is_active} onChange={e => updateLot(lot.id, 'is_active', e.target.checked)} />
                   </td>
@@ -149,7 +149,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{lot.park_extension}</td>
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{lot.parking_slots_start}–{lot.parking_slots_end}</td>
                   <td style={{ padding: '10px 12px' }}>
-                    <input type="number" defaultValue={lot.timeout_seconds} onBlur={e => { const v = parseInt(e.target.value, 10); if (v && v !== lot.timeout_seconds) updateLot(lot.id, 'timeout_seconds', v) }} style={{ width: 60, border: '1px solid transparent', background: 'transparent' }} onFocus={e => e.target.style.border = '1px solid #D1D5DB'} />
+                    <input type="number" defaultValue={lot.timeout_seconds} onBlur={e => { const v = parseInt(e.target.value, 10); if (v && v !== lot.timeout_seconds) updateLot(lot.id, 'timeout_seconds', v) }} style={{ width: 60, border: '1px solid transparent', background: 'transparent' }} onFocus={e => e.target.style.border = '1px solid var(--c-border-strong)'} />
                     s
                   </td>
                   <td style={{ padding: '10px 12px' }}>

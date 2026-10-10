@@ -24,8 +24,8 @@ export const FREQS = [['hebdomadaire', 'Hebdomadaire'], ['mensuel', 'Mensuelle']
 export const freqLabel = f => (FREQS.find(x => x[0] === f) || [f, f])[1]
 
 export const BILL_STATUS = {
-  brouillon: ['Brouillon', '#6B7280'], ouverte: ['À payer', '#1F5AA6'], partielle: ['Partiellement payée', '#D97706'],
-  payee: ['Payée', '#059669'], en_retard: ['En retard', '#DC2626'], annulee: ['Annulée', '#9CA3AF'],
+  brouillon: ['Brouillon', 'var(--c-muted)'], ouverte: ['À payer', 'var(--brand)'], partielle: ['Partiellement payée', '#D97706'],
+  payee: ['Payée', '#059669'], en_retard: ['En retard', '#DC2626'], annulee: ['Annulée', 'var(--c-faint)'],
 }
 
 // Meme calcul que le serveur (purchases.compute_taxes) -- apercu seulement, le serveur fait foi
@@ -68,7 +68,7 @@ export function useRefs() {
 }
 
 export function Card({ children, style }) {
-  return <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 16px', ...style }}>{children}</div>
+  return <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 16px', ...style }}>{children}</div>
 }
 
 // Popup : seuls Annuler / Enregistrer ferment (jamais un clic a l'exterieur -- perte de saisie)

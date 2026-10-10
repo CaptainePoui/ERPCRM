@@ -8,7 +8,7 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 
 const PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: '#6B7280' },
+  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -20,7 +20,7 @@ const STATUS_LABELS = {
   en_attente:          { label: 'En attente',                color: '#D97706' },
   en_attente_client:   { label: "En attente d'une réponse",  color: '#7C3AED' },
   facture:             { label: 'Facturé',                  color: '#0891B2' },
-  ferme:               { label: 'Fermé',                    color: '#6B7280' },
+  ferme:               { label: 'Fermé',                    color: 'var(--c-muted)' },
 }
 
 // Transitions rapides -- le bouton Fermer/Ouvrir (bascule) et "En attente d'une
@@ -441,7 +441,7 @@ export default function TicketDetail() {
             {fmtSecs(totalSecs)}
           </span>
           {timerRunning
-            ? <button data-timer-btn onClick={pauseTimer} style={{ fontSize: 12, padding: '4px 14px', background: 'transparent', border: '1px solid #94A3B8', borderRadius: 6, color: '#94A3B8', cursor: 'pointer' }}>⏸ Pause</button>
+            ? <button data-timer-btn onClick={pauseTimer} style={{ fontSize: 12, padding: '4px 14px', background: 'transparent', border: '1px solid var(--c-faint)', borderRadius: 6, color: 'var(--c-faint)', cursor: 'pointer' }}>⏸ Pause</button>
             : <button data-timer-btn onClick={resumeTimer} style={{ fontSize: 12, padding: '4px 14px', background: 'transparent', border: '1px solid #4ADE80', borderRadius: 6, color: '#4ADE80', cursor: 'pointer' }}>▶ Reprendre</button>
           }
           <span style={{ fontSize: 12, color: '#64748B' }}>Temps total du ticket — inclut toutes les saisies</span>
@@ -460,7 +460,7 @@ export default function TicketDetail() {
               <span>Contact</span>
               <strong>
                 {ticket.contact_name}
-                {ticket.contact_email && <span style={{ color: '#6B7280', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{ticket.contact_email}</span>}
+                {ticket.contact_email && <span style={{ color: 'var(--c-muted)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{ticket.contact_email}</span>}
               </strong>
             </div>
           )}
@@ -506,16 +506,16 @@ export default function TicketDetail() {
             <span>Résumé ouvert</span>
             {ticket.last_opened_at ? (
               <span
-                style={{ fontSize: 13, cursor: 'pointer', color: '#374151' }}
+                style={{ fontSize: 13, cursor: 'pointer', color: 'var(--c-text-2)' }}
                 onClick={toggleOpens}
                 title="Cliquer pour voir l'historique complet"
               >
                 👁 {fmtOpened(ticket.last_opened_at)}{ticket.open_count > 1 ? ` (×${ticket.open_count})` : ''}
               </span>
-            ) : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Jamais</span>}
+            ) : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Jamais</span>}
           </div>
           {showOpens && (
-            <div style={{ marginTop: 4, marginBottom: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+            <div style={{ marginTop: 4, marginBottom: 8, fontSize: 12, color: 'var(--c-muted)', background: 'var(--c-surface-2)', borderRadius: 6, padding: '8px 12px' }}>
               {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
                 <ul style={{ margin: 0, paddingLeft: 16 }}>
                   {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
@@ -542,7 +542,7 @@ export default function TicketDetail() {
                 </div>
               ) : (
                 <span
-                  style={{ color: '#9CA3AF', cursor: 'pointer' }}
+                  style={{ color: 'var(--c-faint)', cursor: 'pointer' }}
                   onClick={() => { setContactEmailDraft(''); setEditingContactEmail(true) }}
                 >
                   Contact sans courriel — notifications désactivées (cliquer pour ajouter)
@@ -556,7 +556,7 @@ export default function TicketDetail() {
           <div className="tkt-section-title">Description</div>
           {ticket.description
             ? <p className="tkt-desc">{ticket.description}</p>
-            : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Aucune description</span>}
+            : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucune description</span>}
         </div>
       </div>
 
@@ -576,11 +576,11 @@ export default function TicketDetail() {
                 if (!timerRunning && e.target.value.trim()) resumeTimer()
               }}
               placeholder="Décrivez ce que vous avez fait… (le chrono reprend automatiquement si vous commencez à taper)"
-              style={{ width: '100%', borderRadius: 8, border: '1px solid #D1D5DB', padding: '10px 12px', fontSize: 13, color: '#374151', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }}
+              style={{ width: '100%', borderRadius: 8, border: '1px solid var(--c-border-strong)', padding: '10px 12px', fontSize: 13, color: 'var(--c-text-2)', resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5 }}
             />
             <div style={{ display: 'flex', gap: 12, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               {catalogue.length > 0 && (
-                <select value={noteCatItem} onChange={e => setNoteCatItem(e.target.value)} style={{ fontSize: 13, padding: '6px 10px', border: '1px solid #D1D5DB', borderRadius: 6, minWidth: 160 }}>
+                <select value={noteCatItem} onChange={e => setNoteCatItem(e.target.value)} style={{ fontSize: 13, padding: '6px 10px', border: '1px solid var(--c-border-strong)', borderRadius: 6, minWidth: 160 }}>
                   <option value="">Service : Aucun</option>
                   {catalogue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -624,8 +624,8 @@ export default function TicketDetail() {
                 <tr key={e.id}>
                   <td>{new Date(e.worked_at + 'T00:00:00').toLocaleDateString('fr-CA')}</td>
                   <td>{e.description}</td>
-                  <td style={{ color: '#6B7280' }}>{e.user_name || '—'}</td>
-                  <td style={{ color: '#6B7280', fontSize: 12 }}>{catalogue.find(c => c.id === e.catalogue_item_id)?.name || '—'}</td>
+                  <td style={{ color: 'var(--c-muted)' }}>{e.user_name || '—'}</td>
+                  <td style={{ color: 'var(--c-muted)', fontSize: 12 }}>{catalogue.find(c => c.id === e.catalogue_item_id)?.name || '—'}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMins(e.duration_minutes)}</td>
                   <td>{e.is_billable ? <span className="tkt-billable">Fact.</span> : '—'}</td>
                   <td style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
@@ -645,14 +645,14 @@ export default function TicketDetail() {
               )
             })}
             {ticket.entries.length === 0 && (
-              <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune saisie</td></tr>
+              <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: 16 }}>Aucune saisie</td></tr>
             )}
           </tbody>
         </table>
         {ticket.entries.length > 0 && (
           <div className="tkt-time-total">
             <span>Total : {fmtMins(ticket.total_minutes)}</span>
-            <span style={{ color: ticket.is_billable ? '#059669' : '#9CA3AF' }}>
+            <span style={{ color: ticket.is_billable ? '#059669' : 'var(--c-faint)' }}>
               {ticket.is_billable ? `Facturable : ${fmtMins(Math.max(0, ticket.total_minutes))}` : 'Ticket non facturable'}
             </span>
           </div>
@@ -691,7 +691,7 @@ export default function TicketDetail() {
         <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Pas de courriel</h3>
-            <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>
+            <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 12 }}>
               Ce contact n'a pas de courriel enregistré — impossible d'envoyer le résumé.
             </p>
             <div className="form-group">
@@ -719,7 +719,7 @@ export default function TicketDetail() {
         <div className="modal-overlay">
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <h3 className="modal-title">Confirmer le temps</h3>
-            <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 12 }}>
+            <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 12 }}>
               Temps écoulé depuis la dernière note : <strong>{fmtMins(confirmMins)}</strong>. Corrigez si nécessaire avant d'enregistrer.
             </p>
             <div className="form-group">
@@ -764,7 +764,7 @@ function DonnerDuTempsModal({ onClose, onSave }) {
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Donner du temps</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
           Le temps offert est arrondi au 5 min inférieur (avantage du tarif). Il crée un crédit négatif facturable sur le ticket.
         </p>
         <div className="form-group">
@@ -779,7 +779,7 @@ function DonnerDuTempsModal({ onClose, onSave }) {
           />
         </div>
         {mins > 0 && (
-          <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: '#166534' }}>
+          <div style={{ background: 'var(--c-tint-green)', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16, fontSize: 14, color: 'var(--c-on-green)' }}>
             {rounded > 0
               ? <><strong>{rounded} min</strong> offertes (arrondi depuis {mins} min) → crédit de <strong>-{rounded} min</strong> sur le ticket</>
               : <span style={{ color: '#DC2626' }}>Minimum 5 minutes</span>
@@ -833,8 +833,8 @@ function InvoiceModal({ ticket, catalogue, onClose, onCreated }) {
         <h3 className="modal-title">Créer une facture</h3>
         {error && <div style={{ color: '#DC2626', marginBottom: 12, fontSize: 13 }}>{error}</div>}
 
-        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
-          <div style={{ fontSize: 13, color: '#166534', marginBottom: 4 }}>Résumé du temps</div>
+        <div style={{ background: 'var(--c-tint-green)', border: '1px solid #BBF7D0', borderRadius: 8, padding: '12px 16px', marginBottom: 16 }}>
+          <div style={{ fontSize: 13, color: 'var(--c-on-green)', marginBottom: 4 }}>Résumé du temps</div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>
             {!ticket.is_billable
               ? 'Ticket non facturable — ligne main d\'œuvre omise'
@@ -886,7 +886,7 @@ function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
       <div className="tkt-section-title" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 12 }}>
         Tâches liées
         {tasks.length > 0 && (
-          <label style={{ fontSize: 12, fontWeight: 400, color: '#6B7280', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+          <label style={{ fontSize: 12, fontWeight: 400, color: 'var(--c-muted)', display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
             <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
             Voir complétées
           </label>
@@ -894,19 +894,19 @@ function TicketTachesSection({ ticketId, onNewTask, refreshKey }) {
         <button className="btn-secondary" onClick={onNewTask} style={{ fontSize: 12, padding: '4px 10px', marginLeft: 'auto' }}>+ Tâche</button>
       </div>
       {filtered.length === 0 && (
-        <div style={{ color: '#9CA3AF', fontSize: 13, padding: '8px 0' }}>Aucune tâche liée à ce ticket.</div>
+        <div style={{ color: 'var(--c-faint)', fontSize: 13, padding: '8px 0' }}>Aucune tâche liée à ce ticket.</div>
       )}
       {filtered.map(t => {
         const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
         return (
-          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'center' }}>
+          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 14px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 6, background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)', alignItems: 'center' }}>
             <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', cursor: 'pointer', flexShrink: 0 }} />
-            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
+            <span style={{ flex: 1, fontSize: 13, fontWeight: 600, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
             {t.subtasks?.length > 0 && (
-              <span style={{ fontSize: 11, color: '#9CA3AF' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
+              <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{t.subtasks.filter(s => s.completed).length}/{t.subtasks.length}</span>
             )}
-            {t.due_date && <span style={{ fontSize: 12, color: overdue ? '#DC2626' : '#9CA3AF' }}>{overdue ? '⚠ ' : ''}{new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}</span>}
-            {t.assigned_name && <span style={{ fontSize: 12, color: '#6B7280' }}>· {t.assigned_name}</span>}
+            {t.due_date && <span style={{ fontSize: 12, color: overdue ? '#DC2626' : 'var(--c-faint)' }}>{overdue ? '⚠ ' : ''}{new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}</span>}
+            {t.assigned_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>· {t.assigned_name}</span>}
           </div>
         )
       })}

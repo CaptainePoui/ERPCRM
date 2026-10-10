@@ -52,7 +52,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
   return (
     <>
       <div style={{ position: 'fixed', left: 16, right: 16, margin: '0 auto', width: 'fit-content', bottom: 16, zIndex: 250,
-        background: '#111827', color: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.25)', padding: '10px 14px',
+        background: 'var(--c-text)', color: '#fff', borderRadius: 12, boxShadow: '0 8px 30px rgba(0,0,0,.25)', padding: '10px 14px',
         display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
         {msg && !items.length ? (
           <>
@@ -63,7 +63,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
           <>
             <span style={{ fontSize: 13, fontWeight: 600 }}>
               {items.length} facture{items.length > 1 ? 's' : ''}{open.length ? ` · reste ${fmtMoney(remaining)}` : ''}
-              {!oneCompany && <span style={{ fontWeight: 400, color: '#9CA3AF' }}> · {companies.length} compagnies</span>}
+              {!oneCompany && <span style={{ fontWeight: 400, color: 'var(--c-faint)' }}> · {companies.length} compagnies</span>}
             </span>
             {features.barter && (
               <button className="btn-secondary" style={btn} disabled={busy || !!why} title={why} onClick={openBarter}>Créer un échange</button>
@@ -75,7 +75,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
             )}
             <button className="btn-secondary" style={btn} disabled={busy || !open.length} title={open.length ? '' : 'Aucune facture avec un reste à payer'} onClick={() => setModal('credit')}>Créditer le reste</button>
             <button className="btn-secondary" style={btn} disabled={busy || !!why} title={why} onClick={() => setModal('payment')}>Paiement groupé</button>
-            <button onClick={onClear} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 13 }}>✕ Désélectionner</button>
+            <button onClick={onClear} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 13 }}>✕ Désélectionner</button>
             {msg && <span style={{ fontSize: 12, color: '#FCA5A5' }}>{msg}</span>}
           </>
         )}

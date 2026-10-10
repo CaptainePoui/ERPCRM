@@ -14,12 +14,12 @@ export default function AutoRecurringToggle({ settingKey, onText, offText }) {
   }
   if (on === null) return null
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13, background: on ? '#ECFDF5' : '#F9FAFB',
-      border: `1px solid ${on ? '#A7F3D0' : '#E5E7EB'}`, borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 13, background: on ? 'var(--c-tint-green)' : 'var(--c-surface-2)',
+      border: `1px solid ${on ? '#A7F3D0' : 'var(--c-border)'}`, borderRadius: 8, padding: '8px 12px', marginBottom: 16 }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
         <input type="checkbox" checked={on} onChange={toggle} /> Création automatique {on ? 'activée' : 'désactivée'}
       </label>
-      <span style={{ color: '#6B7280' }}>{on ? onText : offText}</span>
+      <span style={{ color: 'var(--c-muted)' }}>{on ? onText : offText}</span>
     </div>
   )
 }

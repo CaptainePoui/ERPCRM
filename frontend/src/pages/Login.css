@@ -1,13 +1,13 @@
 .login-bg {
   min-height: 100vh;
-  background: linear-gradient(135deg, #14396B 0%, #1F5AA6 60%, #2A66B8 100%);
+  background: linear-gradient(135deg, #14396B 0%, var(--brand) 60%, #2A66B8 100%);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .login-card {
-  background: #fff;
+  background: var(--c-surface);
   border-radius: 12px;
   padding: 40px;
   width: 100%;
@@ -50,7 +50,7 @@
 
 .login-logo-sub {
   font-size: 12px;
-  color: #6B7280;
+  color: var(--c-muted);
   letter-spacing: 2px;
   text-transform: uppercase;
 }
@@ -70,12 +70,12 @@
 .login-field label {
   font-size: 13px;
   font-weight: 600;
-  color: #374151;
+  color: var(--c-text-2);
 }
 
 .login-field input {
   padding: 10px 14px;
-  border: 1.5px solid #D1D5DB;
+  border: 1.5px solid var(--c-border-strong);
   border-radius: 8px;
   font-size: 14px;
   outline: none;
@@ -88,7 +88,7 @@
 }
 
 .login-error {
-  background: #FEE2E2;
+  background: var(--c-tint-red);
   color: #DC2626;
   padding: 10px 14px;
   border-radius: 8px;
@@ -100,7 +100,7 @@
   align-items: center;
   gap: 8px;
   font-size: 13px;
-  color: #374151;
+  color: var(--c-text-2);
   cursor: pointer;
   user-select: none;
 }

@@ -46,6 +46,8 @@ DEFAULTS = {
     "interac_mail_since": "",
     # Journal des actions (TASK-049) : noter aussi qui a ouvert telle fiche -- eteint au depart
     "audit_views_enabled": "false",
+    # Apparence de l'ecran pour tout le monde (TASK-050) : jour (par defaut) | nuit
+    "ui_theme": "jour",
 }
 
 
@@ -93,6 +95,7 @@ class SettingsOut(BaseModel):
     late_fee_grace_days: int
     late_fee_interval_days: int
     barter_enabled: bool
+    ui_theme: str
 
 
 class SettingsIn(BaseModel):
@@ -114,6 +117,7 @@ class SettingsIn(BaseModel):
     late_fee_grace_days: int | None = Field(default=None, ge=0, le=365)
     late_fee_interval_days: int | None = Field(default=None, ge=7, le=365)
     barter_enabled: bool | None = None
+    ui_theme: str | None = Field(default=None, pattern=r"^(jour|nuit)$")
 
 
 @router.get("", response_model=SettingsOut)
@@ -137,6 +141,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         late_fee_grace_days=int(await get_setting(db, "late_fee_grace_days")),
         late_fee_interval_days=int(await get_setting(db, "late_fee_interval_days")),
         barter_enabled=await barter_enabled(db),
+        ui_theme=await get_setting(db, "ui_theme"),
     )
 
 
@@ -180,6 +185,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "recurring_auto_purchases", "true" if payload.recurring_auto_purchases else "false")
     if payload.barter_enabled is not None:
         await set_setting(db, "barter_enabled", "true" if payload.barter_enabled else "false")
+    if payload.ui_theme is not None:
+        await set_setting(db, "ui_theme", payload.ui_theme)
     if payload.late_fees_enabled is not None:
         await set_setting(db, "late_fees_enabled", "true" if payload.late_fees_enabled else "false")
     for key in ("late_fee_monthly_rate", "late_fee_admin", "late_fee_grace_days", "late_fee_interval_days"):

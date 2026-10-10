@@ -97,7 +97,7 @@ export function PurchaseBills() {
                     <td style={{ ...td, color: sc, fontWeight: 600, fontSize: 12 }}>{sl}</td>
                     <td style={{ ...td, whiteSpace: 'nowrap', color: b.status === 'en_retard' ? C.red : undefined }}>{fmtD(b.due_date)}</td>
                     <td style={tdR}>{fmtMoney(b.total)}</td>
-                    <td style={{ ...tdR, fontWeight: 600, color: b.balance > 0 ? '#111827' : C.faint }}>{fmtMoney(b.balance)}</td>
+                    <td style={{ ...tdR, fontWeight: 600, color: b.balance > 0 ? 'var(--c-text)' : C.faint }}>{fmtMoney(b.balance)}</td>
                   </tr>
                 )
               })}

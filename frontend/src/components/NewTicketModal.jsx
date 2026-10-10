@@ -9,10 +9,10 @@ function CompanyPickerModal({ companies, onPick, onClose }) {
     <div className="modal-overlay" style={{ zIndex: 300 }}>
       <div className="modal-box" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Choisir la compagnie</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 14 }}>Ce contact est lié à plusieurs compagnies :</p>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 14 }}>Ce contact est lié à plusieurs compagnies :</p>
         {companies.map(c => (
           <button key={c.company_id} onClick={() => onPick(c)}
-            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', marginBottom: 8, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 14px', marginBottom: 8, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: 'var(--c-surface)', cursor: 'pointer', fontSize: 14, fontWeight: 500 }}>
             {c.company_name}
           </button>
         ))}

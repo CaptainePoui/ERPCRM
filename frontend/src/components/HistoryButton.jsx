@@ -24,7 +24,7 @@ export default function HistoryButton({ objectType, objectId, title, compact = f
         <div className="modal-overlay">
           <div className="modal-box" style={{ maxWidth: 980, width: '96vw', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 className="modal-title">Historique{title ? ` — ${title}` : ''}</h3>
-            {rows === null ? <div style={{ padding: 20, color: '#9CA3AF' }}>Chargement…</div> : <JournalRows rows={rows} showObject={false} />}
+            {rows === null ? <div style={{ padding: 20, color: 'var(--c-faint)' }}>Chargement…</div> : <JournalRows rows={rows} showObject={false} />}
             {more && <button className="btn-secondary" style={{ marginTop: 10 }} onClick={() => load(rows.length)}>Voir plus</button>}
             <div className="modal-actions"><button className="btn-secondary" onClick={() => setOpen(false)}>Fermer</button></div>
           </div>

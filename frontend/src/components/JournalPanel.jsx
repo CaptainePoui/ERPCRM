@@ -35,14 +35,14 @@ export default function JournalPanel() {
   }
 
   const set = (k, v) => setF(p => ({ ...p, [k]: v }))
-  const box = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 20, marginBottom: 16 }
-  const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: '#6B7280' }
-  const inp = { fontSize: 14, padding: '7px 10px', border: '1.5px solid #D1D5DB', borderRadius: 6 }
+  const box = { background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 20, marginBottom: 16 }
+  const lab = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--c-muted)' }
+  const inp = { fontSize: 14, padding: '7px 10px', border: '1.5px solid var(--c-border-strong)', borderRadius: 6 }
   return (
     <div>
       <div style={box}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: '#111827' }}>Journal des actions</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', margin: '0 0 12px' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, margin: '0 0 6px', color: 'var(--c-text)' }}>Journal des actions</h3>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', margin: '0 0 12px' }}>
           Tout ce qui est créé, modifié ou supprimé dans ERPCRM, par qui et quand : employés, clients du portail et travail automatique.
           Les mots de passe et autres secrets ne sont jamais inscrits. Rien ne s'efface.
         </p>
@@ -82,7 +82,7 @@ export default function JournalPanel() {
           </label>
           {JSON.stringify(f) !== JSON.stringify(EMPTY) && <button className="btn-secondary" onClick={() => setF(EMPTY)}>Effacer les filtres</button>}
         </div>
-        {rows === null ? <div style={{ padding: 20, color: '#9CA3AF' }}>Chargement…</div> : <JournalRows rows={rows} />}
+        {rows === null ? <div style={{ padding: 20, color: 'var(--c-faint)' }}>Chargement…</div> : <JournalRows rows={rows} />}
         {more && <button className="btn-secondary" style={{ marginTop: 10 }} onClick={() => load(rows.length)}>Voir plus</button>}
       </div>
     </div>

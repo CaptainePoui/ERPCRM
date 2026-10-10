@@ -60,7 +60,7 @@ export default function Vendors() {
                   <td style={td}>{v.email || EMPTY}</td>
                   <td style={td}>{v.phone || EMPTY}</td>
                   <td style={tdR}>{v.bill_count ? <span style={{ color: C.link }} onClick={e => { e.stopPropagation(); navigate(`/purchases/bills?vendor=${v.id}`) }}>{v.bill_count}</span> : 0}</td>
-                  <td style={{ ...tdR, fontWeight: 600, color: v.balance_due > 0 ? '#111827' : C.faint }}>{fmtMoney(v.balance_due)}</td>
+                  <td style={{ ...tdR, fontWeight: 600, color: v.balance_due > 0 ? 'var(--c-text)' : C.faint }}>{fmtMoney(v.balance_due)}</td>
                 </tr>
               ))}
               {!shown.length && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucun fournisseur.</td></tr>}

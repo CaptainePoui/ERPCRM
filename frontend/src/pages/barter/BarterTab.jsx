@@ -13,7 +13,7 @@ import { downloadFile } from '../../utils/download'
 const today = () => todayIso()
 const errText = e => e.response?.data?.detail || 'Erreur'
 const small = { padding: '6px 8px', border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, minWidth: 0 }
-const box = { border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 14, background: '#fff' }
+const box = { border: `1px solid ${C.border}`, borderRadius: 10, padding: 16, marginBottom: 14, background: 'var(--c-surface)' }
 
 async function openFile(id) {
   const r = await api.get(`/v1/barter/files/${id}`, { responseType: 'blob' })
@@ -78,7 +78,7 @@ export function BarterModal({ companyId, initial, recurrences, invoices, onClose
         </div>
 
         {invoices?.length > 0 && !initial && (
-          <div style={{ fontSize: 13, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
+          <div style={{ fontSize: 13, background: 'var(--c-tint-green)', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', marginBottom: 12 }}>
             Paie d'abord {invoices.length > 1 ? 'les factures choisies' : 'la facture choisie'} : {invoices.map(i => `${i.number} (${fmtMoney(i.remaining)})`).join(', ')}.
             {' '}Ce qui dépasse paie ses autres factures ouvertes, puis ses mois de service.
           </div>
@@ -108,7 +108,7 @@ function Gauge({ rb }) {
   const g = rb.projection.gauge
   const pct = g.credit_total > 0 ? Math.min(100, (g.consumed / g.credit_total) * 100) : 0
   return (
-    <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
+    <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '12px 14px', marginBottom: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 13, marginBottom: 8 }}>
         <b>Aujourd'hui, {longDate(g.today)}</b>
         <span style={{ color: C.muted }}>
@@ -118,11 +118,11 @@ function Gauge({ rb }) {
         </span>
       </div>
       {rb.paid_until && (
-        <div style={{ fontSize: 13, background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
+        <div style={{ fontSize: 13, background: 'var(--c-tint-blue)', border: '1px solid #BFDBFE', borderRadius: 6, padding: '6px 10px', marginBottom: 10 }}>
           Période déjà payée : <b>du {longDate(rb.paid_from)} au {longDate(rb.paid_until)}</b> ({rb.last_invoice_number || 'dernière facture'}) — pas comptée dans l'échange
         </div>
       )}
-      <div style={{ height: 12, background: '#E5E7EB', borderRadius: 6, overflow: 'hidden' }}>
+      <div style={{ height: 12, background: 'var(--c-border)', borderRadius: 6, overflow: 'hidden' }}>
         <div style={{ width: `${pct}%`, height: '100%', background: C.green }} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 8, marginTop: 10, fontSize: 13 }}>
@@ -139,7 +139,7 @@ function Projection({ rb, children }) {
   const p = rb.projection
   if (!p) return null
   return (
-    <div style={{ ...box, background: '#F0FDF4', borderColor: '#BBF7D0' }}>
+    <div style={{ ...box, background: 'var(--c-tint-green)', borderColor: '#BBF7D0' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
         <div style={{ fontWeight: 600 }}>Facture périodique « {rb.name} » — suivi de l'échange</div>
         <div style={{ textAlign: 'right' }}>
@@ -151,7 +151,7 @@ function Projection({ rb, children }) {
       <div style={{ marginBottom: 10 }} />
 
       {p.resume_on && (
-        <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
+        <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13 }}>
           <div style={{ marginBottom: 4 }}>Durée de l'échange : <b>{p.months.filter(m => !m.days).length} mois{p.months.some(m => m.days) ? ` et ${p.months.find(m => m.days).days} jours` : ''}</b></div>
           <div>Il recommence à payer le <b style={{ fontSize: 15 }}>{longDate(p.resume_on)}</b> — son cycle repart de cette date, {FREQ_LABEL[rb.frequency] || rb.frequency}.</div>
           <div style={{ marginTop: 4 }}>Prochaines factures : {p.next_invoices.map(longDate).join(' · ')} ({fmtMoney(rb.cycle_amount)} hors taxes + taxes chacune, au prix actuel)</div>
@@ -172,7 +172,7 @@ function MonthsBox({ rb }) {
   const part = p.months.find(m => m.days)
   return (
     <div style={box}>
-      <div style={{ overflowX: 'auto', background: '#fff', borderRadius: 8, border: `1px solid ${C.border}` }}>
+      <div style={{ overflowX: 'auto', background: 'var(--c-surface)', borderRadius: 8, border: `1px solid ${C.border}` }}>
         <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse' }}>
           <thead><tr>
             <th style={th}>Mois de service</th><th style={th}>Durée</th><th style={{ ...th, textAlign: 'right' }}>Payé par l'échange</th><th style={th}>État</th>
@@ -292,7 +292,7 @@ function TrocDebt({ rows, companyId, companyName, onChanged }) {
   const total = rows.reduce((t, i) => t + i.remaining, 0)
   const picked = sel.visible.map(i => ({ ...i, company_id: companyId, company_name: companyName, status: 'envoyee', is_credit: false, barter_settlement: true, late_fee: false }))
   return (
-    <div style={{ ...box, borderColor: '#FCD34D', background: '#FFFBEB' }}>
+    <div style={{ ...box, borderColor: '#FCD34D', background: 'var(--c-tint-amber)' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, marginBottom: 8 }}>
         <label style={{ fontWeight: 700, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
           <input type="checkbox" checked={sel.allChecked} onChange={sel.toggleAll} title="Tout sélectionner" /> À régler en troc
@@ -302,7 +302,7 @@ function TrocDebt({ rows, companyId, companyName, onChanged }) {
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
         <tbody>
           {rows.map(i => (
-            <tr key={i.id} style={{ borderTop: `1px solid #FDE68A`, cursor: 'pointer', background: sel.selected.has(i.id) ? '#EFF6FF' : undefined }}
+            <tr key={i.id} style={{ borderTop: `1px solid #FDE68A`, cursor: 'pointer', background: sel.selected.has(i.id) ? 'var(--c-tint-blue)' : undefined }}
               onClick={e => sel.rowClick(e, i.id, () => navigate(`/invoices/${i.id}`))} onMouseDown={sel.noTextSelect}>
               <td style={{ padding: '5px 6px', width: 24 }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(i.id)} onChange={e => sel.toggle(i.id, e.nativeEvent)} /></td>
               <td style={{ padding: '5px 6px', fontWeight: 600 }}>{i.number}</td>

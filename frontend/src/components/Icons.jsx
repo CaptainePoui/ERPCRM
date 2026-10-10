@@ -213,3 +213,14 @@ export function IconMail(props) {
     </svg>
   )
 }
+
+// Fiscalite (TASK-050) : drapeau de pays (rectangulaire, flottant, trois bandes), neutre -- ni erable ni lys
+export function IconFlag(props) {
+  return (
+    <svg {...base} {...props}>
+      <path d="M4 22V3" />
+      <path d="M4 4.5c2.7-1.3 5.3-1.3 8 0s5.3 1.3 8 0v9c-2.7 1.3-5.3 1.3-8 0s-5.3-1.3-8 0" />
+      <path d="M9.3 4v9.6M14.7 4.5v9.6" />
+    </svg>
+  )
+}

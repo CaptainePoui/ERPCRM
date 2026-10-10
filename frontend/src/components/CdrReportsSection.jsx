@@ -66,30 +66,30 @@ export default function CdrReportsSection({ companyId, fixedExtension }) {
   return (
     <div style={{ marginTop: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Rapports programmés par courriel ({visibleReports.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => { setEditing(null); setShowModal(true) }}>+ Ajouter</button>
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : visibleReports.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : visibleReports.length === 0 ? (
         <div className="empty-tab">Aucun rapport programmé.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {[
                 'Nom', 'Récurrence',
                 ...(fixedExtension ? [] : ['Filtre']),
                 'Destinataires', 'Actif', '',
               ].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {visibleReports.map(r => (
               <Fragment key={r.id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => toggleExpand(r.id)}>
+                <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => toggleExpand(r.id)}>
                   <td style={{ padding: '10px 12px', fontWeight: 600 }}>{r.name}</td>
                   <td style={{ padding: '10px 12px' }}>{CDR_FREQUENCY_LABELS[r.frequency_type]} — {cdrReportFrequencyLabel(r)} à {r.send_hour}</td>
                   {!fixedExtension && (
@@ -107,16 +107,16 @@ export default function CdrReportsSection({ companyId, fixedExtension }) {
                 </tr>
                 {expanded === r.id && (
                   <tr>
-                    <td colSpan={fixedExtension ? 5 : 6} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Historique des envois</div>
+                    <td colSpan={fixedExtension ? 5 : 6} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 6 }}>Historique des envois</div>
                       {!logs[r.id] ? (
-                        <div style={{ fontSize: 12, color: '#6B7280' }}>Chargement...</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Chargement...</div>
                       ) : logs[r.id].length === 0 ? (
-                        <div style={{ fontSize: 12, color: '#6B7280' }}>Aucun envoi encore.</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Aucun envoi encore.</div>
                       ) : (
                         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
                           {logs[r.id].map(l => (
-                            <li key={l.id} style={{ color: l.success ? '#166534' : '#991B1B' }}>
+                            <li key={l.id} style={{ color: l.success ? 'var(--c-on-green)' : 'var(--c-on-red)' }}>
                               {new Date(l.sent_at).toLocaleString('fr-CA')} — {l.success ? 'Envoyé' : 'Échec'} — {l.call_count} appel(s), {l.recipient_count} destinataire(s){l.triggered_manually ? ' (manuel)' : ''}
                               {l.error_message && ` — ${l.error_message}`}
                             </li>

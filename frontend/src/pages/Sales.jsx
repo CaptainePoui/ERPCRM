@@ -10,7 +10,7 @@ const th = { padding: '10px 8px', fontWeight: 600, whiteSpace: 'nowrap', textAli
 const thR = { ...th, textAlign: 'right' }
 const td = { padding: '10px 8px' }
 const SOURCE = { zoho_import: 'Paiement antérieur', portal: 'Déclaré au portail', manual: 'Encaissement manuel', bank_import: 'Banque', gateway: 'Paiement en ligne', interac_email: 'Courriel Interac' }
-const STATUS = { confirmed: ['Confirmé', '#059669'], pending: ['En attente', '#2563EB'], processing: ['En traitement', '#2563EB'], rejected: ['Rejeté', '#DC2626'], refunded: ['Remboursé', '#6B7280'], cancelled: ['Annulé', '#6B7280'] }
+const STATUS = { confirmed: ['Confirmé', '#059669'], pending: ['En attente', '#2563EB'], processing: ['En traitement', '#2563EB'], rejected: ['Rejeté', '#DC2626'], refunded: ['Remboursé', 'var(--c-muted)'], cancelled: ['Annulé', 'var(--c-muted)'] }
 
 // Page structure (module pas encore construit) : titre, colonnes de la future liste, explication
 export function ModulePlaceholder({ title, newLabel, columns, note }) {
@@ -20,7 +20,7 @@ export function ModulePlaceholder({ title, newLabel, columns, note }) {
         <div><h1 className="page-title">{title}</h1></div>
         {newLabel && <button className="btn-primary" disabled title="À venir">{newLabel}</button>}
       </div>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
+      <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ color: C.muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }}>
@@ -55,7 +55,7 @@ export function SalesPayments() {
         <input className="search-input" placeholder="Rechercher (client, facture, référence, montant)..." value={search} onChange={e => setSearch(e.target.value)} />
         <div className="filter-tabs">{FILTERS.map(([v, l]) => <button key={v} className={`filter-tab${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>{l}</button>)}</div>
       </div>
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 16px' }}>
+      <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '8px 16px' }}>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', minWidth: 820, borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ color: C.muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', borderBottom: `1px solid ${C.border}` }}>

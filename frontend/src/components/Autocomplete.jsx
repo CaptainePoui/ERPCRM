@@ -38,15 +38,15 @@ export default function Autocomplete({ label, items, value, onSelect, onCreate, 
         style={{ width: '100%' }}
       />
       {open && (filtered.length > 0 || showCreate) && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#fff', border: '1px solid #D1D5DB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 200, maxHeight: 220, overflowY: 'auto' }}>
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.1)', zIndex: 200, maxHeight: 220, overflowY: 'auto' }}>
           {filtered.map(item => (
             <div key={item.id} onMouseDown={() => pick(item)}
-              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid #F3F4F6' }}
-              onMouseEnter={e => e.currentTarget.style.background = '#F3F4F6'}
+              style={{ padding: '9px 14px', cursor: 'pointer', fontSize: 14, borderBottom: '1px solid var(--c-surface-3)' }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--c-surface-3)'}
               onMouseLeave={e => e.currentTarget.style.background = ''}
             >
               <div>{item.label}</div>
-              {item.sub && <div style={{ fontSize: 11, color: '#9CA3AF' }}>{item.sub}</div>}
+              {item.sub && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{item.sub}</div>}
             </div>
           ))}
           {showCreate && (

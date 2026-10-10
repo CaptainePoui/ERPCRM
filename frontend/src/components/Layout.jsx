@@ -3,7 +3,7 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import api from '../services/api'
 import {
   IconBuilding, IconUser, IconPackage, IconReceipt, IconTicket, IconFileText,
-  IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank, IconPercent, IconCart, IconMail,
+  IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank, IconFlag, IconCart, IconMail, IconSearch,
 } from './Icons'
 import './Layout.css'
 
@@ -46,7 +46,7 @@ const NAV = [
   { group: 'ventes' },
   { group: 'achats' },
   { to: '/bank',             label: 'Banque',     Icon: IconBank },
-  { to: '/taxes',            label: 'Impôts et formulaires', Icon: IconPercent },
+  { to: '/taxes',            label: 'Fiscalité',  Icon: IconFlag },
   { to: '/commandes',        label: 'Commandes',  Icon: IconClipboard },
   { to: '/employees',        label: 'Employés',   Icon: IconUsers },
   { to: '/tasks',            label: 'Tâches',     Icon: IconCheck },
@@ -119,9 +119,11 @@ function GlobalSearch() {
 
   return (
     <div className="search-wrap" ref={wrapRef}>
+      <IconSearch className="search-icon" width={18} height={18} aria-hidden="true" />
       <input
         className="global-search"
-        placeholder="Rechercher compagnie ou contact..."
+        aria-label="Rechercher"
+        placeholder="Rechercher une compagnie ou un contact…"
         value={q}
         onChange={onChange}
         onKeyDown={onKeyDown}
@@ -148,50 +150,78 @@ function GlobalSearch() {
   )
 }
 
+// Apparence Jour / Nuit (TASK-050) : réglage d'entreprise (Administration -> Entreprise), appliqué sur <html> le temps
+// que l'écran interne est ouvert (la connexion et le portail client restent en mode jour). Gardé dans le navigateur
+// pour éviter un éclair blanc au chargement ; l'événement « erpcrm-theme » l'applique tout de suite après un changement.
+const THEME_KEY = 'erpcrm_theme'
+function applyTheme(t) {
+  try { localStorage.setItem(THEME_KEY, t) } catch { /* navigateur sans stockage */ }
+  if (t === 'nuit') document.documentElement.setAttribute('data-theme', 'dark')
+  else document.documentElement.removeAttribute('data-theme')
+}
+
+function initials(name) {
+  return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('')
+}
+
+const ROLE_LABELS = { admin: 'Administrateur', manager: 'Gestionnaire', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
+
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const group = activeGroup(location.pathname)
 
+  useEffect(() => {
+    let saved = 'jour'
+    try { saved = localStorage.getItem(THEME_KEY) || 'jour' } catch { /* navigateur sans stockage */ }
+    applyTheme(saved)
+    api.get('/v1/settings').then(r => applyTheme(r.data.ui_theme || 'jour')).catch(() => {})
+    const onChange = e => applyTheme(e.detail)
+    window.addEventListener('erpcrm-theme', onChange)
+    return () => { window.removeEventListener('erpcrm-theme', onChange); document.documentElement.removeAttribute('data-theme') }
+  }, [])
+
   return (
     <div className="layout">
-      <header className="layout-header">
-        <button className="hamburger-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Menu">☰</button>
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+      <nav className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`} aria-label="Menu principal">
         <div className="layout-brand">
           <div className="brand-icon">SI</div>
-          <span className="brand-name">Simple IP ERP·CRM</span>
+          <div className="brand-text"><div className="brand-name">Simple IP</div><div className="brand-sub">ERP·CRM</div></div>
         </div>
-        <GlobalSearch />
-        <div className="layout-user">
-          <NavLink to="/settings" className={({ isActive }) => `settings-btn${isActive ? ' active' : ''}`} title="Mon compte">⚙</NavLink>
-          <span className="user-name">{user.full_name}</span>
-          <span className="user-role">{user.role}</span>
-          <button onClick={onLogout} className="logout-btn">Déconnexion</button>
-        </div>
-      </header>
-
-      <div className="layout-body">
-        {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-        <nav className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
-          {NAV.map(item => {
-            if (item.group) {
-              const g = GROUPS[item.group]
-              return (
-                <NavLink key={item.group} to={g.home} className={() => `sidebar-link${group === item.group ? ' active' : ''}`} onClick={() => setSidebarOpen(false)}>
-                  <span className="sidebar-icon"><g.Icon /></span>
-                  <span className="sidebar-label">{g.label}</span>
-                </NavLink>
-              )
-            }
-            const { to, label, Icon } = item
+        {NAV.map(item => {
+          if (item.group) {
+            const g = GROUPS[item.group]
             return (
-              <NavLink key={to} to={to} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={() => setSidebarOpen(false)}>
-                <span className="sidebar-icon"><Icon /></span>
-                <span className="sidebar-label">{label}</span>
+              <NavLink key={item.group} to={g.home} className={() => `sidebar-link${group === item.group ? ' active' : ''}`} onClick={() => setSidebarOpen(false)} title={g.label}>
+                <span className="sidebar-icon"><g.Icon /></span>
+                <span className="sidebar-label">{g.label}</span>
               </NavLink>
             )
-          })}
-        </nav>
+          }
+          const { to, label, Icon } = item
+          return (
+            <NavLink key={to} to={to} className={({ isActive }) => `sidebar-link${isActive ? ' active' : ''}`} onClick={() => setSidebarOpen(false)} title={label}>
+              <span className="sidebar-icon"><Icon /></span>
+              <span className="sidebar-label">{label}</span>
+            </NavLink>
+          )
+        })}
+      </nav>
+
+      <div className="layout-col">
+        <header className="layout-header">
+          <button className="hamburger-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Menu">☰</button>
+          <GlobalSearch />
+          <div className="layout-user">
+            <div className="user-text">
+              <div className="user-name">{user.full_name}</div>
+              <div className="user-role">{ROLE_LABELS[user.role] || user.role}</div>
+            </div>
+            <NavLink to="/settings" className={({ isActive }) => `user-avatar${isActive ? ' active' : ''}`} title="Mon compte" aria-label="Mon compte">{initials(user.full_name)}</NavLink>
+            <button onClick={onLogout} className="logout-btn">Déconnexion</button>
+          </div>
+        </header>
 
         <main className="layout-main">
           {group && <GroupTabs groupKey={group} path={location.pathname} />}

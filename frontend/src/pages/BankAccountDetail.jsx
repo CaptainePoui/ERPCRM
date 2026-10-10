@@ -44,7 +44,7 @@ function Tab({ active, title, sub, onClick, children }) {
   return (
     <div onClick={onClick} style={{ cursor: 'pointer', padding: '10px 16px 12px', borderBottom: `2px solid ${active ? C.link : 'transparent'}`, display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', flexShrink: 0 }}>
       <div>
-        <div style={{ fontSize: 15, fontWeight: active ? 600 : 500, color: active ? '#111827' : C.muted }}>{title}</div>
+        <div style={{ fontSize: 15, fontWeight: active ? 600 : 500, color: active ? 'var(--c-text)' : C.muted }}>{title}</div>
         <div style={{ fontSize: 12, color: C.faint }}>{sub}</div>
       </div>
       {children}
@@ -87,8 +87,8 @@ function Switch({ checked, onChange, label }) {
   return (
     <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: C.muted, cursor: 'pointer', fontStyle: 'italic' }}>
       {label}
-      <span onClick={() => onChange(!checked)} style={{ width: 32, height: 18, borderRadius: 9, background: checked ? C.link : '#D1D5DB', position: 'relative', transition: 'background .15s' }}>
-        <span style={{ position: 'absolute', top: 2, left: checked ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: '#fff', transition: 'left .15s' }} />
+      <span onClick={() => onChange(!checked)} style={{ width: 32, height: 18, borderRadius: 9, background: checked ? C.link : 'var(--c-border-strong)', position: 'relative', transition: 'background .15s' }}>
+        <span style={{ position: 'absolute', top: 2, left: checked ? 16 : 2, width: 14, height: 14, borderRadius: '50%', background: 'var(--c-surface)', transition: 'left .15s' }} />
       </span>
     </label>
   )
@@ -254,7 +254,7 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
           <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}>
               <strong>Paiement déjà enregistré</strong> · {p.company_name} · {fmtMoney(p.amount)} · {SOURCE_LABEL[p.source] || p.source}{p.reference ? ` ${p.reference}` : ''}
-              <div style={{ color: C.muted, fontSize: 12 }}>{p.status === 'pending' ? 'En attente de confirmation' : `Reçu le ${fmtD(p.received_at)}`} · Factures {p.invoice_numbers.join(', ') || EMPTY}{p.pct ? <strong style={{ color: C.text || '#111827' }}> · pertinence {p.pct} %</strong> : null}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{p.status === 'pending' ? 'En attente de confirmation' : `Reçu le ${fmtD(p.received_at)}`} · Factures {p.invoice_numbers.join(', ') || EMPTY}{p.pct ? <strong style={{ color: C.text || 'var(--c-text)' }}> · pertinence {p.pct} %</strong> : null}</div>
             </div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ client_payment_id: p.id })}>{p.status === 'pending' ? 'Confirmer et lier' : 'Lier'}</button>
           </div>
@@ -263,7 +263,7 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
           <div key={i.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}>
               <strong>{i.number}</strong> · {i.company_name}{i.site_label ? ` (${i.site_label})` : ''} · solde {fmtMoney(i.balance)} {i.exact && <span style={{ color: C.green, fontWeight: 600 }}>· montant exact</span>}
-              <div style={{ color: C.muted, fontSize: 12 }}>Émise le {fmtD(i.issue_date)} · {STATUS_INV[i.status] || i.status}{i.pct ? <strong style={{ color: '#111827' }}> · pertinence {i.pct} %</strong> : null}</div>
+              <div style={{ color: C.muted, fontSize: 12 }}>Émise le {fmtD(i.issue_date)} · {STATUS_INV[i.status] || i.status}{i.pct ? <strong style={{ color: 'var(--c-text)' }}> · pertinence {i.pct} %</strong> : null}</div>
             </div>
             <button className="btn-secondary" onClick={() => pickInvoices([i])}>Choisir</button>
           </div>
@@ -373,7 +373,7 @@ function DropImport({ accountId, onImported }) {
         <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
           onDrop={e => { e.preventDefault(); setOver(false); pick(e.dataTransfer.files[0]) }}
           onClick={() => inputRef.current?.click()}
-          style={{ border: `2px dashed ${over ? C.link : C.border}`, background: over ? '#EFF6FF' : '#FAFAFA', borderRadius: 10,
+          style={{ border: `2px dashed ${over ? C.link : C.border}`, background: over ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', borderRadius: 10,
             padding: '14px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: C.muted }}>
           {busy ? 'Lecture du fichier…' : <>Glissez votre relevé ici (OFX, QFX, QBO ou CSV) ou <span style={{ color: C.link }}>choisissez un fichier</span> — les doublons sont écartés, ce qui est sûr est associé, l'IA locale propose le reste.</>}
           <input ref={inputRef} type="file" accept=".ofx,.qfx,.qbo,.csv,.txt" style={{ display: 'none' }} onChange={e => { pick(e.target.files[0]); e.target.value = '' }} />
@@ -389,7 +389,7 @@ function DropImport({ accountId, onImported }) {
           {preview.rows_probable_duplicate > 0 && (
             <div style={{ marginTop: 6, color: C.muted }}>
               {preview.probable_duplicates.map((d, i) => <div key={i}>{fmtD(d.posted_date)} · {fmtMoney(d.amount)} · {d.description}</div>)}
-              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, color: '#111827' }}>
+              <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 4, color: 'var(--c-text)' }}>
                 <input type="checkbox" checked={includeProbable} onChange={async e => { setIncludeProbable(e.target.checked); setPreview(await send(file, true, e.target.checked)) }} />
                 Ce ne sont pas des doublons : les importer aussi
               </label>
@@ -402,7 +402,7 @@ function DropImport({ accountId, onImported }) {
         </div>
       )}
       {result && (
-        <div style={{ marginTop: 8, background: '#ECFDF5', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
+        <div style={{ marginTop: 8, background: 'var(--c-tint-green)', border: '1px solid #A7F3D0', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}>
           {n(result.rows_new, 'transaction importée', 'transactions importées')} · {n(result.rows_auto_matched || 0, 'associée automatiquement (sûre)', 'associées automatiquement (sûres)')}
           {' '}· {n(result.rows_recognized || 0, 'reconnue', 'reconnues')}{result.rows_sent_to_ai ? ` · ${result.rows_sent_to_ai} confiée(s) à l'IA locale (propositions dans quelques minutes)` : ''}
         </div>
@@ -467,8 +467,8 @@ function GovernmentForm({ tx, onDone }) {
           </select></div>
       </div>
       {period && (
-        <div style={{ background: '#F9FAFB', borderRadius: 8, padding: 10, fontSize: 13 }}>
-          <div style={{ fontWeight: 600, marginBottom: 6 }}>Montant déclaré pour cette période {period.declared ? '' : <span style={{ color: '#B45309', fontWeight: 400 }}>— pas encore saisi (depuis votre avis)</span>}</div>
+        <div style={{ background: 'var(--c-surface-2)', borderRadius: 8, padding: 10, fontSize: 13 }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Montant déclaré pour cette période {period.declared ? '' : <span style={{ color: 'var(--c-on-amber)', fontWeight: 400 }}>— pas encore saisi (depuis votre avis)</span>}</div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
             {kind === 'tps_tvq' ? <>
               <div className="form-group" style={{ marginBottom: 0 }}><label>TPS déclarée</label><input type="number" step="0.01" value={declared.tps_due} style={{ width: 120 }} onChange={e => setDeclared({ ...declared, tps_due: e.target.value })} /></div>
@@ -483,7 +483,7 @@ function GovernmentForm({ tx, onDone }) {
           Ce versement de <strong>{fmtMoney(-tx.amount)}</strong> :
           {' '}paie le dû <strong>{fmtMoney(pv.applied)}</strong>{kind === 'tps_tvq' ? ` (TPS ${fmtMoney(pv.tps)}, TVQ ${fmtMoney(pv.tvq)})` : ''}
           {pv.penalty > 0 && <> · <strong style={{ color: C.red }}>pénalités et intérêts {fmtMoney(pv.penalty)}</strong> (non déductibles)</>}
-          {!pv.declared && <div style={{ color: '#B45309', fontSize: 12 }}>Sans montant déclaré, tout est compté comme paiement du dû ; saisissez le déclaré pour reconnaître les frais de retard.</div>}
+          {!pv.declared && <div style={{ color: 'var(--c-on-amber)', fontSize: 12 }}>Sans montant déclaré, tout est compté comme paiement du dû ; saisissez le déclaré pour reconnaître les frais de retard.</div>}
         </div>
       )}
       {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
@@ -547,14 +547,14 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
         {sugg?.expenses.map(e => (
           <div key={e.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}><strong>Dépense</strong> du {fmtD(e.date)} · {e.category_name || 'sans compte'}{e.vendor_name ? ` · ${e.vendor_name}` : ''} · {fmtMoney(e.amount)}
-              <div style={{ color: C.muted, fontSize: 12 }}>{e.description || EMPTY} · écart {e.gap} j · <strong style={{ color: '#111827' }}>pertinence {e.pct} %</strong></div></div>
+              <div style={{ color: C.muted, fontSize: 12 }}>{e.description || EMPTY} · écart {e.gap} j · <strong style={{ color: 'var(--c-text)' }}>pertinence {e.pct} %</strong></div></div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ expense_id: e.id })}>Lier</button>
           </div>
         ))}
         {sugg?.vendor_payments.map(p => (
           <div key={p.id} style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
             <div style={{ fontSize: 13 }}><strong>Paiement fournisseur</strong> du {fmtD(p.date)} · {p.payee || EMPTY} · {fmtMoney(p.amount)}
-              <div style={{ color: C.muted, fontSize: 12 }}>Factures {p.bill_numbers.join(', ') || EMPTY} · écart {p.gap} j · <strong style={{ color: '#111827' }}>pertinence {p.pct} %</strong></div></div>
+              <div style={{ color: C.muted, fontSize: 12 }}>Factures {p.bill_numbers.join(', ') || EMPTY} · écart {p.gap} j · <strong style={{ color: 'var(--c-text)' }}>pertinence {p.pct} %</strong></div></div>
             <button className="btn-primary" disabled={saving} onClick={() => submit({ vendor_payment_id: p.id })}>Lier</button>
           </div>
         ))}
@@ -794,7 +794,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       </div>
 
       {(multi || sel.length > 0) && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: '#EFF6FF', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--c-tint-blue)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
           <span>{sel.length} sélectionnée{sel.length > 1 ? 's' : ''}</span>
           {!excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('exclude')}>Exclure</button>}
           {excluded && <button className="btn-secondary" disabled={busy || !sel.length} onClick={() => bulk('restore')}>Restaurer</button>}
@@ -816,10 +816,10 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
           </thead>
           <tbody>
             {pageRows.map(t => (
-              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: selected.has(t.id) ? '#EFF6FF' : undefined }}
+              <tr key={t.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: selected.has(t.id) ? 'var(--c-tint-blue)' : undefined }}
                 onClick={e => (e.ctrlKey || e.metaKey || e.shiftKey) ? toggle(t.id, e) : setDetail(t.id)}
                 onMouseDown={e => { if (e.shiftKey || e.ctrlKey || e.metaKey) e.preventDefault() }}
-                onMouseEnter={e => { if (!selected.has(t.id)) e.currentTarget.style.background = '#F9FAFB' }} onMouseLeave={e => { if (!selected.has(t.id)) e.currentTarget.style.background = '' }}>
+                onMouseEnter={e => { if (!selected.has(t.id)) e.currentTarget.style.background = 'var(--c-surface-2)' }} onMouseLeave={e => { if (!selected.has(t.id)) e.currentTarget.style.background = '' }}>
                 <td style={{ padding: '10px 8px' }} onClick={e => e.stopPropagation()}><input type="checkbox" checked={selected.has(t.id)} onChange={e => toggle(t.id, e.nativeEvent)} /></td>
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>
@@ -967,9 +967,9 @@ function DashboardTab({ account, internal }) {
   return (
     <div>
       <div style={{ display: 'flex', gap: 40, flexWrap: 'wrap' }}>
-        <Indicator icon={<IconBank color={C.bank} />} iconBg="#ECFDF5" title={internal ? 'Solde du compte' : 'Solde bancaire'} value={fmtMoney(account.bank_balance)} />
-        <Indicator icon={<span style={{ color: C.green, fontWeight: 700 }}>+</span>} iconBg="#ECFDF5" title="Entrées de la période" value={totals ? fmtMoney(totals.deposits) : EMPTY} />
-        <Indicator icon={<span style={{ color: C.red, fontWeight: 700 }}>−</span>} iconBg="#FEF2F2" title="Sorties de la période" value={totals ? fmtMoney(totals.withdrawals) : EMPTY} />
+        <Indicator icon={<IconBank color={C.bank} />} iconBg="var(--c-tint-green)" title={internal ? 'Solde du compte' : 'Solde bancaire'} value={fmtMoney(account.bank_balance)} />
+        <Indicator icon={<span style={{ color: C.green, fontWeight: 700 }}>+</span>} iconBg="var(--c-tint-green)" title="Entrées de la période" value={totals ? fmtMoney(totals.deposits) : EMPTY} />
+        <Indicator icon={<span style={{ color: C.red, fontWeight: 700 }}>−</span>} iconBg="var(--c-tint-red)" title="Sorties de la période" value={totals ? fmtMoney(totals.withdrawals) : EMPTY} />
       </div>
       <BankChart accountId={account.id} onTotals={setTotals} />
     </div>
@@ -1039,7 +1039,7 @@ export default function BankAccountDetail() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           {!internal && <button className="btn-secondary" onClick={() => setShowStatements(true)}>Relevés bancaires</button>}
           {!internal && <button className="btn-primary" disabled title="Disponible quand des transactions seront reçues de la banque">Catégorisation rapide</button>}
-          <Dropdown label="Ajouter une transaction" align="right" buttonStyle={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', background: '#fff', fontSize: 13 }}>
+          <Dropdown label="Ajouter une transaction" align="right" buttonStyle={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: '8px 12px', background: 'var(--c-surface)', fontSize: 13 }}>
             <div style={{ padding: '6px 10px 2px', fontSize: 11, color: C.faint, textTransform: 'uppercase' }}>Dépôts</div>
             <MenuItem disabled>Paiement de client</MenuItem>
             <MenuItem disabled>Dépôt</MenuItem>
@@ -1050,7 +1050,7 @@ export default function BankAccountDetail() {
             <MenuItem disabled>Virement vers un autre compte</MenuItem>
           </Dropdown>
           <button className="btn-secondary" disabled title="Disponible à une prochaine étape">Enregistrer un dépôt</button>
-          <button type="button" title="Réglages du compte" onClick={() => setEditing(true)} style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 9px', cursor: 'pointer', color: C.muted, display: 'flex' }}>
+          <button type="button" title="Réglages du compte" onClick={() => setEditing(true)} style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 8, padding: '7px 9px', cursor: 'pointer', color: C.muted, display: 'flex' }}>
             <IconSettings width={16} height={16} />
           </button>
           <button type="button" title="Retour à l'aperçu bancaire" onClick={() => navigate('/bank')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.red, fontSize: 20, lineHeight: 1, padding: '4px 6px' }}>✕</button>
@@ -1073,7 +1073,7 @@ export default function BankAccountDetail() {
       </div>
 
       {/* Onglets */}
-      <div style={{ background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: '0 24px 20px' }}>
+      <div style={{ background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: '0 24px 20px' }}>
         <div style={{ display: 'flex', gap: 8, borderBottom: `1px solid ${C.border}`, marginBottom: 16, overflowX: 'auto' }}>
           <Tab active={tab === 'dashboard'} title="Tableau de bord" sub="Résumé du compte" onClick={() => setTab('dashboard')} />
           {!internal && (

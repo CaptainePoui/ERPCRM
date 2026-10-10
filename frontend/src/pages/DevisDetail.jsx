@@ -6,11 +6,11 @@ import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 
 const STATUS_LABELS = {
-  brouillon: { label: 'Brouillon', color: '#6B7280' },
+  brouillon: { label: 'Brouillon', color: 'var(--c-muted)' },
   envoye:    { label: 'Envoyé',    color: 'var(--brand)' },
   accepte:   { label: 'Accepté',   color: '#059669' },
   refuse:    { label: 'Refusé',    color: '#DC2626' },
-  expire:    { label: 'Expiré',    color: '#9CA3AF' },
+  expire:    { label: 'Expiré',    color: 'var(--c-faint)' },
 }
 
 const STATUS_TRANSITIONS = {
@@ -139,10 +139,10 @@ export default function DevisDetail() {
               >
                 👁 {fmtOpened(d.last_opened_at)}{d.open_count > 1 ? ` (×${d.open_count})` : ''}
               </span>
-            ) : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Jamais</span>}
+            ) : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Jamais</span>}
           </div>
           {showOpens && (
-            <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+            <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, color: 'var(--c-muted)', background: 'var(--c-surface-2)', borderRadius: 6, padding: '8px 12px' }}>
               {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
                 <ul style={{ margin: 0, paddingLeft: 16 }}>
                   {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
@@ -216,7 +216,7 @@ export default function DevisDetail() {
                       setEditingLine(null)
                     }} onCancel={() => setEditingLine(null)} />
                   : <>
-                      <td onClick={() => editable && setEditingLine(line.id)}>{line.description}{line.is_taxable === false && <em style={{ color: '#9CA3AF', fontSize: 12 }}> (non taxable)</em>}</td>
+                      <td onClick={() => editable && setEditingLine(line.id)}>{line.description}{line.is_taxable === false && <em style={{ color: 'var(--c-faint)', fontSize: 12 }}> (non taxable)</em>}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{line.qty}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{fmt(line.unit_price)}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(line.line_total)}</td>
@@ -226,7 +226,7 @@ export default function DevisDetail() {
               </tr>
             ))}
             {d.lines.length === 0 && (
-              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
+              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: 16 }}>Aucune ligne</td></tr>
             )}
           </tbody>
         </table>
@@ -399,7 +399,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
                 <input type="number" step="0.01" value={form.unit_price} onChange={e => f('unit_price', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
-            <div style={{ textAlign: 'right', fontWeight: 600, color: '#111827' }}>
+            <div style={{ textAlign: 'right', fontWeight: 600, color: 'var(--c-text)' }}>
               Total : {new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(form.qty * form.unit_price)}
             </div>
           </div>

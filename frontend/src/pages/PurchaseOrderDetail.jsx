@@ -6,11 +6,11 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 
 const STATUS_STYLES = {
-  brouillon:          { color: '#6B7280', bg: '#F3F4F6', label: 'Brouillon' },
+  brouillon:          { color: 'var(--c-muted)', bg: 'var(--c-surface-3)', label: 'Brouillon' },
   envoye:             { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Envoyé' },
-  partiellement_recu: { color: '#D97706', bg: '#FFFBEB', label: 'Partiellement reçu' },
-  recu:               { color: '#059669', bg: '#F0FDF4', label: 'Reçu' },
-  annule:             { color: '#DC2626', bg: '#FEF2F2', label: 'Annulé' },
+  partiellement_recu: { color: '#D97706', bg: 'var(--c-tint-amber)', label: 'Partiellement reçu' },
+  recu:               { color: '#059669', bg: 'var(--c-tint-green)', label: 'Reçu' },
+  annule:             { color: '#DC2626', bg: 'var(--c-tint-red)', label: 'Annulé' },
 }
 
 const STATUS_TRANSITIONS = {
@@ -123,7 +123,7 @@ export default function PurchaseOrderDetail() {
           {po.notes && (
             <>
               <div className="pod-section-title" style={{ marginTop: 12 }}>Notes</div>
-              <div style={{ color: '#4B5563', fontSize: 14, whiteSpace: 'pre-wrap' }}>{po.notes}</div>
+              <div style={{ color: 'var(--c-text-2)', fontSize: 14, whiteSpace: 'pre-wrap' }}>{po.notes}</div>
             </>
           )}
         </div>
@@ -137,7 +137,7 @@ export default function PurchaseOrderDetail() {
           )}
         </div>
         {po.lines.length === 0 ? (
-          <div style={{ color: '#9CA3AF', textAlign: 'center', padding: '32px 0', fontSize: 14 }}>Aucune ligne.</div>
+          <div style={{ color: 'var(--c-faint)', textAlign: 'center', padding: '32px 0', fontSize: 14 }}>Aucune ligne.</div>
         ) : (
           <table className="pod-table">
             <thead>
@@ -160,7 +160,7 @@ export default function PurchaseOrderDetail() {
                       {editable ? (
                         <input type="number" min="0" max={line.quantity} step="1"
                           defaultValue={line.received_qty}
-                          style={{ width: 60, textAlign: 'right', border: '1px solid #D1D5DB', borderRadius: 4, padding: '2px 6px' }}
+                          style={{ width: 60, textAlign: 'right', border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '2px 6px' }}
                           onBlur={e => { if (parseFloat(e.target.value) !== line.received_qty) updateReceivedQty(line.id, e.target.value) }}
                         />
                       ) : <span style={{ fontFamily: 'monospace' }}>{line.received_qty}</span>}
@@ -245,7 +245,7 @@ function AddLineModal({ poId, onClose, onAdded }) {
           <div className="form-group" style={{ flex: 1 }}><label>Coût unitaire ($)</label><input type="number" min="0" step="0.01" value={form.unit_cost} onChange={e => f('unit_cost', e.target.value)} /></div>
         </div>
         {form.quantity && form.unit_cost && (
-          <div style={{ textAlign: 'right', color: '#6B7280', fontSize: 13, marginBottom: 12 }}>
+          <div style={{ textAlign: 'right', color: 'var(--c-muted)', fontSize: 13, marginBottom: 12 }}>
             Total: <strong>{(parseFloat(form.quantity) * parseFloat(form.unit_cost)).toFixed(2)} $</strong>
           </div>
         )}

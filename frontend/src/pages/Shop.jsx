@@ -117,7 +117,7 @@ function CatalogueView({ items, loading, onAdd, cart }) {
             </div>
           )
         })}
-        {visible.length === 0 && <div style={{ color: '#9CA3AF', gridColumn: '1/-1', textAlign: 'center', padding: '48px 0' }}>Aucun article trouvé.</div>}
+        {visible.length === 0 && <div style={{ color: 'var(--c-faint)', gridColumn: '1/-1', textAlign: 'center', padding: '48px 0' }}>Aucun article trouvé.</div>}
       </div>
     </div>
   )
@@ -128,7 +128,7 @@ function CartView({ cart, onUpdateQty, onRemove, onCheckout, total }) {
     <div className="shop-cart">
       <h2 className="shop-section-title">Mon panier</h2>
       {cart.length === 0 ? (
-        <div style={{ color: '#9CA3AF', textAlign: 'center', padding: '48px 0' }}>Panier vide.</div>
+        <div style={{ color: 'var(--c-faint)', textAlign: 'center', padding: '48px 0' }}>Panier vide.</div>
       ) : (
         <>
           <table className="shop-cart-table">
@@ -141,10 +141,10 @@ function CartView({ cart, onUpdateQty, onRemove, onCheckout, total }) {
                   <td>
                     <input type="number" min="1" value={c.quantity}
                       onChange={e => onUpdateQty(c.item.id, parseInt(e.target.value) || 0)}
-                      style={{ width: 60, border: '1px solid #D1D5DB', borderRadius: 4, padding: '4px 8px', textAlign: 'center' }} />
+                      style={{ width: 60, border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 8px', textAlign: 'center' }} />
                   </td>
                   <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(c.item.price * c.quantity)}</td>
-                  <td><button onClick={() => onRemove(c.item.id)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 16 }}>✕</button></td>
+                  <td><button onClick={() => onRemove(c.item.id)} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 16 }}>✕</button></td>
                 </tr>
               ))}
             </tbody>
@@ -201,7 +201,7 @@ function CheckoutView({ cart, total, onOrdered }) {
               <span style={{ fontFamily: 'monospace' }}>{fmt(c.item.price * c.quantity)}</span>
             </div>
           ))}
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: 8, paddingTop: 8, borderTop: '1px solid #E5E7EB' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700, marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--c-border)' }}>
             <span>Total</span><span style={{ fontFamily: 'monospace' }}>{fmt(total)}</span>
           </div>
         </div>
@@ -217,7 +217,7 @@ function ConfirmView({ order, onNew }) {
       <div className="shop-confirm-icon">✓</div>
       <h2>Commande reçue !</h2>
       <p>Votre commande <strong>{order.order_number}</strong> a été soumise avec succès.</p>
-      <p style={{ color: '#6B7280' }}>Vous recevrez un courriel de confirmation à <strong>{order.customer_email}</strong>. Notre équipe vous contactera sous peu.</p>
+      <p style={{ color: 'var(--c-muted)' }}>Vous recevrez un courriel de confirmation à <strong>{order.customer_email}</strong>. Notre équipe vous contactera sous peu.</p>
       <button className="shop-checkout-btn" onClick={onNew} style={{ marginTop: 24 }}>Retour à la boutique</button>
     </div>
   )

@@ -31,20 +31,21 @@ export default function CompanySettingsPanel() {
     } finally { setSaving(false) }
   }
 
-  if (!settings) return <div style={{ padding: 40, color: '#6B7280' }}>Chargement...</div>
+  if (!settings) return <div style={{ padding: 40, color: 'var(--c-muted)' }}>Chargement...</div>
 
   return (
-    <div style={{ maxWidth: 700, padding: '0 0 40px' }}>
-      {msg && <div style={{ background: '#ECFDF5', color: '#065F46', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 520px), 1fr))', columnGap: 20, alignItems: 'start', padding: '0 0 40px' }}>
+      {msg && <div style={{ gridColumn: '1 / -1', background: 'var(--c-tint-green)', color: 'var(--c-on-green)', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
+      <AppearanceSection />
       <BusinessSection />
       <TimezoneSection />
       <LateFeesSection />
 
       {/* ── Taux de service ── */}
-      <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Taux de service Simple IP</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+      <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: 'var(--c-text)' }}>Taux de service Simple IP</h3>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
           Ce taux s'applique aux tickets, factures et tous les articles catalogue liés au taux horaire.
         </p>
         <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -136,14 +137,14 @@ function LateFeesSection() {
       <input type="number" step="0.01" value={cfg[k]} onChange={e => set(k, e.target.value)} style={{ width: w }} /></div>
   )
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>Frais de retard</h3>
-        <span style={{ fontSize: 13, fontWeight: 600, color: cfg.late_fees_enabled ? '#059669' : '#B45309' }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>Frais de retard</h3>
+        <span style={{ fontSize: 13, fontWeight: 600, color: cfg.late_fees_enabled ? '#059669' : 'var(--c-on-amber)' }}>
           {cfg.late_fees_enabled ? 'Allumé' : 'Éteint — rien n\'est facturé'}
         </span>
       </div>
-      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
         Un avis de retard par client : {cfg.late_fee_monthly_rate} % de tout son solde en retard (avis précédents compris) + frais de gestion,
         {' '}{cfg.late_fee_grace_days} jours après l'échéance, puis chaque {cfg.late_fee_interval_days} jours tant que c'est impayé. Sans taxes.
         {features.barter && 'Jamais sur une facture marquée « À régler en troc ». '}Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
@@ -155,7 +156,7 @@ function LateFeesSection() {
         {field('late_fee_interval_days', 'Jours entre 2 avis')}
         <button className="btn-secondary" onClick={() => save()}>Enregistrer</button>
         {cfg.late_fees_enabled
-          ? <button className="btn-secondary" style={{ color: '#B45309' }} onClick={() => save({ late_fees_enabled: false })}>Éteindre</button>
+          ? <button className="btn-secondary" style={{ color: 'var(--c-on-amber)' }} onClick={() => save({ late_fees_enabled: false })}>Éteindre</button>
           : <button className="btn-primary" onClick={() => save({ late_fees_enabled: true })}>Allumer</button>}
         {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
       </div>
@@ -164,18 +165,18 @@ function LateFeesSection() {
           <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>
             Aperçu : avis qui {cfg.late_fees_enabled ? 'seront créés' : 'seraient créés'} aujourd'hui ({preview.notices.length})
           </div>
-          {preview.notices.length === 0 && <div style={{ fontSize: 13, color: '#9CA3AF' }}>Aucun.</div>}
+          {preview.notices.length === 0 && <div style={{ fontSize: 13, color: 'var(--c-faint)' }}>Aucun.</div>}
           {preview.notices.map(n => (
-            <div key={n.company_id} style={{ fontSize: 13, borderTop: '1px solid #F3F4F6', padding: '6px 0' }}>
+            <div key={n.company_id} style={{ fontSize: 13, borderTop: '1px solid var(--c-surface-3)', padding: '6px 0' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <b>{n.company_name}</b>
                 <span>{money(n.interest)} + {money(n.admin)} = <b>{money(n.total)}</b></span>
               </div>
-              <div style={{ fontSize: 12, color: '#6B7280' }}>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>
                 {cfg.late_fee_monthly_rate} % de {money(n.base)} en retard — {n.invoices.map(i => `${i.number} (${money(i.balance)})`).join(', ')}
                 {n.last_notice ? ` — dernier avis le ${n.last_notice}` : ''}
               </div>
-              <div style={{ fontSize: 12, color: n.email ? '#6B7280' : '#B45309' }}>{n.email ? `Envoyé à ${n.email}` : 'Aucun courriel de facturation : restera non transmis'}</div>
+              <div style={{ fontSize: 12, color: n.email ? 'var(--c-muted)' : 'var(--c-on-amber)' }}>{n.email ? `Envoyé à ${n.email}` : 'Aucun courriel de facturation : restera non transmis'}</div>
             </div>
           ))}
         </div>
@@ -206,9 +207,9 @@ function BusinessSection() {
   )
   const changed = JSON.stringify(f) !== JSON.stringify(saved)
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Coordonnées de l'entreprise</h3>
-      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Coordonnées de l'entreprise</h3>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
         Imprimées en haut de tous les PDF : factures, avoirs, devis et ententes d'échange. Vos numéros de TPS et de TVQ permettent à vos clients de réclamer les taxes qu'ils vous paient.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
@@ -245,9 +246,9 @@ function TimezoneSection() {
   }
   if (!data) return null
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: '#111827' }}>Fuseau horaire de l'entreprise</h3>
-      <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 16 }}>
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Fuseau horaire de l'entreprise</h3>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
         Sert à savoir quel jour on est : date des factures et des paiements, factures périodiques, échanges… Il est <b>{data.now}</b> selon ce fuseau.
       </p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -279,23 +280,23 @@ function NumberingSection() {
   }
   if (!rows) return null
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginBottom: 24 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: '#111827' }}>Numérotation des documents</h3>
-      <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0, marginBottom: 16 }}>
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: 'var(--c-text)' }}>Numérotation des documents</h3>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 0, marginBottom: 16 }}>
         Chaque numéro n'est donné qu'une fois : supprimer ou annuler un document ne fait jamais reculer le compteur.
         « {'{year}'} » dans le préfixe est remplacé par l'année en cours.
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: '#F9FAFB' }}>
-            {['Document', 'Préfixe', 'Chiffres', 'Prochain numéro', 'Aperçu', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: '#374151' }}>{h}</th>)}
+          <thead><tr style={{ background: 'var(--c-surface-2)' }}>
+            {['Document', 'Préfixe', 'Chiffres', 'Prochain numéro', 'Aperçu', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-2)' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {rows.map(x => {
               const e = edit[x.key]
               const changed = e.prefix !== x.prefix || Number(e.next_value) !== x.next_value || Number(e.padding) !== x.padding
               return (
-                <tr key={x.key} style={{ borderTop: '1px solid #F3F4F6' }}>
+                <tr key={x.key} style={{ borderTop: '1px solid var(--c-surface-3)' }}>
                   <td style={{ padding: '8px 10px', fontWeight: 500 }}>{x.label}</td>
                   <td style={{ padding: '8px 10px' }}><input value={e.prefix} style={{ width: 120 }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, prefix: ev.target.value } })} /></td>
                   <td style={{ padding: '8px 10px' }}><input type="number" min="0" max="10" value={e.padding} style={{ width: 60 }} title="Nombre minimum de chiffres (0 = sans zéros devant)" onChange={ev => setEdit({ ...edit, [x.key]: { ...e, padding: ev.target.value } })} /></td>
@@ -317,3 +318,42 @@ function NumberingSection() {
 
 // Avis de virement Interac par courriel (TASK-042.5) : donnent le nom de l'expediteur des depots
 // « VIREMENT INTERAC ». Mot de passe chiffre dans la base, jamais reaffiche.
+
+// Apparence de l'écran pour tout le monde (TASK-050) : Jour (par défaut) ou Nuit, appliqué tout de suite.
+function AppearanceSection() {
+  const [theme, setTheme] = useState(null)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.get('/v1/settings').then(r => setTheme(r.data.ui_theme || 'jour')) }, [])
+  async function pick(t) {
+    if (t === theme || saving) return
+    setSaving(true)
+    try {
+      const r = await api.put('/v1/settings', { ui_theme: t })
+      setTheme(r.data.ui_theme)
+      window.dispatchEvent(new CustomEvent('erpcrm-theme', { detail: r.data.ui_theme }))
+    } finally { setSaving(false) }
+  }
+  if (!theme) return null
+  const opt = (t, label, sub, bg, fg, box) => (
+    <button type="button" onClick={() => pick(t)} disabled={saving} aria-pressed={theme === t}
+      style={{ flex: '1 1 160px', textAlign: 'left', padding: 12, borderRadius: 12, cursor: 'pointer', fontFamily: 'inherit',
+        border: theme === t ? '2px solid var(--brand)' : '1px solid var(--c-border-strong)', background: 'var(--c-surface)', color: 'var(--c-text)' }}>
+      <div style={{ height: 54, borderRadius: 8, background: bg, padding: 8, display: 'flex', gap: 6, marginBottom: 10 }}>
+        <div style={{ width: 18, borderRadius: 4, background: box }} />
+        <div style={{ flex: 1, borderRadius: 4, background: box, display: 'flex', alignItems: 'center', paddingLeft: 8 }}><div style={{ width: '50%', height: 6, borderRadius: 3, background: fg }} /></div>
+      </div>
+      <div style={{ fontWeight: 700, fontSize: 14 }}>{theme === t ? '● ' : ''}{label}</div>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{sub}</div>
+    </button>
+  )
+  return (
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: 'var(--c-text)' }}>Apparence</h3>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>Pour tout le monde, dans tout ERPCRM. Le portail client reste en mode jour.</p>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        {opt('jour', 'Jour', 'Fond clair (par défaut)', '#F5F9FF', '#0A1929', '#FFFFFF')}
+        {opt('nuit', 'Nuit', 'Fond marine foncé', '#0B1E33', '#E6EEF7', '#102A45')}
+      </div>
+    </div>
+  )
+}

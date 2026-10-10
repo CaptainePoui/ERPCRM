@@ -57,7 +57,7 @@ export default function Contacts() {
                     {c.companies.map(co => (
                       <div key={co.company_id} className="company-legal">{co.company_name}</div>
                     ))}
-                    {c.companies.length === 0 && <span style={{color:'#9CA3AF'}}>—</span>}
+                    {c.companies.length === 0 && <span style={{color:'var(--c-faint)'}}>—</span>}
                   </td>
                   <td>
                     <div className="status-chips">

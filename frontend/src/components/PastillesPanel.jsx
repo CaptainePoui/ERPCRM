@@ -50,7 +50,7 @@ export default function PastillesPanel() {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus placeholder="Nom de la pastille"
             onKeyDown={e => e.key === 'Enter' && form.name.trim() && save()}
-            style={{ border: '1px solid #D1D5DB', borderRadius: 4, padding: '4px 8px', fontSize: 14 }} />
+            style={{ border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 8px', fontSize: 14 }} />
           <input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))} title="Couleur"
             style={{ width: 36, height: 28, border: 'none', background: 'none', padding: 0, cursor: 'pointer' }} />
           {chip(form.name, form.color)}
@@ -75,7 +75,7 @@ export default function PastillesPanel() {
         <span className="adm-count">Pastilles des compagnies et des contacts</span>
         {editing === null && <button className="btn-primary" onClick={() => start(null)}>+ Nouvelle pastille</button>}
       </div>
-      <p style={{ color: '#6B7280', fontSize: 13, margin: '8px 0 16px' }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, margin: '8px 0 16px' }}>
         Une compagnie ou un contact peut porter plusieurs pastilles (ex. client et sous-traitant). Une pastille désactivée
         ne s'offre plus sur les fiches, mais reste sur celles qui la portent déjà.
       </p>
@@ -90,9 +90,9 @@ export default function PastillesPanel() {
                 {editing === r.id ? editRow : (
                   <>
                     <td>{chip(r.name, r.color, !r.is_active)}</td>
-                    <td style={{ color: '#6B7280', fontSize: 13 }}>{r.used}</td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{r.used}</td>
                     <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: r.is_active ? '#059669' : '#9CA3AF', fontWeight: 600, fontSize: 13 }}>{r.is_active ? 'Oui' : 'Non'}</span>
+                      <span style={{ color: r.is_active ? '#059669' : 'var(--c-faint)', fontWeight: 600, fontSize: 13 }}>{r.is_active ? 'Oui' : 'Non'}</span>
                     </td>
                     <td>{editing === null && <button className="adm-edit-btn" onClick={() => start(r)}>Modifier</button>}</td>
                   </>

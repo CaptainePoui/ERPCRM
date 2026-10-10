@@ -112,7 +112,7 @@ export default function KnowledgeGraphViewer() {
 
   return (
     <div>
-      <p style={{ color: '#6B7280', fontSize: 13, marginBottom: 16 }}>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
         Mémoire relationnelle de la plateforme (Graphiti / Neo4j) — faits, décisions et entités liés entre eux. Clic-glisser pour tourner, molette pour zoomer, clic sur un nœud pour voir son détail.
       </p>
 
@@ -142,7 +142,7 @@ export default function KnowledgeGraphViewer() {
           {isFullscreen ? 'Quitter le plein écran' : 'Plein écran'}
         </button>
         {!loading && !error && (
-          <span style={{ fontSize: 13, color: '#9CA3AF', marginTop: 20 }}>
+          <span style={{ fontSize: 13, color: 'var(--c-faint)', marginTop: 20 }}>
             {data.nodes.length} nœud{data.nodes.length !== 1 ? 's' : ''} · {data.links.length} lien{data.links.length !== 1 ? 's' : ''}
             {data.total_relations > data.links.length && ` sur ${data.total_relations} au total`}
             {live && lastUpdate && ` · maj ${lastUpdate.toLocaleTimeString('fr-CA')}`}
@@ -152,14 +152,14 @@ export default function KnowledgeGraphViewer() {
 
       {error && <div className="adm-error" style={{ marginBottom: 12 }}>{error}</div>}
 
-      <div ref={containerRef} style={{ height: isFullscreen ? '100vh' : 620, border: '1px solid #E5E7EB', borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#0B1120' }}>
+      <div ref={containerRef} style={{ height: isFullscreen ? '100vh' : 620, border: '1px solid var(--c-border)', borderRadius: 8, overflow: 'hidden', position: 'relative', background: '#0B1120' }}>
         {loading && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 13, zIndex: 1 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-faint)', fontSize: 13, zIndex: 1 }}>
             Chargement du graphe...
           </div>
         )}
         {!loading && !error && data.nodes.length === 0 && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9CA3AF', fontSize: 13, zIndex: 1 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--c-faint)', fontSize: 13, zIndex: 1 }}>
             Aucune donnée.
           </div>
         )}
@@ -197,8 +197,8 @@ export default function KnowledgeGraphViewer() {
                 .filter(([k]) => !['name', 'group_id'].includes(k))
                 .map(([k, v]) => (
                   <div key={k} style={{ marginBottom: 8 }}>
-                    <div style={{ color: '#9CA3AF', fontSize: 11, textTransform: 'uppercase' }}>{k}</div>
-                    <div style={{ color: '#374151', wordBreak: 'break-word', fontSize: 13 }}>{String(v)}</div>
+                    <div style={{ color: 'var(--c-faint)', fontSize: 11, textTransform: 'uppercase' }}>{k}</div>
+                    <div style={{ color: 'var(--c-text-2)', wordBreak: 'break-word', fontSize: 13 }}>{String(v)}</div>
                   </div>
                 ))}
               {(() => {
@@ -215,14 +215,14 @@ export default function KnowledgeGraphViewer() {
                   })
                 if (related.length === 0) return null
                 return (
-                  <div style={{ marginTop: 12, borderTop: '1px solid #E5E7EB', paddingTop: 12 }}>
-                    <div style={{ color: '#9CA3AF', fontSize: 11, textTransform: 'uppercase', marginBottom: 8 }}>
+                  <div style={{ marginTop: 12, borderTop: '1px solid var(--c-border)', paddingTop: 12 }}>
+                    <div style={{ color: 'var(--c-faint)', fontSize: 11, textTransform: 'uppercase', marginBottom: 8 }}>
                       Relations ({related.length})
                     </div>
                     {related.map((l, i) => (
                       <div key={i} style={{ marginBottom: 10 }}>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>→ {l.otherLabel}</div>
-                        {l.fact && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>{l.fact}</div>}
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)' }}>→ {l.otherLabel}</div>
+                        {l.fact && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>{l.fact}</div>}
                       </div>
                     ))}
                   </div>

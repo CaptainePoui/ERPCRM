@@ -1,5 +1,5 @@
 .page {
-  max-width: 1200px;
+  min-width: 0;
 }
 
 .page-header {
@@ -10,25 +10,26 @@
 }
 
 .page-title {
-  font-size: 22px;
-  font-weight: 700;
-  color: #111827;
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--c-text);
   margin-bottom: 2px;
 }
 
 .page-sub {
   font-size: 13px;
-  color: #6B7280;
+  color: var(--c-muted);
 }
 
 .btn-primary {
   background: var(--brand);
   color: #fff;
   border: none;
-  padding: 9px 18px;
-  border-radius: 8px;
+  padding: 10px 18px;
+  border-radius: 10px;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: background 0.2s;
   white-space: nowrap;
@@ -46,21 +47,24 @@
   width: 100%;
   max-width: 360px;
   padding: 9px 14px;
-  border: 1.5px solid #D1D5DB;
-  border-radius: 8px;
+  border: 1px solid var(--c-border-strong);
+  border-radius: 10px;
   font-size: 14px;
   outline: none;
+  background: var(--c-surface);
+  color: var(--c-text);
 }
 
 .search-input:focus {
   border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(31,90,166,0.1);
+  box-shadow: 0 0 0 3px var(--brand-bg);
 }
 
 .table-wrap {
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid #E5E7EB;
+  background: var(--c-surface);
+  border-radius: 16px;
+  border: 1px solid var(--c-border);
+  box-shadow: var(--c-shadow);
   overflow: hidden;
 }
 
@@ -80,20 +84,20 @@
 }
 
 .data-table th {
-  background: #F9FAFB;
-  color: #6B7280;
-  font-size: 11px;
-  font-weight: 600;
+  background: var(--c-surface-2);
+  color: var(--c-muted);
+  font-size: 12px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 10px 16px;
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
   text-align: left;
-  border-bottom: 1px solid #E5E7EB;
+  border-bottom: 1px solid var(--c-border);
 }
 
 .data-table td {
-  padding: 12px 16px;
-  border-bottom: 1px solid #F3F4F6;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--c-border);
   vertical-align: middle;
 }
 
@@ -117,7 +121,7 @@
 }
 
 .clickable-row:hover {
-  background: #F0F7FF;
+  background: var(--c-tint-blue);
 }
 
 .clickable-row:last-child td {
@@ -131,7 +135,7 @@
 
 .company-legal {
   font-size: 12px;
-  color: #6B7280;
+  color: var(--c-muted);
   margin-top: 2px;
 }
 
@@ -154,10 +158,10 @@
 .account-tag {
   font-family: monospace;
   font-size: 12px;
-  background: #F3F4F6;
+  background: var(--c-surface-3);
   padding: 2px 7px;
   border-radius: 4px;
-  color: #374151;
+  color: var(--c-text-2);
 }
 
 .fiscal-tag {
@@ -167,11 +171,11 @@
 }
 
 .fiscal-tag.exempt {
-  color: #9CA3AF;
+  color: var(--c-faint);
 }
 
 .loading {
-  color: #6B7280;
+  color: var(--c-muted);
   font-size: 14px;
   padding: 40px 0;
   text-align: center;
@@ -179,7 +183,7 @@
 
 .empty-row {
   text-align: center;
-  color: #9CA3AF;
+  color: var(--c-faint);
   padding: 40px !important;
   font-size: 14px;
 }

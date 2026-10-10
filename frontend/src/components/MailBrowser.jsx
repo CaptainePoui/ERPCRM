@@ -30,7 +30,7 @@ function MailBody({ html, text }) {
     ? `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`
     : `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;white-space:pre-wrap;word-wrap:break-word}</style></head><body>${(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</body></html>`
   return <iframe title="Courriel" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={doc}
-    style={{ width: '100%', flex: 1, minHeight: 420, border: 'none', background: '#fff' }} />
+    style={{ width: '100%', flex: 1, minHeight: 420, border: 'none', background: 'var(--c-surface)' }} />
 }
 
 function ClassifyModal({ mail, onClose, onSaved }) {
@@ -71,7 +71,7 @@ function ClassifyModal({ mail, onClose, onSaved }) {
     <div className="modal-overlay" style={{ zIndex: 300 }}>
       <div className="modal-box" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Classer le courriel</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginTop: -6 }}>{mail.direction === 'out' ? `Envoyé à : ${mail.to_addrs}` : `De : ${mail.from_name ? `${mail.from_name} <${mail.from_email}>` : mail.from_email}`}</p>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: -6 }}>{mail.direction === 'out' ? `Envoyé à : ${mail.to_addrs}` : `De : ${mail.from_name ? `${mail.from_name} <${mail.from_email}>` : mail.from_email}`}</p>
         <Autocomplete label="Compagnie" items={companyItems} value={company} onSelect={setCompany} placeholder="Rechercher une compagnie..." autoFocus />
         <Autocomplete label="Contact" items={contactItems} value={contact} onSelect={pickContact} placeholder="Rechercher un contact..." openOnFocus={!!company} />
         {contact && mail.direction !== 'out' && (
@@ -113,7 +113,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
   }, [id])   // eslint-disable-line
 
   if (err) return <div style={{ padding: 24, color: '#DC2626' }}>{err}</div>
-  if (!m) return <div style={{ padding: 24, color: '#6B7280' }}>Chargement…</div>
+  if (!m) return <div style={{ padding: 24, color: 'var(--c-muted)' }}>Chargement…</div>
 
   const update = patch => { const next = { ...m, ...patch }; setM(next); onChanged?.(next) }
   const company = m.company_id ? { id: m.company_id, label: m.company_name } : null
@@ -148,16 +148,16 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
     update({ shared: r.data.shared })
   }
 
-  const chip = { fontSize: 12, padding: '2px 8px', borderRadius: 10, background: '#F3F4F6', color: '#374151' }
+  const chip = { fontSize: 12, padding: '2px 8px', borderRadius: 10, background: 'var(--c-surface-3)', color: 'var(--c-text-2)' }
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid #E5E7EB' }}>
+      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--c-border)' }}>
         <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
           <h2 style={{ fontSize: 18, margin: 0, flex: 1, wordBreak: 'break-word' }}>{m.subject || '(sans objet)'}</h2>
           {onClose && <button className="btn-secondary" onClick={onClose} title="Fermer">✕</button>}
         </div>
-        <div style={{ fontSize: 13, color: '#374151', marginTop: 8 }}><b>{from}</b></div>
-        <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+        <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginTop: 8 }}><b>{from}</b></div>
+        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>
           À : {m.to_addrs || m.mailbox}{m.cc_addrs ? ` · Cc : ${m.cc_addrs}` : ''} · {m.sent_at ? new Date(m.sent_at).toLocaleString('fr-CA') : ''}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
@@ -168,9 +168,9 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
               {company && <a href={`/companies/${company.id}`} onClick={e => { e.preventDefault(); navigate(`/companies/${company.id}`) }}>{company.label}</a>}
               {company && contact && ' · '}
               {contact && <a href={`/contacts/${contact.id}`} onClick={e => { e.preventDefault(); navigate(`/contacts/${contact.id}`) }}>{contact.label}</a>}
-              {m.contact_created && <span style={{ ...chip, marginLeft: 6, background: '#ECFDF5', color: '#047857' }}>contact créé à partir de ce courriel</span>}
+              {m.contact_created && <span style={{ ...chip, marginLeft: 6, background: 'var(--c-tint-green)', color: 'var(--c-on-green)' }}>contact créé à partir de ce courriel</span>}
             </span>
-          ) : <span style={{ ...chip, background: '#FEF3C7', color: '#92400E' }}>À classer</span>}
+          ) : <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
           <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setClassify(true)}>{company || contact ? 'Changer' : 'Classer'}</button>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
@@ -178,12 +178,12 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
           {m.all_to && (m.all_to !== m.reply_to || m.all_cc) && <button className="btn-secondary" onClick={() => setCompose('reply_all')}>↩ Répondre à tous</button>}
           <button className="btn-secondary" onClick={() => setCompose('forward')}>➜ Transférer</button>
         </div>
-        {sentMsg && <div style={{ fontSize: 13, marginTop: 8, color: sentMsg.startsWith('Envoyé de') ? '#047857' : '#B45309' }}>✓ {sentMsg}</div>}
-        {m.copy_error && !sentMsg && <div style={{ fontSize: 12, marginTop: 8, color: '#B45309' }}>Envoyé, mais pas copié dans Envoyés de {m.mailbox} : {m.copy_error}</div>}
+        {sentMsg && <div style={{ fontSize: 13, marginTop: 8, color: sentMsg.startsWith('Envoyé de') ? 'var(--c-on-green)' : 'var(--c-on-amber)' }}>✓ {sentMsg}</div>}
+        {m.copy_error && !sentMsg && <div style={{ fontSize: 12, marginTop: 8, color: 'var(--c-on-amber)' }}>Envoyé, mais pas copié dans Envoyés de {m.mailbox} : {m.copy_error}</div>}
         {m.replies?.length > 0 && (
-          <div style={{ fontSize: 12, marginTop: 8, color: '#047857', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ fontSize: 12, marginTop: 8, color: 'var(--c-on-green)', display: 'flex', flexDirection: 'column', gap: 2 }}>
             {m.replies.map(r => (
-              <a key={r.id} href="#" onClick={e => { e.preventDefault(); onOpen?.(r.id) }} style={{ color: '#047857' }}>
+              <a key={r.id} href="#" onClick={e => { e.preventDefault(); onOpen?.(r.id) }} style={{ color: 'var(--c-on-green)' }}>
                 ↩ Répondu le {new Date(r.sent_at).toLocaleString('fr-CA')}{r.sent_by ? ` par ${r.sent_by}` : ''} à {r.to_addrs}
               </a>
             ))}
@@ -253,30 +253,30 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
   }
 
   return (
-    <div style={{ display: 'flex', border: '1px solid #E5E7EB', borderRadius: 10, background: '#fff', height, minHeight: 480, overflow: 'hidden' }}>
-      <div style={{ width: open ? 380 : '100%', minWidth: 300, borderRight: open ? '1px solid #E5E7EB' : 'none', display: 'flex', flexDirection: 'column' }}>
-        <form onSubmit={e => { e.preventDefault(); setSearch(q.trim()) }} style={{ padding: 8, borderBottom: '1px solid #E5E7EB', display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', border: '1px solid var(--c-border)', borderRadius: 10, background: 'var(--c-surface)', height, minHeight: 480, overflow: 'hidden' }}>
+      <div style={{ width: open ? 380 : '100%', minWidth: 300, borderRight: open ? '1px solid var(--c-border)' : 'none', display: 'flex', flexDirection: 'column' }}>
+        <form onSubmit={e => { e.preventDefault(); setSearch(q.trim()) }} style={{ padding: 8, borderBottom: '1px solid var(--c-border)', display: 'flex', gap: 6 }}>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="Rechercher (objet, expéditeur, texte)…" style={{ flex: 1 }} />
           {search && <button type="button" className="btn-secondary" onClick={() => { setQ(''); setSearch('') }}>✕</button>}
           <button type="button" className="btn-primary" style={{ whiteSpace: 'nowrap' }} onClick={() => setWriting(true)}>✉ Écrire</button>
         </form>
         <div style={{ overflowY: 'auto', flex: 1 }}>
-          {!loading && !items.length && <div style={{ padding: 20, color: '#6B7280', fontSize: 14 }}>Aucun courriel.</div>}
+          {!loading && !items.length && <div style={{ padding: 20, color: 'var(--c-muted)', fontSize: 14 }}>Aucun courriel.</div>}
           {items.map(m => (
             <div key={m.id} onClick={() => setOpen(m.id)}
-              style={{ padding: '9px 12px', borderBottom: '1px solid #F3F4F6', cursor: 'pointer', background: open === m.id ? '#EFF6FF' : '#fff',
+              style={{ padding: '9px 12px', borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer', background: open === m.id ? 'var(--c-tint-blue)' : 'var(--c-surface)',
                        borderLeft: `3px solid ${m.is_read ? 'transparent' : 'var(--brand)'}` }}>
               <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>
                 <span style={{ flex: 1, fontWeight: m.is_read ? 400 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {m.direction === 'out' ? <span style={{ color: '#6B7280' }}>↗ À : {(m.to_addrs || '').replace(/\s*<[^>]+>/g, '')}</span> : (m.from_name || m.from_email)}
+                  {m.direction === 'out' ? <span style={{ color: 'var(--c-muted)' }}>↗ À : {(m.to_addrs || '').replace(/\s*<[^>]+>/g, '')}</span> : (m.from_name || m.from_email)}
                 </span>
-                <span style={{ color: '#6B7280', fontSize: 12, whiteSpace: 'nowrap' }}>{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
+                <span style={{ color: 'var(--c-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
               </div>
               <div style={{ fontSize: 13, fontWeight: m.is_read ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject || '(sans objet)'}</div>
-              <div style={{ fontSize: 12, color: '#6B7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {m.company_name || m.contact_name
-                  ? <span style={{ color: '#047857' }}>{[m.company_name, m.contact_name].filter(Boolean).join(' · ')}</span>
-                  : <span style={{ color: '#92400E' }}>À classer</span>}
+                  ? <span style={{ color: 'var(--c-on-green)' }}>{[m.company_name, m.contact_name].filter(Boolean).join(' · ')}</span>
+                  : <span style={{ color: 'var(--c-on-amber)' }}>À classer</span>}
                 {!filter.mailbox_id && <span> · {m.mailbox.split('@')[0]}@</span>}
                 {m.direction === 'out' && m.sent_by && <span> · par {m.sent_by}</span>}
                 {m.ticket_id && ' · 🎫'}{m.task_id && ' · ✅'}

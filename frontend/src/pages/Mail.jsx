@@ -23,8 +23,8 @@ export default function Mail() {
   const item = (active, onClick, label, count, sub, warn) => (
     <button onClick={onClick} style={{
       display: 'flex', alignItems: 'center', gap: 6, width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderRadius: 6,
-      cursor: 'pointer', fontSize: 13, background: active ? '#DBEAFE' : 'transparent', color: active ? '#1D4ED8' : '#111827', fontWeight: active ? 600 : 400 }}>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}{sub && <span style={{ color: '#6B7280', fontWeight: 400 }}> {sub}</span>}</span>
+      cursor: 'pointer', fontSize: 13, background: active ? 'var(--c-tint-blue)' : 'transparent', color: active ? 'var(--c-on-blue)' : 'var(--c-text)', fontWeight: active ? 600 : 400 }}>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}{sub && <span style={{ color: 'var(--c-muted)', fontWeight: 400 }}> {sub}</span>}</span>
       {warn && <span title={warn} style={{ color: '#DC2626' }}>⚠</span>}
       {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 10, padding: '1px 7px' }}>{count}</span>}
     </button>
@@ -44,11 +44,11 @@ export default function Mail() {
           {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', unread)}
           {item(sel.view === 'unclassified', () => setSel({ view: 'unclassified', mailbox_id: '' }), 'À classer', data.unclassified)}
           {item(sel.view === 'sent', () => setSel({ view: 'sent', mailbox_id: '' }), 'Envoyés d’ici', 0)}
-          <div style={{ fontSize: 11, textTransform: 'uppercase', color: '#9CA3AF', margin: '12px 10px 4px' }}>Boîtes</div>
+          <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c-faint)', margin: '12px 10px 4px' }}>Boîtes</div>
           {data.folders.map(f => item(sel.mailbox_id === f.id, () => setSel({ view: 'all', mailbox_id: f.id }),
             f.email.split('@')[0] + '@', f.unread, f.personal ? (f.mine ? '· à moi' : '· personnelle') : '',
             f.sync_error ? `Copie impossible : ${f.sync_error}` : (!f.has_password ? 'Mot de passe manquant' : '')))}
-          {!data.folders.length && <div style={{ fontSize: 12, color: '#6B7280', padding: '0 10px' }}>Aucune boîte : ajoutez-les dans Administration → Intégrations.</div>}
+          {!data.folders.length && <div style={{ fontSize: 12, color: 'var(--c-muted)', padding: '0 10px' }}>Aucune boîte : ajoutez-les dans Administration → Intégrations.</div>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <MailBrowser filter={sel.view === 'sent' ? { direction: 'out' }

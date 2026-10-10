@@ -92,7 +92,7 @@ function ReviewModal({ doc, onClose, onDone }) {
         <ReceiptPreview id={doc.id} filename={doc.filename} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {doc.checks?.length > 0 && (
-            <div style={{ fontSize: 12, background: '#F9FAFB', borderRadius: 8, padding: '8px 10px' }}>
+            <div style={{ fontSize: 12, background: 'var(--c-surface-2)', borderRadius: 8, padding: '8px 10px' }}>
               {doc.checks.map((c, i) => <div key={i} style={{ color: c.ok ? C.green : C.red }}>{c.ok ? '✓' : '✗'} {c.label}</div>)}
             </div>
           )}
@@ -177,7 +177,7 @@ export function ReceiptDrop({ onExpenseCreated }) {
     <div style={{ marginBottom: 16 }}>
       <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
         onDrop={e => { e.preventDefault(); setOver(false); upload(e.dataTransfer.files) }} onClick={() => inputRef.current?.click()}
-        style={{ border: `2px dashed ${over ? C.link : C.border}`, background: over ? '#EFF6FF' : '#FAFAFA', borderRadius: 10, padding: '16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: C.muted }}>
+        style={{ border: `2px dashed ${over ? C.link : C.border}`, background: over ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', borderRadius: 10, padding: '16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: C.muted }}>
         {busy ? 'Dépôt…' : <>Glissez vos reçus et factures ici (PDF, photos JPEG/PNG, ZIP…) ou <span style={{ color: C.link }}>choisissez des fichiers</span> — l'IA locale les lit et crée les dépenses ; ce qui ne balance pas au cent près attend « À vérifier ».</>}
         <input ref={inputRef} type="file" multiple style={{ display: 'none' }} onChange={e => { upload(e.target.files); e.target.value = '' }} />
       </div>

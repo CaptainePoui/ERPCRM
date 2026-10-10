@@ -18,16 +18,16 @@ const FREQS = [
   { value: 'annuelle', label: 'Annuelle' },
 ]
 const STATE = {
-  declaree:   { label: 'Déclarée',   color: '#059669', bg: '#ECFDF5' },
-  a_produire: { label: 'À produire', color: '#B45309', bg: '#FFFBEB' },
-  en_cours:   { label: 'En cours',   color: '#2563EB', bg: '#EFF6FF' },
+  declaree:   { label: 'Déclarée',   color: '#059669', bg: 'var(--c-tint-green)' },
+  a_produire: { label: 'À produire', color: 'var(--c-on-amber)', bg: 'var(--c-tint-amber)' },
+  en_cours:   { label: 'En cours',   color: '#2563EB', bg: 'var(--c-tint-blue)' },
 }
 const fmtD = d => d ? fmtDate(d + 'T00:00:00') : EMPTY
 const th = { padding: '10px 8px', fontWeight: 600, whiteSpace: 'nowrap', textAlign: 'left' }
 const thR = { ...th, textAlign: 'right' }
 const td = { padding: '9px 8px' }
 const tdR = { ...td, textAlign: 'right', whiteSpace: 'nowrap' }
-const card = { background: '#fff', border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }
+const card = { background: 'var(--c-surface)', border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }
 const errText = e => { const d = e.response?.data?.detail; return Array.isArray(d) ? d.map(x => x.msg).join(' ; ') : (d || 'Erreur') }
 const periodLabel = p => `${fmtD(p.start)} au ${fmtD(p.end)}`
 
@@ -93,7 +93,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
           </select>
         </label>
         <span style={{ fontSize: 13, color: C.muted }}>
-          Taxes déclarées jusqu'au : <strong style={{ color: '#111827' }}>{data.tax_lock_date ? fmtD(data.tax_lock_date) : 'aucune période'}</strong>
+          Taxes déclarées jusqu'au : <strong style={{ color: 'var(--c-text)' }}>{data.tax_lock_date ? fmtD(data.tax_lock_date) : 'aucune période'}</strong>
         </span>
       </div>
 
@@ -106,10 +106,10 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
           {data.periods.map(p => {
             const active = selected && p.start === selected.start && p.end === selected.end
             return (
-              <tr key={p.start} onClick={() => setSelected(p)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? '#EFF6FF' : undefined }}>
+              <tr key={p.start} onClick={() => setSelected(p)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? 'var(--c-tint-blue)' : undefined }}>
                 <td style={{ ...td, fontWeight: active ? 600 : 400, minWidth: 110 }}>{fmtD(p.start)}<div style={{ fontSize: 12, color: C.muted }}>au {fmtD(p.end)}</div></td>
                 <td style={td}><Badge state={p.state} /></td>
-                <td style={{ ...td, whiteSpace: 'nowrap', color: p.state === 'a_produire' ? '#B45309' : undefined }}>{fmtD(p.deadline)}</td>
+                <td style={{ ...td, whiteSpace: 'nowrap', color: p.state === 'a_produire' ? 'var(--c-on-amber)' : undefined }}>{fmtD(p.deadline)}</td>
                 <td style={tdR}>{fmtMoney(p.sales)}</td>
                 <td style={tdR}>{fmtMoney(p.tps_collected)}</td>
                 <td style={tdR}>{fmtMoney(p.tvq_collected)}</td>
@@ -158,10 +158,10 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
                 ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 14, fontSize: 14, flexWrap: 'wrap', gap: 8 }}>
-                <span style={{ color: C.muted }}>Ventes de la période (hors taxes) : <strong style={{ color: '#111827' }}>{fmtMoney(s.sales)}</strong> · {s.invoice_count} facture{s.invoice_count > 1 ? 's' : ''}</span>
+                <span style={{ color: C.muted }}>Ventes de la période (hors taxes) : <strong style={{ color: 'var(--c-text)' }}>{fmtMoney(s.sales)}</strong> · {s.invoice_count} facture{s.invoice_count > 1 ? 's' : ''}</span>
                 <span>Solde à payer : <strong style={{ fontSize: 17 }}>{fmtMoney(s.balance)}</strong></span>
               </div>
-              <div style={{ fontSize: 12, color: C.muted, background: '#F9FAFB', borderRadius: 8, padding: '8px 12px', marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: C.muted, background: 'var(--c-surface-2)', borderRadius: 8, padding: '8px 12px', marginTop: 12 }}>
                 CTI/RTI calculés automatiquement depuis Achats : dépenses et factures fournisseurs datées dans la période, moins les avoirs fournisseur.
                 Les comptes de dépense marqués « pas de CTI/RTI » (salaires, versements de taxe, impôts) sont exclus.
               </div>
@@ -430,13 +430,13 @@ export default function Taxes() {
 
   return (
     <div className="page">
-      <div className="page-header"><div><h1 className="page-title">Impôts et formulaires</h1></div></div>
+      <div className="page-header"><div><h1 className="page-title">Fiscalité</h1></div></div>
       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start', flexWrap: 'wrap' }}>
         <nav style={{ ...card, padding: 8, flex: '0 1 220px', minWidth: 200 }}>
           {SECTIONS.map(s => (
             <button key={s.value} type="button" onClick={() => setParams({ section: s.value }, { replace: true })}
               style={{ display: 'block', width: '100%', textAlign: 'left', border: 'none', borderRadius: 8, padding: '10px 12px', fontSize: 14, cursor: 'pointer',
-                       background: section === s.value ? '#EFF6FF' : 'none', color: section === s.value ? C.link : '#111827', fontWeight: section === s.value ? 600 : 400 }}>
+                       background: section === s.value ? 'var(--c-tint-blue)' : 'none', color: section === s.value ? C.link : 'var(--c-text)', fontWeight: section === s.value ? 600 : 400 }}>
               {s.label}
             </button>
           ))}

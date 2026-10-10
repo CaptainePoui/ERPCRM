@@ -23,7 +23,7 @@ export default function TimerNavigationPrompt({ blocker, onPause, onResume }) {
     <div className="modal-overlay" style={{ zIndex: 400 }}>
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 440 }}>
         <h3 className="modal-title">Chrono en cours</h3>
-        <p style={{ fontSize: 14, color: '#374151', margin: 0 }}>
+        <p style={{ fontSize: 14, color: 'var(--c-text-2)', margin: 0 }}>
           Le chrono de ce ticket est actif. Doit-il continuer pendant que vous naviguez ailleurs ?
         </p>
         <div className="modal-actions" style={{ flexDirection: 'column', alignItems: 'stretch' }}>

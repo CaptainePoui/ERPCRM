@@ -60,18 +60,18 @@ export default function PhoneOptionsEditor({ title, value, onChange, disabledHin
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title}</div>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title}</div>
         <div style={{ position: 'relative' }}>
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}
             disabled={!!disabledHint} title={disabledHint || ''}
             onClick={() => setShowPicker(v => !v)}>+ Ajouter une option</button>
           {showPicker && (
-            <div style={{ position: 'absolute', right: 0, top: '110%', background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 10, minWidth: 220 }}>
+            <div style={{ position: 'absolute', right: 0, top: '110%', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 4px 12px rgba(0,0,0,0.08)', zIndex: 10, minWidth: 220 }}>
               {availableToAdd.length === 0 ? (
-                <div style={{ padding: 10, fontSize: 13, color: '#9CA3AF' }}>Toutes les options sont déjà ajoutées.</div>
+                <div style={{ padding: 10, fontSize: 13, color: 'var(--c-faint)' }}>Toutes les options sont déjà ajoutées.</div>
               ) : availableToAdd.map(o => (
                 <div key={o.key} onClick={() => addOption(o)}
-                  style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid #F3F4F6' }}>
+                  style={{ padding: '8px 12px', fontSize: 13, cursor: 'pointer', borderBottom: '1px solid var(--c-surface-3)' }}>
                   {o.label}
                 </div>
               ))}
@@ -92,8 +92,8 @@ export default function PhoneOptionsEditor({ title, value, onChange, disabledHin
             const isSaving = savingKeys.has(key)
             return (
               <div key={key} style={{
-                display: 'flex', alignItems: 'center', gap: 10, background: isSaving ? '#EFF6FF' : '#F9FAFB',
-                border: `1px solid ${isSaving ? '#3B82F6' : '#E5E7EB'}`, borderRadius: 8, padding: '8px 12px',
+                display: 'flex', alignItems: 'center', gap: 10, background: isSaving ? 'var(--c-tint-blue)' : 'var(--c-surface-2)',
+                border: `1px solid ${isSaving ? '#3B82F6' : 'var(--c-border)'}`, borderRadius: 8, padding: '8px 12px',
                 transition: 'background 0.15s, border-color 0.15s',
               }}>
                 <div style={{ fontSize: 13, fontWeight: 600, minWidth: 160 }}>{opt.label}</div>
@@ -111,8 +111,8 @@ export default function PhoneOptionsEditor({ title, value, onChange, disabledHin
                     style={{
                       fontSize: 11, fontWeight: 600, borderRadius: 10, padding: '2px 8px',
                       cursor: isCustom ? 'pointer' : 'default',
-                      background: isCustom ? '#F3F4F6' : '#DBEAFE',
-                      color: isCustom ? '#6B7280' : '#1D4ED8',
+                      background: isCustom ? 'var(--c-surface-3)' : 'var(--c-tint-blue)',
+                      color: isCustom ? 'var(--c-muted)' : 'var(--c-on-blue)',
                     }}
                   >
                     (as template)

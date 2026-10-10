@@ -9,12 +9,12 @@ import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 
 const STATUS_LABELS = {
-  brouillon:  { label: 'Brouillon',  color: '#6B7280' },
+  brouillon:  { label: 'Brouillon',  color: 'var(--c-muted)' },
   envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   partiellement_payee: { label: 'Partiellement payée', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
-  annulee:    { label: 'Annulée',    color: '#9CA3AF' },
+  annulee:    { label: 'Annulée',    color: 'var(--c-faint)' },
 }
 
 const STATUS_TRANSITIONS = {
@@ -41,8 +41,8 @@ const PAYMENT_STATUS = {
   processing: { label: 'En traitement', color: '#2563EB' },
   confirmed:  { label: 'Confirmé', color: '#059669' },
   rejected:   { label: 'Rejeté', color: '#DC2626' },
-  refunded:   { label: 'Remboursé', color: '#6B7280' },
-  cancelled:  { label: 'Annulé', color: '#6B7280' },
+  refunded:   { label: 'Remboursé', color: 'var(--c-muted)' },
+  cancelled:  { label: 'Annulé', color: 'var(--c-muted)' },
 }
 
 function isPastDue(dueDate) {
@@ -222,11 +222,11 @@ export default function InvoiceDetail() {
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
-              {features.barter && inv.barter_settlement && <span className="inv-recur-badge" style={{ background: '#ECFDF5', color: '#047857', whiteSpace: 'nowrap' }}>Troc</span>}
-              {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: '#FEF2F2', color: '#B91C1C', whiteSpace: 'nowrap' }}>Avis de retard</span>}
+              {features.barter && inv.barter_settlement && <span className="inv-recur-badge" style={{ background: 'var(--c-tint-green)', color: 'var(--c-on-green)', whiteSpace: 'nowrap' }}>Troc</span>}
+              {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: 'var(--c-tint-red)', color: 'var(--c-on-red)', whiteSpace: 'nowrap' }}>Avis de retard</span>}
             </h1>
             <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
-            {inv.site_address_snapshot && <p className="page-sub" style={{ fontSize: 12, color: '#9CA3AF', marginTop: 0 }}>{inv.site_address_snapshot}</p>}
+            {inv.site_address_snapshot && <p className="page-sub" style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 0 }}>{inv.site_address_snapshot}</p>}
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -272,7 +272,7 @@ export default function InvoiceDetail() {
           <div className="inv-info-row">
             <span>Transmission</span>
             <select value={inv.transmission_status || ''} onChange={e => saveField('transmission_status', e.target.value)}
-              style={{ fontSize: 13, color: inv.transmission_status === 'non_transmise' ? '#B45309' : undefined }}>
+              style={{ fontSize: 13, color: inv.transmission_status === 'non_transmise' ? 'var(--c-on-amber)' : undefined }}>
               {!inv.transmission_status && <option value="">Inconnue (importée)</option>}
               <option value="non_transmise">Non transmise</option>
               <option value="courriel">Envoyée par courriel</option>
@@ -289,10 +289,10 @@ export default function InvoiceDetail() {
               >
                 👁 {fmtOpened(inv.last_opened_at)}{inv.open_count > 1 ? ` (×${inv.open_count})` : ''}
               </span>
-            ) : <span style={{ color: '#9CA3AF', fontSize: 13 }}>Jamais</span>}
+            ) : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Jamais</span>}
           </div>
           {showOpens && (
-            <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, color: '#6B7280', background: '#F9FAFB', borderRadius: 6, padding: '8px 12px' }}>
+            <div style={{ marginTop: -8, marginBottom: 8, fontSize: 12, color: 'var(--c-muted)', background: 'var(--c-surface-2)', borderRadius: 6, padding: '8px 12px' }}>
               {opensLoading ? 'Chargement...' : opens.length === 0 ? 'Aucune ouverture enregistrée.' : (
                 <ul style={{ margin: 0, paddingLeft: 16 }}>
                   {opens.map((o, i) => <li key={i}>{fmtOpened(o.opened_at)}</li>)}
@@ -377,7 +377,7 @@ export default function InvoiceDetail() {
                       }
                     }} onCancel={() => setEditingLine(null)} />
                   : <>
-                      <td onClick={() => editable && setEditingLine(line.id)}>{line.description}{line.is_taxable === false && <em style={{ color: '#9CA3AF', fontSize: 12 }}> (non taxable)</em>}</td>
+                      <td onClick={() => editable && setEditingLine(line.id)}>{line.description}{line.is_taxable === false && <em style={{ color: 'var(--c-faint)', fontSize: 12 }}> (non taxable)</em>}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{line.qty}</td>
                       <td style={{ textAlign: 'right' }} onClick={() => editable && setEditingLine(line.id)}>{fmt(line.unit_price)}</td>
                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(line.line_total)}</td>
@@ -387,7 +387,7 @@ export default function InvoiceDetail() {
               </tr>
             ))}
             {inv.lines.length === 0 && (
-              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucune ligne</td></tr>
+              <tr><td colSpan={editable ? 5 : 4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: 16 }}>Aucune ligne</td></tr>
             )}
           </tbody>
         </table>
@@ -434,7 +434,7 @@ export default function InvoiceDetail() {
                 </tr>
               ))}
               {creditInfo.allocations.length === 0 && (
-                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Pas encore appliqué</td></tr>
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: 16 }}>Pas encore appliqué</td></tr>
               )}
             </tbody>
           </table>
@@ -471,7 +471,7 @@ export default function InvoiceDetail() {
             </thead>
             <tbody>
               {payments.map(p => (
-                <tr key={p.id} style={p.status === 'confirmed' ? undefined : { color: '#6B7280' }}>
+                <tr key={p.id} style={p.status === 'confirmed' ? undefined : { color: 'var(--c-muted)' }}>
                   <td>{p.paid_at ? new Date(p.paid_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
                   <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}{p.reference ? ` · ${p.reference}` : ''}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_amount)}</td>
@@ -489,7 +489,7 @@ export default function InvoiceDetail() {
                 </tr>
               ))}
               {payments.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: 16 }}>Aucun paiement</td></tr>
+                <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: 16 }}>Aucun paiement</td></tr>
               )}
             </tbody>
           </table>
@@ -664,11 +664,11 @@ function ApplyCreditModal({ credit, invoice, openCredits, onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 640, width: '100%' }}>
         <div className="modal-title">{credit ? `Appliquer l'avoir ${credit.number}` : `Appliquer un avoir sur ${invoice.number}`}</div>
-        <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 0 }}>
           {credit ? `Reste à appliquer : ${fmt(credit.remaining)}` : `Solde de la facture : ${fmt(invoice.balance)}`}
         </p>
         {rows === null ? <div className="loading">Chargement...</div> : rows.length === 0 ? (
-          <p style={{ color: '#9CA3AF' }}>{credit ? 'Aucune facture ouverte pour ce client.' : 'Aucun avoir disponible.'}</p>
+          <p style={{ color: 'var(--c-faint)' }}>{credit ? 'Aucune facture ouverte pour ce client.' : 'Aucun avoir disponible.'}</p>
         ) : (
           <table className="inv-lines-table">
             <thead><tr><th>Date</th><th>{credit ? 'Facture' : 'Avoir'}</th><th style={{ textAlign: 'right' }}>{credit ? 'Solde' : 'Disponible'}</th><th style={{ textAlign: 'right' }}>À appliquer</th></tr></thead>
@@ -806,7 +806,7 @@ function PricePromptModal({ onClientOnly, onUpdateCatalogue }) {
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Mise à jour du prix</h3>
-        <p style={{ fontSize: 14, color: '#374151', marginBottom: 20, lineHeight: 1.5 }}>
+        <p style={{ fontSize: 14, color: 'var(--c-text-2)', marginBottom: 20, lineHeight: 1.5 }}>
           Ce prix vient du catalogue. Voulez-vous mettre à jour le catalogue pour tous les futurs clients ?
         </p>
         <div className="modal-actions">
@@ -887,7 +887,7 @@ function AddLineModal({ catalogue, onClose, onSave }) {
                 <input type="number" step="0.01" value={form.unit_price} onChange={e => f('unit_price', parseFloat(e.target.value) || 0)} />
               </div>
             </div>
-            <div style={{ textAlign: 'right', fontWeight: 600, color: '#111827' }}>
+            <div style={{ textAlign: 'right', fontWeight: 600, color: 'var(--c-text)' }}>
               Total : {new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(form.qty * form.unit_price)}
             </div>
           </div>

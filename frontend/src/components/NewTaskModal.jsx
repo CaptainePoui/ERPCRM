@@ -191,12 +191,12 @@ export default function NewTaskModal({
           {/* Applied template indicator */}
           {appliedTpl && (
             <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#059669' }}>
-              <span style={{ background: '#D1FAE5', padding: '2px 8px', borderRadius: 6 }}>
+              <span style={{ background: 'var(--c-tint-green)', padding: '2px 8px', borderRadius: 6 }}>
                 Template : {appliedTpl.template_name || appliedTpl.title}
               </span>
               <button
                 onClick={resetTemplate}
-                style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 13, padding: 0 }}
+                style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 13, padding: 0 }}
               >
                 × Retirer
               </button>
@@ -206,36 +206,36 @@ export default function NewTaskModal({
           {/* Template suggestions — inline (not absolute) to avoid overflow clipping */}
           {showSuggestions && !appliedTpl && titleSuggestions.length > 0 && (
             <div style={{
-              background: '#fff', border: '1px solid #D1D5DB', borderRadius: 8,
+              background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 8,
               boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 260, overflowY: 'auto',
               marginTop: 4,
             }}>
-              <div style={{ padding: '6px 12px', fontSize: 11, color: '#9CA3AF', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid #F3F4F6' }}>
+              <div style={{ padding: '6px 12px', fontSize: 11, color: 'var(--c-faint)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', borderBottom: '1px solid var(--c-surface-3)' }}>
                 Templates disponibles
               </div>
               {titleSuggestions.map(tpl => (
                 <div
                   key={tpl.id}
                   onMouseDown={() => applyTemplate(tpl)}
-                  style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid #F9FAFB' }}
-                  onMouseEnter={e => e.currentTarget.style.background = '#EEF4FF'}
-                  onMouseLeave={e => e.currentTarget.style.background = '#fff'}
+                  style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--c-surface-2)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--c-tint-blue)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--c-surface)'}
                 >
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#111827' }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--c-text)' }}>
                     {tpl.template_name || tpl.title}
                   </div>
                   {tpl.description && (
-                    <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 2 }}>
+                    <div style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 2 }}>
                       {tpl.description.length > 80 ? tpl.description.slice(0, 80) + '…' : tpl.description}
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
                     {tpl.subtasks?.length > 0 && (
-                      <span style={{ fontSize: 11, color: '#6B7280', background: '#F3F4F6', padding: '1px 7px', borderRadius: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '1px 7px', borderRadius: 8 }}>
                         {tpl.subtasks.length} étape{tpl.subtasks.length > 1 ? 's' : ''}
                       </span>
                     )}
-                    <span style={{ fontSize: 11, color: '#9CA3AF' }}>{tpl.priority}</span>
+                    <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{tpl.priority}</span>
                   </div>
                 </div>
               ))}
@@ -244,7 +244,7 @@ export default function NewTaskModal({
         </div>
 
         <div style={{ marginBottom: 4 }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: '#374151' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: 'var(--c-text-2)' }}>
             <input type="checkbox" checked={form.is_template} onChange={e => set('is_template', e.target.checked)} style={{ width: 15, height: 15, accentColor: 'var(--brand)' }} />
             Sauvegarder comme template réutilisable
           </label>
@@ -272,7 +272,7 @@ export default function NewTaskModal({
         {prefillTicket && (
           <div className="form-group">
             <label>Ticket</label>
-            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+            <div style={{ padding: '8px 12px', background: 'var(--c-surface-3)', borderRadius: 6, fontSize: 13, color: 'var(--c-text-2)' }}>
               {prefillTicket.label}
             </div>
           </div>
@@ -280,7 +280,7 @@ export default function NewTaskModal({
         {prefillInvoice && (
           <div className="form-group">
             <label>Facture</label>
-            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+            <div style={{ padding: '8px 12px', background: 'var(--c-surface-3)', borderRadius: 6, fontSize: 13, color: 'var(--c-text-2)' }}>
               {prefillInvoice.label}
             </div>
           </div>
@@ -288,7 +288,7 @@ export default function NewTaskModal({
         {prefillParentTask && (
           <div className="form-group">
             <label>Sous-tâche de</label>
-            <div style={{ padding: '8px 12px', background: '#F3F4F6', borderRadius: 6, fontSize: 13, color: '#374151' }}>
+            <div style={{ padding: '8px 12px', background: 'var(--c-surface-3)', borderRadius: 6, fontSize: 13, color: 'var(--c-text-2)' }}>
               {prefillParentTask.label}
             </div>
           </div>
@@ -322,8 +322,8 @@ export default function NewTaskModal({
           </select>
         </div>
 
-        <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 10 }}>Exécution</div>
+        <div style={{ borderTop: '1px solid var(--c-border)', margin: '16px 0', paddingTop: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 10 }}>Exécution</div>
           <div className="form-group">
             <label>Page liée (optionnel)</label>
             <input value={form.link_url} onChange={e => set('link_url', e.target.value)} placeholder="https://portail.simpleip.tel/companies" />
@@ -333,30 +333,30 @@ export default function NewTaskModal({
             <input type="number" min="0" value={form.estimated_minutes} onChange={e => set('estimated_minutes', e.target.value)} />
           </div>
           {!chosenTemplate && (
-            <p style={{ fontSize: 12, color: '#9CA3AF', margin: 0 }}>La checklist s'ajoute après la création de la tâche.</p>
+            <p style={{ fontSize: 12, color: 'var(--c-faint)', margin: 0 }}>La checklist s'ajoute après la création de la tâche.</p>
           )}
         </div>
 
-        <div style={{ borderTop: '1px solid #E5E7EB', margin: '16px 0', paddingTop: 16 }}>
+        <div style={{ borderTop: '1px solid var(--c-border)', margin: '16px 0', paddingTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: '#374151' }}>Rappels</div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text-2)' }}>Rappels</div>
             <button onClick={addReminder} className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }}>+ Ajouter</button>
           </div>
           {reminders.map((r, i) => (
             <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8 }}>
-              <select value={r.reminder_type} onChange={e => updateReminder(i, 'reminder_type', e.target.value)} style={{ flex: 1, fontSize: 12, padding: '6px 8px', border: '1px solid #D1D5DB', borderRadius: 6 }}>
+              <select value={r.reminder_type} onChange={e => updateReminder(i, 'reminder_type', e.target.value)} style={{ flex: 1, fontSize: 12, padding: '6px 8px', border: '1px solid var(--c-border-strong)', borderRadius: 6 }}>
                 <option value="local">Local (ERPCRM)</option>
                 <option value="email" disabled>Email (bientôt)</option>
                 <option value="popup" disabled>Popup (bientôt)</option>
                 <option value="sms" disabled>Texto (bientôt)</option>
               </select>
-              <select value={r.minutes_before} onChange={e => updateReminder(i, 'minutes_before', parseInt(e.target.value))} style={{ flex: 1, fontSize: 12, padding: '6px 8px', border: '1px solid #D1D5DB', borderRadius: 6 }}>
+              <select value={r.minutes_before} onChange={e => updateReminder(i, 'minutes_before', parseInt(e.target.value))} style={{ flex: 1, fontSize: 12, padding: '6px 8px', border: '1px solid var(--c-border-strong)', borderRadius: 6 }}>
                 {REMINDER_DELAYS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
               </select>
               {r.minutes_before === -1 && (
-                <input type="number" placeholder="Min" value={r.custom_minutes || ''} onChange={e => updateReminder(i, 'custom_minutes', parseInt(e.target.value) || null)} style={{ width: 70, fontSize: 12, padding: '6px 8px', border: '1px solid #D1D5DB', borderRadius: 6 }} />
+                <input type="number" placeholder="Min" value={r.custom_minutes || ''} onChange={e => updateReminder(i, 'custom_minutes', parseInt(e.target.value) || null)} style={{ width: 70, fontSize: 12, padding: '6px 8px', border: '1px solid var(--c-border-strong)', borderRadius: 6 }} />
               )}
-              <button onClick={() => removeReminder(i)} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', fontSize: 18 }}>×</button>
+              <button onClick={() => removeReminder(i)} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 18 }}>×</button>
             </div>
           ))}
         </div>

@@ -316,12 +316,12 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid #E5E7EB', marginBottom: 4 }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--c-border)', marginBottom: 4 }}>
         {TEL_SUB_TABS.map(t => (
           <button key={t.key} onClick={() => setSubTab(t.key)}
             style={{
               padding: '8px 14px', fontSize: 13, fontWeight: 600, border: 'none', background: 'none', cursor: 'pointer',
-              color: subTab === t.key ? 'var(--brand)' : '#6B7280',
+              color: subTab === t.key ? 'var(--brand)' : 'var(--c-muted)',
               borderBottom: subTab === t.key ? '2px solid var(--brand)' : '2px solid transparent',
               marginBottom: -1,
             }}>
@@ -334,7 +334,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
       {/* DIDs */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Numéros DID ({dids.length})</div>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Numéros DID ({dids.length})</div>
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNewDid(true)}>+ Ajouter</button>
         </div>
         {dids.length === 0 ? <div className="empty-tab">Aucun DID enregistré.</div> : (() => {
@@ -371,9 +371,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
           return (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
-                <tr style={{ background: '#F9FAFB' }}>
+                <tr style={{ background: 'var(--c-surface-2)' }}>
                   {['','Numéro','Note','Destination','Horaire','Succursale','Actif',''].map((h, i) => (
-                    <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                    <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -387,9 +387,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                       onDragLeave={() => setDragOverGroupKey(k => k === head.id ? null : k)}
                       onDrop={e => { e.preventDefault(); onDropOnRow(groupDids); setDragOverGroupKey(null) }}
                       style={{
-                        borderBottom: i === n - 1 ? '1px solid #E5E7EB' : 'none',
+                        borderBottom: i === n - 1 ? '1px solid var(--c-border)' : 'none',
                         opacity: draggingDidId === d.id ? 0.4 : 1,
-                        background: dragOverGroupKey === head.id ? '#DBEAFE' : undefined,
+                        background: dragOverGroupKey === head.id ? 'var(--c-tint-blue)' : undefined,
                       }}>
                       <td style={{ padding: '8px 4px', textAlign: 'center' }}>
                         <span draggable title="Glisser sur un autre DID pour le grouper"
@@ -399,7 +399,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                             setDraggingDidId(d.id)
                           }}
                           onDragEnd={() => { setDraggingDidId(null); setDragOverGroupKey(null) }}
-                          style={{ cursor: 'grab', color: '#9CA3AF', fontSize: 14, userSelect: 'none' }}>⠿</span>
+                          style={{ cursor: 'grab', color: 'var(--c-faint)', fontSize: 14, userSelect: 'none' }}>⠿</span>
                       </td>
                       <td style={{ padding: '8px 12px' }}>
                         <input type="text" defaultValue={d.number} style={{ fontSize: 12, padding: '3px 6px', width: 100, fontWeight: 700, fontFamily: 'monospace' }}
@@ -411,7 +411,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                           onBlur={e => updateDidField(d.id, 'notes', e.target.value || null)} />
                       </td>
                       {i === 0 && (
-                        <td rowSpan={n} style={{ padding: '8px 12px', verticalAlign: 'middle', borderLeft: n > 1 ? '2px solid #DBEAFE' : undefined }}>
+                        <td rowSpan={n} style={{ padding: '8px 12px', verticalAlign: 'middle', borderLeft: n > 1 ? '2px solid var(--c-tint-blue)' : undefined }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <div style={{ display: 'flex', gap: 4 }}>
                               <select value={head.destination_type || ''} style={{ fontSize: 12, padding: '3px 4px' }}
@@ -442,7 +442,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                             {head.destination_type === 'message' && (
                               head.after_message_destination_type ? (
                                 <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                                  <span style={{ fontSize: 10, color: '#6B7280' }}>puis</span>
+                                  <span style={{ fontSize: 10, color: 'var(--c-muted)' }}>puis</span>
                                   <select value={head.after_message_destination_type} style={{ fontSize: 12, padding: '3px 4px' }}
                                     onChange={e => updateGroupFields(groupDids, { after_message_destination_type: e.target.value || null, after_message_destination: null })}>
                                     {DID_DESTINATION_TYPES.filter(o => o.value && o.value !== 'message').map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -508,10 +508,10 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                     onDragOver={e => { e.preventDefault(); setDragOverGroupKey('__leave__') }}
                     onDragLeave={() => setDragOverGroupKey(k => k === '__leave__' ? null : k)}
                     onDrop={e => { e.preventDefault(); leaveDidGroup(); setDragOverGroupKey(null) }}
-                    style={{ background: dragOverGroupKey === '__leave__' ? '#FEF2F2' : '#FAFAFA' }}>
+                    style={{ background: dragOverGroupKey === '__leave__' ? 'var(--c-tint-red)' : 'var(--c-surface-2)' }}>
                     <td colSpan={8} style={{
                       padding: '8px 12px', textAlign: 'center', fontSize: 11,
-                      color: dragOverGroupKey === '__leave__' ? '#DC2626' : '#9CA3AF',
+                      color: dragOverGroupKey === '__leave__' ? '#DC2626' : 'var(--c-faint)',
                     }}>
                       Déposer ici pour retirer ce DID de son groupe
                     </td>
@@ -539,9 +539,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
       {/* Extensions */}
       <div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Extensions ({mergedExtensions.length})
-            {sipExtsLoading && <span style={{ fontSize: 11, fontWeight: 400, color: '#9CA3AF', marginLeft: 8 }}>chargement statut SIP...</span>}
+            {sipExtsLoading && <span style={{ fontSize: 11, fontWeight: 400, color: 'var(--c-faint)', marginLeft: 8 }}>chargement statut SIP...</span>}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={loadSipExtensions}>↻ Statut SIP</button>
@@ -551,9 +551,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
         {mergedExtensions.length === 0 ? <div className="empty-tab">Aucune extension enregistrée.</div> : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#F9FAFB' }}>
+              <tr style={{ background: 'var(--c-surface-2)' }}>
                 {['','Ext.','Nom','DID associé','Messagerie','Renvoi/DND','IP publique','IP privée','Actif',''].map((h, i) => (
-                  <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                  <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -564,7 +564,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                 return (
                   <tr key={e.id} onClick={() => contactId && navigate(`/contacts/${contactId}?fromCompanyId=${companyId}&fromCompanyName=${encodeURIComponent(companyName || '')}&fromTab=telephonie`)}
                     title={contactId ? 'Ouvrir la fiche contact' : 'Aucun contact lié à ce poste'}
-                    style={{ borderBottom: '1px solid #F3F4F6', cursor: contactId ? 'pointer' : 'default' }}>
+                    style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: contactId ? 'pointer' : 'default' }}>
                     <td style={{ padding: '10px 12px' }}>
                       {sip ? (
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -576,17 +576,17 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
                           {sip.call_state === 'ringing' && <span title="Sonne" style={{ color: '#D97706' }}>🔔</span>}
                         </span>
                       ) : (
-                        <span title="Pas de poste SIPV" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: '#D1D5DB' }} />
+                        <span title="Pas de poste SIPV" style={{ display: 'inline-block', width: 10, height: 10, borderRadius: '50%', background: 'var(--c-border-strong)' }} />
                       )}
                     </td>
                     <td style={{ padding: '10px 12px', fontWeight: 700, fontFamily: 'monospace' }}>{e.extension}</td>
                     <td style={{ padding: '10px 12px' }}>{e.name}</td>
-                    <td style={{ padding: '10px 12px', color: '#6B7280', fontFamily: 'monospace', fontSize: 12 }}>{e.did_number || '—'}</td>
-                    <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{e.voicemail_email || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: 'var(--c-muted)', fontFamily: 'monospace', fontSize: 12 }}>{e.did_number || '—'}</td>
+                    <td style={{ padding: '10px 12px', color: 'var(--c-muted)', fontSize: 12 }}>{e.voicemail_email || '—'}</td>
                     <td style={{ padding: '10px 12px', fontSize: 11 }}>
-                      {sip?.dnd_enabled && <span style={{ background: '#FEE2E2', color: '#B91C1C', borderRadius: 4, padding: '2px 6px', fontWeight: 600, marginRight: 4 }}>DND</span>}
+                      {sip?.dnd_enabled && <span style={{ background: 'var(--c-tint-red)', color: 'var(--c-on-red)', borderRadius: 4, padding: '2px 6px', fontWeight: 600, marginRight: 4 }}>DND</span>}
                       {sip && ['forward_immediate_enabled', 'forward_busy_enabled', 'forward_no_answer_enabled', 'forward_offline_enabled'].some(k => sip[k]) && (
-                        <span style={{ background: '#FEF3C7', color: '#92400E', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>Renvoi</span>
+                        <span style={{ background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)', borderRadius: 4, padding: '2px 6px', fontWeight: 600 }}>Renvoi</span>
                       )}
                       {!sip?.dnd_enabled && !(sip && ['forward_immediate_enabled', 'forward_busy_enabled', 'forward_no_answer_enabled', 'forward_offline_enabled'].some(k => sip[k])) && '—'}
                     </td>
@@ -641,18 +641,18 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 
       {subTab === 'appareils' && (<>
       <div style={{ marginTop: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
           Options téléphonie (défaut compagnie)
         </div>
-        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
           La bibliothèque de templates se gère dans "Serveur". On peut en choisir PLUSIEURS en même temps (ex. un "défaut" + un "oreillette" + un "boutons de park") — ils se combinent. Ceux cochés remplissent les options ci-dessous ("as template") ; cliquer une option la personnalise pour cette compagnie seulement.
         </div>
         {globalTemplates.filter(t => !t.is_default).length > 0 && (
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>
               Global Templates supplémentaires
               {globalTemplates.find(t => t.is_default) && (
-                <span style={{ fontWeight: 400, color: '#6B7280' }}> — "{globalTemplates.find(t => t.is_default).name}" déjà appliqué automatiquement (Défaut)</span>
+                <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}> — "{globalTemplates.find(t => t.is_default).name}" déjà appliqué automatiquement (Défaut)</span>
               )}
             </div>
             <TemplateDropdownChain options={globalTemplates.filter(t => !t.is_default)}
@@ -661,7 +661,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
         )}
         {tenantTemplates.length > 0 && (
           <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Templates de tenant</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>Templates de tenant</div>
             <TemplateDropdownChain options={tenantTemplates}
               selectedIds={selectedTenantTemplateIds} onChange={next => setTemplateSelection('tenant', next)} />
           </div>
@@ -678,27 +678,27 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 
       {subTab === 'urgence' && (<>
       <div style={{ marginTop: 8 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
           Adresses E911
         </div>
-        <div style={{ fontSize: 12, color: '#6B7280' }}>
+        <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>
           Gérées pour l'instant dans l'onglet "Informations" de la compagnie, pas encore déplacées ici.
         </div>
       </div>
       <div style={{ marginTop: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
           Fax
         </div>
         <div className="empty-tab">Pas encore construit côté SIPV (modèle `FaxLine`/`FaxJob` existe, aucun proxy/écran).</div>
       </div>
       <div style={{ marginTop: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
           SMS
         </div>
         <div className="empty-tab">Pas encore construit côté SIPV (modèle `SMSConfig`/`SMSMessage` existe, aucun proxy/écran).</div>
       </div>
       <div style={{ marginTop: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
           Sécurité (ACL, anti-fraude)
         </div>
         <div className="empty-tab">Pas encore construit côté SIPV (modèles `SecurityEvent`/`ACLRule`/`FraudRule`/`BlockedIP` existent, aucun proxy/écran).</div>
@@ -732,16 +732,16 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 function CdrDetailRow({ c, colSpan }) {
   return (
     <tr>
-      <td colSpan={colSpan} style={{ padding: '10px 16px', background: '#F9FAFB', fontSize: 12 }}>
+      <td colSpan={colSpan} style={{ padding: '10px 16px', background: 'var(--c-surface-2)', fontSize: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 8 }}>
-          <div><span style={{ color: '#6B7280' }}>Réponse : </span>{c.answer_time ? new Date(c.answer_time).toLocaleString('fr-CA') : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Fin : </span>{c.end_time ? new Date(c.end_time).toLocaleString('fr-CA') : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Durée totale : </span>{c.duration != null ? `${c.duration}s` : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Nom afficheur : </span>{c.clid || '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Coût : </span>{c.cost != null ? `${c.cost} $` : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Taux/min : </span>{c.rate_per_minute != null ? `${c.rate_per_minute} $` : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Compte : </span>{c.accountcode || '—'}</div>
-          <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#6B7280' }}>ID appel : </span><code>{c.uniqueid || '—'}</code></div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Réponse : </span>{c.answer_time ? new Date(c.answer_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Fin : </span>{c.end_time ? new Date(c.end_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Durée totale : </span>{c.duration != null ? `${c.duration}s` : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Nom afficheur : </span>{c.clid || '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Coût : </span>{c.cost != null ? `${c.cost} $` : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Taux/min : </span>{c.rate_per_minute != null ? `${c.rate_per_minute} $` : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Compte : </span>{c.accountcode || '—'}</div>
+          <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'var(--c-muted)' }}>ID appel : </span><code>{c.uniqueid || '—'}</code></div>
         </div>
       </td>
     </tr>
@@ -821,12 +821,12 @@ export function CdrSection({ companyId }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Historique d'appels ({total})
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           {retentionDays !== null && (
-            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#6B7280' }}>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--c-muted)' }}>
               Conserver
               <input type="number" min="1" value={retentionDays} onChange={e => setRetentionDays(parseInt(e.target.value, 10) || 1)}
                 style={{ width: 60, fontSize: 12, padding: '3px 6px' }} />
@@ -842,7 +842,7 @@ export function CdrSection({ companyId }) {
           </select>
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8 }}>
         <div className="form-group" style={{ margin: 0 }}>
           <label style={{ fontSize: 11 }}>Recherche (numéro)</label>
           <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder="ex: 514" style={{ fontSize: 12, padding: '4px 8px', width: 130 }}
@@ -867,16 +867,16 @@ export function CdrSection({ companyId }) {
         <>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#F9FAFB' }}>
+              <tr style={{ background: 'var(--c-surface-2)' }}>
                 {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {items.map(c => (
                 <Fragment key={c.id}>
-                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
+                  <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpandedId(expandedId === c.id ? null : c.id)}>
                     <td style={{ padding: '8px 12px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
                     <td style={{ padding: '8px 12px' }}>{c.src || ''}</td>
                     <td style={{ padding: '8px 12px' }}>{c.dst || ''}</td>
@@ -891,7 +891,7 @@ export function CdrSection({ companyId }) {
           </table>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10, alignItems: 'center' }}>
             <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page <= 1} onClick={() => setPage(p => p - 1)}>← Précédent</button>
-            <span style={{ fontSize: 12, color: '#6B7280' }}>Page {page} / {totalPages}</span>
+            <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Page {page} / {totalPages}</span>
             <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Suivant →</button>
           </div>
         </>
@@ -954,13 +954,13 @@ function TrunkSection({ companyId }) {
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Trunks ({trunks.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
       </div>
       {showNew && (
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end' }}>
           <div className="form-group"><label>Nom</label><input value={newForm.name} onChange={e => setNewForm(f => ({ ...f, name: e.target.value }))} autoFocus /></div>
           <div className="form-group"><label>Carrier</label><input value={newForm.carrier_name} onChange={e => setNewForm(f => ({ ...f, carrier_name: e.target.value }))} /></div>
           <div className="form-group"><label>Host</label><input value={newForm.host} onChange={e => setNewForm(f => ({ ...f, host: e.target.value }))} placeholder="ex: vgw1.provider.com" /></div>
@@ -969,29 +969,29 @@ function TrunkSection({ companyId }) {
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createTrunk}>Créer</button>
         </div>
       )}
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : trunks.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : trunks.length === 0 ? (
         <div className="empty-tab">Aucun trunk configuré.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Carrier', 'Host', 'Synchronisé', 'Actif', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {trunks.map(t => (
               <Fragment key={t.id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => toggleExpand(t.id)}>
+                <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => toggleExpand(t.id)}>
                   <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.name}</td>
                   <td style={{ padding: '10px 12px' }}>{t.carrier_name}</td>
                   <td style={{ padding: '10px 12px' }}>{t.host}</td>
                   <td style={{ padding: '10px 12px' }}>
                     {t.freeswitch_synced ? (
-                      <span style={{ fontSize: 11, color: '#166534' }}>✓ synchronisé</span>
+                      <span style={{ fontSize: 11, color: 'var(--c-on-green)' }}>✓ synchronisé</span>
                     ) : (
-                      <span title="Modifié dans SIPV mais pas encore redéployé sur le gateway FreeSWITCH réel (fichier serveur, manuel)" style={{ fontSize: 11, color: '#B45309' }}>⚠ non synchronisé</span>
+                      <span title="Modifié dans SIPV mais pas encore redéployé sur le gateway FreeSWITCH réel (fichier serveur, manuel)" style={{ fontSize: 11, color: 'var(--c-on-amber)' }}>⚠ non synchronisé</span>
                     )}
                   </td>
                   <td style={{ padding: '10px 12px' }}>
@@ -1001,20 +1001,20 @@ function TrunkSection({ companyId }) {
                 </tr>
                 {expanded === t.id && (
                   <tr>
-                    <td colSpan={6} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Statut live (gateway FreeSWITCH)</div>
+                    <td colSpan={6} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 6 }}>Statut live (gateway FreeSWITCH)</div>
                       {!status[t.id] ? (
-                        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 14 }}>Chargement...</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 14 }}>Chargement...</div>
                       ) : !status[t.id].configured ? (
-                        <div style={{ fontSize: 12, color: '#B45309', marginBottom: 14 }}>Gateway pas encore déployé sur FreeSWITCH ({status[t.id].error})</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-on-amber)', marginBottom: 14 }}>Gateway pas encore déployé sur FreeSWITCH ({status[t.id].error})</div>
                       ) : (
                         <div style={{ fontSize: 12, marginBottom: 14 }}>
                           <span style={{
                             display: 'inline-block', padding: '2px 8px', borderRadius: 10, fontWeight: 600,
-                            background: status[t.id].status === 'UP' ? '#DCFCE7' : '#FEE2E2',
-                            color: status[t.id].status === 'UP' ? '#166534' : '#991B1B',
+                            background: status[t.id].status === 'UP' ? '#DCFCE7' : 'var(--c-tint-red)',
+                            color: status[t.id].status === 'UP' ? 'var(--c-on-green)' : 'var(--c-on-red)',
                           }}>{status[t.id].status || '?'}</span>
-                          <span style={{ marginLeft: 8, color: '#6B7280' }}>État : {status[t.id].state || '?'} — {status[t.id].gateway_name}</span>
+                          <span style={{ marginLeft: 8, color: 'var(--c-muted)' }}>État : {status[t.id].state || '?'} — {status[t.id].gateway_name}</span>
                         </div>
                       )}
 
@@ -1036,7 +1036,7 @@ function TrunkSection({ companyId }) {
                           <input defaultValue={t.username || ''} onBlur={e => { const v = e.target.value.trim(); if (v !== (t.username || '')) updateTrunk(t.id, { username: v || null }) }} />
                         </div>
                         <div className="form-group" style={{ maxWidth: 200 }}>
-                          <label>Password {t.has_password && <span style={{ color: '#6B7280', fontWeight: 400 }}>(déjà défini)</span>}</label>
+                          <label>Password {t.has_password && <span style={{ color: 'var(--c-muted)', fontWeight: 400 }}>(déjà défini)</span>}</label>
                           <input type="password" placeholder="Laisser vide pour ne pas changer" onBlur={e => { const v = e.target.value; if (v) updateTrunk(t.id, { password: v }) }} />
                         </div>
                         <div className="form-group" style={{ maxWidth: 200 }}>
@@ -1052,11 +1052,11 @@ function TrunkSection({ companyId }) {
                         </div>
                       </div>
 
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Routes sortantes utilisant ce trunk</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 6 }}>Routes sortantes utilisant ce trunk</div>
                       {!routes[t.id] ? (
-                        <div style={{ fontSize: 12, color: '#6B7280' }}>Chargement...</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Chargement...</div>
                       ) : routes[t.id].length === 0 ? (
-                        <div style={{ fontSize: 12, color: '#6B7280' }}>Aucune route n'utilise ce trunk.</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Aucune route n'utilise ce trunk.</div>
                       ) : (
                         <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12 }}>
                           {routes[t.id].map(r => (
@@ -1086,7 +1086,7 @@ const PLAGE_DAYS = [{ v: 0, l: 'Lu' }, { v: 1, l: 'Ma' }, { v: 2, l: 'Me' }, { v
 function PlageFields({ rule, onPatch, onRemove, destCtx }) {
   const opts = destinationSelectOptions(rule.destination_type, destCtx)
   return (
-    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 8px' }}>
+    <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 8px' }}>
       <div style={{ display: 'flex', gap: 2 }}>
         {PLAGE_DAYS.map(d => {
           const on = rule.days_of_week.includes(d.v)
@@ -1094,14 +1094,14 @@ function PlageFields({ rule, onPatch, onRemove, destCtx }) {
             <button key={d.v} type="button"
               onClick={() => onPatch({ days_of_week: on ? rule.days_of_week.filter(x => x !== d.v) : [...rule.days_of_week, d.v].sort() })}
               style={{
-                fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '1px solid ' + (on ? 'var(--brand)' : '#D1D5DB'),
-                background: on ? 'var(--brand)' : '#fff', color: on ? '#fff' : '#6B7280', cursor: 'pointer',
+                fontSize: 10, padding: '2px 5px', borderRadius: 4, border: '1px solid ' + (on ? 'var(--brand)' : 'var(--c-border-strong)'),
+                background: on ? 'var(--brand)' : 'var(--c-surface)', color: on ? '#fff' : 'var(--c-muted)', cursor: 'pointer',
               }}>{d.l}</button>
           )
         })}
       </div>
       <input type="time" value={rule.open_time} onChange={e => onPatch({ open_time: e.target.value })} style={{ fontSize: 12, padding: '3px 4px', width: 90 }} />
-      <span style={{ fontSize: 11, color: '#9CA3AF' }}>à</span>
+      <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>à</span>
       <input type="time" value={rule.close_time} onChange={e => onPatch({ close_time: e.target.value })} style={{ fontSize: 12, padding: '3px 4px', width: 90 }} />
       <select value={rule.destination_type || ''} onChange={e => onPatch({ destination_type: e.target.value || null, destination: null })} style={{ fontSize: 12, padding: '3px 4px' }}>
         {DID_DESTINATION_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1341,15 +1341,15 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
   if (!sipvEnabled) return null
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
         Musique d'attente (MOH) {saving && <span style={{ fontSize: 11, fontWeight: 400, color: '#3B82F6' }}> enregistrement...</span>}
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Fichiers disponibles pour cette compagnie (globaux + dédiés). Cocher pour sélectionner — plusieurs possibles, jouées dans l'ordre ci-dessous. La bibliothèque globale se gère dans "Serveur".
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 12, fontSize: 12 }}>
-        <span style={{ fontWeight: 600, color: '#374151' }}>Ordre de lecture :</span>
+        <span style={{ fontWeight: 600, color: 'var(--c-text-2)' }}>Ordre de lecture :</span>
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
           <input type="radio" checked={!shuffle} onChange={() => setShuffleMode(false)} /> Liste (ordre choisi)
         </label>
@@ -1358,7 +1358,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
         </label>
         {shuffleSaving && <span style={{ color: '#3B82F6' }}>enregistrement...</span>}
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : available.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : available.length === 0 ? (
         <div className="empty-tab">Aucun fichier MOH disponible (globaux ou dédiés à cette compagnie).</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
@@ -1370,12 +1370,12 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
                 display: 'grid',
                 gridTemplateColumns: '20px minmax(160px, 1fr) 64px 44px 200px 130px 90px 70px 90px',
                 alignItems: 'center', columnGap: 8,
-                background: isSelected ? '#EFF6FF' : '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px',
+                background: isSelected ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px',
               }}>
                 <input type="checkbox" checked={isSelected} onChange={() => toggle(f)} />
                 <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-                <span>{!f.tenant_id && <span style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Global</span>}</span>
-                <span style={{ fontSize: 12, color: '#9CA3AF' }}>{f.duration_seconds ? `${f.duration_seconds}s` : ''}</span>
+                <span>{!f.tenant_id && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Global</span>}</span>
+                <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>{f.duration_seconds ? `${f.duration_seconds}s` : ''}</span>
                 <audio controls src={`/api/v1/server/moh/${f.id}/file?token=${encodeURIComponent(getToken())}`} style={{ height: 26, width: '100%' }} />
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => { setCallFor(callFor === f.id ? null : f.id); setCallExtId('') }}>
                   📞 Écouter par poste
@@ -1383,7 +1383,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => downloadFile(f)}>Télécharger</button>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                   {isSelected && (<>
-                    <span style={{ fontSize: 11, color: '#6B7280' }}>#{idx + 1}</span>
+                    <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>#{idx + 1}</span>
                     <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} disabled={idx === 0} onClick={() => move(idx, -1)}>↑</button>
                     <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} disabled={idx === selection.length - 1} onClick={() => move(idx, 1)}>↓</button>
                   </>)}
@@ -1403,7 +1403,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
                   )}
                 </div>
                 {callFor === f.id && (
-                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 6, marginTop: 4, borderTop: '1px solid #E5E7EB' }}>
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 6, marginTop: 4, borderTop: '1px solid var(--c-border)' }}>
                     <select value={callExtId} onChange={e => setCallExtId(e.target.value)} style={{ fontSize: 12 }}>
                       <option value="">Choisir un poste (actif et connecté)...</option>
                       {availableExts.map(e => <option key={e.id} value={e.id}>{e.extension} — {e.name}</option>)}
@@ -1411,7 +1411,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
                     <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={!callExtId || calling} onClick={() => callToListen(f)}>
                       {calling ? 'Appel...' : 'Appeler'}
                     </button>
-                    {availableExts.length === 0 && <span style={{ fontSize: 12, color: '#9CA3AF' }}>Aucun poste actif/connecté en ce moment.</span>}
+                    {availableExts.length === 0 && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Aucun poste actif/connecté en ce moment.</span>}
                   </div>
                 )}
               </div>
@@ -1422,7 +1422,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
       {callMsgOk && <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>{callMsgOk}</div>}
       {callMsgError && <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600, marginBottom: 8 }}>{callMsgError}</div>}
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12 }}>
         <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
           <label>Nom</label>
           <input value={uploadForm.name} onChange={e => setUploadForm(p => ({ ...p, name: e.target.value }))} placeholder="ex: Musique classique" />
@@ -1565,11 +1565,11 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
   const availableExts = sipExts.filter(e => e.is_active && e.registered)
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
         Phrases (annonces IVR)
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Utilisées comme destination "Message enregistré" sur un DID, ou greeting d'un IVR.
       </div>
 
@@ -1578,9 +1578,9 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
           {prompts.map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 6, padding: '6px 10px', flexWrap: 'wrap' }}>
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 6, padding: '6px 10px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: 13, fontWeight: 600 }}>{p.name}</span>
-              {p.duration_seconds && <span style={{ fontSize: 12, color: '#9CA3AF' }}>{p.duration_seconds}s</span>}
+              {p.duration_seconds && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>{p.duration_seconds}s</span>}
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                 <audio controls src={`/api/v1/telephony/prompts/${p.id}/file?token=${encodeURIComponent(getToken())}`} style={{ height: 26, maxWidth: 190 }} />
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 8px' }} onClick={() => { setCallFor(callFor === p.id ? null : p.id); setCallExtId('') }}>
@@ -1591,7 +1591,7 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
                 <button className="inv-del-btn" onClick={() => removePrompt(p)}>✕</button>
               </div>
               {callFor === p.id && (
-                <div style={{ width: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 6, borderTop: '1px solid #E5E7EB' }}>
+                <div style={{ width: '100%', display: 'flex', gap: 8, alignItems: 'center', paddingTop: 6, borderTop: '1px solid var(--c-border)' }}>
                   <select value={callExtId} onChange={e => setCallExtId(e.target.value)} style={{ fontSize: 12 }}>
                     <option value="">Choisir un poste (actif et connecté)...</option>
                     {availableExts.map(e => <option key={e.id} value={e.id}>{e.extension} — {e.name}</option>)}
@@ -1599,7 +1599,7 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
                   <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={!callExtId || calling} onClick={() => callToListen(p)}>
                     {calling ? 'Appel...' : 'Appeler'}
                   </button>
-                  {availableExts.length === 0 && <span style={{ fontSize: 12, color: '#9CA3AF' }}>Aucun poste actif/connecté en ce moment.</span>}
+                  {availableExts.length === 0 && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Aucun poste actif/connecté en ce moment.</span>}
                 </div>
               )}
             </div>
@@ -1610,7 +1610,7 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
       {msgOk && <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>{msgOk}</div>}
       {msgError && <div style={{ fontSize: 12, color: '#DC2626', fontWeight: 600, marginBottom: 8 }}>{msgError}</div>}
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 12, background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12 }}>
         <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
           <label>Nom</label>
           <input value={uploadForm.name} onChange={e => setUploadForm(p => ({ ...p, name: e.target.value }))} placeholder="ex: Accueil général" />
@@ -1624,8 +1624,8 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
         </button>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>Générer par voix (synthèse vocale)</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-text-2)' }}>Générer par voix (synthèse vocale)</div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
             <label>Nom</label>
@@ -1657,7 +1657,7 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
               ))}
             </select>
             {filteredVoices.length === 0 && voices.length > 0 && (
-              <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Aucune voix pour ce filtre.</div>
+              <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 4 }}>Aucune voix pour ce filtre.</div>
             )}
           </div>
           {selectedVoice && (
@@ -1674,9 +1674,9 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
           <label>Texte</label>
           <textarea rows={3} value={genForm.text} onChange={e => setGenForm(p => ({ ...p, text: e.target.value }))} placeholder="Le texte de la phrase à créer (pas lié au bouton Tester)" />
         </div>
-        {voices.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF' }}>Aucune voix disponible (service Voicebox pas encore prêt, ou injoignable).</div>}
+        {voices.length === 0 && <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>Aucune voix disponible (service Voicebox pas encore prêt, ou injoignable).</div>}
         {voices.length > 0 && (
-          <div style={{ fontSize: 12, color: '#9CA3AF' }}>Une seule voix française disponible pour l'instant (Arianne, femme) — les autres voix françaises ou masculines nécessiteraient du clonage de voix (audio de référence), pas encore branché.</div>
+          <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>Une seule voix française disponible pour l'instant (Arianne, femme) — les autres voix françaises ou masculines nécessiteraient du clonage de voix (audio de référence), pas encore branché.</div>
         )}
       </div>
     </div>
@@ -1705,7 +1705,7 @@ function SchedulesSection({ companyId, schedules, onRefresh, mergedExtensions, r
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Horaires ({schedules.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(true)}>+ Ajouter</button>
@@ -1713,16 +1713,16 @@ function SchedulesSection({ companyId, schedules, onRefresh, mergedExtensions, r
       {schedules.length === 0 ? <div className="empty-tab">Aucun horaire configuré.</div> : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Plages', 'Actif', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {schedules.map(s => (
               <Fragment key={s.id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === s.id ? null : s.id)}>
+                <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpanded(expanded === s.id ? null : s.id)}>
                   <td style={{ padding: '10px 12px', fontWeight: 600 }}>{s.name}</td>
                   <td style={{ padding: '10px 12px' }}>{s.rules.length}</td>
                   <td style={{ padding: '10px 12px' }}>
@@ -1732,12 +1732,12 @@ function SchedulesSection({ companyId, schedules, onRefresh, mergedExtensions, r
                 </tr>
                 {expanded === s.id && (
                   <tr>
-                    <td colSpan={4} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
+                    <td colSpan={4} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
                       <div className="form-group" style={{ maxWidth: 300 }}>
                         <label>Nom</label>
                         <input defaultValue={s.name} onBlur={e => e.target.value.trim() && updateSchedule(s.id, { name: e.target.value.trim() })} />
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '10px 0 6px' }}>Plages horaires</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', margin: '10px 0 6px' }}>Plages horaires</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {s.rules.map(r => (
                           <PlageFields key={r.id} rule={r} destCtx={destCtx}
@@ -1867,13 +1867,13 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Groupes d'appel ({ringGroups.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
       </div>
       {showNew && (
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group"><label>Nom</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
           <div className="form-group"><label>Extension</label><input value={form.extension} onChange={e => setForm(p => ({ ...p, extension: e.target.value }))} style={{ width: 80 }} /></div>
           <div className="form-group">
@@ -1887,21 +1887,21 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createGroup}>Créer</button>
         </div>
       )}
-      {ringGroupsLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : ringGroups.length === 0 ? (
+      {ringGroupsLoading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : ringGroups.length === 0 ? (
         <div className="empty-tab">Aucun groupe d'appel.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Ext.', 'Stratégie', 'Temps', 'Confirmer', 'Membres', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {ringGroups.map(rg => (
               <Fragment key={rg.id}>
-                <tr key={rg.id} style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === rg.id ? null : rg.id)}>
+                <tr key={rg.id} style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpanded(expanded === rg.id ? null : rg.id)}>
                   <td style={{ padding: '10px 12px', fontWeight: 600 }}>{rg.name}</td>
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{rg.extension}</td>
                   <td style={{ padding: '10px 12px' }}>{rg.ring_strategy === 'hunt' ? 'Séquentielle' : 'Simultanée'}</td>
@@ -1915,14 +1915,14 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
                 </tr>
                 {expanded === rg.id && (
                   <tr key={`${rg.id}-detail`}>
-                    <td colSpan={7} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Membres</div>
+                    <td colSpan={7} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 6 }}>Membres</div>
                       {rg.ring_members.map(m => (
                         <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ minWidth: 100, fontFamily: 'monospace' }}>{m.extension_username}</span>
-                          <span style={{ fontSize: 11, color: '#6B7280' }}>Priorité</span>
+                          <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>Priorité</span>
                           <input type="number" defaultValue={m.priority} onBlur={e => updateMember(m.id, 'priority', parseInt(e.target.value, 10))} style={{ width: 50, fontSize: 12 }} />
-                          <span style={{ fontSize: 11, color: '#6B7280' }}>Ordre</span>
+                          <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>Ordre</span>
                           <input type="number" defaultValue={m.ring_order} onBlur={e => updateMember(m.id, 'ring_order', parseInt(e.target.value, 10))} style={{ width: 50, fontSize: 12 }} />
                           <label style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}>
                             <input type="checkbox" defaultChecked={m.temporarily_excluded} onChange={e => updateMember(m.id, 'temporarily_excluded', e.target.checked)} />
@@ -1936,17 +1936,17 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
                         <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => addMember(rg.id)}>+ Ajouter un membre</button>
                       </div>
 
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginTop: 16, marginBottom: 6 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginTop: 16, marginBottom: 6 }}>
                         Si personne ne répond après {rg.ring_time}s — destinations essayées dans l'ordre
                       </div>
                       {rg.failover_steps.length === 0 && (
-                        <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 6 }}>
+                        <div style={{ fontSize: 12, color: 'var(--c-faint)', marginBottom: 6 }}>
                           Aucune — l'appel raccroche après {rg.ring_time}s si personne ne répond.
                         </div>
                       )}
                       {rg.failover_steps.map((s, idx) => (
                         <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ minWidth: 18, fontSize: 11, color: '#9CA3AF', fontWeight: 700 }}>{idx + 1}.</span>
+                          <span style={{ minWidth: 18, fontSize: 11, color: 'var(--c-faint)', fontWeight: 700 }}>{idx + 1}.</span>
                           <select value={s.destination_type} style={{ fontSize: 12 }}
                             onChange={e => updateStep(s.id, 'destination_type', e.target.value)}>
                             {RING_GROUP_FAILOVER_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -1959,7 +1959,7 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
                             <>
                               <input type="number" defaultValue={s.ring_seconds || 20} style={{ fontSize: 12, width: 50 }}
                                 onBlur={e => updateStep(s.id, 'ring_seconds', parseInt(e.target.value, 10))} />
-                              <span style={{ fontSize: 11, color: '#6B7280' }}>sec</span>
+                              <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>sec</span>
                             </>
                           )}
                           <button className="inv-del-btn" onClick={() => removeStep(s.id)}>✕</button>
@@ -1978,7 +1978,7 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
                           <>
                             <input type="number" value={newStep.ring_seconds} style={{ fontSize: 12, width: 50 }}
                               onChange={e => setNewStep(p => ({ ...p, ring_seconds: parseInt(e.target.value, 10) }))} />
-                            <span style={{ fontSize: 11, color: '#6B7280' }}>sec</span>
+                            <span style={{ fontSize: 11, color: 'var(--c-muted)' }}>sec</span>
                           </>
                         )}
                         <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => addStep(rg.id)}>+ Ajouter une destination</button>
@@ -2042,28 +2042,28 @@ function PickupGroupSection({ companyId, sipExts, onRefresh }) {
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Groupes de pickup (interception) ({groups.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Composer <code>*8</code> depuis un poste décroche l'appel qui sonne pour un autre poste du même groupe.
       </div>
       {showNew && (
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
           <div className="form-group"><label>Nom du groupe</label><input value={newName} onChange={e => setNewName(e.target.value)} autoFocus /></div>
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createGroup}>Créer</button>
         </div>
       )}
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : groups.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : groups.length === 0 ? (
         <div className="empty-tab">Aucun groupe de pickup.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Membres', 'Actif', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -2073,7 +2073,7 @@ function PickupGroupSection({ companyId, sipExts, onRefresh }) {
               const available = sipExts.filter(e => e.pickup_group !== g.name)
               return (
                 <Fragment key={g.id}>
-                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
+                  <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpanded(expanded === g.id ? null : g.id)}>
                     <td style={{ padding: '10px 12px', fontWeight: 600 }}>{g.name}</td>
                     <td style={{ padding: '10px 12px' }}>{g.member_count}</td>
                     <td style={{ padding: '10px 12px' }}>
@@ -2083,13 +2083,13 @@ function PickupGroupSection({ companyId, sipExts, onRefresh }) {
                   </tr>
                   {expanded === g.id && (
                     <tr>
-                      <td colSpan={4} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
+                      <td colSpan={4} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
                         <div className="form-group" style={{ maxWidth: 250 }}>
                           <label>Nom</label>
                           <input defaultValue={g.name} onBlur={e => { const v = e.target.value.trim(); if (v && v !== g.name) updateGroup(g.id, { name: v }) }} />
                         </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '10px 0 6px' }}>Postes membres</div>
-                        {members.length === 0 && <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 6 }}>Aucun poste assigné.</div>}
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', margin: '10px 0 6px' }}>Postes membres</div>
+                        {members.length === 0 && <div style={{ fontSize: 12, color: 'var(--c-faint)', marginBottom: 6 }}>Aucun poste assigné.</div>}
                         {members.map(m => (
                           <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
                             <span style={{ minWidth: 140, fontFamily: 'monospace' }}>{m.extension} — {m.name}</span>
@@ -2170,16 +2170,16 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Groupe de paging ({pagingGroups.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={() => setShowNew(v => !v)}>+ Ajouter</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Unidirectionnelle = annonce (le récepteur écoute seulement) ; bidirectionnelle = intercom (les deux entendent). ⚠ le mode unidirectionnel ne coupe pas encore réellement l'audio du récepteur — voir TASKSIPV.
       </div>
       {showNew && (
-        <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <div className="form-group"><label>Nom</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} /></div>
           <div className="form-group"><label>Extension</label><input value={form.extension} onChange={e => setForm(p => ({ ...p, extension: e.target.value }))} style={{ width: 80 }} /></div>
           <div className="form-group">
@@ -2194,21 +2194,21 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
           <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={createGroup}>Créer</button>
         </div>
       )}
-      {pagingGroupsLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : pagingGroups.length === 0 ? (
+      {pagingGroupsLoading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : pagingGroups.length === 0 ? (
         <div className="empty-tab">Aucun groupe de paging.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Ext.', 'Mode', 'Multicast', 'Membres', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {pagingGroups.map(pg => (
               <Fragment key={pg.id}>
-                <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpanded(expanded === pg.id ? null : pg.id)}>
+                <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpanded(expanded === pg.id ? null : pg.id)}>
                   <td style={{ padding: '10px 12px', fontWeight: 600 }}>{pg.name}</td>
                   <td style={{ padding: '10px 12px', fontFamily: 'monospace' }}>{pg.extension}</td>
                   <td style={{ padding: '10px 12px' }}>{pg.mode === 'bidirectional' ? 'Bidirectionnelle' : 'Unidirectionnelle'}</td>
@@ -2218,8 +2218,8 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
                 </tr>
                 {expanded === pg.id && (
                   <tr>
-                    <td colSpan={6} style={{ padding: '10px 20px', background: '#F9FAFB' }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Membres</div>
+                    <td colSpan={6} style={{ padding: '10px 20px', background: 'var(--c-surface-2)' }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 6 }}>Membres</div>
                       {pg.paging_members.map(m => (
                         <div key={m.id} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 4 }}>
                           <span style={{ minWidth: 100, fontFamily: 'monospace' }}>{m.extension_username}</span>
@@ -2270,26 +2270,26 @@ function ButtonTemplatesSection({ companyId, templates, templatesLoading, sipExt
 
   return (
     <div style={{ marginTop: 24 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
         Templates de boutons ({templates.length})
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Créés depuis la fiche contact d'un poste ("Sauvegarder comme template"), applicables ici à n'importe quel autre poste ayant un appareil attribué.
       </div>
-      {templatesLoading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : templates.length === 0 ? (
+      {templatesLoading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
         <div className="empty-tab">Aucun template.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['Nom', 'Boutons', 'Appliquer à', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {templates.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+              <tr key={t.id} style={{ borderBottom: '1px solid var(--c-surface-3)' }}>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.name}</td>
                 <td style={{ padding: '10px 12px' }}>{t.items.length}</td>
                 <td style={{ padding: '10px 12px' }}>
@@ -2353,33 +2353,33 @@ function TenantModelTemplatesSection({ companyId, templates, loading, phoneModel
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Templates par modèle ({templates.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Le niveau le plus spécifique avant le poste lui-même — se superpose aux Templates de tenant ci-dessus, uniquement pour les postes du modèle choisi.
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : templates.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
         <div className="empty-tab">Aucun template.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {templates.map(t => (
-            <div key={t.id} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
+            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
                   {expanded === t.id ? '▾' : '▸'} {t.name}
                 </span>
-                <span style={{ fontSize: 12, color: '#6B7280' }}>{modelLabel(t.phone_model_id)}</span>
-                {t.is_default && <span style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
+                <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{modelLabel(t.phone_model_id)}</span>
+                {t.is_default && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => toggleDefault(t)}>
                   {t.is_default ? 'Retirer défaut' : 'Définir défaut'}
                 </button>
                 <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
               </div>
-              {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{t.description}</div>}
+              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
               {expanded === t.id && (
                 <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
               )}
@@ -2414,7 +2414,7 @@ function TenantModelTemplatesSection({ companyId, templates, loading, phoneModel
                 />
               </div>
             )}
-            {editing && <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>Modèle : {modelLabel(editing.phone_model_id)} (fixe après création)</div>}
+            {editing && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>Modèle : {modelLabel(editing.phone_model_id)} (fixe après création)</div>}
             <div className="modal-actions">
               <button className="btn-secondary" onClick={closeForm}>Annuler</button>
               <button className="btn-primary" onClick={editing ? saveEdit : createTemplate} disabled={!form.name.trim() || (!editing && !newModel)}>{editing ? 'Enregistrer' : 'Créer'}</button>
@@ -2508,37 +2508,37 @@ export function E911AddressesSection({ companyId }) {
   return (
     <div style={{ marginTop: 24 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Succursales ({addresses.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouvelle succursale</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Une compagnie peut avoir plusieurs sites — chacun a sa propre adresse 911 (assignée ensuite par poste, fiche Contact) et peut être facturé séparément.
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : addresses.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : addresses.length === 0 ? (
         <div className="empty-tab">Aucune succursale.</div>
       ) : (
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
           <thead>
-            <tr style={{ background: '#F9FAFB' }}>
+            <tr style={{ background: 'var(--c-surface-2)' }}>
               {['', 'Nom', 'Adresse', 'Contact facturation', 'Statut', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {addresses.map(a => (
-              <tr key={a.id} style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer', opacity: a.is_active ? 1 : 0.55 }} onClick={() => openEdit(a)}>
+              <tr key={a.id} style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer', opacity: a.is_active ? 1 : 0.55 }} onClick={() => openEdit(a)}>
                 <td style={{ padding: '10px 12px' }}>
                   {a.is_primary
                     ? <span title="Succursale principale (défaut pour le 911 des postes)" style={{ color: '#D97706' }}>★</span>
-                    : a.is_active && <button title="Définir comme succursale principale" onClick={e => { e.stopPropagation(); makePrimary(a) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#D1D5DB', fontSize: 15 }}>☆</button>}
+                    : a.is_active && <button title="Définir comme succursale principale" onClick={e => { e.stopPropagation(); makePrimary(a) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--c-border-strong)', fontSize: 15 }}>☆</button>}
                 </td>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>{a.label}</td>
-                <td style={{ padding: '10px 12px', color: '#6B7280' }}>{a.civic_number} {a.street_name}{a.unit ? `, ${a.unit}` : ''}, {a.city} {a.province} {a.postal_code}</td>
-                <td style={{ padding: '10px 12px', color: '#6B7280', fontSize: 12 }}>{a.billing_contact_label || a.billing_email || '—'}</td>
-                <td style={{ padding: '10px 12px' }}>{a.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Active</span> : <span style={{ color: '#9CA3AF' }}>Désactivée</span>}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--c-muted)' }}>{a.civic_number} {a.street_name}{a.unit ? `, ${a.unit}` : ''}, {a.city} {a.province} {a.postal_code}</td>
+                <td style={{ padding: '10px 12px', color: 'var(--c-muted)', fontSize: 12 }}>{a.billing_contact_label || a.billing_email || '—'}</td>
+                <td style={{ padding: '10px 12px' }}>{a.is_active ? <span style={{ color: '#059669', fontWeight: 600 }}>Active</span> : <span style={{ color: 'var(--c-faint)' }}>Désactivée</span>}</td>
                 <td style={{ padding: '10px 12px' }}>
                   {a.is_active
                     ? <button className="inv-del-btn" onClick={e => { e.stopPropagation(); deactivate(a.id) }}>✕</button>

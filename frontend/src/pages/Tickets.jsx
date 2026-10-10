@@ -5,7 +5,7 @@ import NewTicketModal from '../components/NewTicketModal'
 import './Tickets.css'
 
 const PRIORITY_LABELS = {
-  faible:   { label: 'Faible',    color: '#6B7280' },
+  faible:   { label: 'Faible',    color: 'var(--c-muted)' },
   normal:   { label: 'Normal',    color: 'var(--brand)' },
   urgent:   { label: 'Urgent',    color: '#D97706' },
   critique: { label: 'Critique',  color: '#DC2626' },
@@ -16,7 +16,7 @@ const STATUS_LABELS = {
   en_cours:            { label: 'En cours',                 color: '#059669' },
   en_attente_client:   { label: "En attente d'une réponse",  color: '#7C3AED' },
   facture:             { label: 'Facturé',                  color: '#0891B2' },
-  ferme:               { label: 'Fermé',                    color: '#6B7280' },
+  ferme:               { label: 'Fermé',                    color: 'var(--c-muted)' },
 }
 
 // Chaque puce est un interrupteur (clic = ajoute/retire du groupe) -- plusieurs
@@ -147,11 +147,11 @@ export default function Tickets() {
                     <td><span className="tkt-badge" style={{ background: p.color }}>{p.label}</span></td>
                     <td className="tkt-title">{t.title}</td>
                     <td>{t.company_name}</td>
-                    <td style={{ color: '#6B7280', fontSize: 13 }}>{t.contact_name || '—'}</td>
-                    <td style={{ color: '#6B7280' }}>{t.assigned_name || '—'}</td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{t.contact_name || '—'}</td>
+                    <td style={{ color: 'var(--c-muted)' }}>{t.assigned_name || '—'}</td>
                     <td><span className="tkt-badge" style={{ background: s.color }}>{s.label}</span></td>
                     <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtMins(t.total_minutes)}</td>
-                    <td style={{ fontSize: 12, color: '#6B7280' }} title={t.open_count > 1 ? `Ouvert ${t.open_count} fois` : ''}>
+                    <td style={{ fontSize: 12, color: 'var(--c-muted)' }} title={t.open_count > 1 ? `Ouvert ${t.open_count} fois` : ''}>
                       {t.last_opened_at ? `👁 ${fmtOpened(t.last_opened_at)}` : '—'}
                     </td>
                     <td className="inv-arrow">›</td>
@@ -159,7 +159,7 @@ export default function Tickets() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={9} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucun ticket</td></tr>
+                <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px' }}>Aucun ticket</td></tr>
               )}
             </tbody>
           </table>

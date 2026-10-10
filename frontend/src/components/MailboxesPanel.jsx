@@ -49,7 +49,7 @@ export default function MailboxesPanel() {
         <span className="adm-count">Boîtes de courriel</span>
         <button className="btn-primary" onClick={() => setEdit({})}>+ Ajouter une boîte</button>
       </div>
-      <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 0 }}>
         Donnez à chaque boîte sa fonction : les factures partent de la boîte « Factures », les tickets de la boîte « Tickets »…
         Les boîtes partagées sont copiées dans <b>Courriels</b> et classées dans la fiche de chaque client ; la boîte « Tickets » n'y est pas
         (ses courriels deviennent des tickets). Une boîte personnelle (philippe@) se règle dans la fiche de l'employé. Les paiements Interac
@@ -58,13 +58,13 @@ export default function MailboxesPanel() {
       <table className="adm-table">
         <thead><tr><th>Boîte</th><th>Fonctions</th><th>État</th><th></th></tr></thead>
         <tbody>
-          {data.mailboxes.length === 0 && <tr><td colSpan={4} style={{ color: '#9CA3AF', textAlign: 'center' }}>Aucune boîte</td></tr>}
+          {data.mailboxes.length === 0 && <tr><td colSpan={4} style={{ color: 'var(--c-faint)', textAlign: 'center' }}>Aucune boîte</td></tr>}
           {data.mailboxes.map(m => (
             <tr key={m.id} style={{ opacity: m.is_active ? 1 : 0.55 }}>
               <td>
                 <div style={{ fontWeight: 600 }}>{m.email}</div>
-                {m.display_name && <div style={{ fontSize: 12, color: '#6B7280' }}>Nom affiché : {m.display_name}</div>}
-                <div style={{ fontSize: 12, color: '#6B7280' }}>
+                {m.display_name && <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Nom affiché : {m.display_name}</div>}
+                <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>
                   {m.kind === 'personal' ? `Personnelle — ${m.owner_name || 'employé'} (réglée dans Employés)`
                     : m.kind === 'send_only' ? 'Envoi seulement — jamais lue'
                     : m.functions.includes('tickets') ? 'Chaque courriel devient un ticket'
@@ -77,15 +77,15 @@ export default function MailboxesPanel() {
               </td>
               <td>
                 {m.functions.length ? m.functions.map(f => (
-                  <span key={f} style={{ display: 'inline-block', fontSize: 12, padding: '2px 8px', borderRadius: 10, background: '#DBEAFE', color: '#1D4ED8', marginRight: 4 }}>{short(data.functions[f] || f)}</span>
-                )) : <span style={{ fontSize: 12, color: '#9CA3AF' }}>—</span>}
+                  <span key={f} style={{ display: 'inline-block', fontSize: 12, padding: '2px 8px', borderRadius: 10, background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', marginRight: 4 }}>{short(data.functions[f] || f)}</span>
+                )) : <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>—</span>}
               </td>
               <td style={{ fontSize: 12 }}>
-                {!m.is_active ? <span style={{ color: '#6B7280' }}>Désactivée</span>
+                {!m.is_active ? <span style={{ color: 'var(--c-muted)' }}>Désactivée</span>
                   : !m.has_password ? <span style={{ color: '#D97706' }}>Mot de passe à entrer</span>
                   : m.last_error ? <span style={{ color: '#DC2626' }} title={m.last_error}>Erreur de connexion</span>
                   : m.last_check_at ? <span style={{ color: '#059669' }}>✓ Connectée</span>
-                  : <span style={{ color: '#6B7280' }}>Pas encore testée</span>}
+                  : <span style={{ color: 'var(--c-muted)' }}>Pas encore testée</span>}
               </td>
               <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
                 <button className="btn-secondary" style={{ fontSize: 12, marginRight: 6 }} disabled={tests[m.id]?.busy || !m.has_password} onClick={() => test(m)}>{tests[m.id]?.busy ? '…' : 'Tester'}</button>
@@ -96,12 +96,12 @@ export default function MailboxesPanel() {
         </tbody>
       </table>
 
-      <div style={{ marginTop: 16, padding: 14, border: '1px solid #E5E7EB', borderRadius: 10, background: '#fff' }}>
+      <div style={{ marginTop: 16, padding: 14, border: '1px solid var(--c-border)', borderRadius: 10, background: 'var(--c-surface)' }}>
         <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', fontSize: 14, cursor: 'pointer' }}>
           <input type="checkbox" checked={data.interac.enabled} onChange={e => saveInterac({ enabled: e.target.checked })} style={{ marginTop: 3 }} />
           <span>
             <strong>Reconnaître les paiements Interac</strong>
-            <span style={{ display: 'block', color: '#6B7280', fontSize: 13, marginTop: 2 }}>
+            <span style={{ display: 'block', color: 'var(--c-muted)', fontSize: 13, marginTop: 2 }}>
               Le relevé de la banque n'indique que « VIREMENT INTERAC ». ERPCRM lit les avis d'Interac dans toutes les boîtes, toutes les 15 minutes
               (lecture seule : aucun courriel marqué lu ni déplacé), pour savoir qui a payé chaque dépôt.
             </span>
@@ -110,12 +110,12 @@ export default function MailboxesPanel() {
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 10, fontSize: 13 }}>
           <span>Lire depuis le</span>
           <input type="date" value={data.interac.since || ''} onChange={e => saveInterac({ since: e.target.value || null })} />
-          <span style={{ color: '#9CA3AF' }}>(vide = tout)</span>
+          <span style={{ color: 'var(--c-faint)' }}>(vide = tout)</span>
           <button className="btn-secondary" style={{ fontSize: 12 }} disabled={!data.interac.enabled} onClick={runInterac}>Lire maintenant</button>
           {interacMsg && <span style={{ color: interacMsg === 'Enregistré' || interacMsg.startsWith('Lecture') ? '#059669' : '#DC2626' }}>{interacMsg}</span>}
         </div>
         {Object.keys(st).length > 0 && (
-          <div style={{ marginTop: 8, fontSize: 13, color: '#6B7280' }}>
+          <div style={{ marginTop: 8, fontSize: 13, color: 'var(--c-muted)' }}>
             Avis : {st.matched || 0} reliés à un dépôt · {st.parsed || 0} lus en attente du relevé · {st.pending || 0} à lire · {st.ignored || 0} ignorés (pas un virement reçu) · {st.failed || 0} illisibles
           </div>
         )}
@@ -176,7 +176,7 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
           <div className="form-group">
             <label>Copier dans Courriels les courriels reçus depuis le</label>
             <input type="date" value={f.sync_since} onChange={e => set('sync_since', e.target.value)} />
-            <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Vide = les 90 derniers jours. Reculer la date ajoute les courriels plus anciens au prochain passage (rien n'est copié deux fois).</div>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>Vide = les 90 derniers jours. Reculer la date ajoute les courriels plus anciens au prochain passage (rien n'est copié deux fois).</div>
           </div>
         )}
         <div className="form-group">
@@ -187,12 +187,12 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
               <span><b>{short(label)}</b> — {label.split(' — ')[1]}</span>
             </label>
           ))}
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Les paiements Interac sont reconnus dans toutes les boîtes, peu importe la fonction.</div>
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>Les paiements Interac sont reconnus dans toutes les boîtes, peu importe la fonction.</div>
         </div>
         <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, marginBottom: 10 }}>
           <input type="checkbox" checked={f.is_active} onChange={e => set('is_active', e.target.checked)} /> Boîte active
         </label>
-        <button type="button" onClick={() => setAdvanced(!advanced)} style={{ background: 'none', border: 'none', color: '#1D4ED8', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>
+        <button type="button" onClick={() => setAdvanced(!advanced)} style={{ background: 'none', border: 'none', color: 'var(--c-on-blue)', cursor: 'pointer', fontSize: 13, padding: 0, marginBottom: 8 }}>
           {advanced ? '▾' : '▸'} Serveur (avancé)
         </button>
         {advanced && (

@@ -136,7 +136,7 @@ export default function CatalogueDetail() {
               <>
                 <InlineField label="Multiplicateur taux horaire" value={item.rate_multiplier != null ? String(item.rate_multiplier) : ''}
                   onSave={v => save('rate_multiplier', v === '' ? null : parseFloat(v))} type="number" />
-                <div style={{ fontSize: 12, color: '#6B7280', padding: '4px 0 8px' }}>
+                <div style={{ fontSize: 12, color: 'var(--c-muted)', padding: '4px 0 8px' }}>
                   Prix synchronisé automatiquement sur le taux horaire (Réglages){item.rate_multiplier ? ` × ${item.rate_multiplier}` : ''}
                 </div>
               </>

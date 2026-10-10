@@ -172,15 +172,15 @@ function NewContactForm() {
 function CdrDetailRow({ c, colSpan }) {
   return (
     <tr>
-      <td colSpan={colSpan} style={{ padding: '8px 12px', background: '#F3F4F6', fontSize: 11 }}>
+      <td colSpan={colSpan} style={{ padding: '8px 12px', background: 'var(--c-surface-3)', fontSize: 11 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6 }}>
-          <div><span style={{ color: '#6B7280' }}>Réponse : </span>{c.answer_time ? new Date(c.answer_time).toLocaleString('fr-CA') : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Fin : </span>{c.end_time ? new Date(c.end_time).toLocaleString('fr-CA') : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Durée totale : </span>{c.duration != null ? `${c.duration}s` : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Nom afficheur : </span>{c.clid || '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Coût : </span>{c.cost != null ? `${c.cost} $` : '—'}</div>
-          <div><span style={{ color: '#6B7280' }}>Taux/min : </span>{c.rate_per_minute != null ? `${c.rate_per_minute} $` : '—'}</div>
-          <div style={{ gridColumn: '1 / -1' }}><span style={{ color: '#6B7280' }}>ID appel : </span><code>{c.uniqueid || '—'}</code></div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Réponse : </span>{c.answer_time ? new Date(c.answer_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Fin : </span>{c.end_time ? new Date(c.end_time).toLocaleString('fr-CA') : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Durée totale : </span>{c.duration != null ? `${c.duration}s` : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Nom afficheur : </span>{c.clid || '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Coût : </span>{c.cost != null ? `${c.cost} $` : '—'}</div>
+          <div><span style={{ color: 'var(--c-muted)' }}>Taux/min : </span>{c.rate_per_minute != null ? `${c.rate_per_minute} $` : '—'}</div>
+          <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'var(--c-muted)' }}>ID appel : </span><code>{c.uniqueid || '—'}</code></div>
         </div>
       </td>
     </tr>
@@ -234,15 +234,15 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
       .finally(() => setCdrLoading(false))
   }, [id, sipExt?.extension, cdrPage, search, dateFrom, dateTo])
 
-  if (sipExtLoading) return <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>
+  if (sipExtLoading) return <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>
   if (!sipExt) return <div className="empty-tab">Ce contact n'a pas de poste SIP associé -- aucun historique d'appels possible.</div>
 
   return (
     <div>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
         Historique d'appels — poste {sipExt.extension} ({cdrTotal})
       </div>
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14, padding: '10px 12px', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8 }}>
         <div className="form-group" style={{ margin: 0 }}>
           <label style={{ fontSize: 11 }}>Recherche (numéro)</label>
           <input value={pendingSearch} onChange={e => setPendingSearch(e.target.value)} placeholder="ex: 514" style={{ fontSize: 12, padding: '4px 8px', width: 130 }}
@@ -268,16 +268,16 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
         <>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
-              <tr style={{ background: '#F9FAFB' }}>
+              <tr style={{ background: 'var(--c-surface-2)' }}>
                 {['Date', 'De', 'Vers', 'Direction', 'Durée', 'Statut'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid #E5E7EB', fontSize: 12, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                  <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {cdrItems.map(c => (
                 <Fragment key={c.id}>
-                  <tr style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }} onClick={() => setExpandedCdrId(expandedCdrId === c.id ? null : c.id)}>
+                  <tr style={{ borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer' }} onClick={() => setExpandedCdrId(expandedCdrId === c.id ? null : c.id)}>
                     <td style={{ padding: '8px 12px' }}>{c.start_time ? new Date(c.start_time).toLocaleString('fr-CA') : ''}</td>
                     <td style={{ padding: '8px 12px' }}>{c.src || ''}</td>
                     <td style={{ padding: '8px 12px' }}>{c.dst || ''}</td>
@@ -292,7 +292,7 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
           </table>
           <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10, alignItems: 'center' }}>
             <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={cdrPage <= 1} onClick={() => setCdrPage(p => p - 1)}>← Précédent</button>
-            <span style={{ fontSize: 12, color: '#6B7280' }}>Page {cdrPage} / {Math.max(1, Math.ceil(cdrTotal / cdrPageSize))}</span>
+            <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Page {cdrPage} / {Math.max(1, Math.ceil(cdrTotal / cdrPageSize))}</span>
             <button className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={cdrPage >= Math.max(1, Math.ceil(cdrTotal / cdrPageSize))} onClick={() => setCdrPage(p => p + 1)}>Suivant →</button>
           </div>
         </>
@@ -877,7 +877,7 @@ export default function ContactDetail({ isNew }) {
                 <option value="annuel">Annuelle</option>
               </select>
             </div>
-            <p style={{ fontSize: 12, color: '#6B7280' }}>
+            <p style={{ fontSize: 12, color: 'var(--c-muted)' }}>
               Si la compagnie n'a pas encore de tenant SIPV actif, il sera activé automatiquement.
               La facturation récurrente ajoute la ligne de ce poste automatiquement (prorata si en cours de cycle).
             </p>
@@ -943,7 +943,7 @@ export default function ContactDetail({ isNew }) {
                 }}
                 style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
               />
-              <label htmlFor="sipv_sync" style={{ fontSize: 13, color: '#374151', cursor: 'pointer', userSelect: 'none' }}>
+              <label htmlFor="sipv_sync" style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer', userSelect: 'none' }}>
                 Synchroniser avec SIPV
               </label>
               {c.sipv_sync && (
@@ -970,10 +970,10 @@ export default function ContactDetail({ isNew }) {
             </div>
 
             {c.sipv_sync && (
-              <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
-                {sipExtLoading && <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement du poste SIP...</div>}
+              <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+                {sipExtLoading && <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement du poste SIP...</div>}
                 {!sipExtLoading && !sipExt && (
-                  <div style={{ fontSize: 13, color: '#6B7280' }}>
+                  <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>
                     Aucun poste SIP lié à ce contact pour l'instant (sera lié automatiquement à la création d'un poste dans SIPV, ou hors ligne si SIPV est injoignable).
                   </div>
                 )}
@@ -1018,10 +1018,10 @@ export default function ContactDetail({ isNew }) {
                       )}
                     </div>
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                    <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
                       <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Caller ID — externe</div>
+                          <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Caller ID — externe</div>
                           <InlineField label="Nom (externe)" value={sipExt.caller_id_external_name} onSave={v => saveSipExtField('caller_id_external_name', v)} />
                           <div className="form-group">
                             <label>Numéro (externe)</label>
@@ -1038,18 +1038,18 @@ export default function ContactDetail({ isNew }) {
                               onChange={e => saveSipExtField('hide_caller_id', e.target.checked)}
                               style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                             />
-                            <label htmlFor="hide_caller_id" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                            <label htmlFor="hide_caller_id" style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>
                               Masquer le Caller ID (appels externes seulement)
                             </label>
                           </div>
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Caller ID — interne</div>
+                          <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Caller ID — interne</div>
                           <InlineField label="Nom (interne)" value={sipExt.caller_id_internal_name} onSave={v => saveSipExtField('caller_id_internal_name', v)} />
                           <InlineField label="Numéro (interne)" value={sipExt.caller_id_internal_number} onSave={v => saveSipExtField('caller_id_internal_number', v)} />
                         </div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>911 — localisation d'urgence</div>
+                          <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>911 — localisation d'urgence</div>
                           <div className="form-group">
                             <label>Succursale *</label>
                             <select value={e911Form.e911_address_id} onChange={e => setE911Form(p => ({ ...p, e911_address_id: e.target.value }))} disabled={e911Addresses.length === 0}>
@@ -1059,7 +1059,7 @@ export default function ContactDetail({ isNew }) {
                           </div>
                           <button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginBottom: 8 }} onClick={openNewSuccursale}>+ Nouvelle succursale</button>
                           {e911Addresses.length === 0 && (
-                            <div style={{ fontSize: 11, color: '#9CA3AF', marginBottom: 8 }}>Aucune succursale pour cette compagnie.</div>
+                            <div style={{ fontSize: 11, color: 'var(--c-faint)', marginBottom: 8 }}>Aucune succursale pour cette compagnie.</div>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                             <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={saveE911} disabled={!e911Form.e911_address_id}>
@@ -1071,8 +1071,8 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Renvois</div>
+                    <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Renvois</div>
                       {[
                         { key: 'forward_immediate', label: 'Renvoi immédiat', live: true },
                         { key: 'forward_busy', label: 'Renvoi si occupé', live: false },
@@ -1087,7 +1087,7 @@ export default function ContactDetail({ isNew }) {
                             onChange={e => saveSipExtField(`${key}_enabled`, e.target.checked)}
                             style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                           />
-                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>
+                          <label htmlFor={key} style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer', minWidth: 160 }}>
                             {label}{!live && sipExt[`${key}_enabled`] ? ' ⚠' : ''}
                           </label>
                           {sipExt[`${key}_enabled`] && (
@@ -1126,7 +1126,7 @@ export default function ContactDetail({ isNew }) {
                           )}
                         </div>
                       ))}
-                      <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>
+                      <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 4 }}>
                         ⚠ = configuré mais pas encore appliqué par le serveur (renvoi si occupé / non répondu / hors ligne — voir TASKSIPV S023.6). Seul le renvoi immédiat (poste/boîte vocale/groupe d'appel) agit réellement sur les appels pour l'instant.
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 }}>
@@ -1137,11 +1137,11 @@ export default function ContactDetail({ isNew }) {
                           onChange={e => saveSipExtField('dnd_enabled', e.target.checked)}
                           style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                         />
-                        <label htmlFor="dnd_enabled" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>Ne pas déranger (DND)</label>
+                        <label htmlFor="dnd_enabled" style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>Ne pas déranger (DND)</label>
                       </div>
                     </div>
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
+                    <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                         <input
                           type="checkbox"
@@ -1150,7 +1150,7 @@ export default function ContactDetail({ isNew }) {
                           onChange={e => toggleVoicemail(e.target.checked)}
                           style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                         />
-                        <label htmlFor="voicemail_enabled" style={{ fontSize: 13, color: '#374151', fontWeight: 600, cursor: 'pointer' }}>
+                        <label htmlFor="voicemail_enabled" style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, cursor: 'pointer' }}>
                           Boîte vocale activée
                         </label>
                       </div>
@@ -1166,17 +1166,17 @@ export default function ContactDetail({ isNew }) {
                                     setSipExt(prev => ({ ...prev, forward_no_answer_delay_seconds: (parseInt(e.target.value, 10) || 3) * RING_SECONDS }))
                                     saveRingsDebounced(parseInt(e.target.value, 10) || 3)
                                   }}
-                                  style={{ width: '100%', borderColor: ringsSaving ? '#3B82F6' : undefined, background: ringsSaving ? '#EFF6FF' : undefined }} />
+                                  style={{ width: '100%', borderColor: ringsSaving ? '#3B82F6' : undefined, background: ringsSaving ? 'var(--c-tint-blue)' : undefined }} />
                               </div>
                               <div className="form-group" style={{ width: 120, flex: '0 0 auto' }}>
                                 <label>NIP</label>
                                 <input value={vmForm.password} maxLength={20} onChange={e => saveVmFieldDebounced('password', e.target.value)}
-                                  style={{ width: '100%', borderColor: vmSavingFields.has('password') ? '#3B82F6' : undefined, background: vmSavingFields.has('password') ? '#EFF6FF' : undefined }} />
+                                  style={{ width: '100%', borderColor: vmSavingFields.has('password') ? '#3B82F6' : undefined, background: vmSavingFields.has('password') ? 'var(--c-tint-blue)' : undefined }} />
                               </div>
                               <div className="form-group" style={{ width: '45ch', flex: '0 0 auto' }}>
                                 <label>Courriel</label>
                                 <input value={vmForm.email} onChange={e => saveVmFieldDebounced('email', e.target.value)}
-                                  style={{ width: '100%', borderColor: vmSavingFields.has('email') ? '#3B82F6' : undefined, background: vmSavingFields.has('email') ? '#EFF6FF' : undefined }} />
+                                  style={{ width: '100%', borderColor: vmSavingFields.has('email') ? '#3B82F6' : undefined, background: vmSavingFields.has('email') ? 'var(--c-tint-blue)' : undefined }} />
                               </div>
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, paddingTop: 18 }}>
@@ -1185,11 +1185,11 @@ export default function ContactDetail({ isNew }) {
                                 { key: 'attach_message', label: 'Joindre le fichier audio au courriel' },
                                 { key: 'skip_instructions', label: "Sauter les instructions parlées (aller direct au bip)" },
                               ].map(({ key, label }) => (
-                                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, background: vmSavingFields.has(key) ? '#EFF6FF' : undefined, borderRadius: 6, padding: '2px 4px' }}>
+                                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, background: vmSavingFields.has(key) ? 'var(--c-tint-blue)' : undefined, borderRadius: 6, padding: '2px 4px' }}>
                                   <input type="checkbox" id={`vm_${key}`} checked={vmForm[key]}
                                     onChange={e => saveVmField(key, e.target.checked)}
                                     style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }} />
-                                  <label htmlFor={`vm_${key}`} style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>{label}</label>
+                                  <label htmlFor={`vm_${key}`} style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>{label}</label>
                                 </div>
                               ))}
                             </div>
@@ -1204,7 +1204,7 @@ export default function ContactDetail({ isNew }) {
                               )}
                             </div>
                           </div>
-                          <div style={{ marginTop: 10, fontSize: 12, color: '#374151' }}>
+                          <div style={{ marginTop: 10, fontSize: 12, color: 'var(--c-text-2)' }}>
                             <span style={{ fontWeight: 600 }}>Message d'accueil : </span>
                             {voicemailBox?.has_greeting_unavailable ? (
                               <>
@@ -1212,15 +1212,15 @@ export default function ContactDetail({ isNew }) {
                                 <button className="inv-del-btn" onClick={removeGreeting} style={{ marginLeft: 8 }}>✕</button>
                               </>
                             ) : (
-                              <span style={{ color: '#9CA3AF' }}>Aucun (annonce générique par défaut)</span>
+                              <span style={{ color: 'var(--c-faint)' }}>Aucun (annonce générique par défaut)</span>
                             )}
                           </div>
                         </>
                       )}
                     </div>
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Enregistrement des appels</div>
+                    <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Enregistrement des appels</div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                         <input
                           type="checkbox"
@@ -1234,7 +1234,7 @@ export default function ContactDetail({ isNew }) {
                           }}
                           style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                         />
-                        <label htmlFor="record_all" style={{ fontSize: 13, color: '#374151', cursor: 'pointer', fontWeight: 600 }}>Tout</label>
+                        <label htmlFor="record_all" style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer', fontWeight: 600 }}>Tout</label>
                       </div>
                       {[
                         { key: 'record_internal_incoming', label: 'Interne entrant' },
@@ -1250,7 +1250,7 @@ export default function ContactDetail({ isNew }) {
                             onChange={e => saveSipExtField(key, e.target.checked)}
                             style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                           />
-                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>{label}</label>
+                          <label htmlFor={key} style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>{label}</label>
                         </div>
                       ))}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
@@ -1261,16 +1261,16 @@ export default function ContactDetail({ isNew }) {
                           onChange={e => saveSipExtField('record_calls', e.target.checked)}
                           style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                         />
-                        <label htmlFor="record_calls" style={{ fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                        <label htmlFor="record_calls" style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer' }}>
                           Manuel (déclenché par l'agent — pas encore actif, en attente de configuration du bouton sur le téléphone)
                         </label>
                       </div>
                     </div>
 
                     {phone && (
-                      <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                        <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 4 }}>Options du poste</div>
-                        <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+                      <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
+                        <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 4 }}>Options du poste</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
                           Les templates par modèle se créent dans la fiche Compagnie (Téléphonie). On peut en cocher PLUSIEURS (ex. "défaut" + "oreillette" + "boutons de park") — ils se combinent et remplissent les options ci-dessous ("as template") ; cliquer une option la personnalise pour ce poste seulement.
                         </div>
                         {tenantModelTemplates.length > 0 && (
@@ -1302,8 +1302,8 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     )}
 
-                    <div style={{ marginTop: 16, borderTop: '1px solid #E5E7EB', paddingTop: 10 }}>
-                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
+                    <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
+                      <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
                       {[
                         { key: 'allow_canada', label: 'Canada' },
                         { key: 'allow_us', label: 'États-Unis' },
@@ -1319,8 +1319,8 @@ export default function ContactDetail({ isNew }) {
                             onChange={e => saveSipExtField(key, e.target.checked)}
                             style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
                           />
-                          <label htmlFor={key} style={{ fontSize: 13, color: '#374151', cursor: 'pointer', minWidth: 160 }}>{label}</label>
-                          <span style={{ fontSize: 11, color: '#9CA3AF' }}>
+                          <label htmlFor={key} style={{ fontSize: 13, color: 'var(--c-text-2)', cursor: 'pointer', minWidth: 160 }}>{label}</label>
+                          <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>
                             {(sipExt[key] === null || sipExt[key] === undefined) ? '(hérite du défaut compagnie)' : ''}
                           </span>
                         </div>
@@ -1338,10 +1338,10 @@ export default function ContactDetail({ isNew }) {
             )}
 
             {c.sipv_sync && showButtons && (
-              <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
+              <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '12px 16px', marginBottom: 10 }}>
                 {!phone && (
                   <>
-                    <div style={{ fontSize: 13, color: '#374151', fontWeight: 600, marginBottom: 8 }}>Attribuer un appareil</div>
+                    <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 8 }}>Attribuer un appareil</div>
                     <div className="ifields-grid">
                       <Autocomplete
                         label="Marque"
@@ -1376,14 +1376,14 @@ export default function ContactDetail({ isNew }) {
                 {phone && (
                   <>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                      <div style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>
+                      <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600 }}>
                         Appareil : {phone.mac_address} {phoneModels.length > 0 && phoneModels.find(m => m.id === phone.phone_model_id) && `(${phoneModels.find(m => m.id === phone.phone_model_id).brand} ${phoneModels.find(m => m.id === phone.phone_model_id).model})`}
                       </div>
                       <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={loadButtons}>↻ Boutons</button>
                     </div>
 
                     <div style={{ marginBottom: 12 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Réseau</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>Réseau</div>
                       <div className="form-group" style={{ maxWidth: 220 }}>
                         <label>Protocole de provisioning</label>
                         <select value={phone.provisioning_protocol || 'https'} onChange={e => savePhoneField('provisioning_protocol', e.target.value)}>
@@ -1394,19 +1394,19 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    {buttonsLoading && <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>}
+                    {buttonsLoading && <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>}
                     {!buttonsLoading && (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
-                          <tr style={{ background: '#F3F4F6' }}>
+                          <tr style={{ background: 'var(--c-surface-3)' }}>
                             {['Pos.', 'Page', 'Type', 'Libellé', 'Valeur', 'Destination', 'Compte', 'Client', 'Verrouillé', ''].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '4px 6px', fontSize: 11, fontWeight: 600, color: '#6B7280' }}>{h}</th>
+                              <th key={h} style={{ textAlign: 'left', padding: '4px 6px', fontSize: 11, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {buttons.map(b => (
-                            <tr key={b.id} style={{ borderBottom: '1px solid #F3F4F6' }}>
+                            <tr key={b.id} style={{ borderBottom: '1px solid var(--c-surface-3)' }}>
                               <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.position} onBlur={e => saveButton(b.id, 'position', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
                               <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.page} onBlur={e => saveButton(b.id, 'page', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
                               <td style={{ padding: '3px 6px' }}>
@@ -1464,7 +1464,7 @@ export default function ContactDetail({ isNew }) {
               </>
             )}
 
-            <div style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid #E5E7EB' }}>
+            <div style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
               <button className="inv-del-btn" onClick={deleteContact}>Supprimer le contact</button>
             </div>
           </div>
@@ -1501,7 +1501,7 @@ function ContactTachesSection({ contactId, onNewTask }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
         <div className="ifield-section-title" style={{ margin: 0 }}>Tâches & Suivi</div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#6B7280', cursor: 'pointer' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showCompleted} onChange={e => setShowCompleted(e.target.checked)} style={{ accentColor: 'var(--brand)' }} />
             Complétées
           </label>
@@ -1509,15 +1509,15 @@ function ContactTachesSection({ contactId, onNewTask }) {
         </div>
       </div>
       {filtered.length === 0 ? (
-        <div style={{ fontSize: 13, color: '#9CA3AF', padding: '12px 0' }}>Aucune tâche en cours.</div>
+        <div style={{ fontSize: 13, color: 'var(--c-faint)', padding: '12px 0' }}>Aucune tâche en cours.</div>
       ) : filtered.map(t => {
         const overdue = t.due_date && !t.completed && parseDay(t.due_date) < new Date(new Date().toDateString())
         return (
-          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid #E5E7EB', marginBottom: 6, background: t.completed ? '#F9FAFB' : '#fff', alignItems: 'flex-start' }}>
+          <div key={t.id} style={{ display: 'flex', gap: 8, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 6, background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)', alignItems: 'flex-start' }}>
             <input type="checkbox" checked={t.completed} onChange={() => toggleComplete(t)} style={{ width: 14, height: 14, accentColor: 'var(--brand)', marginTop: 2, cursor: 'pointer', flexShrink: 0 }} />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: t.completed ? '#9CA3AF' : '#111827', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</div>
-              <div style={{ fontSize: 11, color: overdue ? '#DC2626' : '#9CA3AF', marginTop: 2 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</div>
+              <div style={{ fontSize: 11, color: overdue ? '#DC2626' : 'var(--c-faint)', marginTop: 2 }}>
                 {t.due_date && <span>{overdue ? '⚠ ' : ''}{new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}{t.due_time ? ` ${t.due_time}` : ''}</span>}
                 {t.assigned_name && <span style={{ marginLeft: 8 }}>· {t.assigned_name}</span>}
               </div>
@@ -1615,13 +1615,13 @@ function PortalAccessSection({ contact }) {
       {!portalUser ? (
         <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => setShowModal(true)}>+ Créer un accès portail</button>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 14px' }}>
-          <span style={{ fontSize: 13, fontWeight: 600, color: '#111827' }}>{portalUser.email}</span>
-          <span style={{ fontSize: 12, color: '#6B7280' }}>{portalPermLabel(portalUser)}</span>
-          <span style={{ fontSize: 12, color: '#9CA3AF' }}>Dernière connexion : {portalUser.last_login ? new Date(portalUser.last_login).toLocaleString('fr-CA') : 'jamais'}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 14px' }}>
+          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{portalUser.email}</span>
+          <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{portalPermLabel(portalUser)}</span>
+          <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Dernière connexion : {portalUser.last_login ? new Date(portalUser.last_login).toLocaleString('fr-CA') : 'jamais'}</span>
           <button
             onClick={toggleActive}
-            style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 10, border: 'none', cursor: 'pointer', background: portalUser.is_active ? '#D1FAE5' : '#FEE2E2', color: portalUser.is_active ? '#059669' : '#DC2626' }}
+            style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 10, border: 'none', cursor: 'pointer', background: portalUser.is_active ? 'var(--c-tint-green)' : 'var(--c-tint-red)', color: portalUser.is_active ? '#059669' : '#DC2626' }}
           >
             {portalUser.is_active ? 'Actif' : 'Inactif'}
           </button>
@@ -1708,7 +1708,7 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
         <div className="form-group">
           <label>Se connecte avec</label>
           <div style={{ fontSize: 14 }}>{fullName} · {email || <span style={{ color: '#DC2626' }}>aucun courriel dans la fiche</span>}</div>
-          <div style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>Le courriel de la fiche : s’il change dans la fiche, sa connexion suit.</div>
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 2 }}>Le courriel de la fiche : s’il change dans la fiche, sa connexion suit.</div>
         </div>
         <div className="form-group">
           <label>{isEdit ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe *'}</label>
@@ -1719,8 +1719,8 @@ function PortalAccessModal({ contact, existing, onClose, onSaved }) {
           {showPassword && password && <div style={{ fontSize: 12, color: '#059669', marginTop: 4 }}>Copie ce mot de passe pour le transmettre au client — il ne sera plus affiché après.</div>}
         </div>
         {PORTAL_PERM_GROUPS.map(g => (
-          <div key={g.title} style={{ background: g.warn ? '#FFFBEB' : '#F9FAFB', border: `1px solid ${g.warn ? '#FDE68A' : '#E5E7EB'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: g.warn ? '#92400E' : '#6B7280', marginBottom: 8 }}>{g.title}</div>
+          <div key={g.title} style={{ background: g.warn ? 'var(--c-tint-amber)' : 'var(--c-surface-2)', border: `1px solid ${g.warn ? '#FDE68A' : 'var(--c-border)'}`, borderRadius: 8, padding: '12px 16px', marginBottom: 12 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: g.warn ? 'var(--c-on-amber)' : 'var(--c-muted)', marginBottom: 8 }}>{g.title}</div>
             {g.fields.map(([key, label]) => (
               <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
                 <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />

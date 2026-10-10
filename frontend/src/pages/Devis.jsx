@@ -5,11 +5,11 @@ import NewDevisModal from '../components/NewDevisModal'
 import './Invoices.css'
 
 const STATUS_LABELS = {
-  brouillon: { label: 'Brouillon', color: '#6B7280' },
+  brouillon: { label: 'Brouillon', color: 'var(--c-muted)' },
   envoye:    { label: 'Envoyé',    color: 'var(--brand)' },
   accepte:   { label: 'Accepté',   color: '#059669' },
   refuse:    { label: 'Refusé',    color: '#DC2626' },
-  expire:    { label: 'Expiré',    color: '#9CA3AF' },
+  expire:    { label: 'Expiré',    color: 'var(--c-faint)' },
 }
 
 const FILTERS = [
@@ -103,7 +103,7 @@ export default function Devis() {
                     <td>{fmtDate(d.issue_date)}</td>
                     <td>{fmtDate(d.valid_until)}</td>
                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(d.total)}</td>
-                    <td style={{ fontSize: 12, color: '#6B7280' }} title={d.open_count > 1 ? `Ouvert ${d.open_count} fois` : ''}>
+                    <td style={{ fontSize: 12, color: 'var(--c-muted)' }} title={d.open_count > 1 ? `Ouvert ${d.open_count} fois` : ''}>
                       {d.last_opened_at ? `👁 ${fmtOpened(d.last_opened_at)}` : '—'}
                     </td>
                     <td className="inv-arrow">›</td>
@@ -111,7 +111,7 @@ export default function Devis() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px' }}>Aucun devis</td></tr>
+                <tr><td colSpan={8} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px' }}>Aucun devis</td></tr>
               )}
             </tbody>
           </table>

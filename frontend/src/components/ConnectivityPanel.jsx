@@ -62,8 +62,8 @@ function Side({ companyId, def, data, companies, loadCompanies, onSaved }) {
     } catch (e) { setError(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
   }
 
-  const box = { background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, flex: '1 1 300px', minWidth: 0 }
-  const muted = { color: '#6B7280', fontSize: 13 }
+  const box = { background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 16, flex: '1 1 300px', minWidth: 0 }
+  const muted = { color: 'var(--c-muted)', fontSize: 13 }
   return (
     <div style={box}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -155,13 +155,13 @@ export default function ConnectivityPanel({ companyId }) {
         ))}
       </div>
       {data.dependents.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 10, padding: 16, marginTop: 12 }}>
+        <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, padding: 16, marginTop: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 8 }}>Clients qui dépendent de nous ({data.dependents.length})</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {data.dependents.map(d => (
               <div key={d.id} style={{ fontSize: 14 }}>
-                <Link to={`/companies/${d.id}`} style={{ color: d.is_active ? undefined : '#9CA3AF' }}>{d.name}</Link>
-                <span style={{ color: '#6B7280', fontSize: 12 }}> — {d.roles.map(r => ROLE_LABELS[r]).join(', ')}{d.is_active ? '' : ' (inactive)'}</span>
+                <Link to={`/companies/${d.id}`} style={{ color: d.is_active ? undefined : 'var(--c-faint)' }}>{d.name}</Link>
+                <span style={{ color: 'var(--c-muted)', fontSize: 12 }}> — {d.roles.map(r => ROLE_LABELS[r]).join(', ')}{d.is_active ? '' : ' (inactive)'}</span>
               </div>
             ))}
           </div>

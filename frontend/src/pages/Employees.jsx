@@ -70,23 +70,23 @@ export default function Employees() {
   const paid = payments.filter(p => p.status === 'paye')
 
   return (
-    <div style={{ maxWidth: 860 }}>
+    <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <h2 style={{ fontSize: 22, fontWeight: 700 }}>👷 Employés</h2>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Ajouter un employé</button>
       </div>
 
       {/* ── Liste employés ── */}
-      <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, marginBottom: 24 }}>
-        {employees.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: '#9CA3AF' }}>Aucun employé.</div>}
+      <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, marginBottom: 24 }}>
+        {employees.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)' }}>Aucun employé.</div>}
         {employees.map(e => (
-          <div key={e.contact_id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: '1px solid #F3F4F6' }}>
+          <div key={e.contact_id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: '1px solid var(--c-surface-3)' }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{e.first_name} {e.last_name}</div>
-              {e.email && <div style={{ fontSize: 12, color: '#6B7280' }}>{e.email}</div>}
+              {e.email && <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{e.email}</div>}
             </div>
-            {e.hourly_rate && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.hourly_rate)}/h</div>}
-            {e.monthly_salary && <div style={{ fontSize: 13, color: '#374151' }}>{fmt(e.monthly_salary)}/mois</div>}
+            {e.hourly_rate && <div style={{ fontSize: 13, color: 'var(--c-text-2)' }}>{fmt(e.hourly_rate)}/h</div>}
+            {e.monthly_salary && <div style={{ fontSize: 13, color: 'var(--c-text-2)' }}>{fmt(e.monthly_salary)}/mois</div>}
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setSignatureOf(e)} title="Courriel professionnel (sa boîte dans Courriels), courriel personnel (paies) et signature">
               ✉ Courriels et signature{e.has_signature ? ' ✓' : ''}
             </button>
@@ -101,22 +101,22 @@ export default function Employees() {
 
       {/* ── À payer ── */}
       {pending.length > 0 && (
-        <div style={{ background: '#FEF9C3', border: '1px solid #FDE047', borderRadius: 12, padding: 20, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#78350F', marginBottom: 14 }}>À PAYER ({pending.length})</h3>
+        <div style={{ background: 'var(--c-tint-amber)', border: '1px solid #FDE047', borderRadius: 12, padding: 20, marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-on-amber)', marginBottom: 14 }}>À PAYER ({pending.length})</h3>
           {pending.map(p => (
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #FDE04740' }}>
               <div style={{ flex: 1 }}>
                 <span style={{ fontWeight: 600 }}>{p.first_name} {p.last_name}</span>
-                <span style={{ color: '#78350F', fontSize: 13, marginLeft: 10 }}>
+                <span style={{ color: 'var(--c-on-amber)', fontSize: 13, marginLeft: 10 }}>
                   {MONTHS[p.period_month - 1]} {p.period_year}
                 </span>
               </div>
-              <span style={{ fontWeight: 700, fontSize: 15, color: '#111827' }}>{fmt(p.amount)}</span>
+              <span style={{ fontWeight: 700, fontSize: 15, color: 'var(--c-text)' }}>{fmt(p.amount)}</span>
               <input
                 placeholder="No confirmation Interac"
                 value={interacRef[p.id] || ''}
                 onChange={e => setInteracRef(prev => ({ ...prev, [p.id]: e.target.value }))}
-                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid #D1D5DB', borderRadius: 6, width: 180 }}
+                style={{ fontSize: 12, padding: '5px 10px', border: '1px solid var(--c-border-strong)', borderRadius: 6, width: 180 }}
               />
               <button className="btn-primary" style={{ fontSize: 12 }} disabled={markingPaid === p.id} onClick={() => markPaid(p)}>
                 {markingPaid === p.id ? '...' : 'Marquer payé'}
@@ -128,16 +128,16 @@ export default function Employees() {
 
       {/* ── Historique ── */}
       {paid.length > 0 && (
-        <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 700, color: '#6B7280', marginBottom: 14 }}>HISTORIQUE</h3>
+        <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--c-muted)', marginBottom: 14 }}>HISTORIQUE</h3>
           {paid.slice(0, 20).map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid #F3F4F6', fontSize: 13 }}>
-              <div style={{ flex: 1, color: '#374151' }}>
+            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 0', borderBottom: '1px solid var(--c-surface-3)', fontSize: 13 }}>
+              <div style={{ flex: 1, color: 'var(--c-text-2)' }}>
                 <span style={{ fontWeight: 500 }}>{p.first_name} {p.last_name}</span>
-                <span style={{ color: '#9CA3AF', marginLeft: 8 }}>{MONTHS[p.period_month - 1]} {p.period_year}</span>
+                <span style={{ color: 'var(--c-faint)', marginLeft: 8 }}>{MONTHS[p.period_month - 1]} {p.period_year}</span>
               </div>
               <span style={{ fontWeight: 600 }}>{fmt(p.amount)}</span>
-              {p.interac_confirmation && <span style={{ color: '#6B7280', fontSize: 11 }}>#{p.interac_confirmation}</span>}
+              {p.interac_confirmation && <span style={{ color: 'var(--c-muted)', fontSize: 11 }}>#{p.interac_confirmation}</span>}
               <span style={{ color: '#059669', fontWeight: 600, fontSize: 12 }}>✓ Payé</span>
             </div>
           ))}
@@ -214,8 +214,8 @@ function CommissionsSection() {
   }
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 12, padding: 24, marginTop: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: '#111827' }}>Commissions vendeurs</h3>
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginTop: 20 }}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: 'var(--c-text)' }}>Commissions vendeurs</h3>
       <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
         <div className="form-group" style={{ marginBottom: 0 }}>
           <label>Commission vendeur (%)</label>
@@ -239,21 +239,21 @@ function CommissionsSection() {
       </div>
       {rows !== null && (
         rows.length === 0
-          ? <div style={{ marginTop: 16, color: '#9CA3AF', fontSize: 14 }}>Aucune commission pour cette période.</div>
+          ? <div style={{ marginTop: 16, color: 'var(--c-faint)', fontSize: 14 }}>Aucune commission pour cette période.</div>
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
               <thead>
-                <tr style={{ background: '#F9FAFB' }}>
+                <tr style={{ background: 'var(--c-surface-2)' }}>
                   {['Vendeur', 'Facturation clients', `Commission (${saved}%)`, ''].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Vendeur' ? 'left' : 'right', fontWeight: 600, color: '#374151' }}>{h}</th>
+                    <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Vendeur' ? 'left' : 'right', fontWeight: 600, color: 'var(--c-text-2)' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.map((c, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid #F3F4F6' }}>
+                  <tr key={i} style={{ borderTop: '1px solid var(--c-surface-3)' }}>
                     <td style={{ padding: '8px 12px', fontWeight: 500 }}>{c.first_name} {c.last_name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#6B7280' }}>{fmt(c.invoiced_total)}</td>
+                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--c-muted)' }}>{fmt(c.invoiced_total)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{fmt(c.commission_amount)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>
                       <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => alert(`Commission à payer: ${fmt(c.commission_amount)} à ${c.first_name} ${c.last_name}`)}>
@@ -319,7 +319,7 @@ function SignatureModal({ employee, onClose, onSaved }) {
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: 820, width: '100%' }}>
         <h3 className="modal-title">Courriels et signature — {employee.first_name} {employee.last_name}</h3>
-        <p style={{ fontSize: 13, color: '#6B7280', marginTop: 0 }}>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 0 }}>
           La signature est ajoutée au bas des courriels de communication (tickets, tâches) envoyés par son compte de connexion. Jamais sur les factures, devis ou avis de retard.
           Vous pouvez coller votre signature actuelle (Outlook, Gmail) : la mise en forme est gardée.
         </p>
@@ -341,7 +341,7 @@ function SignatureModal({ employee, onClose, onSaved }) {
                   placeholder={mail.has_password && mailForm.work_email === mail.work_email ? '•••••••• (enregistré, chiffré — vide = le garder)' : 'Mot de passe de la boîte (pour la voir dans Courriels)'}
                   onChange={e => setMailForm({ ...mailForm, password: e.target.value })} />
               )}
-              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>
                 Sert à se connecter à ERPCRM ; sa boîte apparaît dans Courriels, visible seulement par lui et le patron.
                 {mail.mailbox_id && <> {' '}<button type="button" className="btn-secondary" style={{ fontSize: 11, padding: '1px 8px' }} onClick={testBox} disabled={testMsg?.busy}>{testMsg?.busy ? '…' : 'Tester'}</button></>}
               </div>
@@ -352,7 +352,7 @@ function SignatureModal({ employee, onClose, onSaved }) {
               <label>Courriel personnel</label>
               <input style={{ width: '100%', boxSizing: 'border-box' }} value={mailForm.personal_email} placeholder="adresse personnelle"
                 onChange={e => setMailForm({ ...mailForm, personal_email: e.target.value })} />
-              <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>Sert seulement à lui envoyer ses paies ou à lui écrire.</div>
+              <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>Sert seulement à lui envoyer ses paies ou à lui écrire.</div>
             </div>
           </div>
         )}
@@ -360,8 +360,8 @@ function SignatureModal({ employee, onClose, onSaved }) {
           <button type="button" className={preview ? 'btn-secondary' : 'btn-primary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(false)}>Modifier</button>
           <button type="button" className={preview ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(true)}>Aperçu</button>
         </div>
-        {html === null ? <div style={{ padding: 20, color: '#9CA3AF' }}>Chargement…</div>
-          : preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid #D1D5DB', borderRadius: 8, background: '#fff' }} />
+        {html === null ? <div style={{ padding: 20, color: 'var(--c-faint)' }}>Chargement…</div>
+          : preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: 'var(--c-surface)' }} />
           : <SignatureEditor value={html} onChange={setHtml} />}
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>{error}</div>}
         <div className="modal-actions">

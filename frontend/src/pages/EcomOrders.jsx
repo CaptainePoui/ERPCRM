@@ -5,11 +5,11 @@ import './EcomOrders.css'
 
 const STATUS_STYLES = {
   nouveau:        { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Nouveau' },
-  en_traitement:  { color: '#D97706', bg: '#FFFBEB', label: 'En traitement' },
-  confirme:       { color: '#059669', bg: '#F0FDF4', label: 'Confirmé' },
+  en_traitement:  { color: '#D97706', bg: 'var(--c-tint-amber)', label: 'En traitement' },
+  confirme:       { color: '#059669', bg: 'var(--c-tint-green)', label: 'Confirmé' },
   expedie:        { color: '#7C3AED', bg: '#F5F3FF', label: 'Expédié' },
-  livre:          { color: '#374151', bg: '#F3F4F6', label: 'Livré' },
-  annule:         { color: '#DC2626', bg: '#FEF2F2', label: 'Annulé' },
+  livre:          { color: 'var(--c-text-2)', bg: 'var(--c-surface-3)', label: 'Livré' },
+  annule:         { color: '#DC2626', bg: 'var(--c-tint-red)', label: 'Annulé' },
 }
 
 const NEXT_STATUS = { nouveau: 'en_traitement', en_traitement: 'confirme', confirme: 'expedie', expedie: 'livre' }
@@ -43,15 +43,15 @@ export function EcomOrderList() {
                 <tr key={o.id} className="ecom-row" onClick={() => navigate(`/ecom-orders/${o.id}`)}>
                   <td style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--brand)' }}>{o.order_number}</td>
                   <td style={{ fontWeight: 600 }}>{o.customer_name}</td>
-                  <td style={{ color: '#6B7280', fontSize: 13 }}>{o.customer_email}</td>
+                  <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{o.customer_email}</td>
                   <td><span style={{ background: st.bg, color: st.color, fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '3px 8px' }}>{st.label}</span></td>
                   <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{fmt(o.total)}</td>
-                  <td style={{ color: '#9CA3AF', fontSize: 13 }}>{fmtDate(o.created_at)}</td>
-                  <td><span style={{ color: '#D1D5DB' }}>→</span></td>
+                  <td style={{ color: 'var(--c-faint)', fontSize: 13 }}>{fmtDate(o.created_at)}</td>
+                  <td><span style={{ color: 'var(--c-border-strong)' }}>→</span></td>
                 </tr>
               )
             })}
-            {orders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: '48px 0' }}>Aucune commande web.</td></tr>}
+            {orders.length === 0 && <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '48px 0' }}>Aucune commande web.</td></tr>}
           </tbody>
         </table>
       )}
@@ -110,7 +110,7 @@ export function EcomOrderDetail() {
             </button>
           )}
           {!['annule', 'livre'].includes(order.status) && (
-            <button style={{ background: '#FEF2F2', color: '#DC2626', border: 'none', borderRadius: 6, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }} onClick={cancel} disabled={updating}>Annuler</button>
+            <button style={{ background: 'var(--c-tint-red)', color: '#DC2626', border: 'none', borderRadius: 6, padding: '8px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600 }} onClick={cancel} disabled={updating}>Annuler</button>
           )}
         </div>
       </div>
@@ -130,7 +130,7 @@ export function EcomOrderDetail() {
           {order.customer_notes && (
             <>
               <div className="ecom-card-title" style={{ marginTop: 12 }}>Notes client</div>
-              <div style={{ color: '#4B5563', fontSize: 14 }}>{order.customer_notes}</div>
+              <div style={{ color: 'var(--c-text-2)', fontSize: 14 }}>{order.customer_notes}</div>
             </>
           )}
         </div>

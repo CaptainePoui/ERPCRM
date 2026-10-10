@@ -78,8 +78,8 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
   }
 
   const row = { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }
-  const lab = { width: 46, fontSize: 13, color: '#6B7280', flexShrink: 0 }
-  const inp = { flex: 1, minWidth: 0, fontSize: 14, padding: '7px 10px', border: '1.5px solid #D1D5DB', borderRadius: 6 }
+  const lab = { width: 46, fontSize: 13, color: 'var(--c-muted)', flexShrink: 0 }
+  const inp = { flex: 1, minWidth: 0, fontSize: 14, padding: '7px 10px', border: '1.5px solid var(--c-border-strong)', borderRadius: 6 }
   return (
     <div className="modal-overlay" style={{ zIndex: 300 }}>
       <div className="modal-box" style={{ maxWidth: 820, width: '96vw', maxHeight: '94vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
@@ -91,7 +91,7 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
             {(boxes || []).map(b => <option key={b.id} value={b.id}>{b.name && b.name !== b.email ? `${b.name} <${b.email}>` : b.email}{b.personal ? ' (personnelle)' : ''}</option>)}
           </select>
         </div>
-        {originBox && <div style={{ fontSize: 12, color: '#92400E', margin: '-4px 0 8px 54px' }}>Ce courriel est arrivé dans {originBox}, d’où vous ne pouvez pas envoyer : choisissez une autre boîte.</div>}
+        {originBox && <div style={{ fontSize: 12, color: 'var(--c-on-amber)', margin: '-4px 0 8px 54px' }}>Ce courriel est arrivé dans {originBox}, d’où vous ne pouvez pas envoyer : choisissez une autre boîte.</div>}
         <div style={row}>
           <span style={lab}>À</span>
           <input value={to} onChange={e => setTo(e.target.value)} placeholder="adresse@exemple.com, Nom <autre@exemple.com>" style={inp} autoFocus={mode === 'new' || mode === 'forward'} />
@@ -113,19 +113,19 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
           <input ref={fileRef} type="file" multiple style={{ display: 'none' }}
             onChange={e => { setFiles(prev => [...prev, ...e.target.files]); fileRef.current.value = '' }} />
           {files.map((f, i) => (
-            <span key={i} style={{ fontSize: 12, padding: '3px 8px', background: '#F3F4F6', borderRadius: 6 }}>
+            <span key={i} style={{ fontSize: 12, padding: '3px 8px', background: 'var(--c-surface-3)', borderRadius: 6 }}>
               📎 {f.name} ({size(f.size)}) <a href="#" onClick={e => { e.preventDefault(); setFiles(prev => prev.filter((_, j) => j !== i)) }} title="Retirer">✕</a>
             </span>
           ))}
           {fwdList.map(a => (
-            <label key={a.i} style={{ fontSize: 12, padding: '3px 8px', background: '#F3F4F6', borderRadius: 6, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
+            <label key={a.i} style={{ fontSize: 12, padding: '3px 8px', background: 'var(--c-surface-3)', borderRadius: 6, display: 'inline-flex', gap: 4, alignItems: 'center' }}>
               <input type="checkbox" checked={fwd.includes(a.i)} onChange={e => setFwd(prev => e.target.checked ? [...prev, a.i] : prev.filter(x => x !== a.i))} />
               {a.filename} ({size(a.size)})
             </label>
           ))}
           {total > MAX_TOTAL && <span style={{ fontSize: 12, color: '#DC2626' }}>Plus de 20 Mo : retirez une pièce jointe.</span>}
         </div>
-        <div style={{ fontSize: 12, color: '#6B7280', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {hasSig
             ? <label style={{ display: 'flex', gap: 6, alignItems: 'center' }}><input type="checkbox" checked={withSig} onChange={e => setWithSig(e.target.checked)} /> Ajouter ma signature</label>
             : <span>Vous n’avez pas encore de signature (Employés → ✉ Courriels et signature).</span>}

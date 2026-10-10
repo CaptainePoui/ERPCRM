@@ -20,7 +20,7 @@ export default function UnsavedChangesPrompt({ blocker, onSave }) {
     <div className="modal-overlay" style={{ zIndex: 400 }}>
       <div className="modal-box" onClick={e => e.stopPropagation()}>
         <h3 className="modal-title">Informations non sauvegardées</h3>
-        <p style={{ fontSize: 14, color: '#374151', margin: 0 }}>
+        <p style={{ fontSize: 14, color: 'var(--c-text-2)', margin: 0 }}>
           Des informations non sauvegardées seront perdues si vous quittez maintenant.
         </p>
         <div className="modal-actions">

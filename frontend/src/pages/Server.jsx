@@ -29,9 +29,9 @@ export default function Server() {
   }
 
   return (
-    <div style={{ padding: 24, maxWidth: 900, margin: '0 auto' }}>
-      <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: '#111827' }}>Serveur</h1>
-      <p style={{ color: '#6B7280', fontSize: 14, marginTop: 8, marginBottom: 16 }}>
+    <div>
+      <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--c-text)' }}>Serveur</h1>
+      <p style={{ color: 'var(--c-muted)', fontSize: 14, marginTop: 8, marginBottom: 16 }}>
         Configuration globale du serveur SIPV (canaux de lignes, Fail2Ban, etc.) — à venir.
       </p>
       <div className="adm-tabs" style={{ marginBottom: 24 }}>
@@ -48,12 +48,12 @@ export default function Server() {
             <div className="empty-tab">Aucun serveur SIPV enregistré.</div>
           ) : (
             servers.map(s => (
-              <div key={s.id} style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+              <div key={s.id} style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                   <div style={{ fontWeight: 700, fontSize: 15 }}>{s.name}</div>
-                  <span style={{ fontSize: 12, color: s.is_active ? '#059669' : '#9CA3AF' }}>{s.is_active ? 'Actif' : 'Inactif'}</span>
+                  <span style={{ fontSize: 12, color: s.is_active ? '#059669' : 'var(--c-faint)' }}>{s.is_active ? 'Actif' : 'Inactif'}</span>
                 </div>
-                <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 16 }}>
                   {s.hostname} {s.ip_address ? `(${s.ip_address})` : ''} — {s.tenant_count} compagnie(s) hébergée(s)
                 </div>
                 <SipChannelIpsSection server={s} onSave={updateServerField} />
@@ -96,19 +96,19 @@ function VoicemailSettingsSection() {
   }
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
         Boîte vocale — réglages globaux
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         NIP appliqué aux NOUVELLES boîtes vocales créées (n'affecte pas celles qui existent déjà). Vide = NIP aléatoire à 4 chiffres (comportement d'avant).
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : (
         <div className="form-group" style={{ width: 140 }}>
           <label>NIP par défaut</label>
           <input value={defaultPassword} maxLength={20} onChange={e => setDefaultPassword(e.target.value)}
             onBlur={e => save(e.target.value)}
-            style={{ width: '100%', borderColor: saving ? '#3B82F6' : undefined, background: saving ? '#EFF6FF' : undefined }} />
+            style={{ width: '100%', borderColor: saving ? '#3B82F6' : undefined, background: saving ? 'var(--c-tint-blue)' : undefined }} />
         </div>
       )}
     </div>
@@ -239,38 +239,38 @@ function BackupCloudSection() {
   }
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
         Backup cloud SIPV
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 16 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 16 }}>
         Backup automatique de notre propre infra SIPV (base de données, config Kamailio/FreeSWITCH, MOH) vers Dropbox et/ou Google Drive — accès séparé de celui d'ERPCRM.
       </div>
 
       {callbackMsg && (
-        <div style={{ background: '#F9FAFB', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ background: 'var(--c-surface-2)', border: `1px solid ${callbackMsg.color}`, color: callbackMsg.color, borderRadius: 8, padding: '10px 14px', marginBottom: 16, fontSize: 13, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>{callbackMsg.text(callback.provider)}</span>
           <button onClick={dismissMsg} style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', fontSize: 16 }}>×</button>
         </div>
       )}
 
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : (
         <>
           <div style={{ display: 'flex', gap: 16, marginBottom: 20, flexWrap: 'wrap' }}>
             {connections.map(c => (
-              <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid #E5E7EB', borderRadius: 8, padding: 16 }}>
+              <div key={c.provider} style={{ flex: '1 1 320px', border: '1px solid var(--c-border)', borderRadius: 8, padding: 16 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                   <strong>{SIPV_PROVIDER_LABELS[c.provider]}</strong>
                   <span style={{
                     fontSize: 12, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
-                    background: c.connected ? '#D1FAE5' : '#FEF2F2',
+                    background: c.connected ? 'var(--c-tint-green)' : 'var(--c-tint-red)',
                     color: c.connected ? '#059669' : '#DC2626',
                   }}>
                     {c.connected ? '✓ Connecté' : 'Non connecté'}
                   </span>
                 </div>
                 {c.connected && c.account_label && (
-                  <div style={{ fontSize: 12, color: '#9CA3AF', marginBottom: 10 }}>{c.account_label}</div>
+                  <div style={{ fontSize: 12, color: 'var(--c-faint)', marginBottom: 10 }}>{c.account_label}</div>
                 )}
                 {!c.connected ? (
                   <>
@@ -279,7 +279,7 @@ function BackupCloudSection() {
                       Connecter {SIPV_PROVIDER_LABELS[c.provider]}
                     </button>
                     {!c.has_credentials && (
-                      <div style={{ fontSize: 12, color: '#9CA3AF', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
+                      <div style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 6 }}>Entrez et enregistrez les identifiants ci-dessus avant de connecter.</div>
                     )}
                   </>
                 ) : (
@@ -334,13 +334,13 @@ function BackupCloudSection() {
                   </td>
                 </tr>
               ))}
-              {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
+              {cycles.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun cycle configuré.</td></tr>}
             </tbody>
           </table>
 
           <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
             <button className="btn-primary" onClick={runNow} disabled={runningNow}>{runningNow ? '...' : 'Backup maintenant'}</button>
-            {runMsg && <span style={{ fontSize: 13, color: '#6B7280' }}>{runMsg}</span>}
+            {runMsg && <span style={{ fontSize: 13, color: 'var(--c-muted)' }}>{runMsg}</span>}
           </div>
 
           {logs.length > 0 && (
@@ -351,9 +351,9 @@ function BackupCloudSection() {
                 <tbody>
                   {logs.map(l => (
                     <tr key={l.id}>
-                      <td style={{ fontSize: 12, color: '#9CA3AF' }}>{fmtLogDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
+                      <td style={{ fontSize: 12, color: 'var(--c-faint)' }}>{fmtLogDate(l.started_at)}{l.triggered_manually ? ' (manuel)' : ''}</td>
                       <td>{SIPV_PROVIDER_LABELS[l.provider] || l.provider}</td>
-                      <td style={{ fontSize: 12, color: '#6B7280' }}>{l.filename || '—'}</td>
+                      <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{l.filename || '—'}</td>
                       <td>
                         <span style={{ fontSize: 12, fontWeight: 600, color: l.success ? '#059669' : '#DC2626' }}>
                           {l.success ? 'Succès' : (l.error_message || 'Échec')}
@@ -397,8 +397,8 @@ function SipvCredentialsForm({ provider, initialClientId, onSaved }) {
   }
 
   return (
-    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 12 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#6B7280', marginBottom: 8 }}>
+    <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8 }}>
         IDENTIFIANTS API {provider === 'dropbox' ? '(App Key / App Secret Dropbox)' : '(Client ID / Client Secret Google)'}
       </div>
       <div className="form-group">
@@ -511,9 +511,9 @@ function SipChannelIpsSection({ server, onSave }) {
   }
 
   return (
-    <div style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 16 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: '#374151', marginBottom: 4 }}>Canaux SIP (fournisseur)</div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+    <div style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>Canaux SIP (fournisseur)</div>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Certains fournisseurs SIP exigent 2 IP publiques distinctes — une pour les appels entrants,
         une pour les sortants. À confirmer avec le fournisseur avant de les remplir ; ces champs sont
         seulement de la configuration/référence pour l'instant, pas encore appliqués automatiquement
@@ -619,30 +619,30 @@ function MohLibrarySection({ companies }) {
   }
 
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
         Musique d'attente (MOH) — bibliothèque
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Un fichier sans compagnie assignée est "Global" — il apparaît comme option dans TOUTES les compagnies.
         Assigné à une compagnie = dédié seulement à celle-ci. Chaque compagnie choisit ensuite un ou plusieurs
         fichiers dans sa fiche (onglet Informations).
       </div>
 
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : files.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : files.length === 0 ? (
         <div className="empty-tab">Aucun fichier MOH.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
           {files.map(f => (
-            <div key={f.id} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div key={f.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <input defaultValue={f.name} key={f.id + f.name} style={{ fontWeight: 600, fontSize: 13, border: '1px solid transparent', background: 'transparent', width: 200 }}
                 onBlur={e => rename(f, e.target.value)} />
-              <span style={{ fontSize: 12, color: '#9CA3AF' }}>{f.duration_seconds ? `${f.duration_seconds}s` : ''}</span>
+              <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>{f.duration_seconds ? `${f.duration_seconds}s` : ''}</span>
               <select value={f.tenant_id || ''} onChange={e => reassign(f, e.target.value)} style={{ fontSize: 12 }}>
                 <option value="">Global (toutes les compagnies)</option>
                 {companies.map(c => <option key={c.id} value={c.sipv_tenant_id}>{c.name}</option>)}
               </select>
-              {!f.tenant_id && <span style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Global</span>}
+              {!f.tenant_id && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Global</span>}
               <audio controls src={`/api/v1/server/moh/${f.id}/file?token=${encodeURIComponent(getToken())}`} style={{ height: 28, maxWidth: 200, marginLeft: 'auto' }} />
               <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => downloadFile(f)}>Télécharger</button>
               <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => toggleActive(f)}>
@@ -654,7 +654,7 @@ function MohLibrarySection({ companies }) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12 }}>
         <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
           <label>Nom</label>
           <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="ex: Musique classique" />
@@ -727,32 +727,32 @@ function GlobalTemplatesSection({ server }) {
   return (
     <div style={{ marginBottom: 20 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Global Templates ({templates.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Partagé par toutes les compagnies hébergées sur ce serveur — le niveau le plus général de la chaîne (avant les options par compagnie). "Défaut" s'applique automatiquement à tous, sans choix requis.
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : templates.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
         <div className="empty-tab">Aucun template.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {templates.map(t => (
-            <div key={t.id} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
+            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
                   {expanded === t.id ? '▾' : '▸'} {t.name}
                 </span>
-                {t.is_default && <span style={{ background: '#DBEAFE', color: '#1D4ED8', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
+                {t.is_default && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => toggleDefault(t)}>
                   {t.is_default ? 'Retirer défaut' : 'Définir défaut'}
                 </button>
                 <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
               </div>
-              {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{t.description}</div>}
+              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
               {expanded === t.id && (
                 <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
               )}
@@ -823,20 +823,20 @@ function TenantTemplatesSection({ server }) {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
           Templates de tenant ({templates.length})
         </div>
         <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
       </div>
-      <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
         Bibliothèque de gabarits (ex. "Français", "Anglais") — chaque compagnie choisit celui qu'elle utilise pour ses "Options téléphonie" ; jamais appliqué automatiquement.
       </div>
-      {loading ? <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div> : templates.length === 0 ? (
+      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
         <div className="empty-tab">Aucun template.</div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {templates.map(t => (
-            <div key={t.id} style={{ background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '10px 12px' }}>
+            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
                   {expanded === t.id ? '▾' : '▸'} {t.name}
@@ -844,7 +844,7 @@ function TenantTemplatesSection({ server }) {
                 <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
                 <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
               </div>
-              {t.description && <div style={{ fontSize: 12, color: '#6B7280', marginTop: 4 }}>{t.description}</div>}
+              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
               {expanded === t.id && (
                 <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
               )}

@@ -33,7 +33,7 @@ export default function JournalFeed({ entityId }) {
         placeholder="Rechercher dans le journal..."
         value={search}
         onChange={e => setSearch(e.target.value)}
-        style={{ marginBottom: 12, padding: '6px 10px', border: '1px solid #E5E7EB', borderRadius: 6, fontSize: 13, width: 280 }}
+        style={{ marginBottom: 12, padding: '6px 10px', border: '1px solid var(--c-border)', borderRadius: 6, fontSize: 13, width: 280 }}
       />
       {loading && <div className="empty-tab">Chargement...</div>}
       {!loading && !logs.length && <div className="empty-tab">Aucune entrée dans le journal.</div>}
@@ -49,7 +49,7 @@ export default function JournalFeed({ entityId }) {
                   {l.can_revert && (
                     <button
                       onClick={() => revert(l)}
-                      style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: '1px solid #CBD5E1', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', marginLeft: 8 }}
+                      style={{ fontSize: 11, color: 'var(--brand)', background: 'none', border: '1px solid var(--c-border-strong)', borderRadius: 5, padding: '2px 8px', cursor: 'pointer', marginLeft: 8 }}
                     >
                       Revert
                     </button>

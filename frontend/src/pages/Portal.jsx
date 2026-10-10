@@ -120,15 +120,15 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
     <div>
       {/* Demandes en attente */}
       {pendingPRs.length > 0 && (
-        <div style={{ background: '#EFF6FF', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 16px', marginBottom: 18 }}>
-          <strong style={{ color: '#1D4ED8', fontSize: 14 }}>Paiements en attente de confirmation</strong>
+        <div style={{ background: 'var(--c-tint-blue)', border: '1px solid #BFDBFE', borderRadius: 8, padding: '12px 16px', marginBottom: 18 }}>
+          <strong style={{ color: 'var(--c-on-blue)', fontSize: 14 }}>Paiements en attente de confirmation</strong>
           {pendingPRs.map(pr => (
-            <div key={pr.id} style={{ marginTop: 8, fontSize: 13, color: '#1E40AF' }}>
+            <div key={pr.id} style={{ marginTop: 8, fontSize: 13, color: 'var(--c-on-blue)' }}>
               <strong>{pr.reference}</strong> &mdash; {fmt(pr.amount)} par {pr.method_name}
-              <span style={{ color: '#6B7280', marginLeft: 8 }}>Soumis le {pr.created_at ? new Date(pr.created_at).toLocaleDateString('fr-CA') : ''}</span>
+              <span style={{ color: 'var(--c-muted)', marginLeft: 8 }}>Soumis le {pr.created_at ? new Date(pr.created_at).toLocaleDateString('fr-CA') : ''}</span>
             </div>
           ))}
-          <p style={{ marginTop: 8, fontSize: 12, color: '#6B7280' }}>
+          <p style={{ marginTop: 8, fontSize: 12, color: 'var(--c-muted)' }}>
             Ces paiements sont en attente de traitement. Vos factures seront mises à jour dès confirmation.
           </p>
         </div>
@@ -163,7 +163,7 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
                 <td style={{ whiteSpace: 'nowrap' }}>{inv.issue_date || '—'}</td>
                 <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</td>
                 <td>
-                  <span style={{ color: STATUS_COLOR[inv.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>
+                  <span style={{ color: STATUS_COLOR[inv.status] || 'var(--c-muted)', fontWeight: 600, fontSize: 12 }}>
                     {STATUS_FR[inv.status] || inv.status}
                   </span>
                   {inv.pending_paid > 0 && (
@@ -177,12 +177,12 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
                   color: inv.balance > 0.01 ? '#DC2626' : '#059669', fontWeight: 600 }}>
                   {fmt(inv.balance)}
                 </td>
-                <td style={{ color: '#6B7280', fontSize: 13 }}>{fmtDate(inv.due_date)}</td>
+                <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{fmtDate(inv.due_date)}</td>
                 <td>
                   <button
                     onClick={() => downloadPdf(inv.id, inv.invoice_number)}
-                    style={{ background: 'none', border: '1px solid #E5E7EB', borderRadius: 4,
-                      padding: '2px 8px', fontSize: 12, cursor: 'pointer', color: '#6B7280' }}
+                    style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 4,
+                      padding: '2px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--c-muted)' }}
                     title="Télécharger PDF"
                   >PDF</button>
                 </td>
@@ -190,14 +190,14 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
             )
           })}
           {invoices.length === 0 && (
-            <tr><td colSpan={7} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucune facture.</td></tr>
+            <tr><td colSpan={7} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucune facture.</td></tr>
           )}
         </tbody>
       </table>
 
       {/* Panneau de paiement */}
       {invoices.some(i => i.balance > 0.01) && (
-        <div style={{ marginTop: 20, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: '16px 20px' }}>
+        <div style={{ marginTop: 20, background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '16px 20px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <strong style={{ fontSize: 15 }}>Effectuer un paiement</strong>
             <button onClick={selectAll} style={{ fontSize: 12, color: 'var(--brand)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
@@ -206,17 +206,17 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
           </div>
 
           {selectedCount > 0 && (
-            <div style={{ marginBottom: 12, padding: '10px 14px', background: '#EFF6FF', borderRadius: 6, fontSize: 14 }}>
+            <div style={{ marginBottom: 12, padding: '10px 14px', background: 'var(--c-tint-blue)', borderRadius: 6, fontSize: 14 }}>
               <span><strong>{selectedCount}</strong> facture{selectedCount > 1 ? 's' : ''} sélectionnée{selectedCount > 1 ? 's' : ''}</span>
-              <span style={{ float: 'right', fontWeight: 700, color: '#1D4ED8' }}>{fmt(selectedTotal)}</span>
+              <span style={{ float: 'right', fontWeight: 700, color: 'var(--c-on-blue)' }}>{fmt(selectedTotal)}</span>
             </div>
           )}
 
           {methods.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <label style={{ fontSize: 13, color: '#6B7280', display: 'block', marginBottom: 4 }}>Mode de paiement</label>
+              <label style={{ fontSize: 13, color: 'var(--c-muted)', display: 'block', marginBottom: 4 }}>Mode de paiement</label>
               <select value={methodCode} onChange={e => setMethodCode(e.target.value)}
-                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid #D1D5DB', fontSize: 14 }}>
+                style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--c-border-strong)', fontSize: 14 }}>
                 {methods.map(m => <option key={m.code} value={m.code}>{m.name}</option>)}
               </select>
             </div>
@@ -225,25 +225,25 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
           {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
 
           {result && (
-            <div style={{ background: '#D1FAE5', border: '1px solid #6EE7B7', borderRadius: 6, padding: '12px 16px', marginBottom: 12 }}>
-              <strong style={{ color: '#065F46', display: 'block', marginBottom: 6 }}>
+            <div style={{ background: 'var(--c-tint-green)', border: '1px solid #6EE7B7', borderRadius: 6, padding: '12px 16px', marginBottom: 12 }}>
+              <strong style={{ color: 'var(--c-on-green)', display: 'block', marginBottom: 6 }}>
                 Demande enregistrée &mdash; Référence : {result.reference}
               </strong>
-              <span style={{ fontSize: 13, color: '#047857' }} dangerouslySetInnerHTML={{ __html: result.instructions }} />
+              <span style={{ fontSize: 13, color: 'var(--c-on-green)' }} dangerouslySetInnerHTML={{ __html: result.instructions }} />
             </div>
           )}
 
           <button
             onClick={submitPaymentRequest}
             disabled={selectedCount === 0 || submitting}
-            style={{ background: selectedCount > 0 ? 'var(--brand)' : '#E5E7EB',
-              color: selectedCount > 0 ? '#fff' : '#9CA3AF',
+            style={{ background: selectedCount > 0 ? 'var(--brand)' : 'var(--c-border)',
+              color: selectedCount > 0 ? '#fff' : 'var(--c-faint)',
               border: 'none', borderRadius: 6, padding: '9px 20px', fontSize: 14,
               fontWeight: 600, cursor: selectedCount > 0 ? 'pointer' : 'not-allowed' }}
           >
             {submitting ? 'Envoi...' : "J'ai effectué le paiement"}
           </button>
-          <p style={{ marginTop: 8, fontSize: 11, color: '#9CA3AF' }}>
+          <p style={{ marginTop: 8, fontSize: 11, color: 'var(--c-faint)' }}>
             Ce bouton enregistre votre déclaration. Vos factures seront marquées payées après confirmation et rapprochement bancaire.
           </p>
         </div>
@@ -358,11 +358,11 @@ const FORWARD_DEST_TYPES = [
 function OptionSection({ title, defaultOpen, children }) {
   const [open, setOpen] = useState(!!defaultOpen)
   return (
-    <div style={{ border: '1px solid #E5E7EB', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, marginBottom: 10, overflow: 'hidden' }}>
       <button type="button" onClick={() => setOpen(v => !v)}
-        style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: '#F9FAFB', border: 'none',
+        style={{ width: '100%', textAlign: 'left', padding: '10px 14px', background: 'var(--c-surface-2)', border: 'none',
                  cursor: 'pointer', fontSize: 14, fontWeight: 600, display: 'flex', justifyContent: 'space-between' }}>
-        {title}<span style={{ color: '#9CA3AF' }}>{open ? '▾' : '▸'}</span>
+        {title}<span style={{ color: 'var(--c-faint)' }}>{open ? '▾' : '▸'}</span>
       </button>
       {open && <div style={{ padding: '12px 14px' }}>{children}</div>}
     </div>
@@ -378,9 +378,9 @@ const STATUS_FR = {
   actif: 'Actif', inactif: 'Inactif', hors_service: 'Hors service',
 }
 const STATUS_COLOR = {
-  payee: '#059669', partiellement_payee: '#D97706', en_retard: '#DC2626', envoyee: 'var(--brand)', brouillon: '#6B7280', annulee: '#9CA3AF', pending: '#2563EB',
-  ouvert: 'var(--brand)', en_cours: '#D97706', resolu: '#059669', ferme: '#9CA3AF', en_attente: '#7C3AED',
-  actif: '#059669', inactif: '#9CA3AF', hors_service: '#DC2626',
+  payee: '#059669', partiellement_payee: '#D97706', en_retard: '#DC2626', envoyee: 'var(--brand)', brouillon: 'var(--c-muted)', annulee: 'var(--c-faint)', pending: '#2563EB',
+  ouvert: 'var(--brand)', en_cours: '#D97706', resolu: '#059669', ferme: 'var(--c-faint)', en_attente: '#7C3AED',
+  actif: '#059669', inactif: 'var(--c-faint)', hors_service: '#DC2626',
 }
 
 function PortalDashboard({ session, onLogout }) {
@@ -411,7 +411,7 @@ function PortalDashboard({ session, onLogout }) {
         <div className="portal-brand">Simple IP — Portail client</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <a href="/rdv" target="_blank" rel="noopener noreferrer" className="portal-tab" style={{ textDecoration: 'none' }}>📅 Prendre rendez-vous</a>
-          <span style={{ color: '#9CA3AF', fontSize: 13 }}>{session.full_name}</span>
+          <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>{session.full_name}</span>
           <button className="portal-logout" onClick={onLogout}>Déconnexion</button>
         </div>
       </div>
@@ -452,12 +452,12 @@ function PortalDashboard({ session, onLogout }) {
                 {(data.tickets || []).map(t => (
                   <tr key={t.id}>
                     <td style={{ fontWeight: 600 }}>{t.title}</td>
-                    <td style={{ color: '#6B7280', fontSize: 13 }}>{t.priority}</td>
-                    <td><span style={{ color: STATUS_COLOR[t.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>{STATUS_FR[t.status] || t.status}</span></td>
-                    <td style={{ color: '#6B7280', fontSize: 13 }}>{fmtDate(t.created_at)}</td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{t.priority}</td>
+                    <td><span style={{ color: STATUS_COLOR[t.status] || 'var(--c-muted)', fontWeight: 600, fontSize: 12 }}>{STATUS_FR[t.status] || t.status}</span></td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{fmtDate(t.created_at)}</td>
                   </tr>
                 ))}
-                {(data.tickets || []).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun ticket.</td></tr>}
+                {(data.tickets || []).length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun ticket.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -477,13 +477,13 @@ function PortalDashboard({ session, onLogout }) {
               {(data.equipment || []).map(e => (
                 <tr key={e.id}>
                   <td style={{ fontWeight: 600 }}>{e.name}</td>
-                  <td style={{ color: '#6B7280', fontSize: 13 }}>{e.category}</td>
-                  <td style={{ color: '#6B7280', fontSize: 13 }}>{[e.brand, e.model].filter(Boolean).join(' ')}</td>
+                  <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{e.category}</td>
+                  <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{[e.brand, e.model].filter(Boolean).join(' ')}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{e.ip_address || '—'}</td>
-                  <td><span style={{ color: STATUS_COLOR[e.status] || '#6B7280', fontWeight: 600, fontSize: 12 }}>{STATUS_FR[e.status] || e.status}</span></td>
+                  <td><span style={{ color: STATUS_COLOR[e.status] || 'var(--c-muted)', fontWeight: 600, fontSize: 12 }}>{STATUS_FR[e.status] || e.status}</span></td>
                 </tr>
               ))}
-              {(data.equipment || []).length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun équipement.</td></tr>}
+              {(data.equipment || []).length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun équipement.</td></tr>}
             </tbody>
           </table>
         )}
@@ -508,7 +508,7 @@ function ForwardGroup({ title, ext, prefix, extraFields, form, setForm }) {
   const typeKey = `${prefix}_destination_type`
   const destKey = `${prefix}_destination`
   return (
-    <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid #F3F4F6' }}>
+    <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-surface-3)' }}>
       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
         <input type="checkbox" checked={!!form[enabledKey]}
           onChange={e => setForm(p => ({ ...p, [enabledKey]: e.target.checked }))} />
@@ -573,9 +573,9 @@ function ExtensionTab({ ext, perms, onSaved }) {
       {error && <div className="portal-error" style={{ marginBottom: 10 }}>{error}</div>}
 
       <OptionSection title="Mon poste" defaultOpen>
-        <div style={{ fontSize: 13, color: '#6B7280', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
-          <span>Poste</span><span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#111827' }}>{ext.extension}</span>
-          <span>Nom</span><span style={{ fontWeight: 600, color: '#111827' }}>{ext.name}</span>
+        <div style={{ fontSize: 13, color: 'var(--c-muted)', display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 12px' }}>
+          <span>Poste</span><span style={{ fontFamily: 'monospace', fontWeight: 600, color: 'var(--c-text)' }}>{ext.extension}</span>
+          <span>Nom</span><span style={{ fontWeight: 600, color: 'var(--c-text)' }}>{ext.name}</span>
         </div>
       </OptionSection>
 
@@ -634,7 +634,7 @@ function ExtensionTab({ ext, perms, onSaved }) {
             <input type="email" value={form.voicemail_email || ''} onChange={e => setForm(p => ({ ...p, voicemail_email: e.target.value }))}
               onBlur={() => save({ voicemail_email: form.voicemail_email || null })} />
             {ext.contact_email && form.voicemail_email === ext.contact_email && (
-              <small style={{ color: '#6B7280' }}>Lié au courriel de votre fiche contact.</small>
+              <small style={{ color: 'var(--c-muted)' }}>Lié au courriel de votre fiche contact.</small>
             )}
           </div>
           <VoicemailGreetingGenerator />
@@ -643,7 +643,7 @@ function ExtensionTab({ ext, perms, onSaved }) {
 
       {perms.can_edit_call_plan && (
         <OptionSection title="Plan d'appel">
-          <div style={{ fontSize: 12, color: '#6B7280', marginBottom: 10 }}>
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
             Une case non cochée mais grisée (indéterminée) signifie que le poste
             suit le défaut de la compagnie — cochez ou décochez pour l'imposer
             spécifiquement à ce poste.
@@ -657,7 +657,7 @@ function ExtensionTab({ ext, perms, onSaved }) {
                 style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }} />
               <label htmlFor={`cp_${key}`} style={{ fontSize: 13, cursor: 'pointer', minWidth: 160 }}>{label}</label>
               {(form[key] === null || form[key] === undefined) && (
-                <span style={{ fontSize: 11, color: '#9CA3AF' }}>(défaut compagnie)</span>
+                <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>(défaut compagnie)</span>
               )}
             </div>
           ))}
@@ -666,9 +666,9 @@ function ExtensionTab({ ext, perms, onSaved }) {
 
       {perms.can_view_own_cdr && (
         <OptionSection title="Historique d'appels">
-          {cdrLoading && <div style={{ fontSize: 13, color: '#6B7280' }}>Chargement...</div>}
+          {cdrLoading && <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>}
           {!cdrLoading && (!cdr || cdr.items.length === 0) && (
-            <div style={{ fontSize: 13, color: '#9CA3AF' }}>Aucun appel.</div>
+            <div style={{ fontSize: 13, color: 'var(--c-faint)' }}>Aucun appel.</div>
           )}
           {!cdrLoading && cdr && cdr.items.length > 0 && (
             <table className="portal-table">
@@ -680,7 +680,7 @@ function ExtensionTab({ ext, perms, onSaved }) {
                     <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.src || '—'}</td>
                     <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.dst || '—'}</td>
                     <td style={{ fontSize: 13 }}>{c.billsec != null ? `${c.billsec}s` : '—'}</td>
-                    <td style={{ fontSize: 12, color: '#6B7280' }}>{c.direction || '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{c.direction || '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -769,11 +769,11 @@ function TelephonyExtensionsPanel() {
             <tr key={e.id}>
               <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{e.extension}</td>
               <td>{e.name}</td>
-              <td style={{ fontSize: 12, color: e.voicemail_enabled ? '#059669' : '#9CA3AF' }}>{e.voicemail_enabled ? 'Activée' : 'Désactivée'}</td>
+              <td style={{ fontSize: 12, color: e.voicemail_enabled ? '#059669' : 'var(--c-faint)' }}>{e.voicemail_enabled ? 'Activée' : 'Désactivée'}</td>
               <td><button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEditing(e)}>Modifier</button></td>
             </tr>
           ))}
-          {exts.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun poste.</td></tr>}
+          {exts.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun poste.</td></tr>}
         </tbody>
       </table>
       {editing && (
@@ -837,12 +837,12 @@ function TelephonyIvrPanel() {
           {ivrs.map(i => (
             <tr key={i.id}>
               <td style={{ fontWeight: 600 }}>{i.name}</td>
-              <td style={{ fontSize: 13, color: '#6B7280' }}>{(i.options || []).length} choix</td>
-              <td style={{ fontSize: 12, color: i.is_active ? '#059669' : '#9CA3AF' }}>{i.is_active ? 'Actif' : 'Inactif'}</td>
+              <td style={{ fontSize: 13, color: 'var(--c-muted)' }}>{(i.options || []).length} choix</td>
+              <td style={{ fontSize: 12, color: i.is_active ? '#059669' : 'var(--c-faint)' }}>{i.is_active ? 'Actif' : 'Inactif'}</td>
               <td><button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => toggleActive(i)}>{i.is_active ? 'Désactiver' : 'Activer'}</button></td>
             </tr>
           ))}
-          {ivrs.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun IVR.</td></tr>}
+          {ivrs.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun IVR.</td></tr>}
         </tbody>
       </table>
       {showNew && <NewIvrModal onClose={() => setShowNew(false)} onCreated={() => { setShowNew(false); load() }} setError={setError} />}
@@ -937,11 +937,11 @@ function TelephonyGroupsPanel() {
             <tr key={g.id}>
               <td style={{ fontWeight: 600 }}>{g.name}</td>
               <td style={{ fontFamily: 'monospace' }}>{g.extension}</td>
-              <td style={{ fontSize: 13, color: '#6B7280' }}>{g.ring_strategy}</td>
-              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : '#9CA3AF' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
+              <td style={{ fontSize: 13, color: 'var(--c-muted)' }}>{g.ring_strategy}</td>
+              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : 'var(--c-faint)' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
             </tr>
           ))}
-          {ring.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun groupe d'appel.</td></tr>}
+          {ring.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '16px 0' }}>Aucun groupe d'appel.</td></tr>}
         </tbody>
       </table>
 
@@ -956,11 +956,11 @@ function TelephonyGroupsPanel() {
             <tr key={g.id}>
               <td style={{ fontWeight: 600 }}>{g.name}</td>
               <td style={{ fontFamily: 'monospace' }}>{g.extension}</td>
-              <td style={{ fontSize: 13, color: '#6B7280' }}>{g.mode}</td>
-              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : '#9CA3AF' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
+              <td style={{ fontSize: 13, color: 'var(--c-muted)' }}>{g.mode}</td>
+              <td style={{ fontSize: 12, color: g.is_active ? '#059669' : 'var(--c-faint)' }}>{g.is_active ? 'Actif' : 'Inactif'}</td>
             </tr>
           ))}
-          {paging.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun groupe d'interphonie.</td></tr>}
+          {paging.length === 0 && <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '16px 0' }}>Aucun groupe d'interphonie.</td></tr>}
         </tbody>
       </table>
 
@@ -1086,7 +1086,7 @@ function TelephonyAudioPanel({ perms }) {
               </td>
             </tr>
           ))}
-          {prompts.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucune phrase.</td></tr>}
+          {prompts.length === 0 && <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '16px 0' }}>Aucune phrase.</td></tr>}
         </tbody>
       </table>
 
@@ -1104,7 +1104,7 @@ function TelephonyAudioPanel({ perms }) {
           {moh.map(m => (
             <tr key={m.id}>
               <td>{m.name}</td>
-              <td style={{ fontSize: 12, color: '#6B7280' }}>{m.tenant_id ? 'Votre compagnie' : 'Partagée (Simple IP)'}</td>
+              <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{m.tenant_id ? 'Votre compagnie' : 'Partagée (Simple IP)'}</td>
               <td style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', alignItems: 'center' }}>
                 {perms.can_listen_audio_prompts && (
                   <audio controls src={`/api/v1/portal/telephony/moh/${m.id}/file?token=${encodeURIComponent(portalToken)}`} style={{ height: 28, maxWidth: 180 }} />
@@ -1115,7 +1115,7 @@ function TelephonyAudioPanel({ perms }) {
               </td>
             </tr>
           ))}
-          {moh.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: '#9CA3AF', padding: '16px 0' }}>Aucun fichier.</td></tr>}
+          {moh.length === 0 && <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '16px 0' }}>Aucun fichier.</td></tr>}
         </tbody>
       </table>
 
@@ -1183,8 +1183,8 @@ function VoiceGenerateSection({ onGenerated, setError, portalToken }) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: '#F9FAFB', border: '1px solid #E5E7EB', borderRadius: 8, padding: 12, marginBottom: 24 }}>
-      <div style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Générer par voix (synthèse vocale IA)</div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 24 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--c-text-2)' }}>Générer par voix (synthèse vocale IA)</div>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         <div className="form-group" style={{ width: 200, marginBottom: 0 }}>
           <label>Nom</label>
@@ -1214,7 +1214,7 @@ function VoiceGenerateSection({ onGenerated, setError, portalToken }) {
             {filteredVoices.map(v => <option key={v.voice_id} value={v.voice_id}>{v.name}</option>)}
           </select>
           {filteredVoices.length === 0 && voices.length > 0 && (
-            <div style={{ fontSize: 11, color: '#9CA3AF', marginTop: 4 }}>Aucune voix pour ce filtre.</div>
+            <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 4 }}>Aucune voix pour ce filtre.</div>
           )}
         </div>
         {selectedVoice && (
@@ -1291,10 +1291,10 @@ function TelephonyCdrPanel() {
             <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.src || '—'}</td>
             <td style={{ fontFamily: 'monospace', fontSize: 13 }}>{c.dst || '—'}</td>
             <td style={{ fontSize: 13 }}>{c.billsec != null ? `${c.billsec}s` : '—'}</td>
-            <td style={{ fontSize: 12, color: '#6B7280' }}>{c.direction || '—'}</td>
+            <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{c.direction || '—'}</td>
           </tr>
         ))}
-        {items.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: '#9CA3AF', padding: '24px 0' }}>Aucun appel.</td></tr>}
+        {items.length === 0 && <tr><td colSpan={5} style={{ textAlign: 'center', color: 'var(--c-faint)', padding: '24px 0' }}>Aucun appel.</td></tr>}
       </tbody>
     </table>
   )
@@ -1340,7 +1340,7 @@ function VoicemailGreetingGenerator() {
 
   if (voices.length === 0) return null
   return (
-    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid #F3F4F6' }}>
+    <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--c-surface-3)' }}>
       <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Message d'accueil par synthèse vocale (IA)</div>
       {error && <div className="portal-error" style={{ marginBottom: 8 }}>{error}</div>}
       {msg && <div style={{ fontSize: 12, color: '#059669', fontWeight: 600, marginBottom: 8 }}>{msg}</div>}
