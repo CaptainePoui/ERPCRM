@@ -42,7 +42,7 @@ export default function Contacts() {
                 <th>Courriel</th>
                 <th>Téléphone</th>
                 <th>Compagnies</th>
-                <th>Statuts</th>
+                <th>Pastilles</th>
               </tr>
             </thead>
             <tbody>

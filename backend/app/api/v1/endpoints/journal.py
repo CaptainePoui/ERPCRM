@@ -46,7 +46,7 @@ TABLE_LABELS = {
     "interac_notices": "Avis Interac", "barter_exchanges": "Échange (troc)", "barter_applications": "Échange appliqué",
     "barter_deductions": "Déduction d'échange", "barter_files": "Document d'échange", "equipment": "Équipement",
     "client_access": "Accès client", "dids": "Numéro de téléphone", "extensions": "Poste", "addresses": "Adresse",
-    "communication_channels": "Coordonnée", "contact_companies": "Lien contact – compagnie", "entity_statuses": "Statut",
+    "communication_channels": "Coordonnée", "contact_companies": "Lien contact – compagnie", "entity_statuses": "Pastille d'une fiche", "statuses": "Pastille",
     "company_sites": "Site", "installation_photos": "Photo d'installation", "appointments": "Rendez-vous",
     "cdr_report_schedules": "Rapport d'appels programmé", "cloud_backup_connections": "Sauvegarde infonuagique",
     "contact_company_functions": "Fonction d'un contact", "requete": "Action",

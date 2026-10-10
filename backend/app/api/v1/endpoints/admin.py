@@ -1,14 +1,16 @@
+import re
 import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from pydantic import BaseModel, EmailStr
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.core.security import hash_password
 from app.models.user import User, UserRole
 from app.models.payment import PaymentMethod
+from app.models.status import Status, EntityStatus
 
 router = APIRouter()
 
@@ -151,3 +153,80 @@ async def update_payment_method(method_id: uuid.UUID, payload: PaymentMethodUpda
     await db.commit()
     await db.refresh(m)
     return PaymentMethodOut(id=m.id, code=m.code, name=m.name, discount_rate=float(m.discount_rate or 0), is_active=m.is_active)
+
+
+# ── Pastilles (TASK-002.3) ────────────────────────────────────────────────────
+# Les pastilles des compagnies et des contacts (client, fournisseur, sous-traitant...) : ajouter, renommer, couleur,
+# désactiver. Jamais supprimées : une pastille désactivée ne s'offre plus, mais reste sur les fiches qui la portent.
+
+class StatusAdminOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    color: str | None
+    is_active: bool
+    used: int
+
+
+class StatusAdminIn(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    is_active: bool | None = None
+
+
+def _clean_status(payload: StatusAdminIn) -> dict:
+    data = payload.model_dump(exclude_unset=True)
+    if "name" in data:
+        data["name"] = (data["name"] or "").strip()
+        if not data["name"]:
+            raise HTTPException(status_code=422, detail="Le nom est requis")
+    if data.get("color") is not None and not re.fullmatch(r"#[0-9A-Fa-f]{6}", data["color"]):
+        raise HTTPException(status_code=422, detail="Couleur invalide")
+    return data
+
+
+async def _status_out(db: AsyncSession, s: Status) -> StatusAdminOut:
+    used = (await db.execute(select(func.count()).select_from(EntityStatus).where(EntityStatus.status_id == s.id))).scalar_one()
+    return StatusAdminOut(id=s.id, name=s.name, color=s.color, is_active=s.is_active, used=used)
+
+
+async def _name_taken(db: AsyncSession, name: str, exclude: uuid.UUID | None = None) -> bool:
+    q = select(Status.id).where(func.lower(Status.name) == name.lower())
+    if exclude:
+        q = q.where(Status.id != exclude)
+    return (await db.execute(q)).first() is not None
+
+
+@router.get("/statuses", response_model=list[StatusAdminOut])
+async def list_statuses_admin(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    rows = (await db.execute(select(Status).order_by(Status.name))).scalars().all()
+    return [await _status_out(db, s) for s in rows]
+
+
+@router.post("/statuses", response_model=StatusAdminOut, status_code=status.HTTP_201_CREATED)
+async def create_status(payload: StatusAdminIn, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    data = _clean_status(payload)
+    if not data.get("name"):
+        raise HTTPException(status_code=422, detail="Le nom est requis")
+    if await _name_taken(db, data["name"]):
+        raise HTTPException(status_code=409, detail="Cette pastille existe déjà")
+    s = Status(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True), is_system=False)
+    db.add(s)
+    await db.commit()
+    await db.refresh(s)
+    return await _status_out(db, s)
+
+
+@router.put("/statuses/{status_id}", response_model=StatusAdminOut)
+async def update_status(status_id: uuid.UUID, payload: StatusAdminIn, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    s = await db.get(Status, status_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Pastille introuvable")
+    data = _clean_status(payload)
+    if "name" in data and await _name_taken(db, data["name"], exclude=s.id):
+        raise HTTPException(status_code=409, detail="Cette pastille existe déjà")
+    for k, v in data.items():
+        if v is not None:
+            setattr(s, k, v)
+    await db.commit()
+    await db.refresh(s)
+    return await _status_out(db, s)

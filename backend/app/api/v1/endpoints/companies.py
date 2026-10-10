@@ -421,6 +421,89 @@ async def set_company_moh_selection(company_id: uuid.UUID, items: list[MohSelect
         raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
 
 
+# ── Internet et réseau du client (TASK-002.3) ─────────────────────────────────
+# La compagnie qui fournit l'Internet / s'occupe du réseau, et son contact préféré : des liens vers leurs fiches,
+# jamais une copie (téléphone, courriel lus en direct). La fiche du fournisseur montre les clients qui dépendent d'elle.
+CONNECT_KINDS = {"internet": ("internet_company_id", "internet_contact_id", "Internet"),
+                 "network": ("network_company_id", "network_contact_id", "Réseau")}
+
+
+class ConnectivityIn(BaseModel):
+    kind: str
+    company_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+
+
+async def _connect_side(db: AsyncSession, company_id, contact_id) -> dict | None:
+    if not company_id:
+        return None
+    co = await db.get(Company, company_id)
+    if not co:
+        return None
+    out = {"company": {"id": str(co.id), "name": co.name, "office_phone": co.office_phone}, "contact": None}
+    if contact_id:
+        ct = await db.get(Contact, contact_id)
+        if ct:
+            link = (await db.execute(select(ContactCompany).where(
+                ContactCompany.company_id == company_id, ContactCompany.contact_id == contact_id))).scalar_one_or_none()
+            out["contact"] = {"id": str(ct.id), "name": f"{ct.first_name} {ct.last_name}".strip(),
+                              "phone": ct.phone, "extension": ct.extension, "mobile": ct.mobile,
+                              "email": (link.email if link and link.email else None) or ct.email}
+    return out
+
+
+@router.get("/{company_id}/connectivity")
+async def get_connectivity(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    co = await db.get(Company, company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    deps = (await db.execute(select(Company).where(
+        (Company.internet_company_id == company_id) | (Company.network_company_id == company_id)
+    ).order_by(Company.name))).scalars().all()
+    return {
+        "internet": await _connect_side(db, co.internet_company_id, co.internet_contact_id),
+        "network": await _connect_side(db, co.network_company_id, co.network_contact_id),
+        "dependents": [{"id": str(d.id), "name": d.name, "is_active": d.is_active,
+                        "roles": [k for k, (cf, _, _) in CONNECT_KINDS.items() if getattr(d, cf) == company_id]} for d in deps],
+    }
+
+
+@router.put("/{company_id}/connectivity")
+async def set_connectivity(company_id: uuid.UUID, payload: ConnectivityIn, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    if payload.kind not in CONNECT_KINDS:
+        raise HTTPException(status_code=422, detail="Sorte inconnue (internet ou network)")
+    co = await db.get(Company, company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    company_field, contact_field, _ = CONNECT_KINDS[payload.kind]
+    new_co = await db.get(Company, payload.company_id) if payload.company_id else None
+    if payload.company_id and not new_co:
+        raise HTTPException(status_code=422, detail="Compagnie introuvable")
+    if payload.contact_id:
+        if not payload.company_id:
+            raise HTTPException(status_code=422, detail="Choisir d'abord la compagnie")
+        if not (await db.execute(select(ContactCompany).where(
+                ContactCompany.company_id == payload.company_id, ContactCompany.contact_id == payload.contact_id))).scalar_one_or_none():
+            raise HTTPException(status_code=422, detail="Ce contact ne fait pas partie de cette compagnie")
+
+    async def name_of(model, oid):
+        if not oid:
+            return None
+        o = await db.get(model, oid)
+        return (o.name if model is Company else f"{o.first_name} {o.last_name}".strip()) if o else str(oid)
+
+    changes = [(company_field, getattr(co, company_field), payload.company_id, Company),
+               (contact_field, getattr(co, contact_field), payload.contact_id, Contact)]
+    for field, old, new, model in changes:
+        if old == new:
+            continue
+        _log(db, company_id, current_user, "field_change", field_name=field,
+             old_value=await name_of(model, old), new_value=await name_of(model, new))
+        setattr(co, field, new)
+    await db.commit()
+    return await get_connectivity(company_id, db, current_user)
+
+
 @router.post("/{company_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Company).where(Company.id == company_id))
@@ -432,7 +515,7 @@ async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSe
         st = await db.execute(select(Status).where(Status.id == status_id))
         st_obj = st.scalar_one_or_none()
         _log(db, company_id, current_user, "status_added",
-             description=f"Statut « {st_obj.name if st_obj else status_id} » ajouté")
+             description=f"Pastille « {st_obj.name if st_obj else status_id} » ajoutée")
         await db.commit()
 
 
@@ -445,7 +528,7 @@ async def remove_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSe
         st_obj = st.scalar_one_or_none()
         await db.delete(es)
         _log(db, company_id, current_user, "status_removed",
-             description=f"Statut « {st_obj.name if st_obj else status_id} » retiré")
+             description=f"Pastille « {st_obj.name if st_obj else status_id} » retirée")
         await db.commit()
 
 

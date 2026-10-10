@@ -24,6 +24,9 @@ DEFAULT_STATUSES = [
     {"name": "fournisseur",     "color": "#6B7280", "is_system": True},
     {"name": "vendeur",         "color": "#8B5CF6", "is_system": True},
     {"name": "mauvais payeur",  "color": "#DC2626", "is_system": True},
+    {"name": "sous-traitant",          "color": "#D97706", "is_system": False},   # TASK-002.3
+    {"name": "fournisseur internet",   "color": "#0891B2", "is_system": False},
+    {"name": "réseau / informatique",  "color": "#059669", "is_system": False},
 ]
 
 DEFAULT_FUNCTIONS = [
@@ -52,9 +55,10 @@ async def seed_defaults(db: AsyncSession) -> None:
         if not result.scalar_one_or_none():
             db.add(PaymentMethod(**data))
 
-    for data in DEFAULT_STATUSES:
-        result = await db.execute(select(Status).where(Status.name == data["name"]))
-        if not result.scalar_one_or_none():
+    # Pastilles de depart : seulement sur une installation neuve -- elles se gerent ensuite dans Administration ->
+    # Pastilles (TASK-002.3) ; une pastille renommee ne doit pas revenir sous son ancien nom au redemarrage.
+    if not (await db.execute(select(Status.id).limit(1))).first():
+        for data in DEFAULT_STATUSES:
             db.add(Status(**data))
 
     for name in DEFAULT_FUNCTIONS:

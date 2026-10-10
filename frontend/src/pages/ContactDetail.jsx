@@ -73,7 +73,7 @@ function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiP
 
   return (
     <div className="status-selector">
-      {allStatuses.map(s => {
+      {[...allStatuses, ...current.filter(c => !allStatuses.some(a => a.id === c.id))].map(s => {   // + pastille désactivée encore portée
         const active = !!current.find(x => x.id === s.id)
         return (
           <button key={s.id} type="button"
@@ -906,7 +906,7 @@ export default function ContactDetail({ isNew }) {
           <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
         ) : (
           <div>
-            <div className="ifield-section-title">Statuts</div>
+            <div className="ifield-section-title">Pastilles</div>
             <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts" />
 
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Coordonnées</div>

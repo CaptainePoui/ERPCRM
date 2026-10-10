@@ -45,12 +45,19 @@ FIELD_LABELS = {
     "extension": "Poste SIP",
     "phone_other": "Autre numéro",
     "sipv_sync": "Synchronisation SIPV",
+    "internet_company_id": "Internet — compagnie",
+    "internet_contact_id": "Internet — contact préféré",
+    "network_company_id": "Réseau — compagnie",
+    "network_contact_id": "Réseau — contact préféré",
 }
+
+# Inscrits avec les noms (lisibles), pas les identifiants : on les rechange dans l'onglet Inventaire (TASK-002.3)
+NO_REVERT_FIELDS = {"internet_company_id", "internet_contact_id", "network_company_id", "network_contact_id"}
 
 ACTION_LABELS = {
     "field_change": "Modification",
-    "status_added": "Statut ajouté",
-    "status_removed": "Statut retiré",
+    "status_added": "Pastille ajoutée",
+    "status_removed": "Pastille retirée",
     "contact_linked": "Contact lié",
     "contact_unlinked": "Contact retiré",
     "address_added": "Adresse ajoutée",
@@ -97,7 +104,7 @@ def _out(l: EntityLog) -> LogEntryOut:
         description=l.description,
         user_name=l.user.full_name if l.user else f"{l.portal_user.full_name} (portail)" if l.portal_user else {"sipv": "SIPV"}.get(l.source, "Système"),
         created_at=l.created_at,
-        can_revert=l.action == "field_change" and bool(l.field_name),
+        can_revert=l.action == "field_change" and bool(l.field_name) and l.field_name not in NO_REVERT_FIELDS,
     )
 
 
@@ -164,7 +171,7 @@ async def revert_log(log_id: uuid.UUID, db: AsyncSession = Depends(get_db), curr
     log = await db.get(EntityLog, log_id)
     if not log:
         raise HTTPException(status_code=404, detail="Entrée de journal introuvable")
-    if log.action != "field_change" or not log.field_name:
+    if log.action != "field_change" or not log.field_name or log.field_name in NO_REVERT_FIELDS:
         raise HTTPException(status_code=400, detail="Cette entrée ne peut pas être revertie")
 
     entity = await db.get(Entity, log.entity_id)

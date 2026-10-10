@@ -31,6 +31,12 @@ class Company(Base):
     # Vendeur référent (contact)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"))
 
+    # Internet et reseau du client (TASK-002.3) : la compagnie qui s'en occupe et son contact prefere -- liens, jamais copies
+    internet_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    internet_contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+    network_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    network_contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+
     # Devise
     currency: Mapped[str] = mapped_column(String(3), default="CAD")
     exchange_rate: Mapped[float] = mapped_column(Float, default=1.0)

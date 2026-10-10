@@ -17,6 +17,7 @@ import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import MailBrowser from '../components/MailBrowser'
+import ConnectivityPanel from '../components/ConnectivityPanel'
 import { todayIso, parseDay } from '../utils/date'
 
 const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Courriels', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
@@ -134,7 +135,7 @@ function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiP
 
   return (
     <div className="status-selector">
-      {allStatuses.map(s => {
+      {[...allStatuses, ...current.filter(c => !allStatuses.some(a => a.id === c.id))].map(s => {   // + pastille désactivée encore portée
         const active = !!current.find(x => x.id === s.id)
         return (
           <button key={s.id} type="button"
@@ -203,7 +204,7 @@ function NewCompanyForm({ managers, statuses, onCreated }) {
       {error && <div className="form-error">{error}</div>}
       <div className="form-grid">
         <div className="form-group full">
-          <label>Statuts</label>
+          <label>Pastilles</label>
           <div className="status-selector">
             {statuses.map(s => (
               <button key={s.id} type="button"
@@ -618,7 +619,7 @@ export default function CompanyDetail({ isNew }) {
                     <div className="ifield-section-title">Identification</div>
                     <div className="ifields-grid cd-one-col">
                       <div className="ifield-full">
-                        <div className="ifield-label">Statuts</div>
+                        <div className="ifield-label">Pastilles</div>
                         <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
                           apiPath="/v1/companies" />
                       </div>
@@ -1205,6 +1206,7 @@ function InventaireTab({ companyId }) {
 
   return (
     <div>
+      <ConnectivityPanel companyId={companyId} />
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         <button className="btn-primary" onClick={() => setShowNew(true)}>+ Ajouter un équipement</button>
       </div>
