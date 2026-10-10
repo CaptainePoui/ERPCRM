@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-051 — Ordre de redémarrage envoyé au mauvais domaine
+
+**Date** : 2026-10-10
+
+**On croyait** : que les téléphones s'enregistrent avec le domaine = compte du tenant (« t1001 »), d'où `flush_inbound_reg t1001-101@t1001 reboot` après la migration.
+
+**Preuve** : après la migration de Philippe, `sofia status profile internal reg` montrait encore `t1001-101@sipv`, `t1001-100@sipv`, `t1001-103@sipv` ; la commande n'avait trouvé personne.
+
+**Cause réelle** : le domaine d'enregistrement vient de l'appareil (ici « sipv »), pas du compte ; le serveur retrouve le poste par l'identifiant seul (directory : « le tenant est lié au poste par relation, jamais par convention de nommage »).
+
+**Correction** : le domaine est lu de chaque enregistrement réel avant d'envoyer l'ordre ; s'il n'y en a aucun, l'écran le dit (« configurez … sur l'appareil »). Redémarrage renvoyé à la main aux 3 enregistrements.
+
+**Leçon (à ne pas refaire)** : ne jamais reconstruire un identifiant d'enregistrement SIP par convention — le lire de l'état réel (registrations) ; un essai annulé ne prouve pas les actions faites après la transaction (ESL) : les vérifier sur le vrai serveur dès la première exécution.
+
+---
+
 ## TASK-002.5 — Trois vraies factures déplacées comme « essais »
 
 **Date** : 2026-10-10

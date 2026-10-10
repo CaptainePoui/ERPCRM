@@ -8,7 +8,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -112,6 +112,7 @@ app.include_router(devis.router, prefix="/api/v1/devis", tags=["devis"])
 app.include_router(appointments.router, prefix="/api/v1/rdv", tags=["rdv"])
 app.include_router(google_oauth.router, prefix="/api/v1/google-calendar", tags=["google-calendar"])
 app.include_router(server_router.router, prefix="/api/v1/server", tags=["server"])
+app.include_router(migration_router.router, prefix="/api/v1/migration", tags=["migration"])   # TASK-051
 app.include_router(backup_router.router, prefix="/api/v1/backup", tags=["backup"])
 app.include_router(knowledge_graph.router, prefix="/api/v1/knowledge-graph", tags=["knowledge-graph"])
 app.include_router(bank.router, prefix="/api/v1/bank", tags=["bank"])

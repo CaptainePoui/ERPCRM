@@ -1259,3 +1259,30 @@ async def list_backup_logs() -> list[dict]:
         resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/backup/logs", headers=_headers())
         resp.raise_for_status()
         return resp.json()
+
+
+# ── Migration de tenant (TASK-051) ───────────────────────────────────────────
+# L'execution copie la base SIPV puis deplace tout en une transaction : delai plus long que les 5 s habituelles.
+
+async def migration_inventory(tenant_id: str) -> dict:
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/migration/tenant/{tenant_id}/inventory", headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def migration_preview(selection: dict) -> dict:
+    async with httpx.AsyncClient(timeout=30.0, verify=_CA_PATH) as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/migration/preview", json=selection, headers=_headers())
+        resp.raise_for_status()
+        return resp.json()
+
+
+async def migration_execute(selection: dict) -> tuple[int, dict]:
+    """(statut HTTP, reponse) -- 409 = conflits restants (rien n'a ete fait)."""
+    async with httpx.AsyncClient(timeout=180.0, verify=_CA_PATH) as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/migration/execute", json=selection, headers=_headers())
+        if resp.status_code == 409:
+            return 409, resp.json().get("detail", {})
+        resp.raise_for_status()
+        return resp.status_code, resp.json()

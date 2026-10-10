@@ -2,13 +2,14 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
+import TenantMigration from '../components/TenantMigration'
 import './Admin.css'
 
-const SERVER_TABS = ['Téléphonie', 'Backup cloud']
+const SERVER_TABS = ['Téléphonie', 'Backup cloud', 'Migration']
 
 export default function Server() {
   const [searchParams] = useSearchParams()
-  const [tab, setTab] = useState(searchParams.get('server_backup') ? 1 : 0)
+  const [tab, setTab] = useState(searchParams.get('server_backup') ? 1 : searchParams.get('tab') === 'migration' ? 2 : 0)
 
   const [servers, setServers] = useState([])
   const [loading, setLoading] = useState(true)
@@ -66,6 +67,7 @@ export default function Server() {
       )}
 
       {tab === 1 && <BackupCloudSection />}
+      {tab === 2 && <TenantMigration />}
     </div>
   )
 }

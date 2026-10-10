@@ -60,6 +60,7 @@ NO_REVERT_FIELDS = {"internet_company_id", "internet_contact_id", "network_compa
 ACTION_LABELS = {
     "field_change": "Modification",
     "status_added": "Pastille ajoutée",
+    "tenant_migration": "Migration téléphonique",
     "status_removed": "Pastille retirée",
     "contact_linked": "Contact lié",
     "contact_unlinked": "Contact retiré",
