@@ -20,6 +20,8 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : ne jamais reconstruire un identifiant d'enregistrement SIP par convention — le lire de l'état réel (registrations) ; un essai annulé ne prouve pas les actions faites après la transaction (ESL) : les vérifier sur le vrai serveur dès la première exécution.
 
+**Même jour, 2e erreur** : `flush_inbound_reg <user> reboot` a été choisi pour « redémarrer » sans lire ce qu'il fait d'autre — il **efface l'enregistrement** côté serveur. Le GXP2135 refusant l'ordre (401), il est resté hors ligne pour le serveur jusqu'à son renouvellement. Remplacé par `check_sync` (envoie seulement le NOTIFY). Leçon : avant d'utiliser une commande FreeSWITCH en production, vérifier tous ses effets (pas seulement celui recherché), et tester sur un appareil réel avec trace SIP — le « +OK » de FreeSWITCH ne dit rien de la réponse du téléphone.
+
 ---
 
 ## TASK-002.5 — Trois vraies factures déplacées comme « essais »
