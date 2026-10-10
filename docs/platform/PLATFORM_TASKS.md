@@ -91,7 +91,9 @@ Date de demande : 2026-10-10 (Philippe : « je suis dans Simple IP et je me rend
 Date(s) de travail : —
 
 - Constaté (2026-10-10) : une « succursale » est aujourd'hui une adresse sous la compagnie (`company_sites` : nom, adresse 911, contact et courriel de facturation), pas une compagnie. 3 en tout : Maison Le Passeur → « Oxygene » (Sorel-Tracy, 26 factures, 1 facturation périodique, pas de 911) ; Simple IP inc. → « Simple IP inc. » (principale) et « Simple IP Rose » (adresses 911 envoyées à SIPV). Les postes, numéros, factures et périodiques peuvent pointer vers une succursale (`site_id`).
-- En attente : proposition et réponses de Philippe (qui paie les factures d'Oxygène, un seul niveau maison mère → succursales ?), puis GO.
+- Proposé (2026-10-10) : succursale = vraie compagnie liée à une maison mère (un niveau) ; garder les adresses 911 à part.
+- Idée de Philippe (2026-10-10) : « un petit check box dans la compagnie en bas pour la mettre succursale, une fois coché on peut choisir la maison mère… ça lie les 2 ou plus compagnies, comme ça les recherches de paiement peuvent vérifier si la maison mère a payé pour les 2 entreprises dans son paiement, et ça afficherait la maison mère dans (Oxygène), et dans Le Passeur on laisse les succursales là mais c'est des liens vers les compagnies, pas une boîte avec les infos… ça fait aussi que le SIP se retrouve dans le même tenant, ça fait les 911 correct ».
+- Analyse : d'accord sur le fond ; les adresses 911 du tenant restent l'enregistrement envoyé à SIPV (postes et numéros y pointent), mais chacune est liée à la compagnie succursale et prend son adresse (plus de saisie en double) ; la succursale n'a pas son propre tenant. Points ouverts : la téléphonie d'une succursale est facturée à qui ; règles (pas soi-même, une maison mère ne peut pas être succursale, une succursale avec son propre tenant est refusée).
 
 ---
 
