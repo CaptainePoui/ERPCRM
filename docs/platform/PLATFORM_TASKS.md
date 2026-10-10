@@ -69,6 +69,14 @@ Date(s) de travail : 2026-10-02
 - Le rendu des onglets se fait par slug (plus par index) : ajouter un onglet ne décale plus les autres (cf. TASK-002.1).
 Fichiers : backend/app/api/v1/endpoints/companies.py, frontend/src/pages/CompanyDetail.jsx, frontend/src/pages/CompanyDetail.css.
 
+### TASK-002.3 [ ] Rôles des compagnies (pastilles) et intervenants d'un client (Internet, réseau, sous-traitant…)
+Date de demande : 2026-10-10 (Philippe : « il faudrait une place pour les entreprises d'entreprise : Satelcom fait affaire avec plein de mes clients, Nanotech aussi, Nanotech pourrait aussi être un fournisseur, un client pour le ERPCRM et un sous-traitant… on les rentre tous dans les compagnies mais on ajoute les pastilles de choix pour l'identifier et on ajoute une place dans les compagnies où on peut mettre la compagnie réseau et l'autre Internet qu'il utilise » ; aussi « dans les courriels il faudrait pouvoir créer/attribuer un contact et le placer dans la bonne compagnie »)
+Date(s) de travail : —
+
+- Exemple réel donné (dossier Équijustice, 2026-10-10) : client Équijustice (contact Maya Fernet, 13 organismes dont l'Académie populaire à Joliette) ; Internet = Satelcom ; réseau/routeur/pare-feu = Nanotech Informatique depuis ~15 ans (450-760-9090, option « Service aux entreprises » ; Josué, Jean-François, Jérémie) ; routeur Ubiquiti EdgeRouter X, IP interne réservée .111 pour le UCM ; lignes SIP vers ScopServ (75.98.128.39) qui ne s'enregistrent plus.
+- Constaté : une compagnie n'a aucun rôle (client/fournisseur/sous-traitant) ni lien vers une autre compagnie ; un contact peut déjà être dans plusieurs compagnies (TASK-003) ; dans Courriels, « Classer » permet déjà de choisir la compagnie et « Créer le contact dans cette compagnie » (TASK-047.2).
+- En attente du GO sur la proposition.
+
 ---
 
 ## TASK-003 [ERPCRM] [x] Contacts — liste, fiche, multi-compagnies, + Ticket / + Facture / + Tâche
