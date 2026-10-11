@@ -3141,6 +3141,20 @@ Dépend de : TASK-027.1, TASK-S044.1 (TASKSIPV.md).
 ---
 
 ## TASK-028 [ERPCRM] [x] Musique d'attente (MOH) — bibliothèque Serveur + sélection par compagnie
+### TASK-027.3 [ ] Serveur → onglet « Appareils internes » (postes du bureau sur l'adresse interne du SIPV)
+Classification: CURRENT
+Date de demande : 2026-10-11 (Philippe : « on choisit le tenant d'abord, ça nous amène à une liste de postes déjà configurés dans le tenant et on a juste à cocher les postes à l'interne ; on peut même ajouter plusieurs tenants au cas où plusieurs entreprises sur le même Internet auraient un SIPV ERPCRM »)
+Date(s) de travail : —  (GO donné 2026-10-11 ; travail planifié mercredi 2026-10-14 à 2 h 05, heure de Montréal, pour être fait à son lever à 6 h)
+
+- Pourquoi : depuis 0069 (TASK-051, Migration de tenant), le proxy SIP (P48) de tous les téléphones = adresse publique 142.112.42.52. Au bureau (même réseau que le SIPV), le téléphone passe par la boucle NAT du WatchGuard M200, qui ne tient pas : poste 102 (GXP2135) jamais réinscrit depuis le 2026-10-11 (connexion TLS ouverte depuis 192.168.1.1, aucun REGISTER n'atteint FreeSWITCH). Le WatchGuard ne fait pas d'enregistrement DNS local (pas de Split DNS sans autre machine — refusé par Philippe). Décision : exception pour les quelques appareils du bureau ; tous les autres restent sur l'adresse externe.
+- Rejeté par Philippe : une case sur la fiche de chaque poste (« un truc pour tout le monde quand 4 appareils vont l'utiliser ») ; une liste plate « + Ajouter poste ».
+- À construire (conception validée par Philippe) :
+  - ERPCRM, page Serveur (`Server.jsx`) : nouvel onglet **« Appareils internes »** ; sélecteur **« Ajouter un tenant »** → section du tenant avec **tous ses postes déjà configurés** (numéro, nom, téléphone) et une **case « Interne »** par poste ; plusieurs tenants possibles (plusieurs entreprises sur le même Internet que le serveur) ; « Retirer le tenant » (décoche ses postes, enlève la section) ; bouton « Redémarrer » par poste (`RebootButton.jsx`), le changement s'appliquant au prochain chargement de configuration.
+  - SIPV (source unique, aucune copie dans ERPCRM) : liste par serveur (multi-SIPV : chaque serveur a ses appareils internes et sa propre adresse interne) des tenants affichés + postes internes ; provisionnement (`provisioning.py`, `sip_proxy_host`) : poste interne → adresse interne du serveur (SIPV_HOST, 192.168.1.55), sinon SIPV_PUBLIC_IP. Un poste migré garde sa case (même téléphone, même bureau). Migration Alembic SIPV numérotée (0071), copie de la base avant. Endpoints SIPV avec `get_current_user_or_service` ; proxys ERPCRM via `sipv_client.py`.
+  - Une case à l'écran doit avoir un effet réel : vérifier la config servie (`/cfg<mac>`, P48) avant/après.
+- Test prévu : ajouter T1000, cocher 102 et 103 (le 103 vise déjà 192.168.1.55), config du 102 → P48 = 192.168.1.55, bouton Redémarrer → le 102 repasse vert (inscrit t1000-102). Vérifier à l'écran en 1920×1080.
+- En suspens, à ne pas faire sans Philippe : noms DNS publics `sipv001.simpleip.tel` (appels, A → 142.112.42.52) et `prov.simpleip.tel` (provisionnement central par ERPCRM, une seule adresse P237 pour tous les téléphones, ERPCRM va chercher la config chez le bon SIPV) — à construire plus tard avec GO ; certificat Kamailio actuel auto-signé `sipv.simpleip.local`. Vérifications WatchGuard (politique TCP 5061 en filtre de paquets, délai d'inactivité, inspection SIP) : optionnelles, faites par Philippe avec ChatGPT.
+
 Classification: CURRENT
 
 Demande de l'utilisateur (2026-08-07/08) : "j'aimerais l'avoir dans serveur pour les
