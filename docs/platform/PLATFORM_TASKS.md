@@ -594,6 +594,7 @@ Date(s) de travail : 2026-10-14
 - `backend/attach_invoice_originals.py` (essai puis `--apply`) : 2 077 factures rattachées — seulement les factures importées (pas INV-112249+, créées par ERPCRM), réglées au complet et dont le PDF a le même total et le même solde qu'ERPCRM. Laissées au PDF généré : 60 pas encore réglées (le document deviendrait faux au prochain paiement, ex. Physotech troc, brouillon HRH), 12 payées depuis l'export (dépôt BNC vu par ERPCRM, PDF « Solde dû » périmé), 12 créées par ERPCRM.
 - Service : portail et bouton PDF donnent l'original si la facture est encore « payée » (sinon le PDF généré, qui suit le solde) ; ERPCRM : boutons « PDF d'origine » et « PDF ERPCRM » (`?generated=1`).
 - Preuve : HTTP — facture 1359, PDF reçu identique octet pour octet au fichier d'origine ; `?generated=1` = PDF ERPCRM ; fonction du portail : même fichier ; captures 1920.
+- Idée de Philippe (2026-10-14, pas commencée) : que les clients puissent télécharger leurs documents en .zip depuis le portail (« ça va nous servir aussi si les clients veulent télécharger leurs trucs en .zip »). 7zip installé sur le serveur ERPCRM le 2026-10-14 (pour ouvrir le RAR des relevés BNC) ; un .zip se fait en Python sans outil externe.
 
 ### TASK-005.17 [x] PDF à télécharger : facture, avoir, devis, entente d'échange (troc)
 Date de demande : 2026-10-08 (Philippe : « sur les factures ou avoirs ou ententes j'aimerais pouvoir en faire des PDF à télécharger » ; « je veux des PDF pour tout échange : facture, avoir, devis, entente (troc) »)
