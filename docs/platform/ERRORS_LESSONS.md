@@ -494,6 +494,20 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-021.1 — Profils périodiques importés un jour après les factures : cycle du 2 octobre perdu
+
+**Date** : 2026-10-14 (erreur du 2026-10-02)
+
+**On croyait** : que les exports de l'ancien logiciel (factures du 2026-10-01, profils périodiques du 2026-10-02) décrivaient le même instant.
+
+**Preuve** : Hamak et Cycle Vert ont « dernière facture le 2026-10-02 » dans ERPCRM, mais leurs factures du 2 octobre (INV-112249, INV-112250 dans l'ancien logiciel) n'y étaient pas ; ERPCRM a donné INV-112249 à la facture suivante → numéros décalés jusqu'à INV-112256 (TASK-005.19).
+
+**Cause réelle** : la « dernière facture » des profils a été prise telle quelle sans vérifier que la facture correspondante existait dans ERPCRM.
+
+**Correction** : factures créées le 2026-10-14 avec leurs numéros (TASK-005.19).
+
+**Leçon (à ne pas refaire)** : quand deux exports sont pris à des moments différents, vérifier qu'ils se recoupent (la dernière facture d'un profil doit exister) avant de s'y fier.
+
 ## TASK-021 — `db.get()` avec `options=[...]` ne déclenche pas l'eager loading attendu en async (MissingGreenlet)
 
 **Date** : voir TASK-021
@@ -1075,6 +1089,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : (1) restes troc remis dans les deux files de `best_exact` et dans « Appliquer aux plus vieilles d'abord » (commit b06b628) ; (2) cas « ne couvre aucune facture au complet → en partie sur la plus vieille » ajouté avant la livraison (commit 7ace679), re-simulé.
 
 **Leçon (à ne pas refaire)** : une marque ou un statut n'a que l'effet que Philippe lui a donné à sa création — relire cette définition avant de l'utiliser ailleurs ; et toute règle codée se teste d'abord contre les exemples chiffrés déjà acceptés par Philippe, avant les cas nouveaux.
+
+**2026-10-14 — 40 faux crédits clients (15 915,70 $) créés par l'association automatique (même tâche, découvert le 2026-10-14)**
+
+**On croyait** : que la règle « un dépôt d'un client sans facture ouverte va en crédit » (livrée le 2026-10-08) ne touchait que de vrais surplus ; la vérification faite avant (« aucun encaissement existant n'avait de part non répartie ») le laissait penser.
+
+**Preuve** : en créant Hamak INV-112249 (TASK-005.19), la facture est sortie « payée » toute seule. 40 encaissements `bank_import` ont une part non répartie, tous créés le 2026-10-08 entre 13:06:46 et 13:06:47 UTC — soit juste après le redémarrage qui a mis la règle en ligne (13:05:11) : l'association automatique de `bank_ai_poller` a mis en crédit des dépôts dont les factures étaient **déjà payées par un « Paiement antérieur » importé** (ex. Hamak 263,30 $ du 2025-09-03 = INV-112148 + INV-112183, déjà payées). 13 de ces 40 sont des **doublons à quelques millisecondes** (Mc Crystal 133,02 $ à 13:06:46.680 et .717), sans ligne bancaire : deux processus (erpcrm-backend et erpcrm-backend-tls) font tourner les mêmes tâches de fond en même temps.
+
+**Cause réelle** : (1) le dépôt qui prouve un « Paiement antérieur » n'a pas été relié à ce paiement (une ligne bancaire ne se lie qu'à UN encaissement ; un dépôt qui paie deux factures antérieures, ou à plus de 10 jours, tombait dans « aucune facture ouverte → crédit ») ; (2) la règle a été vérifiée sur les données AVANT sa mise en ligne, jamais sur ce que la tâche automatique a fait juste APRÈS ; (3) tâches de fond lancées dans les deux services sans verrou.
+
+**Correction** : aucune pour l'instant (en attente de Philippe) — aucun faux crédit n'a encore payé une facture (Hamak créée sans crédit). Risque : la prochaine facture émise de Mc Crystal, Rubi, Audacie, Construction Nationale, J. Lavoie, Hamak, MRST ou LS serait payée par ce faux crédit.
+
+**Leçon (à ne pas refaire)** : une règle qui s'applique toute seule (tâche de fond) se vérifie sur l'état réel de la base juste après sa mise en ligne, pas seulement en simulation ; et avant de créer de l'argent (crédit), vérifier qu'aucun encaissement existant n'explique déjà ce dépôt.
 
 ## TASK-046 — Crédit d'un échange utilisé deux fois dans la même opération
 
