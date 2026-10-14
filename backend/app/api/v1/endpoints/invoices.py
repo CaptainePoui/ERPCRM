@@ -65,6 +65,8 @@ class InvoiceOut(BaseModel):
     open_count: int = 0
     barter_settlement: bool = False          # TASK-005.14 : « a regler en troc », jamais de frais de retard
     late_fee_for_id: uuid.UUID | None = None  # facture de frais de retard : la facture en retard qu'elle vise
+    offered_at: datetime | None = None        # TASK-005.22 : brouillon offert au client (statut annulee)
+    has_original_pdf: bool = False            # TASK-005.23 : PDF d'origine de l'ancien logiciel
 
 
 class InvoiceListItem(BaseModel):
@@ -84,6 +86,7 @@ class InvoiceListItem(BaseModel):
     open_count: int = 0
     barter_settlement: bool = False
     late_fee_for_id: uuid.UUID | None = None
+    offered_at: datetime | None = None   # TASK-005.22 : « Offerte »
     paid: float = 0                      # regle (paiements confirmes + avoirs) : actions de masse (TASK-046)
 
 
@@ -220,6 +223,7 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         transmission_status=inv.transmission_status,
         lines=[LineOut.model_validate(l) for l in inv.lines],
         last_opened_at=last_opened_at, open_count=open_count,
+        offered_at=inv.offered_at, has_original_pdf=bool(inv.original_pdf) and inv.status == "payee",   # meme regle que original_bytes
     )
 
 
@@ -271,6 +275,7 @@ async def list_invoices(
         credit_of_id=i.credit_of_id,
         barter_settlement=i.barter_settlement,
         late_fee_for_id=i.late_fee_for_id,
+        offered_at=i.offered_at,
         site_label_snapshot=i.site_label_snapshot,
         transmission_status=i.transmission_status,
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
@@ -389,6 +394,8 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
     was_draft = inv.status == "brouillon"
     for field, value in updates.items():
         setattr(inv, field, value)
+    if inv.status != "annulee":
+        inv.offered_at = None            # une facture offerte qui change de statut n'est plus offerte
     _recalc(inv)
     if was_draft and inv.status != "brouillon" and inv.status != "annulee":
         await db.flush()
@@ -412,6 +419,33 @@ async def delete_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_d
 
 
 # ── Lines ─────────────────────────────────────────────────────────────────────
+
+@router.post("/{invoice_id}/offer", response_model=InvoiceOut)
+async def offer_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-005.22 (Philippe : « un moyen de mettre donner pour ne pas que les brouillons que je veux donner pop a chaque
+    semaine ») : un brouillon offert au client passe au statut annulee avec offered_at -- hors taxes, hors solde, hors
+    portail, hors rappel des brouillons ; visible « Offerte » dans l'historique. Seulement un brouillon : une facture
+    emise a pu etre declaree, elle se credite par un avoir."""
+    inv = await _get_inv(invoice_id, db)
+    if inv.status != "brouillon":
+        raise HTTPException(status_code=400, detail="Seule une facture en brouillon peut être offerte (une facture émise se crédite par un avoir)")
+    if inv.credit_of_id is not None:
+        raise HTTPException(status_code=400, detail="Un avoir ne s'offre pas")
+    inv.status, inv.offered_at = "annulee", datetime.now().astimezone()
+    await db.commit()
+    return await _build_out(await _get_inv(invoice_id, db), db)
+
+
+@router.post("/{invoice_id}/unoffer", response_model=InvoiceOut)
+async def unoffer_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Annule « Offrir » : la facture redevient un brouillon."""
+    inv = await _get_inv(invoice_id, db)
+    if not inv.offered_at:
+        raise HTTPException(status_code=400, detail="Cette facture n'est pas offerte")
+    inv.status, inv.offered_at = "brouillon", None
+    await db.commit()
+    return await _build_out(await _get_inv(invoice_id, db), db)
+
 
 @router.post("/{invoice_id}/lines", response_model=InvoiceOut)
 async def add_line(invoice_id: uuid.UUID, payload: LineCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
@@ -695,14 +729,18 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
 
 
 @router.get("/{invoice_id}/pdf")
-async def download_invoice_pdf(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """Genere et retourne le PDF d'une facture (avec etat de paiement courant)."""
+async def download_invoice_pdf(invoice_id: uuid.UUID, generated: bool = Query(default=False), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """PDF d'une facture : le document d'origine s'il existe (TASK-005.23), sinon genere (etat de paiement courant).
+    ?generated=1 : toujours le PDF genere par ERPCRM."""
     from app.core.invoice_pdf import generate_invoice_pdf
-    try:
-        pdf_bytes = await generate_invoice_pdf(invoice_id, db)
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    from app.core.invoice_originals import original_bytes
     inv = await db.get(Invoice, invoice_id)
+    pdf_bytes = None if generated else original_bytes(inv)
+    if pdf_bytes is None:
+        try:
+            pdf_bytes = await generate_invoice_pdf(invoice_id, db)
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e))
     filename = f"{'avoir' if inv and inv.credit_of_id else 'facture'}-{inv.number if inv else invoice_id}.pdf"
     return Response(
         content=pdf_bytes,

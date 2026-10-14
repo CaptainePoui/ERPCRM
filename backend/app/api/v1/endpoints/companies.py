@@ -1656,7 +1656,7 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
                      "credited": float(credited.get(i.id) or 0) if not is_credit else 0.0, "remaining": float(remaining),
                      "overdue": (not is_credit and live and remaining > 0 and bool(i.due_date and i.due_date < today)),
                      "site_label": i.site_label_snapshot, "barter_settlement": i.barter_settlement,
-                     "late_fee": i.late_fee_for_id is not None})
+                     "late_fee": i.late_fee_for_id is not None, "offered": i.offered_at is not None})
 
     from app.core import client_credit
     paid_fy = (await db.execute(

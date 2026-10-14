@@ -341,6 +341,7 @@ function CompanyDetailsSection({ c, saveField }) {
 // Statut de paiement lisible : on voit d'un coup d'oeil ce qui est paye ou non
 function payState(t) {
   if (t.status === 'brouillon') return { label: 'Brouillon', color: '#6B7280' }
+  if (t.offered) return { label: 'Offerte', color: '#8B5CF6' }      // TASK-005.22
   if (t.status === 'annulee') return { label: 'Annulée', color: '#9CA3AF' }
   if (t.kind === 'credit') return t.remaining > 0.005 ? { label: 'Avoir ouvert', color: '#D97706' } : { label: 'Avoir appliqué', color: '#059669' }
   if (t.remaining <= 0.005) return { label: t.credited >= t.total - 0.005 ? 'Créditée' : 'Payée', color: '#059669' }

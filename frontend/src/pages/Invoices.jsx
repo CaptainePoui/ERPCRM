@@ -129,7 +129,7 @@ export default function Invoices({ creditsOnly = false }) {
             </thead>
             <tbody>
               {filtered.map(inv => {
-                const s = (inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon
+                const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
                 return (
                   <tr key={inv.id} className="inv-row" onClick={e => sel.rowClick(e, inv.id, () => navigate(`/invoices/${inv.id}`))}
                     onMouseDown={sel.noTextSelect} style={sel.selected.has(inv.id) ? { background: 'var(--c-tint-blue)' } : undefined}>

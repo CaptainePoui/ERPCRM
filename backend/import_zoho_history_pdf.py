@@ -60,6 +60,8 @@ CSV_START = "2024-09-22"          # avant : absent des exports CSV
 EXTRA_MAP = {                     # Philippe, 2026-10-14
     "ACVRQ Nesly Dieudonné": "ACVRQ",
     "Vendu RÉSIDENCE LA ROSIÈRE INC. Fermé": "Résidence La Rosière",
+    # Philippe : « j'étais supposé le passer avec moi mais ScopServ a refusé, j'avais commencé la transition »
+    "Les Systèmes D'écran Strong-MDI": "STRONG",
 }
 SKIP_CLIENTS = {"Simple Test"}
 SKIP = {"INV-000787": "frais de retard D'Astous -- efface (Philippe)"}
@@ -67,7 +69,7 @@ HOLD: dict = {}
 # Jamais envoyees ni declarees (Philippe, 2026-10-14) : brouillons a leur vraie date -- hors declarations de taxes
 DRAFTS = {"INV-000003": "HRH : jamais envoyee, Philippe appelle le client",
           "INV-000675": "J. Lavoie : jamais envoyee, Philippe la lui donne"}
-HOLD_CLIENTS = {"Les Systèmes D'écran Strong-MDI": "meme client que la fiche STRONG (t1043) ? a confirmer"}
+HOLD_CLIENTS: dict = {}
 BARTER = {"INV-000109", "INV-111258"}
 TAG = "import de l'historique de facturation (PDF)"
 TPS, TVQ = Decimal("0.05"), Decimal("0.09975")

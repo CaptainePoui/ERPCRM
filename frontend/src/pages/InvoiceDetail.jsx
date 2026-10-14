@@ -29,6 +29,8 @@ const STATUS_TRANSITIONS = {
 }
 
 // Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Fermé une fois tout appliqué
+const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouillon offert au client (statut annulee)
+
 const CREDIT_STATUS_LABELS = {
   ...STATUS_LABELS,
   envoyee: { label: 'Ouvert', color: 'var(--brand)' },
@@ -158,6 +160,15 @@ export default function InvoiceDetail() {
     } catch (e) { alert(e.response?.data?.detail || 'Changement de statut impossible') }
   }
 
+  // TASK-005.22 : un brouillon offert au client sort des taxes, du solde et du rappel des brouillons
+  async function offer(on) {
+    if (on && !confirm('Offrir cette facture au client ? Elle ne sera jamais facturée : hors taxes, hors solde, hors portail, et elle sort du rappel des brouillons. Vous pourrez annuler.')) return
+    try {
+      const r = await api.post(`/v1/invoices/${id}/${on ? 'offer' : 'unoffer'}`)
+      setInv(r.data)
+    } catch (e) { alert(e.response?.data?.detail || 'Action impossible') }
+  }
+
   async function deleteLine(lineId) {
     const r = await api.delete(`/v1/invoices/${id}/lines/${lineId}`)
     setInv(r.data)
@@ -207,8 +218,9 @@ export default function InvoiceDetail() {
 
   const isCredit = !!inv.credit_of_id
   const labels = isCredit ? CREDIT_STATUS_LABELS : STATUS_LABELS
-  const s = labels[inv.status] || STATUS_LABELS.brouillon
+  const s = inv.offered_at ? OFFERED : (labels[inv.status] || STATUS_LABELS.brouillon)
   const transitions = (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
+  const canOffer = !isCredit && inv.status === 'brouillon'
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
@@ -236,9 +248,13 @@ export default function InvoiceDetail() {
               → {isCredit && t === 'envoyee' ? 'Émettre' : STATUS_LABELS[t]?.label}
             </button>
           ))}
+          {canOffer && <button className="btn-secondary" onClick={() => offer(true)} style={{ fontSize: 12 }}>Offrir au client</button>}
+          {inv.offered_at && <button className="btn-secondary" onClick={() => offer(false)} style={{ fontSize: 12 }}>Annuler l'offre</button>}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
-          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
+          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}
+            title={inv.has_original_pdf ? "Document d'origine, tel que reçu par le client" : undefined}>⬇ {inv.has_original_pdf ? "PDF d'origine" : 'PDF'}</button>
+          {inv.has_original_pdf && <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf?generated=1`, `facture-${inv.number}-erpcrm.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF ERPCRM</button>}
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />

@@ -239,7 +239,8 @@ async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSes
         raise HTTPException(status_code=403, detail="Acces factures non autorise")
     result = await db.execute(
         select(Invoice)
-        .where(Invoice.company_id == u.company_id, Invoice.status != "brouillon")
+        .where(Invoice.company_id == u.company_id, Invoice.status != "brouillon",
+               Invoice.offered_at.is_(None))   # TASK-005.22 : un brouillon offert n'a jamais ete envoye
         .order_by(Invoice.created_at.desc())
     )
     invs = result.scalars().all()
@@ -412,7 +413,11 @@ async def portal_invoice_pdf(invoice_id: uuid.UUID, u: PortalUser = Depends(get_
     if not inv or inv.company_id != u.company_id:
         raise HTTPException(status_code=404, detail="Facture introuvable")
     from app.core.invoice_pdf import generate_invoice_pdf
-    pdf_bytes = await generate_invoice_pdf(invoice_id, db)
+    from app.core.invoice_originals import original_bytes
+    if inv.offered_at:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    # TASK-005.23 : le document d'origine (celui que le client a recu), sinon le PDF genere
+    pdf_bytes = original_bytes(inv) or await generate_invoice_pdf(invoice_id, db)
     filename = f"facture-{inv.number}.pdf"
     return Response(
         content=pdf_bytes,

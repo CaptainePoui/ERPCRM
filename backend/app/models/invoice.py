@@ -49,6 +49,10 @@ class Invoice(Base):
     barter_settlement: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # Facture de frais de retard : la facture en retard qu'elle vise (jamais de frais sur une facture de retard)
     late_fee_for_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
+    # TASK-005.22 : brouillon offert au client -- statut annulee + cette date (affiche « Offerte »)
+    offered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # TASK-005.23 : PDF d'origine (ancien logiciel / QuickBooks), fichier dans storage/invoice_originals/
+    original_pdf: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Succursale -- snapshot fige a la creation
     site_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("company_sites.id", ondelete="SET NULL"), nullable=True)

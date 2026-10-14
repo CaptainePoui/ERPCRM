@@ -42,6 +42,12 @@ async def _check_once():
             await ensure_tax_filing_tasks(db)
     except Exception:
         log.exception("Creation des taches de declaration TPS/TVQ echouee")
+    try:                                   # TASK-005.22 : rappel de la semaine des factures en brouillon
+        from app.core.draft_reminders import ensure_draft_reminder_task
+        async with AsyncSessionLocal() as db:
+            await ensure_draft_reminder_task(db)
+    except Exception:
+        log.exception("Creation de la tache des factures en brouillon echouee")
     async with AsyncSessionLocal() as db:
         result = await db.execute(
             select(TaskReminder)
