@@ -1,113 +1,184 @@
 // Téléphonie → Provisionnement : modèles de provisionnement de la compagnie (TASK-051, 2026-10-14). Philippe : « c'est LA
-// place ! pas de doublon ; on crée ici, "sauvegarder comme modèle" dans le poste l'ajoute ici, dans le poste on choisit le
-// modèle (ceux disponibles pour le modèle de téléphone) ». Par modèle de téléphone : les touches page par page (« Ajouter une
-// page » ; une page non ajoutée n'est pas affichée et ses touches partent à « aucune »), chaque touche = menu déroulant du mode
-// + description + valeur ; les boutons sous l'écran ; la disposition des boutons pendant un appel (deux fenêtres + flèches).
-// Tout ce qui est offert vient du gabarit officiel Grandstream, lu de SIPV (/key-catalog).
+// place ! pas de doublon » ; la liste des modèles en haut, on en choisit un et ses réglages apparaissent en dessous ; on
+// choisit d'abord le modèle de téléphone (les bonnes options à la bonne place) ; touches page par page (« Ajouter une page »,
+// une page non ajoutée n'est pas affichée et ses touches partent à « aucune ») ; boutons sous l'écran = seulement la
+// disposition par état d'appel (« les options des softkeys »), sur une page à part, deux fenêtres + flèches.
+// Tout ce qui est offert vient du gabarit officiel Grandstream, lu de SIPV (/key-catalog). Les blocs exportés servent aussi
+// à l'onglet Provisionnement du poste.
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 
-const box = { border: '1px solid var(--c-border)', borderRadius: 10, padding: 16, marginBottom: 16, background: 'var(--c-surface)' }
-const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
-const muted = { fontSize: 12, color: 'var(--c-muted)' }
-const input = { fontSize: 13, padding: '5px 8px', width: '100%', boxSizing: 'border-box' }
+export const box = { border: '1px solid var(--c-border)', borderRadius: 12, padding: 18, marginBottom: 16, background: 'var(--c-surface)' }
+export const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
+export const muted = { fontSize: 12, color: 'var(--c-muted)' }
+export const input = { fontSize: 13, padding: '5px 8px', width: '100%', boxSizing: 'border-box' }
 
-function emptySoftkeys(cat) {
-  return {
-    idle: Array.from({ length: cat.softkeys.idle_count }, () => ({ mode: 'Default', description: '', value: '' })),
-    call: Array.from({ length: cat.softkeys.call_count }, () => ({ mode: 'Default', description: '', value: '' })),
-    hide_idle: [],
-    layouts: Object.fromEntries(cat.softkeys.states.map(s => [s.key, s.default])),
-  }
-}
+export const preferredLayouts = cat => Object.fromEntries(cat.softkeys.states.map(s => [s.key, s.default]))
+const same = (a, b) => (a || []).join(',') === (b || []).join(',')
 
 // Deux fenêtres : à gauche ce qui est offert, à droite ce qu'on envoie, dans l'ordre (flèches ou double-clic)
-function DualList({ options, value, onChange, leftTitle = 'Disponibles', rightTitle = 'Envoyés au téléphone (dans l\'ordre)' }) {
+export function DualList({ options, value, onChange, labels = {}, disabled = false, height = 168 }) {
   const [left, setLeft] = useState(null)
   const [right, setRight] = useState(null)
   const available = options.filter(o => !value.includes(o))
-  const add = o => { if (o) { onChange([...value, o]); setLeft(null); setRight(o) } }
-  const remove = o => { if (o) { onChange(value.filter(v => v !== o)); setRight(null); setLeft(o) } }
+  const add = o => { if (o && !disabled) { onChange([...value, o]); setLeft(null); setRight(o) } }
+  const remove = o => { if (o && !disabled) { onChange(value.filter(v => v !== o)); setRight(null); setLeft(o) } }
   const move = d => {
     const i = value.indexOf(right); const j = i + d
-    if (i < 0 || j < 0 || j >= value.length) return
+    if (disabled || i < 0 || j < 0 || j >= value.length) return
     const next = [...value]; [next[i], next[j]] = [next[j], next[i]]; onChange(next)
   }
-  const list = (items, sel, setSel, onDbl) => (
-    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, height: 220, overflowY: 'auto', background: 'var(--c-surface-2)' }}>
-      {items.map(o => (
-        <div key={o} onClick={() => setSel(o)} onDoubleClick={() => onDbl(o)}
-          style={{ padding: '5px 10px', fontSize: 13, cursor: 'pointer', fontFamily: 'monospace',
-            background: sel === o ? 'var(--brand)' : 'transparent', color: sel === o ? '#fff' : 'inherit' }}>{o}</div>
+  const list = (items, sel, setSel, onDbl, numbered) => (
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, height, overflowY: 'auto', background: 'var(--c-surface-2)', padding: 4 }}>
+      {items.map((o, i) => (
+        <div key={o} onClick={() => !disabled && setSel(o)} onDoubleClick={() => onDbl(o)}
+          style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 8px', fontSize: 13, borderRadius: 6, cursor: disabled ? 'default' : 'pointer',
+            background: sel === o ? 'var(--brand)' : 'transparent', color: sel === o ? '#fff' : 'inherit', userSelect: 'none' }}>
+          {numbered && <span style={{ fontSize: 11, opacity: 0.6, width: 14, textAlign: 'right' }}>{i + 1}</span>}
+          {labels[o] || o}
+        </div>
       ))}
-      {items.length === 0 && <div style={{ ...muted, padding: 10 }}>—</div>}
+      {items.length === 0 && <div style={{ ...muted, padding: 8 }}>—</div>}
     </div>
   )
-  const arrow = { fontSize: 14, padding: '4px 12px' }
+  const arrow = { fontSize: 13, padding: '3px 10px', minWidth: 34 }
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: 10, alignItems: 'center', maxWidth: 760 }}>
-      <div><div style={{ ...muted, marginBottom: 4 }}>{leftTitle}</div>{list(available, left, setLeft, add)}</div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto', gap: 8, alignItems: 'center', opacity: disabled ? 0.6 : 1 }}>
+      <div><div style={{ ...muted, marginBottom: 3 }}>Disponibles</div>{list(available, left, setLeft, add, false)}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button type="button" className="btn-secondary" style={arrow} onClick={() => add(left)} disabled={!left} title="Envoyer">→</button>
-        <button type="button" className="btn-secondary" style={arrow} onClick={() => remove(right)} disabled={!right} title="Retirer">←</button>
+        <button type="button" className="btn-secondary" style={arrow} onClick={() => add(left)} disabled={disabled || !left} title="Ajouter">→</button>
+        <button type="button" className="btn-secondary" style={arrow} onClick={() => remove(right)} disabled={disabled || !right} title="Retirer">←</button>
       </div>
-      <div><div style={{ ...muted, marginBottom: 4 }}>{rightTitle}</div>{list(value, right, setRight, remove)}</div>
+      <div><div style={{ ...muted, marginBottom: 3 }}>Sur le téléphone, dans l'ordre</div>{list(value, right, setRight, remove, true)}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <button type="button" className="btn-secondary" style={arrow} onClick={() => move(-1)} disabled={!right} title="Monter">▲</button>
-        <button type="button" className="btn-secondary" style={arrow} onClick={() => move(1)} disabled={!right} title="Descendre">▼</button>
+        <button type="button" className="btn-secondary" style={arrow} onClick={() => move(-1)} disabled={disabled || !right} title="Monter">▲</button>
+        <button type="button" className="btn-secondary" style={arrow} onClick={() => move(1)} disabled={disabled || !right} title="Descendre">▼</button>
       </div>
     </div>
   )
 }
 
-// Options du téléphone (langue, etc.) : toutes celles du catalogue valables pour la marque, à leur place, sans chaîne cachée
-function OptionsFields({ brand, value, onChange }) {
+// Options du téléphone (langue, etc.) : toutes celles du catalogue valables pour la marque, à leur place.
+// `inherited` (onglet du poste) : {clé: valeur du modèle} -- case « Modèle » cochée = valeur du modèle, décochée = personnalisée.
+export function OptionsFields({ brand, value, onChange, inherited }) {
   const [catalog, setCatalog] = useState([])
   useEffect(() => { api.get('/v1/ref/phone-options').then(r => setCatalog(r.data)) }, [])
   const opts = catalog.filter(o => !o.compatible_brands || o.compatible_brands.includes(brand))
   if (!opts.length) return <div style={muted}>Aucune option pour cette marque.</div>
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 12, maxWidth: 900 }}>
-      {opts.map(o => (
-        <div key={o.key}>
-          <div className="ifield-label">{o.label}</div>
-          {o.type === 'select' ? (
-            <select value={value[o.key] ?? o.default} onChange={e => onChange({ ...value, [o.key]: e.target.value })} style={input} aria-label={o.label}>
-              {o.choices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          ) : (
-            <input value={value[o.key] ?? o.default ?? ''} onChange={e => onChange({ ...value, [o.key]: e.target.value })} style={input} aria-label={o.label} />
-          )}
-        </div>
-      ))}
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, maxWidth: 960 }}>
+      {opts.map(o => {
+        const fromTemplate = inherited && !(o.key in value)
+        const v = fromTemplate ? (inherited[o.key] ?? o.default) : (value[o.key] ?? o.default)
+        const set = val => onChange({ ...value, [o.key]: val })
+        return (
+          <div key={o.key}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div className="ifield-label" style={{ margin: 0 }}>{o.label}</div>
+              {inherited && <TemplateCheck checked={fromTemplate} onChange={c => {
+                const next = { ...value }; if (c) delete next[o.key]; else next[o.key] = v; onChange(next)
+              }} />}
+            </div>
+            {o.type === 'select' ? (
+              <select value={v} disabled={fromTemplate} onChange={e => set(e.target.value)} style={{ ...input, marginTop: 4 }} aria-label={o.label}>
+                {o.choices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            ) : (
+              <input value={v ?? ''} disabled={fromTemplate} onChange={e => set(e.target.value)} style={{ ...input, marginTop: 4 }} aria-label={o.label} />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
 
-function KeyRow({ n, k, modes, onChange }) {
+export function TemplateCheck({ checked, onChange }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '64px 1.3fr 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600, cursor: 'pointer',
+      color: checked ? 'var(--brand)' : 'var(--c-muted)' }} title={checked ? 'Valeur du modèle — décocher pour personnaliser ce poste' : 'Personnalisé pour ce poste — cocher pour reprendre la valeur du modèle'}>
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} style={{ width: 13, height: 13, accentColor: 'var(--brand)' }} />
+      Modèle
+    </label>
+  )
+}
+
+export function KeyRow({ n, k, modes, onChange, disabled, check }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: check ? '64px 70px 1.3fr 1fr 1fr' : '64px 1.3fr 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 6 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)' }}>Touche {n}</div>
-      <select value={k.button_type} onChange={e => onChange({ ...k, button_type: e.target.value })} style={input} aria-label={`Touche ${n} mode`}>
+      {check}
+      <select value={k.button_type} disabled={disabled} onChange={e => onChange({ ...k, button_type: e.target.value })} style={input} aria-label={`Touche ${n} mode`}>
         {modes.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
       </select>
-      <input placeholder="Description" value={k.label || ''} disabled={k.button_type === 'none'} onChange={e => onChange({ ...k, label: e.target.value })} style={input} />
-      <input placeholder="Valeur" value={k.value || ''} disabled={k.button_type === 'none' || k.button_type === 'line'} onChange={e => onChange({ ...k, value: e.target.value })} style={input} aria-label={`Touche ${n} valeur`} />
+      <input placeholder="Description" value={k.label || ''} disabled={disabled || k.button_type === 'none'} onChange={e => onChange({ ...k, label: e.target.value })} style={input} aria-label={`Touche ${n} description`} />
+      <input placeholder="Valeur" value={k.value || ''} disabled={disabled || k.button_type === 'none' || k.button_type === 'line'} onChange={e => onChange({ ...k, value: e.target.value })} style={input} aria-label={`Touche ${n} valeur`} />
     </div>
   )
 }
 
-function SoftkeyRows({ rows, modes, onChange }) {
-  return rows.map((k, i) => (
-    <div key={i} style={{ display: 'grid', gridTemplateColumns: '80px 1.3fr 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 6, maxWidth: 900 }}>
-      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)' }}>Bouton {i + 1}</div>
-      <select value={k.mode} onChange={e => onChange(i, { ...k, mode: e.target.value })} style={input}>
-        {modes.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
-      </select>
-      <input placeholder="Description" value={k.description || ''} disabled={k.mode === 'Default'} onChange={e => onChange(i, { ...k, description: e.target.value })} style={input} />
-      <input placeholder="Valeur" value={k.value || ''} disabled={k.mode === 'Default'} onChange={e => onChange(i, { ...k, value: e.target.value })} style={input} />
+// Une page de touches telle que sur le téléphone : la moitié à gauche, l'autre à droite
+export function KeysPage({ cat, page, keyAt, renderKey, header }) {
+  const base = page * cat.per_page
+  const count = Math.min(cat.per_page, cat.total - base)
+  const half = Math.ceil(count / 2)
+  const col = (from, n) => Array.from({ length: n }, (_, i) => renderKey(from + i, base + from + i, base + from + i <= cat.fixed
+    ? cat.modes : cat.modes.filter(m => !m.fixed_only)))
+  return (
+    <div style={{ border: '1px solid var(--c-border)', borderRadius: 10, padding: 12, marginBottom: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8, gap: 10 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>Page {page + 1}</div>
+        <span style={muted}>{page === 0 ? `touches physiques : à gauche 1-${half}, à droite ${half + 1}-${count}` : "page suivante sur l'écran (pas de ligne)"}</span>
+        {header}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
+        <div>{col(1, half)}</div>
+        <div>{col(half + 1, count - half)}</div>
+      </div>
     </div>
-  ))
+  )
+}
+
+// Page « Boutons sous l'écran » : chaque état d'appel avec sa disposition (deux fenêtres). `inheritedLayouts` (poste) :
+// case « Modèle » par état.
+export function SoftkeysPage({ cat, layouts, onChange, onBack, inheritedLayouts }) {
+  const states = cat.softkeys.states
+  const pref = preferredLayouts(cat)
+  const base = inheritedLayouts || pref
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 6 }}>
+        <button type="button" className="btn-secondary" style={{ fontSize: 13 }} onClick={onBack}>← Retour</button>
+        <div style={{ fontWeight: 700, fontSize: 16 }}>Boutons sous l'écran</div>
+        {!inheritedLayouts && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12 }}
+          onClick={() => onChange({ ...pref })}>Tout remettre à la préférence Simple IP</button>}
+      </div>
+      <div style={{ ...muted, marginBottom: 16 }}>
+        Les boutons affichés sous l'écran selon ce que fait le téléphone. À droite, ceux qu'il affiche, dans l'ordre ; double-clic ou flèches pour ajouter, retirer et déplacer.
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(620px, 1fr))', gap: 14 }}>
+        {states.map(s => {
+          const inheritedOn = inheritedLayouts && !(s.key in layouts)
+          const v = inheritedOn ? (base[s.key] || s.default) : (layouts[s.key] || s.default)
+          const custom = !same(v, s.default)
+          return (
+            <div key={s.key} style={{ border: '1px solid var(--c-border)', borderRadius: 12, padding: 14, background: 'var(--c-surface-2)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>{s.label}</div>
+                {inheritedLayouts ? <TemplateCheck checked={inheritedOn} onChange={c => {
+                  const next = { ...layouts }; if (c) delete next[s.key]; else next[s.key] = v; onChange(next)
+                }} /> : custom && <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--c-on-amber)', background: 'var(--c-tint-amber)', borderRadius: 10, padding: '1px 8px' }}>modifié</span>}
+                {!inheritedLayouts && custom && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 11, padding: '2px 8px' }}
+                  onClick={() => onChange({ ...layouts, [s.key]: s.default })}>Préférence Simple IP</button>}
+              </div>
+              <DualList options={s.options} value={v} labels={cat.softkeys.labels} disabled={inheritedOn}
+                onChange={next => onChange({ ...layouts, [s.key]: next })} />
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) {
@@ -118,17 +189,12 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
   const [options, setOptions] = useState(template?.options || null)
   const [catMsg, setCatMsg] = useState('')
   const [pages, setPages] = useState(template?.pages || 1)
-  const [keys, setKeys] = useState({})            // "page-position" -> touche
-  const [softkeys, setSoftkeys] = useState(template?.softkeys || null)
-  const [state, setState] = useState('inCallConnected')
+  const [keys, setKeys] = useState(() => Object.fromEntries((template?.items || []).map(i => [`${i.page}-${i.position}`,
+    { button_type: i.button_type, label: i.label || '', value: i.value || '' }])))
+  const [layouts, setLayouts] = useState(template?.softkeys?.layouts || null)
+  const [view, setView] = useState('main')        // 'main' | 'softkeys'
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    const m = {}
-    for (const i of template?.items || []) m[`${i.page}-${i.position}`] = { button_type: i.button_type, label: i.label || '', value: i.value || '' }
-    setKeys(m)
-  }, [template])
 
   useEffect(() => {
     setCat(null); setCatMsg('')
@@ -137,8 +203,8 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
       if (!r.data.catalog) { setCatMsg(`Le ${r.data.model} n'a pas encore de disposition de touches (pour l'instant : GXP2130, 2135, 2140, 2160, 2170).`); return }
       setCat(r.data.catalog)
       setBrand(r.data.brand)
-      setOptions(o => o || { ...r.data.default_options })      // nouveau modèle : valeurs Simple IP, modifiables
-      setSoftkeys(s => s || emptySoftkeys(r.data.catalog))
+      setOptions(o => o || { ...r.data.default_options })              // nouveau modèle : valeurs Simple IP, modifiables
+      setLayouts(l => l || preferredLayouts(r.data.catalog))
     }).catch(e => setCatMsg(e.response?.data?.detail || 'SIPV injoignable'))
   }, [modelId, companyId])
 
@@ -154,7 +220,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
     setSaving(true); setError('')
     const items = Object.entries(keys).map(([k, v]) => { const [page, position] = k.split('-').map(Number); return { page, position, ...v } })
       .filter(i => i.page < pages && i.button_type !== 'none')
-    const body = { name: name.trim(), phone_model_id: modelId, pages, options, softkeys, items }
+    const body = { name: name.trim(), phone_model_id: modelId, pages, options, softkeys: { layouts }, items }
     try {
       const r = template ? await api.put(`/v1/companies/${companyId}/button-templates/${template.id}`, body)
         : await api.post(`/v1/companies/${companyId}/button-templates`, body)
@@ -163,137 +229,128 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
   }
 
   const models = phoneModels.filter(m => m.brand === 'Grandstream').sort((a, b) => a.model.localeCompare(b.model))
-  const stateDef = cat?.softkeys.states.find(s => s.key === state)
+  const changed = cat && layouts ? cat.softkeys.states.filter(s => !same(layouts[s.key] || s.default, s.default)).length : 0
+  const actions = (
+    <div style={{ display: 'flex', gap: 8, marginTop: 18, alignItems: 'center' }}>
+      <button className="btn-primary" onClick={save} disabled={saving || !name.trim() || !cat}>{saving ? '...' : 'Enregistrer'}</button>
+      <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
+      {error && <span style={{ color: '#DC2626', fontSize: 13 }}>{error}</span>}
+    </div>
+  )
+
+  if (view === 'softkeys' && cat) return (
+    <div style={{ ...box, borderColor: 'var(--brand)' }}>
+      <SoftkeysPage cat={cat} layouts={layouts || {}} onChange={setLayouts} onBack={() => setView('main')} />
+      {actions}
+    </div>
+  )
+
   return (
     <div style={{ ...box, borderColor: 'var(--brand)' }}>
-      <div style={{ ...title, marginBottom: 14 }}>{template ? `Modifier « ${template.name} »` : 'Nouveau modèle de provisionnement'}</div>
-      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
-          <div className="ifield-label">Nom</div>
-          <input value={name} onChange={e => setName(e.target.value)} style={input} placeholder="ex. Réception" aria-label="Nom du modèle" />
-        </div>
+      <div style={{ ...title, marginBottom: 14 }}>{template ? `Modèle « ${template.name} »` : 'Nouveau modèle de provisionnement'}</div>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
         <div style={{ flex: '1 1 200px', maxWidth: 260 }}>
           <div className="ifield-label">Modèle de téléphone</div>
           <select value={modelId} onChange={e => setModelId(e.target.value)} style={input} disabled={!!template?.phones} aria-label="Modèle de téléphone"
             title={template?.phones ? 'Des postes utilisent ce modèle' : undefined}>
-            <option value="">— Choisir —</option>
+            <option value="">— Choisir d'abord —</option>
             {models.map(m => <option key={m.id} value={m.id}>{m.brand} {m.model}</option>)}
           </select>
+        </div>
+        <div style={{ flex: '1 1 260px', maxWidth: 360 }}>
+          <div className="ifield-label">Nom</div>
+          <input value={name} onChange={e => setName(e.target.value)} style={input} placeholder="ex. Réception" aria-label="Nom du modèle" />
         </div>
       </div>
       {catMsg && <div style={{ ...muted, marginBottom: 12 }}>{catMsg}</div>}
 
       {cat && (<>
         <div style={title}>Options du téléphone</div>
-        <div style={{ marginBottom: 20 }}><OptionsFields brand={brand} value={options || {}} onChange={setOptions} /></div>
+        <div style={{ marginBottom: 22 }}><OptionsFields brand={brand} value={options || {}} onChange={setOptions} /></div>
 
         <div style={title}>Touches à côté de l'écran</div>
-        {Array.from({ length: pages }, (_, p) => {
-          const base = p * cat.per_page
-          const count = Math.min(cat.per_page, cat.total - base)
-          const fixed = p === 0
-          const modes = cat.modes.filter(m => base + 1 <= cat.fixed || !m.fixed_only)
-          const half = Math.ceil(count / 2)
-          const col = positions => positions.map(pos => <KeyRow key={pos} n={base + pos} k={key(p, pos)} modes={base + pos <= cat.fixed ? cat.modes : modes} onChange={k => setKey(p, pos, k)} />)
-          return (
-            <div key={p} style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-              <div style={{ display: 'flex', alignItems: 'center', marginBottom: 8 }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>Page {p + 1}</div>
-                <span style={{ ...muted, marginLeft: 10 }}>{fixed ? 'touches physiques : à gauche 1-' + half + ', à droite ' + (half + 1) + '-' + count : 'page suivante sur l\'écran (pas de ligne)'}</span>
-                {p > 0 && p === pages - 1 && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={removePage}>Retirer la page</button>}
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
-                <div>{col(Array.from({ length: half }, (_, i) => i + 1))}</div>
-                <div>{col(Array.from({ length: count - half }, (_, i) => half + i + 1))}</div>
-              </div>
-            </div>
-          )
-        })}
-        {pages < cat.pages && <button type="button" className="btn-secondary" style={{ fontSize: 13, marginBottom: 20 }} onClick={() => setPages(pages + 1)}>+ Ajouter une page</button>}
+        {Array.from({ length: pages }, (_, p) => (
+          <KeysPage key={p} cat={cat} page={p}
+            header={p > 0 && p === pages - 1 && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={removePage}>Retirer la page</button>}
+            renderKey={(pos, n, modes) => <KeyRow key={pos} n={n} k={key(p, pos)} modes={modes} onChange={k => setKey(p, pos, k)} />} />
+        ))}
+        {pages < cat.pages && <button type="button" className="btn-secondary" style={{ fontSize: 13, marginBottom: 22 }} onClick={() => setPages(pages + 1)}>+ Ajouter une page</button>}
 
-        {softkeys && (<>
-          <div style={{ ...title, marginTop: 10 }}>Boutons sous l'écran — écran au repos</div>
-          <SoftkeyRows rows={softkeys.idle} modes={cat.softkeys.idle_modes}
-            onChange={(i, k) => setSoftkeys(s => ({ ...s, idle: s.idle.map((x, j) => j === i ? k : x) }))} />
-          <div style={{ ...muted, margin: '10px 0 6px' }}>Boutons du téléphone cachés au repos</div>
-          <DualList options={cat.softkeys.idle_system} value={softkeys.hide_idle || []} leftTitle="Affichés" rightTitle="Cachés"
-            onChange={v => setSoftkeys(s => ({ ...s, hide_idle: v }))} />
-
-          <div style={{ ...title, marginTop: 20 }}>Boutons sous l'écran — pendant un appel</div>
-          <SoftkeyRows rows={softkeys.call} modes={cat.softkeys.call_modes}
-            onChange={(i, k) => setSoftkeys(s => ({ ...s, call: s.call.map((x, j) => j === i ? k : x) }))} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 8px' }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>Disposition quand le téléphone est</span>
-            <select value={state} onChange={e => setState(e.target.value)} style={{ ...input, width: 'auto' }} aria-label="État d'appel">
-              {cat.softkeys.states.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
-            </select>
-            <button type="button" className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }}
-              onClick={() => setSoftkeys(s => ({ ...s, layouts: { ...s.layouts, [state]: stateDef.default } }))}>Remettre par défaut</button>
-          </div>
-          {stateDef && <DualList options={stateDef.options} value={softkeys.layouts?.[state] || stateDef.default}
-            onChange={v => setSoftkeys(s => ({ ...s, layouts: { ...s.layouts, [state]: v } }))} />}
-        </>)}
+        <div style={{ ...title, marginTop: 6 }}>Boutons sous l'écran</div>
+        <button type="button" onClick={() => setView('softkeys')} aria-label="Boutons sous l'écran"
+          style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', maxWidth: 620, textAlign: 'left', cursor: 'pointer', padding: '14px 16px',
+            border: '1px solid var(--c-border-strong)', borderRadius: 12, background: 'var(--c-surface-2)', color: 'inherit', font: 'inherit' }}>
+          <span style={{ fontSize: 22 }}>▭▭▭</span>
+          <span style={{ flex: 1 }}>
+            <span style={{ display: 'block', fontWeight: 700, fontSize: 14 }}>Disposition des boutons sous l'écran</span>
+            <span style={muted}>{cat.softkeys.states.length} états d'appel · {changed ? `${changed} modifié(s) par rapport à la préférence Simple IP` : 'préférence Simple IP'}</span>
+          </span>
+          <span style={{ fontSize: 18, color: 'var(--brand)' }}>→</span>
+        </button>
       </>)}
-
-      {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 12 }}>{error}</div>}
-      <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
-        <button className="btn-primary" onClick={save} disabled={saving || !name.trim() || !cat}>{saving ? '...' : 'Enregistrer'}</button>
-        <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
-      </div>
+      {actions}
     </div>
   )
 }
 
 export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnabled }) {
   const [templates, setTemplates] = useState(null)
-  const [editing, setEditing] = useState(null)      // null | 'new' | modèle
+  const [selected, setSelected] = useState(null)      // null | 'new' | id du modèle
   const [error, setError] = useState('')
 
   const load = () => api.get(`/v1/companies/${companyId}/button-templates`).then(r => setTemplates(r.data)).catch(() => setTemplates([]))
   useEffect(() => { load() }, [companyId])   // eslint-disable-line
 
+  function pick(next) {
+    if (selected && selected !== next && !confirm('Quitter ce modèle ? Les changements non enregistrés seront perdus.')) return
+    setSelected(next)
+  }
   async function remove(t) {
     if (!confirm(`Supprimer le modèle « ${t.name} » ?`)) return
     setError('')
-    try { await api.delete(`/v1/companies/${companyId}/button-templates/${t.id}`); load() } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
+    try { await api.delete(`/v1/companies/${companyId}/button-templates/${t.id}`); if (selected === t.id) setSelected(null); load() }
+    catch (e) { setError(e.response?.data?.detail || 'Erreur') }
   }
 
   if (!sipvEnabled) return <div className="empty-tab">Cette compagnie n'a pas de tenant téléphonique.</div>
+  const current = templates?.find(t => t.id === selected)
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6 }}>
         <div style={{ ...title, marginBottom: 0 }}>Modèles de provisionnement ({templates?.length ?? 0})</div>
-        {!editing && <button className="btn-primary" style={{ marginLeft: 'auto', fontSize: 13 }} onClick={() => setEditing('new')}>+ Nouveau modèle</button>}
+        <button className="btn-primary" style={{ marginLeft: 'auto', fontSize: 13 }} onClick={() => pick('new')}>+ Nouveau modèle</button>
       </div>
-      <div style={{ ...muted, marginBottom: 14 }}>
-        Un modèle par type de téléphone : ses options, ses touches et ses boutons sous l'écran. Un nouveau modèle part des valeurs
-        par défaut du serveur. Chaque poste choisit le sien dans sa fiche et peut y ajuster une option ou une touche (« Sauvegarder
-        comme modèle » dans un poste l'ajoute ici). Un changement s'applique aux postes qui l'utilisent au prochain redémarrage.
+      <div style={{ ...muted, marginBottom: 12 }}>
+        Un modèle par type de téléphone : ses options, ses touches et ses boutons sous l'écran. Choisissez un modèle pour voir et modifier ses réglages.
+        Chaque poste choisit le sien et peut y personnaliser un réglage. Un changement s'applique aux postes au prochain chargement de leur configuration.
       </div>
-      {editing && <TemplateEditor companyId={companyId} phoneModels={phoneModels} template={editing === 'new' ? null : editing}
-        onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load() }} />}
       {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-      {templates === null ? <div className="loading">Chargement...</div> : templates.length === 0 ? (
+      {templates === null ? <div className="loading">Chargement...</div> : templates.length === 0 && selected !== 'new' ? (
         <div className="empty-tab">Aucun modèle.</div>
-      ) : (
-        <table className="adm-table" style={{ width: '100%' }}>
-          <thead><tr><th>Nom</th><th>Téléphone</th><th>Pages</th><th>Touches configurées</th><th>Postes qui l'utilisent</th><th style={{ width: 200 }}></th></tr></thead>
+      ) : templates.length > 0 && (
+        <table className="adm-table" style={{ width: '100%', marginBottom: 18 }}>
+          <thead><tr><th>Nom</th><th>Téléphone</th><th>Pages</th><th>Touches configurées</th><th>Postes qui l'utilisent</th><th style={{ width: 110 }}></th></tr></thead>
           <tbody>
             {templates.map(t => (
-              <tr key={t.id}>
+              <tr key={t.id} onClick={() => pick(t.id)} aria-selected={selected === t.id}
+                style={{ cursor: 'pointer', background: selected === t.id ? 'var(--c-tint-blue)' : undefined,
+                  boxShadow: selected === t.id ? 'inset 3px 0 0 var(--brand)' : undefined }}>
                 <td style={{ fontWeight: 600 }}>{t.name}</td>
                 <td>{t.phone_model || <span style={muted}>—</span>}</td>
                 <td>{t.pages}</td>
                 <td>{t.items.length}</td>
                 <td>{t.phones}</td>
-                <td style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>
-                  <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', marginRight: 6 }} onClick={() => setEditing(t)} disabled={!!editing}>Modifier</button>
-                  <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => remove(t)} disabled={!!editing}>Supprimer</button>
+                <td style={{ textAlign: 'right' }} onClick={ev => ev.stopPropagation()}>
+                  <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => remove(t)}>Supprimer</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      )}
+      {selected && (selected === 'new' || current) && (
+        <TemplateEditor key={selected} companyId={companyId} phoneModels={phoneModels} template={selected === 'new' ? null : current}
+          onClose={() => setSelected(null)} onSaved={t => { load(); setSelected(t.id) }} />
       )}
     </div>
   )
