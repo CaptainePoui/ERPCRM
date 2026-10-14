@@ -295,7 +295,28 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     if left > 0 and nxt:
         combo.append((nxt[0], left))
         left = Decimal("0")
+    # 2026-10-14 (TASK-042.2, 40 faux credits du 2026-10-08) : un paiement deja enregistre du client, pas encore relie
+    # a la banque, peut etre ce depot (« Paiement anterieur » importe, plusieurs factures payees par un seul depot,
+    # paiement date a plus de 10 jours) -- jamais de credit automatique dans ce cas : a Philippe de relier.
+    # Ni pour un depot de la periode de l'historique importe : les dates des « Paiement anterieur » ne suivent pas
+    # les depots (LS : depot du 2026-03-04, paiement importe date du 2026-07-06), le depot se relie, il ne cree rien.
+    if left > 0 and (await _unlinked_payment_near(db, fam_ids, tx.posted_date)
+                     or tx.posted_date <= await _last_imported_payment(db)):
+        return None
     return _invoice_plan(tx, amount, combo, left)
+
+
+async def _last_imported_payment(db: AsyncSession) -> date:
+    return (await db.execute(select(func.max(ClientPayment.received_at)).where(
+        ClientPayment.source == "zoho_import"))).scalar_one() or date.min
+
+
+async def _unlinked_payment_near(db: AsyncSession, company_ids, day: date, days: int = 45) -> bool:
+    linked = select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None))
+    return (await db.execute(select(func.count()).select_from(ClientPayment).where(
+        ClientPayment.company_id.in_(company_ids), ClientPayment.status == "confirmed",
+        ClientPayment.source != "barter", ClientPayment.id.not_in(linked),
+        ClientPayment.received_at.between(day - timedelta(days=days), day + timedelta(days=days))))).scalar_one() > 0
 
 
 def _invoice_plan(tx: BankTransaction, amount: Decimal, combo: list, credit: Decimal) -> dict:

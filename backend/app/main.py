@@ -26,6 +26,7 @@ from app.services.bank_ai_poller import run_bank_ai_poller
 from app.services.receipt_poller import run_receipt_poller
 from app.services.interac_poller import run_interac_poller
 from app.services.mail_sync import run_mail_sync
+from app.core.background_leader import run_as_leader
 
 
 @asynccontextmanager
@@ -34,30 +35,18 @@ async def lifespan(app: FastAPI):
         await seed_defaults(db)
     from app.core import clock
     await clock.load()                      # fuseau horaire de l'entreprise avant tout poller
-    clock_task = asyncio.create_task(clock.run_refresher())
-    poller_task = asyncio.create_task(run_poller())
-    reminder_task = asyncio.create_task(run_reminder_poller())
-    backup_task = asyncio.create_task(run_backup_poller())
-    cdr_report_task = asyncio.create_task(run_cdr_report_poller())
-    recurring_task = asyncio.create_task(run_recurring_poller())
-    bank_ai_task = asyncio.create_task(run_bank_ai_poller())
-    receipt_task = asyncio.create_task(run_receipt_poller())
-    interac_task = asyncio.create_task(run_interac_poller())
-    mail_task = asyncio.create_task(run_mail_sync())
+    clock_task = asyncio.create_task(clock.run_refresher())   # etat local : dans chaque processus
+    # Taches de fond : un seul des deux services (8010 / 8011) les fait tourner -- voir background_leader
+    leader_task = asyncio.create_task(run_as_leader([
+        run_poller, run_reminder_poller, run_backup_poller, run_cdr_report_poller, run_recurring_poller,
+        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync,
+    ]))
     try:
         yield
     finally:
         clock_task.cancel()
-        poller_task.cancel()
-        reminder_task.cancel()
-        backup_task.cancel()
-        cdr_report_task.cancel()
-        recurring_task.cancel()
-        bank_ai_task.cancel()
-        receipt_task.cancel()
-        interac_task.cancel()
-        mail_task.cancel()
-        for t in (clock_task, poller_task, reminder_task, backup_task, cdr_report_task, recurring_task, bank_ai_task, receipt_task, interac_task, mail_task):
+        leader_task.cancel()
+        for t in (clock_task, leader_task):
             try:
                 await t
             except asyncio.CancelledError:
