@@ -9,6 +9,7 @@ import JournalFeed from '../components/JournalFeed'
 import Autocomplete from '../components/Autocomplete'
 import QuickNewContact from '../components/QuickNewContact'
 import RebootButton from '../components/RebootButton'
+import PushConfigButton from '../components/PushConfigButton'
 import QuickNewCompany from '../components/QuickNewCompany'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import CdrReportsSection from '../components/CdrReportsSection'
@@ -1004,6 +1005,7 @@ export default function ContactDetail({ isNew }) {
                           {sipExt.call_state === 'active' && <span title="Appel en cours" style={{ color: '#DC2626' }}>📞</span>}
                           {sipExt.call_state === 'ringing' && <span title="Sonne" style={{ color: '#D97706' }}>🔔</span>}
                           <RebootButton sipExtId={sipExt.id} extension={sipExt.extension} registered={sipExt.registered} />
+                          <PushConfigButton sipExtId={sipExt.id} extension={sipExt.extension} registered={sipExt.registered} takenAt={sipExt.config_taken_at} />
                         </div>
                       </div>
                       <div className="ifield"><div className="ifield-label">Poste</div><div className="ifield-value">{sipExt.extension}</div></div>

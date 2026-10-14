@@ -403,6 +403,7 @@ async def get_contact_sip_extension(contact_id: uuid.UUID, db: AsyncSession = De
     except httpx.HTTPError:
         reg = None
     ext["registered"] = reg["registered"] if reg else False
+    ext["config_taken_at"] = reg.get("config_taken_at") if reg else None
     ext["public_ip"] = reg["public_ip"] if reg else None
     ext["private_ip"] = reg["private_ip"] if reg else None
     ext["call_state"] = reg["call_state"] if reg else "idle"

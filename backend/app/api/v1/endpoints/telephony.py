@@ -819,3 +819,15 @@ async def reboot_extension(sipv_extension_id: uuid.UUID, _: User = Depends(get_c
     if code != 200:
         raise HTTPException(status_code=code, detail=res.get("detail", "Impossible de redémarrer"))
     return res
+
+
+# « Pousser la config » (2026-10-14) : le telephone relit sa configuration sans redemarrer ; a cote de « Redemarrer »
+@router.post("/extensions/{sipv_extension_id}/push-config")
+async def push_extension_config(sipv_extension_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        code, res = await sipv_client.push_extension_config(str(sipv_extension_id))
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code != 200:
+        raise HTTPException(status_code=code, detail=res.get("detail", "Impossible de pousser la config"))
+    return res

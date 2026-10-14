@@ -1269,6 +1269,17 @@ async def reboot_extension(extension_id: str) -> tuple[int, dict]:
         return resp.status_code, resp.json()
 
 
+async def push_extension_config(extension_id: str) -> tuple[int, dict]:
+    """Bouton « Pousser la config » (2026-10-14) : le telephone relit sa configuration sans redemarrer. (statut, reponse)
+    -- 409 = aucun telephone enregistre, 502 = ordre refuse."""
+    async with _client() as client:
+        resp = await client.post(f"{settings.SIPV_API_URL}/api/v1/extensions/{extension_id}/push-config", headers=_headers())
+        if resp.status_code in (404, 409, 502):
+            return resp.status_code, resp.json()
+        resp.raise_for_status()
+        return resp.status_code, resp.json()
+
+
 # ── Appareils internes (TASK-027.3, 2026-10-11) : Serveur -> onglet « Appareils internes » ─────────────────────────
 async def internal_devices(method: str, path: str, json: dict | None = None) -> tuple[int, dict]:
     """(statut, reponse) -- les refus de SIPV (404, 422) remontent tels quels a l'ecran."""
