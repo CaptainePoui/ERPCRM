@@ -41,7 +41,10 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   const [saving, setSaving] = useState(false)
   const canvasRef = useRef(null), inputRef = useRef(null), drag = useRef(null)
   const [W, H] = res.split('x').map(Number)
-  const s = Math.min(1.6, 560 / W)                     // échelle d'affichage
+  // échelle d'affichage : assez grande pour cadrer, sans dépasser la fenêtre (Philippe : « la fenêtre dépasse »)
+  const [vh, setVh] = useState(window.innerHeight)
+  useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
+  const s = Math.max(0.5, Math.min(1.6, 560 / W, (vh - 260 - 2 * MARGIN) / H))
 
   function load(blob) {
     const url = URL.createObjectURL(blob)
@@ -141,9 +144,9 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
     background: active ? 'var(--brand)' : 'transparent', color: active ? '#fff' : 'inherit' })
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ maxWidth: 'min(980px, 96vw)', width: 980, cursor: 'default' }}>
-        <h3 className="modal-title">{wallpaper ? `Recadrer « ${wallpaper.name} »` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
-        <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
+      <div className="modal-box" style={{ maxWidth: '96vw', width: 'auto', maxHeight: '94vh', display: 'flex', flexDirection: 'column', cursor: 'default', overflow: 'hidden' }}>
+        <h3 className="modal-title" style={{ flex: 'none' }}>{wallpaper ? `Recadrer « ${wallpaper.name} »` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
+        <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start', overflowY: 'auto', minHeight: 0, flex: 1 }}>
           <div>
             {!img ? (
               <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
@@ -161,7 +164,7 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
             <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { pick(e.target.files[0]); e.target.value = '' }} />
             {img && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 6 }}>Glissez l'image pour la cadrer dans le cadre bleu (l'écran du téléphone) ; molette = zoom. Image : {img.width}×{img.height}</div>}
           </div>
-          <div style={{ flex: '1 1 260px', minWidth: 240, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ width: 300, flex: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div className="form-group" style={{ margin: 0 }}><label>Nom</label>
               <input value={name} onChange={e => setName(e.target.value)} aria-label="Nom du fond d'écran" /></div>
             <div className="form-group" style={{ margin: 0 }}><label>Écran du téléphone</label>
@@ -190,8 +193,8 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
             {img && <button type="button" className="btn-secondary" style={{ fontSize: 12, alignSelf: 'flex-start' }} onClick={() => inputRef.current?.click()}>Changer d'image</button>}
           </div>
         </div>
-        {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{error}</div>}
-        <div className="modal-actions">
+        {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10, flex: 'none' }}>{error}</div>}
+        <div className="modal-actions" style={{ flex: 'none' }}>
           <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
           <button className="btn-primary" onClick={save} disabled={saving || !img || !name.trim()}>{saving ? '...' : 'Enregistrer'}</button>
         </div>
