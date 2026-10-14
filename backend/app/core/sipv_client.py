@@ -1296,3 +1296,14 @@ async def reboot_extension(extension_id: str) -> tuple[int, dict]:
             return resp.status_code, resp.json()
         resp.raise_for_status()
         return resp.status_code, resp.json()
+
+
+# ── Appareils internes (TASK-027.3, 2026-10-11) : Serveur -> onglet « Appareils internes » ─────────────────────────
+async def internal_devices(method: str, path: str, json: dict | None = None) -> tuple[int, dict]:
+    """(statut, reponse) -- les refus de SIPV (404, 422) remontent tels quels a l'ecran."""
+    async with _client() as client:
+        resp = await client.request(method, f"{settings.SIPV_API_URL}/api/v1/internal-devices{path}", json=json, headers=_headers())
+        if resp.status_code in (404, 422):
+            return resp.status_code, resp.json()
+        resp.raise_for_status()
+        return resp.status_code, resp.json()

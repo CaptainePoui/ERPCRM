@@ -376,3 +376,40 @@ async def sipv_backup_list_logs(_: User = Depends(get_current_user)):
         return await sipv_client.list_backup_logs()
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+
+
+# ── Appareils internes (TASK-027.3, 2026-10-11) ─────────────────────────────────────────────────────────────────
+# Postes branches sur le meme reseau que leur serveur (bureau) : leur telephone recoit l'adresse interne du serveur
+# comme proxy SIP au lieu de l'adresse publique. On choisit le tenant, puis on coche ses postes. Tout vit sur SIPV.
+async def _internal(method: str, path: str, json: dict | None = None):
+    try:
+        code, data = await sipv_client.internal_devices(method, path, json)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    if code >= 400:
+        raise HTTPException(status_code=code, detail=data.get("detail", "Refusé par SIPV"))
+    return data
+
+
+@router.get("/servers/{server_id}/internal-devices")
+async def list_internal_devices(server_id: uuid.UUID, _: User = Depends(get_current_user)):
+    return await _internal("GET", f"/server/{server_id}")
+
+
+@router.post("/servers/{server_id}/internal-devices/tenants/{tenant_id}")
+async def add_internal_tenant(server_id: uuid.UUID, tenant_id: uuid.UUID, _: User = Depends(get_current_user)):
+    return await _internal("POST", f"/server/{server_id}/tenants/{tenant_id}")
+
+
+@router.delete("/servers/{server_id}/internal-devices/tenants/{tenant_id}")
+async def remove_internal_tenant(server_id: uuid.UUID, tenant_id: uuid.UUID, _: User = Depends(get_current_user)):
+    return await _internal("DELETE", f"/server/{server_id}/tenants/{tenant_id}")
+
+
+class InternalPayload(BaseModel):
+    internal: bool
+
+
+@router.put("/internal-devices/extensions/{extension_id}")
+async def set_internal_extension(extension_id: uuid.UUID, payload: InternalPayload, _: User = Depends(get_current_user)):
+    return await _internal("PUT", f"/extensions/{extension_id}", {"internal": payload.internal})
