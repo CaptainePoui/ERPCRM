@@ -22,6 +22,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Même jour, 2e erreur** : `flush_inbound_reg <user> reboot` a été choisi pour « redémarrer » sans lire ce qu'il fait d'autre — il **efface l'enregistrement** côté serveur. Le GXP2135 refusant l'ordre (401), il est resté hors ligne pour le serveur jusqu'à son renouvellement. Remplacé par `check_sync` (envoie seulement le NOTIFY). Leçon : avant d'utiliser une commande FreeSWITCH en production, vérifier tous ses effets (pas seulement celui recherché), et tester sur un appareil réel avec trace SIP — le « +OK » de FreeSWITCH ne dit rien de la réponse du téléphone.
 
+**2026-10-14 — Poste 102 « down » 20 minutes après un redémarrage de SIPV (même tâche)**
+
+**On croyait** : qu'un redémarrage de `sipv-backend` (quelques secondes) est sans effet sur les téléphones déjà inscrits.
+
+**Preuve** : redémarrage à 08:43:01 ; FreeSWITCH à 08:43:02 « Can't find user [t1000-102@sipv] » (le répertoire est lu par xml_curl auprès de SIPV, arrêté à cet instant) → refus 403 du renouvellement d'inscription du 102 ; le 102 n'est revenu qu'à 09:03:17. Philippe pensait que sa personnalisation de touches en était la cause.
+
+**Cause réelle** : gabarit officiel — `P26002` « Registration Retry Wait Time upon 403 Forbidden », 1200 s (valeur aussi envoyée par notre gabarit) : un seul 403 au mauvais moment = 20 minutes hors ligne.
+
+**Correction** : à décider avec Philippe (proposé : `P26002` plus court, et un répertoire FreeSWITCH qui ne répond pas « introuvable » quand SIPV redémarre).
+
+**Leçon** : un redémarrage de SIPV n'est pas anodin pour les téléphones ; avant d'en faire un en journée, savoir que tout poste qui renouvelle à cette seconde-là est refusé (403) et attend 20 min.
+
 **2026-10-14 — Touches Grandstream écrites aux mauvais codes (même tâche)**
 
 **On croyait** : que la touche *n* d'un GXP2135 se programme à `P23800 + 4(n-1)` avec une seule table de modes — « confirmé empiriquement » le 2026-08-02 contre un fichier ScopServ, et « corrigé » le 2026-10-11 (0070) sans ouvrir le gabarit officiel.
