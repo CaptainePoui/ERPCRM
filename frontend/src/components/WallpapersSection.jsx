@@ -87,6 +87,8 @@ function WallpaperWorkspace({ list, accountNumber, screen, value, onSelect, onCh
   const chosen = groups.find(g => g.versions.some(v => v.id === value))
   const [currentId, setCurrentId] = useState((chosen || def || groups[0])?.id || null)
   const current = groups.find(g => g.id === currentId) || chosen || def || groups[0]
+  // Dans un modèle : seulement la taille de l'écran du modèle (Philippe : « je ne veux pas voir les fonds qui ne cadrent pas
+  // avec le modèle »)
   const [size, setSize] = useState(screen || current?.versions[0]?.resolution)
   useEffect(() => { if (current && !current.versions.some(v => v.resolution === size)) setSize(screen && current.versions.some(v => v.resolution === screen) ? screen : current.versions[0].resolution) }, [currentId])   // eslint-disable-line
   const version = current?.versions.find(v => v.resolution === size)
@@ -112,7 +114,7 @@ function WallpaperWorkspace({ list, accountNumber, screen, value, onSelect, onCh
       </div>
       {current && <>
         <WallpaperActions key={current.id} group={current} onChanged={onChanged} />
-        {current.versions.length > 1 && (
+        {!screen && current.versions.length > 1 && (
           <div style={{ display: 'flex', gap: 6, margin: '8px 0' }}>
             {current.versions.map(v => (
               <button key={v.id} type="button" className={v.resolution === size ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '3px 10px' }}

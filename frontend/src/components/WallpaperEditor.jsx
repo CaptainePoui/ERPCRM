@@ -177,11 +177,11 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
           <div style={{ width: 300, flex: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {!inline && <div className="form-group" style={{ margin: 0 }}><label>Nom</label>
               <input value={name} onChange={e => setName(e.target.value)} aria-label="Nom du fond d'écran" /></div>}
-            <div className="form-group" style={{ margin: 0 }}><label>Écran du téléphone</label>
+            {!inline && <div className="form-group" style={{ margin: 0 }}><label>Écran du téléphone</label>
               <select value={res} onChange={e => setRes(e.target.value)} disabled={!!wallpaper} aria-label="Écran du téléphone">
                 {(resolutions?.length ? SCREENS.filter(x => resolutions.includes(x.key)) : SCREENS).map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
                 {wallpaper && !SCREENS.some(x => x.key === res) && <option value={res}>{res.replace('x', ' × ')}</option>}
-              </select></div>
+              </select></div>}
             <div>
               <div className="ifield-label">Ajustement</div>
               <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden' }}>
