@@ -843,3 +843,15 @@ async def factory_reset_extension(sipv_extension_id: uuid.UUID, _: User = Depend
     if code != 200:
         raise HTTPException(status_code=code, detail=res.get("detail", "Impossible de remettre à zéro"))
     return res
+
+
+# ── Arbre des options d'un modele de telephone (TASK-051, 2026-10-14) : tire du gabarit officiel, lu de SIPV ──
+@router.get("/option-catalog/{model_id}")
+async def get_option_catalog(model_id: uuid.UUID, _: User = Depends(get_current_user)):
+    try:
+        code, data = await sipv_client.provisioning("GET", f"/option-catalog/{model_id}")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code != 200:
+        raise HTTPException(status_code=code, detail=(data or {}).get("detail") if isinstance(data, dict) else data)
+    return data

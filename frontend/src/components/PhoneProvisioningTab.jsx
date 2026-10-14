@@ -4,7 +4,8 @@
 // poste (remplace celle du modèle). Enregistré d'un coup ; le téléphone le prend au prochain chargement de sa config.
 import { useEffect, useState } from 'react'
 import api from '../services/api'
-import { box, title, muted, input, OptionsFields, TemplateCheck, KeyRow, KeysPage, SoftkeysPage, preferredLayouts } from './ProvisioningTemplates'
+import OptionsTree from './OptionsTree'
+import { box, title, muted, input, TemplateCheck, KeyRow, KeysPage, SoftkeysPage, preferredLayouts } from './ProvisioningTemplates'
 
 const NONE = { button_type: 'none', label: '', value: '', sip_account_index: 1 }
 const asKey = b => ({ button_type: b.button_type, label: b.label || '', value: b.value || '', sip_account_index: b.sip_account_index || 1 })
@@ -13,7 +14,6 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
   const base = `/v1/contacts/${contactId}/sip-extension/phone/${phone.id}`
   const [templates, setTemplates] = useState([])
   const [cat, setCat] = useState(null)
-  const [brand, setBrand] = useState('')
   const [options, setOptions] = useState(phone.extra_config || {})
   const [own, setOwn] = useState({})                  // "page-position" -> touche personnalisée du poste
   const [layouts, setLayouts] = useState(phone.softkeys?.layouts || {})
@@ -26,7 +26,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
     api.get(`${base}/button-templates`).then(r => setTemplates(r.data)).catch(() => setTemplates([]))
     api.get(`${base}/buttons`).then(r => setOwn(Object.fromEntries(r.data.map(b => [`${b.page}-${b.position}`, asKey(b)]))))
     if (phone.phone_model_id) api.get(`/v1/contacts/${contactId}/sip-extension/key-catalog/${phone.phone_model_id}`)
-      .then(r => { setCat(r.data.catalog); setBrand(r.data.brand) }).catch(() => setCat(null))
+      .then(r => setCat(r.data.catalog)).catch(() => setCat(null))
   }, [phone.id])   // eslint-disable-line
 
   const tpl = templates.find(t => t.id === phone.button_template_id) || null
@@ -99,7 +99,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
         <div style={box}>
           <div style={title}>Options du téléphone</div>
           <div style={{ marginBottom: 22 }}>
-            <OptionsFields brand={brand} value={options} inherited={tpl?.options || {}} onChange={touch(setOptions)} />
+            <OptionsTree modelId={phone.phone_model_id} value={options} inherited={tpl?.options || {}} onChange={touch(setOptions)} />
           </div>
 
           <div style={title}>Touches à côté de l'écran</div>

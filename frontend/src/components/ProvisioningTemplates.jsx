@@ -7,6 +7,7 @@
 // à l'onglet Provisionnement du poste.
 import { useEffect, useState } from 'react'
 import api from '../services/api'
+import OptionsTree from './OptionsTree'
 
 export const box = { border: '1px solid var(--c-border)', borderRadius: 12, padding: 18, marginBottom: 16, background: 'var(--c-surface)' }
 export const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
@@ -54,41 +55,6 @@ export function DualList({ options, value, onChange, labels = {}, disabled = fal
         <button type="button" className="btn-secondary" style={arrow} onClick={() => move(-1)} disabled={disabled || !right} title="Monter">▲</button>
         <button type="button" className="btn-secondary" style={arrow} onClick={() => move(1)} disabled={disabled || !right} title="Descendre">▼</button>
       </div>
-    </div>
-  )
-}
-
-// Options du téléphone (langue, etc.) : toutes celles du catalogue valables pour la marque, à leur place.
-// `inherited` (onglet du poste) : {clé: valeur du modèle} -- case « Modèle » cochée = valeur du modèle, décochée = personnalisée.
-export function OptionsFields({ brand, value, onChange, inherited }) {
-  const [catalog, setCatalog] = useState([])
-  useEffect(() => { api.get('/v1/ref/phone-options').then(r => setCatalog(r.data)) }, [])
-  const opts = catalog.filter(o => !o.compatible_brands || o.compatible_brands.includes(brand))
-  if (!opts.length) return <div style={muted}>Aucune option pour cette marque.</div>
-  return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, maxWidth: 960 }}>
-      {opts.map(o => {
-        const fromTemplate = inherited && !(o.key in value)
-        const v = fromTemplate ? (inherited[o.key] ?? o.default) : (value[o.key] ?? o.default)
-        const set = val => onChange({ ...value, [o.key]: val })
-        return (
-          <div key={o.key}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div className="ifield-label" style={{ margin: 0 }}>{o.label}</div>
-              {inherited && <TemplateCheck checked={fromTemplate} onChange={c => {
-                const next = { ...value }; if (c) delete next[o.key]; else next[o.key] = v; onChange(next)
-              }} />}
-            </div>
-            {o.type === 'select' ? (
-              <select value={v} disabled={fromTemplate} onChange={e => set(e.target.value)} style={{ ...input, marginTop: 4 }} aria-label={o.label}>
-                {o.choices.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            ) : (
-              <input value={v ?? ''} disabled={fromTemplate} onChange={e => set(e.target.value)} style={{ ...input, marginTop: 4 }} aria-label={o.label} />
-            )}
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -189,7 +155,6 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
   const [name, setName] = useState(template?.name || '')
   const [modelId, setModelId] = useState(template?.phone_model_id || '')
   const [cat, setCat] = useState(null)
-  const [brand, setBrand] = useState('')
   const [options, setOptions] = useState(template?.options || null)
   const [catMsg, setCatMsg] = useState('')
   const [pages, setPages] = useState(template?.pages || 1)
@@ -206,7 +171,6 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
     api.get(`/v1/companies/${companyId}/key-catalog/${modelId}`).then(r => {
       if (!r.data.catalog) { setCatMsg(`Le ${r.data.model} n'a pas encore de disposition de touches (pour l'instant : GXP2130, 2135, 2140, 2160, 2170).`); return }
       setCat(r.data.catalog)
-      setBrand(r.data.brand)
       setOptions(o => o || { ...r.data.default_options })              // nouveau modèle : valeurs Simple IP, modifiables
       setLayouts(l => l || preferredLayouts(r.data.catalog))
     }).catch(e => setCatMsg(e.response?.data?.detail || 'SIPV injoignable'))
@@ -270,7 +234,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
 
       {cat && (<>
         <div style={title}>Options du téléphone</div>
-        <div style={{ marginBottom: 22 }}><OptionsFields brand={brand} value={options || {}} onChange={setOptions} /></div>
+        <div style={{ marginBottom: 22 }}><OptionsTree modelId={modelId} value={options || {}} onChange={setOptions} /></div>
 
         <div style={title}>Touches à côté de l'écran</div>
         <div style={{ ...muted, marginBottom: 10 }}>Touches « Ligne » : la première affiche le nom du poste ; les suivantes s'affichent sans nom et servent aux appels suivants du même poste (comme sur l'UCM).</div>

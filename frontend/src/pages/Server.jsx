@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
-import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
+import OptionsTree from '../components/OptionsTree'
 import TenantMigration from '../components/TenantMigration'
 import InternalDevices from '../components/InternalDevices'
 import './Admin.css'
@@ -689,6 +689,9 @@ function MohLibrarySection({ companies }) {
 function PhoneDefaultsSection({ server }) {
   const [tpl, setTpl] = useState(undefined)
   const [error, setError] = useState('')
+  // Valeurs communes aux Grandstream GXP21xx : arbre d'options du gabarit de cette famille
+  const [gxpModel, setGxpModel] = useState(null)
+  useEffect(() => { api.get('/v1/ref/phone-models').then(r => setGxpModel(r.data.find(m => m.brand === 'Grandstream' && m.model === 'GXP2135')?.id || null)) }, [])
 
   async function load() {
     const r = await api.get(`/v1/server/servers/${server.id}/global-templates`)
@@ -716,11 +719,11 @@ function PhoneDefaultsSection({ server }) {
         Valeurs par défaut des téléphones
       </div>
       <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Remplissent chaque nouveau modèle de provisionnement (Compagnie → Téléphonie → Provisionnement) et s'appliquent aux postes qui n'ont pas de modèle.
+        Valeurs Simple IP des Grandstream GXP21xx : remplissent chaque nouveau modèle de provisionnement (Compagnie → Téléphonie → Provisionnement) et s'appliquent aux postes qui n'ont pas de modèle.
       </div>
       {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 8 }}>{error}</div>}
       {tpl === undefined ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>
-        : <PhoneOptionsEditor title="" value={tpl?.options || {}} onChange={saveOptions} />}
+        : gxpModel ? <OptionsTree modelId={gxpModel} value={tpl?.options || {}} onChange={saveOptions} /> : <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>}
     </div>
   )
 }
