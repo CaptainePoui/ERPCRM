@@ -30,7 +30,7 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Cause réelle** : gabarit officiel — `P26002` « Registration Retry Wait Time upon 403 Forbidden », 1200 s (valeur aussi envoyée par notre gabarit) : un seul 403 au mauvais moment = 20 minutes hors ligne.
 
-**Correction** : à décider avec Philippe (proposé : `P26002` plus court, et un répertoire FreeSWITCH qui ne répond pas « introuvable » quand SIPV redémarre).
+**Correction** (Philippe : « on va avec réessaie ») : ne plus couper le répertoire — `sipv-backend` (gunicorn) a déjà un rechargement sans coupure (`systemctl reload` = HUP : nouveaux processus avant l'arrêt des anciens). Mesuré : 0 échec sur 308 interrogations du répertoire pendant 2 rechargements, avec le délai de FreeSWITCH (10 s) ; le `restart` coupait. Règle : `reload`, jamais `restart` en journée.
 
 **Leçon** : un redémarrage de SIPV n'est pas anodin pour les téléphones ; avant d'en faire un en journée, savoir que tout poste qui renouvelle à cette seconde-là est refusé (403) et attend 20 min.
 
