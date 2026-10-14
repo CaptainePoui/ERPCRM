@@ -326,7 +326,8 @@ export default function ContactDetail({ isNew }) {
   const [connInfoLoading, setConnInfoLoading] = useState(false)
   const [phone, setPhone] = useState(null)
   const [phoneModels, setPhoneModels] = useState([])
-  const [tenantModelTemplates, setTenantModelTemplates] = useState([])
+  const [phoneTemplates, setPhoneTemplates] = useState([])       // modèles de provisionnement offerts à ce poste
+  const [keyModes, setKeyModes] = useState([])
   const [e911Addresses, setE911Addresses] = useState([])
   const [e911Assignment, setE911Assignment] = useState(null)
   const [e911Form, setE911Form] = useState({ e911_address_id: '', emergency_location: '', floor: '', office: '', alert_email: '' })
@@ -613,7 +614,9 @@ export default function ContactDetail({ isNew }) {
     const r = await api.get(`/v1/contacts/${id}/sip-extension/phone`)
     setPhone(r.data)
     if (r.data) {
-      api.get(`/v1/contacts/${id}/sip-extension/phone/tenant-model-templates`).then(tr => setTenantModelTemplates(tr.data))
+      api.get(`/v1/contacts/${id}/sip-extension/phone/${r.data.id}/button-templates`).then(tr => setPhoneTemplates(tr.data)).catch(() => setPhoneTemplates([]))
+      if (r.data.phone_model_id) api.get(`/v1/contacts/${id}/sip-extension/key-catalog/${r.data.phone_model_id}`)
+        .then(kr => setKeyModes(kr.data.catalog?.modes || [])).catch(() => setKeyModes([]))
     }
   }
 
@@ -664,10 +667,14 @@ export default function ContactDetail({ isNew }) {
   }
 
   async function saveAsTemplate() {
-    const name = prompt('Nom du template (réutilisable sur d\'autres postes depuis compagnie/téléphonie) :')
+    const name = prompt('Nom du modèle de provisionnement (ses options et ses touches deviennent un modèle de la compagnie, utilisé par ce poste) :')
     if (!name || !name.trim()) return
-    await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/save-as-template`, { name: name.trim() })
-    alert(`Template « ${name.trim()} » créé — gérable dans l'onglet Téléphonie de la compagnie.`)
+    try {
+      await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/save-as-template`, { name: name.trim() })
+    } catch (e) { alert(e.response?.data?.detail || 'Erreur'); return }
+    await loadPhone()
+    await loadButtons()
+    alert(`Modèle « ${name.trim()} » créé — visible dans Compagnie → Téléphonie → Provisionnement, et utilisé par ce poste.`)
   }
 
   async function toggleConnInfo() {
@@ -684,6 +691,11 @@ export default function ContactDetail({ isNew }) {
   async function saveSipExtField(field, value) {
     await api.put(`/v1/contacts/${id}/sip-extension`, { [field]: value })
     setSipExt(prev => ({ ...prev, [field]: value }))
+  }
+
+  async function choosePhoneTemplate(templateId) {
+    const r = await api.put(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/button-template`, { button_template_id: templateId })
+    setPhone(prev => ({ ...prev, button_template_id: r.data.button_template_id }))
   }
 
   async function savePhoneField(field, value) {
@@ -1268,40 +1280,26 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    {phone && (
+                    {phone && (() => {
+                      const tpl = phoneTemplates.find(t => t.id === phone.button_template_id)
+                      return (
                       <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
-                        <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 4 }}>Options du poste</div>
-                        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-                          Les templates par modèle se créent dans la fiche Compagnie (Téléphonie). On peut en cocher PLUSIEURS (ex. "défaut" + "oreillette" + "boutons de park") — ils se combinent et remplissent les options ci-dessous ("as template") ; cliquer une option la personnalise pour ce poste seulement.
+                        <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 4 }}>Modèle de provisionnement</div>
+                        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 8 }}>
+                          Les modèles se créent dans la fiche Compagnie → Téléphonie → Provisionnement (seuls ceux faits pour ce téléphone sont offerts).
+                          Ce poste peut ajuster une option ci-dessous ou une touche (bouton « Bouton ») par-dessus son modèle.
                         </div>
-                        {tenantModelTemplates.length > 0 && (
-                          <div style={{ marginBottom: 10 }}>
-                            {tenantModelTemplates.map(t => (
-                              <label key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, marginBottom: 2, cursor: 'pointer' }}>
-                                <input type="checkbox" checked={(phone.selected_tenant_model_template_ids || []).includes(t.id)}
-                                  onChange={() => {
-                                    const current = phone.selected_tenant_model_template_ids || []
-                                    const next = current.includes(t.id) ? current.filter(x => x !== t.id) : [...current, t.id]
-                                    savePhoneField('selected_tenant_model_template_ids', next)
-                                  }}
-                                  style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
-                                {t.name}
-                              </label>
-                            ))}
-                          </div>
-                        )}
+                        <select value={phone.button_template_id || ''} onChange={e => choosePhoneTemplate(e.target.value || null)}
+                          style={{ fontSize: 13, padding: '4px 8px', minWidth: 260, marginBottom: 12 }} aria-label="Modèle de provisionnement">
+                          <option value="">Aucun (valeurs par défaut, touches à aucune)</option>
+                          {phoneTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                        </select>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>Options ajustées pour ce poste</div>
                         <PhoneOptionsEditor title="" value={phone.extra_config || {}} onChange={next => savePhoneField('extra_config', next)}
-                          templateOptions={(() => {
-                            let merged = {}
-                            for (const id of (phone.selected_tenant_model_template_ids || [])) {
-                              const t = tenantModelTemplates.find(x => x.id === id)
-                              if (t) merged = { ...merged, ...t.options }
-                            }
-                            return merged
-                          })()}
-                          templateLabel={(phone.selected_tenant_model_template_ids || []).map(id => tenantModelTemplates.find(t => t.id === id)?.name).filter(Boolean).join(' + ')} />
+                          templateOptions={tpl?.options || null} templateLabel={tpl?.name} />
                       </div>
-                    )}
+                      )
+                    })()}
 
                     <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
                       <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
@@ -1395,6 +1393,10 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 2 }}>Touches ajustées pour ce poste</div>
+                    <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 6 }}>
+                      {phone.button_template_id ? 'Chacune remplace la touche du modèle à la même place (page, position) ; les autres viennent du modèle.' : 'Sans modèle, seules ces touches sont envoyées ; les autres sont à « aucune ».'}
+                    </div>
                     {buttonsLoading && <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>}
                     {!buttonsLoading && (
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -1412,8 +1414,8 @@ export default function ContactDetail({ isNew }) {
                               <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.page} onBlur={e => saveButton(b.id, 'page', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
                               <td style={{ padding: '3px 6px' }}>
                                 <select defaultValue={b.button_type} onChange={e => saveButton(b.id, 'button_type', e.target.value)} style={{ fontSize: 12 }}>
-                                  {['line', 'blf', 'speed_dial', 'park', 'park_retrieve', 'voicemail', 'transfer', 'intercom', 'paging', 'dnd', 'forward', 'queue', 'agent_login', 'agent_logout', 'agent_pause', 'pickup_group', 'feature_code', 'door', 'directory'].map(t => (
-                                    <option key={t} value={t}>{t}</option>
+                                  {(keyModes.some(m => m.key === b.button_type) ? keyModes : [...keyModes, { key: b.button_type, label: b.button_type }]).map(m => (
+                                    <option key={m.key} value={m.key}>{m.label}</option>
                                   ))}
                                 </select>
                               </td>
@@ -1430,7 +1432,7 @@ export default function ContactDetail({ isNew }) {
                       </table>
                     )}
                     <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8 }} onClick={addButton}>+ Ajouter un bouton</button>
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8, marginLeft: 8 }} onClick={saveAsTemplate}>Sauvegarder comme template</button>
+                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8, marginLeft: 8 }} onClick={saveAsTemplate}>Sauvegarder comme modèle</button>
                   </>
                 )}
               </div>

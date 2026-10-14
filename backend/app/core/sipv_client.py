@@ -834,44 +834,15 @@ async def remove_paging_group_member(member_id: str) -> None:
         resp.raise_for_status()
 
 
-async def list_button_templates(tenant_id: str) -> list[dict]:
+async def provisioning(method: str, path: str, json: dict | None = None, params: dict | None = None) -> tuple[int, dict | list | None]:
+    """Modeles de provisionnement (TASK-051) : (statut, reponse) ; les refus de SIPV (404, 422) remontent tels quels."""
     async with _client() as client:
-        resp = await client.get(
-            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/tenant/{tenant_id}",
-            headers=_headers(),
-        )
+        resp = await client.request(method, f"{settings.SIPV_API_URL}/api/v1/provisioning{path}", json=json, params=params,
+                                    headers=_headers())
+        if resp.status_code in (404, 422):
+            return resp.status_code, resp.json()
         resp.raise_for_status()
-        return resp.json()
-
-
-async def delete_button_template(template_id: str) -> None:
-    async with _client() as client:
-        resp = await client.delete(
-            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/{template_id}",
-            headers=_headers(),
-        )
-        resp.raise_for_status()
-
-
-async def save_phone_as_template(phone_id: str, name: str) -> dict:
-    async with _client() as client:
-        resp = await client.post(
-            f"{settings.SIPV_API_URL}/api/v1/provisioning/{phone_id}/save-as-template",
-            json={"name": name},
-            headers=_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
-
-
-async def apply_button_template(template_id: str, phone_id: str) -> list[dict]:
-    async with _client() as client:
-        resp = await client.post(
-            f"{settings.SIPV_API_URL}/api/v1/provisioning/button-templates/{template_id}/apply/{phone_id}",
-            headers=_headers(),
-        )
-        resp.raise_for_status()
-        return resp.json()
+        return resp.status_code, (resp.json() if resp.content else None)
 
 
 # ── Tenant/Tenant-Model/Global Templates -- chaine d'heritage (TASK-S044) ──────

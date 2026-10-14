@@ -865,14 +865,45 @@ class SaveAsTemplatePayload(BaseModel):
     name: str
 
 
-@router.post("/{contact_id}/sip-extension/phone/{phone_id}/save-as-template")
-async def save_contact_phone_as_template(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: SaveAsTemplatePayload, _: User = Depends(get_current_user)):
-    """Sauvegarde la config de boutons actuelle de ce poste comme template
-    reutilisable (TASK-023.26) -- geree/listee ensuite dans compagnie/telephonie."""
+class PhoneTemplateLink(BaseModel):
+    button_template_id: uuid.UUID | None
+
+
+async def _provisioning(method: str, path: str, json: dict | None = None):
     try:
-        return await sipv_client.save_phone_as_template(str(phone_id), payload.name)
+        code, data = await sipv_client.provisioning(method, path, json)
     except httpx.HTTPError:
         raise HTTPException(status_code=502, detail="SIPV injoignable")
+    if code in (404, 422):
+        raise HTTPException(status_code=code, detail=(data or {}).get("detail") if isinstance(data, dict) else data)
+    return data
+
+
+@router.post("/{contact_id}/sip-extension/phone/{phone_id}/save-as-template")
+async def save_contact_phone_as_template(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: SaveAsTemplatePayload, _: User = Depends(get_current_user)):
+    """Les touches du poste deviennent un modele de provisionnement de la compagnie (liste dans Telephonie ->
+    Provisionnement) et le poste l'utilise (TASK-051)."""
+    return await _provisioning("POST", f"/{phone_id}/save-as-template", {"name": payload.name})
+
+
+@router.get("/{contact_id}/sip-extension/phone/{phone_id}/button-templates")
+async def list_contact_phone_button_templates(contact_id: uuid.UUID, phone_id: uuid.UUID, _: User = Depends(get_current_user)):
+    """Modeles de provisionnement que ce poste peut choisir (sa compagnie, son modele de telephone) -- TASK-051."""
+    return await _provisioning("GET", f"/{phone_id}/button-templates")
+
+
+@router.get("/{contact_id}/sip-extension/key-catalog/{model_id}")
+async def get_contact_key_catalog(contact_id: uuid.UUID, model_id: uuid.UUID, _: User = Depends(get_current_user)):
+    """Modes de touches du modele de telephone (gabarit officiel, lu de SIPV) pour les touches propres au poste."""
+    return await _provisioning("GET", f"/key-catalog/{model_id}")
+
+
+@router.put("/{contact_id}/sip-extension/phone/{phone_id}/button-template")
+async def set_contact_phone_button_template(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: PhoneTemplateLink, _: User = Depends(get_current_user)):
+    """Choisit le modele de provisionnement du poste (ceux de sa compagnie pour son modele de telephone ; aucun = ses
+    propres touches) -- s'applique au prochain chargement de configuration du telephone (TASK-051)."""
+    return await _provisioning("PUT", f"/{phone_id}/button-template",
+                               {"button_template_id": str(payload.button_template_id) if payload.button_template_id else None})
 
 
 @router.put("/{contact_id}", response_model=ContactOut)

@@ -59,8 +59,7 @@ export default function Server() {
                   {s.hostname} {s.ip_address ? `(${s.ip_address})` : ''} — {s.tenant_count} compagnie(s) hébergée(s)
                 </div>
                 <SipChannelIpsSection server={s} onSave={updateServerField} />
-                <GlobalTemplatesSection server={s} />
-                <TenantTemplatesSection server={s} />
+                <PhoneDefaultsSection server={s} />
               </div>
             ))
           )}
@@ -684,191 +683,44 @@ function MohLibrarySection({ companies }) {
   )
 }
 
-function GlobalTemplatesSection({ server }) {
-  const [templates, setTemplates] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showNew, setShowNew] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', description: '' })
-  const [expanded, setExpanded] = useState(null)
+// Valeurs par défaut des téléphones de ce serveur (TASK-051, 2026-10-14) : remplissent un nouveau modèle de provisionnement
+// et s'appliquent aux postes sans modèle. Remplace les bibliothèques « Global Templates » / « Templates de tenant » (Philippe :
+// « c'est toutes des templates par modèle »). Stocké dans le template global « par défaut » du serveur.
+function PhoneDefaultsSection({ server }) {
+  const [tpl, setTpl] = useState(undefined)
+  const [error, setError] = useState('')
 
-  function loadTemplates() {
-    setLoading(true)
-    api.get(`/v1/server/servers/${server.id}/global-templates`).then(r => setTemplates(r.data)).finally(() => setLoading(false))
+  async function load() {
+    const r = await api.get(`/v1/server/servers/${server.id}/global-templates`)
+    setTpl(r.data.find(t => t.is_default) || null)
   }
-  useEffect(() => { loadTemplates() }, [server.id])
+  useEffect(() => { load().catch(() => setError('SIPV injoignable')) }, [server.id])   // eslint-disable-line
 
-  function openNew() { setForm({ name: '', description: '' }); setShowNew(true) }
-  function openEdit(t) { setForm({ name: t.name, description: t.description || '' }); setEditing(t) }
-  function closeForm() { setShowNew(false); setEditing(null) }
-
-  async function createTemplate() {
-    if (!form.name.trim()) return
-    await api.post(`/v1/server/servers/${server.id}/global-templates`, form)
-    closeForm()
-    loadTemplates()
-  }
-  async function saveEdit() {
-    if (!form.name.trim()) return
-    await api.put(`/v1/server/global-templates/${editing.id}`, form)
-    closeForm()
-    loadTemplates()
-  }
-  async function removeTemplate(id) {
-    if (!confirm('Supprimer ce template ?')) return
-    await api.delete(`/v1/server/global-templates/${id}`)
-    loadTemplates()
-  }
-  async function toggleDefault(t) {
-    await api.put(`/v1/server/global-templates/${t.id}`, { is_default: !t.is_default })
-    loadTemplates()
-  }
-  async function saveOptions(t, options) {
-    await api.put(`/v1/server/global-templates/${t.id}`, { options })
-    loadTemplates()
+  async function saveOptions(options) {
+    setError('')
+    try {
+      let t = tpl
+      if (!t) {
+        const r = await api.post(`/v1/server/servers/${server.id}/global-templates`, { name: 'Valeurs par défaut', description: '' })
+        t = r.data
+        await api.put(`/v1/server/global-templates/${t.id}`, { is_default: true })
+      }
+      await api.put(`/v1/server/global-templates/${t.id}`, { options })
+      await load()
+    } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
   }
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Global Templates ({templates.length})
-        </div>
-        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
+      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>
+        Valeurs par défaut des téléphones
       </div>
       <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Partagé par toutes les compagnies hébergées sur ce serveur — le niveau le plus général de la chaîne (avant les options par compagnie). "Défaut" s'applique automatiquement à tous, sans choix requis.
+        Remplissent chaque nouveau modèle de provisionnement (Compagnie → Téléphonie → Provisionnement) et s'appliquent aux postes qui n'ont pas de modèle.
       </div>
-      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
-        <div className="empty-tab">Aucun template.</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {templates.map(t => (
-            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
-                  {expanded === t.id ? '▾' : '▸'} {t.name}
-                </span>
-                {t.is_default && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
-                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
-                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => toggleDefault(t)}>
-                  {t.is_default ? 'Retirer défaut' : 'Définir défaut'}
-                </button>
-                <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
-              </div>
-              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
-              {expanded === t.id && (
-                <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {(showNew || editing) && (
-        <div className="modal-overlay">
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau Global Template'}</h3>
-            <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
-            <div className="form-group"><label>Description</label><input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} /></div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={closeForm}>Annuler</button>
-              <button className="btn-primary" onClick={editing ? saveEdit : createTemplate} disabled={!form.name.trim()}>{editing ? 'Enregistrer' : 'Créer'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// TASK-S044.1 : bibliotheque de "Template de tenant" -- meme forme que Global
-// Templates mais JAMAIS automatique, choisi explicitement par compagnie
-// (picker dans CompanyDetail.jsx, au-dessus de "Options téléphonie").
-function TenantTemplatesSection({ server }) {
-  const [templates, setTemplates] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [showNew, setShowNew] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', description: '' })
-  const [expanded, setExpanded] = useState(null)
-
-  function loadTemplates() {
-    setLoading(true)
-    api.get(`/v1/server/servers/${server.id}/tenant-templates`).then(r => setTemplates(r.data)).finally(() => setLoading(false))
-  }
-  useEffect(() => { loadTemplates() }, [server.id])
-
-  function openNew() { setForm({ name: '', description: '' }); setShowNew(true) }
-  function openEdit(t) { setForm({ name: t.name, description: t.description || '' }); setEditing(t) }
-  function closeForm() { setShowNew(false); setEditing(null) }
-
-  async function createTemplate() {
-    if (!form.name.trim()) return
-    await api.post(`/v1/server/servers/${server.id}/tenant-templates`, form)
-    closeForm()
-    loadTemplates()
-  }
-  async function saveEdit() {
-    if (!form.name.trim()) return
-    await api.put(`/v1/server/tenant-templates/${editing.id}`, form)
-    closeForm()
-    loadTemplates()
-  }
-  async function removeTemplate(id) {
-    if (!confirm('Supprimer ce template ?')) return
-    await api.delete(`/v1/server/tenant-templates/${id}`)
-    loadTemplates()
-  }
-  async function saveOptions(t, options) {
-    await api.put(`/v1/server/tenant-templates/${t.id}`, { options })
-    loadTemplates()
-  }
-
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Templates de tenant ({templates.length})
-        </div>
-        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Bibliothèque de gabarits (ex. "Français", "Anglais") — chaque compagnie choisit celui qu'elle utilise pour ses "Options téléphonie" ; jamais appliqué automatiquement.
-      </div>
-      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
-        <div className="empty-tab">Aucun template.</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {templates.map(t => (
-            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
-                  {expanded === t.id ? '▾' : '▸'} {t.name}
-                </span>
-                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
-                <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
-              </div>
-              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
-              {expanded === t.id && (
-                <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {(showNew || editing) && (
-        <div className="modal-overlay">
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau template de tenant'}</h3>
-            <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
-            <div className="form-group"><label>Description</label><input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} /></div>
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={closeForm}>Annuler</button>
-              <button className="btn-primary" onClick={editing ? saveEdit : createTemplate} disabled={!form.name.trim()}>{editing ? 'Enregistrer' : 'Créer'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 8 }}>{error}</div>}
+      {tpl === undefined ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>
+        : <PhoneOptionsEditor title="" value={tpl?.options || {}} onChange={saveOptions} />}
     </div>
   )
 }

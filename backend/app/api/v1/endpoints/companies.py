@@ -1214,34 +1214,57 @@ async def remove_company_paging_group_member(company_id: uuid.UUID, member_id: u
         raise HTTPException(status_code=502, detail="SIPV injoignable")
 
 
-# ── Templates de boutons — TASK-023.26, liste dans compagnie/telephonie ────────
-@router.get("/{company_id}/button-templates")
-async def list_company_button_templates(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+# ── Modeles de provisionnement (TASK-051, 2026-10-14) — Telephonie -> Provisionnement ─────────────────────
+async def _provisioning(method: str, path: str, json: dict | None = None, params: dict | None = None):
+    try:
+        code, data = await sipv_client.provisioning(method, path, json, params)
+    except httpx.HTTPError:
+        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    if code in (404, 422):
+        raise HTTPException(status_code=code, detail=(data or {}).get("detail") if isinstance(data, dict) else data)
+    return data
+
+
+async def _company_tenant(db: AsyncSession, company_id: uuid.UUID) -> str | None:
     company = await db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
-    if not company.sipv_enabled or not company.sipv_tenant_id:
+    return str(company.sipv_tenant_id) if company.sipv_enabled and company.sipv_tenant_id else None
+
+
+@router.get("/{company_id}/button-templates")
+async def list_company_button_templates(company_id: uuid.UUID, phone_model_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant(db, company_id)
+    if not tenant_id:
         return []
-    try:
-        return await sipv_client.list_button_templates(str(company.sipv_tenant_id))
-    except httpx.HTTPError:
-        return []
+    return await _provisioning("GET", f"/button-templates/tenant/{tenant_id}",
+                               params={"phone_model_id": str(phone_model_id)} if phone_model_id else None)
+
+
+@router.post("/{company_id}/button-templates", status_code=status.HTTP_201_CREATED)
+async def create_company_button_template(company_id: uuid.UUID, payload: dict, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    tenant_id = await _company_tenant(db, company_id)
+    if not tenant_id:
+        raise HTTPException(status_code=422, detail="Cette compagnie n'a pas de tenant téléphonique actif")
+    return await _provisioning("POST", f"/button-templates/tenant/{tenant_id}", payload)
+
+
+@router.put("/{company_id}/button-templates/{template_id}")
+async def update_company_button_template(company_id: uuid.UUID, template_id: uuid.UUID, payload: dict, _: User = Depends(get_current_user)):
+    return await _provisioning("PUT", f"/button-templates/{template_id}", payload)
 
 
 @router.delete("/{company_id}/button-templates/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_company_button_template(company_id: uuid.UUID, template_id: uuid.UUID, _: User = Depends(get_current_user)):
-    try:
-        await sipv_client.delete_button_template(str(template_id))
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="SIPV injoignable")
+    await _provisioning("DELETE", f"/button-templates/{template_id}")
 
 
-@router.post("/{company_id}/button-templates/{template_id}/apply/{phone_id}")
-async def apply_company_button_template(company_id: uuid.UUID, template_id: uuid.UUID, phone_id: uuid.UUID, _: User = Depends(get_current_user)):
-    try:
-        return await sipv_client.apply_button_template(str(template_id), str(phone_id))
-    except httpx.HTTPError:
-        raise HTTPException(status_code=502, detail="SIPV injoignable")
+@router.get("/{company_id}/key-catalog/{model_id}")
+async def get_company_key_catalog(company_id: uuid.UUID, model_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Touches, modes et boutons sous l'ecran offerts pour un modele de telephone (gabarit officiel, lu de SIPV), et les
+    valeurs Simple IP qui remplissent un nouveau modele de provisionnement."""
+    tenant_id = await _company_tenant(db, company_id)
+    return await _provisioning("GET", f"/key-catalog/{model_id}", params={"tenant_id": tenant_id} if tenant_id else None)
 
 
 @router.get("/{company_id}/extensions/{extension_id}/phone")

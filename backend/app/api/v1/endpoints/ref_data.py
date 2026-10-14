@@ -59,17 +59,8 @@ PHONE_OPTIONS_CATALOG = [
         "key": "language",
         "label": "Langue du poste",
         "type": "select",
-        # "en" ajoute le 2026-08-03 (demande Philippe) -- valeur deduite par
-        # analogie, PAS verifiee visuellement sur un GXP2135 physique : le
-        # fichier de reference propre a la famille GXP2130/40/60/70/35 ne
-        # contient aucune ligne P1362 (0 occurrence, verifie), donc pas de
-        # legende officielle pour CE modele precis. Evidence indirecte : le
-        # changelog Grandstream GXW42xx (meme ecosysteme P-code) documente
-        # explicitement "P1362 : en - English, zh - Chinese, fr - French,
-        # es - Spanish" ; "fr" (meme format 2 lettres, sans suffixe pays) est
-        # deja utilise avec succes sur le vrai GXP2135 (TASK-S011.5), donc
-        # "en" suit la meme convention. A confirmer visuellement sur l'ecran
-        # du telephone au premier vrai test.
+        # Verifie le 2026-10-14 dans le gabarit officiel gxp2130_40_60_70_35_config_1.0.11.106.txt (« Display Language »,
+        # P1362 : en, fr, ..., auto). L'ancienne note « aucune ligne P1362 dans le gabarit » etait fausse.
         "choices": [{"value": "auto", "label": "Automatique"}, {"value": "fr", "label": "Français"}, {"value": "en", "label": "Anglais"}],
         "default": "auto",
         "technical_id": "P1362",

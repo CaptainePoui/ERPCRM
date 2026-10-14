@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import RebootButton from '../../components/RebootButton'
 import api, { getToken } from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
-import PhoneOptionsEditor from '../../components/PhoneOptionsEditor'
 import QuickNewContact from '../../components/QuickNewContact'
 import ParkingLotsSection from './ParkingLotsSection'
 import CdrReportsSection from '../../components/CdrReportsSection'
+import ProvisioningTemplates from '../../components/ProvisioningTemplates'
 
 // ── Téléphonie Tab ────────────────────────────────────────────────────────────
 const DID_DESTINATION_TYPES = [
@@ -34,35 +34,6 @@ function destinationSelectOptions(type, { mergedExtensions, ringGroups, ivrs, qu
   return null
 }
 
-// Chaine de menus deroulants a choix unique pour une selection multiple sans
-// checkboxes : un menu par id deja choisi + un menu vide en fin de liste pour
-// en ajouter un nouveau. Un template deja choisi disparait des autres menus.
-function TemplateDropdownChain({ options, selectedIds, onChange }) {
-  const slots = [...selectedIds, '']
-
-  function handleChange(idx, value) {
-    const next = [...selectedIds]
-    if (value === '') next.splice(idx, 1)
-    else next[idx] = value
-    onChange(next)
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      {slots.map((val, idx) => {
-        const available = options.filter(o => !selectedIds.includes(o.id) || o.id === val)
-        return (
-          <select key={idx} value={val} onChange={e => handleChange(idx, e.target.value)}
-            style={{ fontSize: 13, padding: '4px 6px', maxWidth: 280 }}>
-            <option value="">{idx === slots.length - 1 ? '+ Ajouter un template' : '— Retirer —'}</option>
-            {available.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
-        )
-      })}
-    </div>
-  )
-}
-
 function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
   const navigate = useNavigate()
   const [dids, setDids] = useState([])
@@ -80,16 +51,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
   const [pagingGroupsLoading, setPagingGroupsLoading] = useState(true)
   const [parkingLots, setParkingLots] = useState([])
   const [parkingLotsLoading, setParkingLotsLoading] = useState(true)
-  const [buttonTemplates, setButtonTemplates] = useState([])
-  const [buttonTemplatesLoading, setButtonTemplatesLoading] = useState(true)
   const [phoneOptions, setPhoneOptions] = useState({})
-  const [selectedTenantTemplateIds, setSelectedTenantTemplateIds] = useState([])
-  const [selectedGlobalTemplateIds, setSelectedGlobalTemplateIds] = useState([])
-  const [globalTemplates, setGlobalTemplates] = useState([])
-  const [tenantTemplates, setTenantTemplates] = useState([])
-  const [tenantTemplatesLoading, setTenantTemplatesLoading] = useState(true)
-  const [tenantModelTemplates, setTenantModelTemplates] = useState([])
-  const [tenantModelTemplatesLoading, setTenantModelTemplatesLoading] = useState(true)
   const [phoneModels, setPhoneModels] = useState([])
   const [e911Addresses, setE911Addresses] = useState([])
   const [e911AddressesLoading, setE911AddressesLoading] = useState(true)
@@ -108,10 +70,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
     loadIvrsAndQueues()
     loadPagingGroups()
     loadParkingLots()
-    loadButtonTemplates()
     loadPhoneOptions()
-    loadTenantTemplates()
-    loadTenantModelTemplates()
     loadE911Addresses()
     loadSchedules()
     loadPrompts()
@@ -133,28 +92,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
       .finally(() => setE911AddressesLoading(false))
   }
 
-  function loadTenantTemplates() {
-    // Bibliothèque disponible pour le serveur de cette compagnie (créée/gérée
-    // dans "Serveur", TASK-S044.1) -- ici seulement pour le picker.
-    setTenantTemplatesLoading(true)
-    api.get(`/v1/companies/${companyId}/tenant-templates`)
-      .then(r => setTenantTemplates(r.data))
-      .finally(() => setTenantTemplatesLoading(false))
-    api.get(`/v1/companies/${companyId}/global-templates`).then(r => setGlobalTemplates(r.data))
-  }
-
-  function loadTenantModelTemplates() {
-    setTenantModelTemplatesLoading(true)
-    api.get(`/v1/companies/${companyId}/tenant-model-templates`)
-      .then(r => setTenantModelTemplates(r.data))
-      .finally(() => setTenantModelTemplatesLoading(false))
-  }
-
   function loadPhoneOptions() {
     api.get(`/v1/companies/${companyId}/phone-options`).then(r => {
       setPhoneOptions(r.data.phone_option_defaults || {})
-      setSelectedTenantTemplateIds(r.data.selected_tenant_template_ids || [])
-      setSelectedGlobalTemplateIds(r.data.selected_global_template_ids || [])
     })
   }
 
@@ -162,39 +102,6 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
     setPhoneOptions(next)
     await api.put(`/v1/companies/${companyId}/phone-options`, { phone_option_defaults: next })
   }
-
-  async function setTemplateSelection(kind, next) {
-    // kind: 'tenant' ou 'global' -- remplace la liste complete, sauvegarde.
-    const setter = kind === 'tenant' ? setSelectedTenantTemplateIds : setSelectedGlobalTemplateIds
-    setter(next)
-    const field = kind === 'tenant' ? 'selected_tenant_template_ids' : 'selected_global_template_ids'
-    await api.put(`/v1/companies/${companyId}/phone-options`, { [field]: next })
-  }
-
-  // Options effectives de tout ce qui est "au-dessus" de phone_option_defaults
-  // dans la chaine (TASK-S044.2) : le Global Template is_default (automatique)
-  // + les Global Templates choisis en plus + les Templates de tenant choisis,
-  // fusionnes dans cet ordre -- exactement ce que PhoneOptionsEditor doit
-  // afficher comme "(as template)".
-  const effectiveTemplateOptions = (() => {
-    let merged = {}
-    const defaultGlobal = globalTemplates.find(t => t.is_default)
-    if (defaultGlobal) merged = { ...merged, ...defaultGlobal.options }
-    for (const id of selectedGlobalTemplateIds) {
-      const t = globalTemplates.find(x => x.id === id)
-      if (t) merged = { ...merged, ...t.options }
-    }
-    for (const id of selectedTenantTemplateIds) {
-      const t = tenantTemplates.find(x => x.id === id)
-      if (t) merged = { ...merged, ...t.options }
-    }
-    return merged
-  })()
-  const effectiveTemplateLabel = [
-    globalTemplates.find(t => t.is_default)?.name,
-    ...selectedGlobalTemplateIds.map(id => globalTemplates.find(t => t.id === id)?.name),
-    ...selectedTenantTemplateIds.map(id => tenantTemplates.find(t => t.id === id)?.name),
-  ].filter(Boolean).join(' + ')
 
   // Statut en direct (registered/call_state) pousse toutes les 5s -- poll cible
   // sur ce seul endpoint (silencieux, sans spinner), pas de rechargement de toute
@@ -209,13 +116,6 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
     api.get(`/v1/companies/${companyId}/paging-groups`)
       .then(r => setPagingGroups(r.data))
       .finally(() => setPagingGroupsLoading(false))
-  }
-
-  function loadButtonTemplates() {
-    setButtonTemplatesLoading(true)
-    api.get(`/v1/companies/${companyId}/button-templates`)
-      .then(r => setButtonTemplates(r.data))
-      .finally(() => setButtonTemplatesLoading(false))
   }
 
   function loadSipExtensions(silent) {
@@ -529,6 +429,18 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
       </>)}
 
       {subTab === 'horaires' && (<>
+      {/* Langue des annonces vocales de la compagnie (messagerie, parcage...) -- réglage de compagnie, pas du téléphone
+          (l'écran du téléphone prend la langue de son modèle de provisionnement), TASK-051 2026-10-14 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Langue des annonces vocales</div>
+        <select value={phoneOptions.language || 'auto'} aria-label="Langue des annonces vocales"
+          onChange={e => { const next = { ...phoneOptions }; if (e.target.value === 'auto') delete next.language; else next.language = e.target.value; savePhoneOptions(next) }}
+          style={{ fontSize: 13, padding: '4px 8px' }}>
+          <option value="auto">Par défaut du serveur (anglais)</option>
+          <option value="fr">Français</option>
+          <option value="en">Anglais</option>
+        </select>
+      </div>
       <SchedulesSection companyId={companyId} schedules={schedules} onRefresh={loadSchedules}
         mergedExtensions={mergedExtensions} ringGroups={ringGroups} ivrs={ivrs} queues={queues} />
 
@@ -620,8 +532,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
       </>)}
 
       {subTab === 'appareils' && (<>
-      <ButtonTemplatesSection companyId={companyId} templates={buttonTemplates} templatesLoading={buttonTemplatesLoading}
-        sipExts={sipExts} onRefresh={loadButtonTemplates} />
+      <ProvisioningTemplates companyId={companyId} phoneModels={phoneModels} sipvEnabled={sipvEnabled} />
 
       </>)}
 
@@ -642,43 +553,6 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
 
       <ParkingLotsSection companyId={companyId} parkingLots={parkingLots} parkingLotsLoading={parkingLotsLoading}
         sipExts={sipExts} onRefresh={loadParkingLots} onGoToAudio={() => setSubTab('horaires')} />
-
-      </>)}
-
-      {subTab === 'appareils' && (<>
-      <div style={{ marginTop: 24 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
-          Options téléphonie (défaut compagnie)
-        </div>
-        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-          La bibliothèque de templates se gère dans "Serveur". On peut en choisir PLUSIEURS en même temps (ex. un "défaut" + un "oreillette" + un "boutons de park") — ils se combinent. Ceux cochés remplissent les options ci-dessous ("as template") ; cliquer une option la personnalise pour cette compagnie seulement.
-        </div>
-        {globalTemplates.filter(t => !t.is_default).length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>
-              Global Templates supplémentaires
-              {globalTemplates.find(t => t.is_default) && (
-                <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}> — "{globalTemplates.find(t => t.is_default).name}" déjà appliqué automatiquement (Défaut)</span>
-              )}
-            </div>
-            <TemplateDropdownChain options={globalTemplates.filter(t => !t.is_default)}
-              selectedIds={selectedGlobalTemplateIds} onChange={next => setTemplateSelection('global', next)} />
-          </div>
-        )}
-        {tenantTemplates.length > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>Templates de tenant</div>
-            <TemplateDropdownChain options={tenantTemplates}
-              selectedIds={selectedTenantTemplateIds} onChange={next => setTemplateSelection('tenant', next)} />
-          </div>
-        )}
-        <PhoneOptionsEditor title="" value={phoneOptions} onChange={savePhoneOptions}
-          templateOptions={effectiveTemplateOptions}
-          templateLabel={effectiveTemplateLabel} />
-      </div>
-
-      <TenantModelTemplatesSection companyId={companyId} templates={tenantModelTemplates} loading={tenantModelTemplatesLoading}
-        phoneModels={phoneModels} onRefresh={loadTenantModelTemplates} />
 
       </>)}
 
@@ -2260,183 +2134,9 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
 }
 
 // ── Templates de boutons — TASK-023.26, en bas des postes (demande explicite) ──
-function ButtonTemplatesSection({ companyId, templates, templatesLoading, sipExts, onRefresh }) {
-  const [applyExt, setApplyExt] = useState({})
-
-  async function removeTemplate(templateId) {
-    if (!confirm('Supprimer ce template ?')) return
-    await api.delete(`/v1/companies/${companyId}/button-templates/${templateId}`)
-    onRefresh()
-  }
-
-  async function applyTemplate(templateId) {
-    const extNum = applyExt[templateId]
-    const ext = sipExts.find(e => e.extension === extNum)
-    if (!ext) { alert('Poste introuvable.'); return }
-    const phoneResp = await api.get(`/v1/companies/${companyId}/extensions/${ext.id}/phone`)
-    if (!phoneResp.data) { alert('Ce poste n\'a pas d\'appareil attribué.'); return }
-    await api.post(`/v1/companies/${companyId}/button-templates/${templateId}/apply/${phoneResp.data.id}`)
-    alert(`Template appliqué au poste ${extNum}.`)
-  }
-
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }}>
-        Templates de boutons ({templates.length})
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Créés depuis la fiche contact d'un poste ("Sauvegarder comme template"), applicables ici à n'importe quel autre poste ayant un appareil attribué.
-      </div>
-      {templatesLoading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
-        <div className="empty-tab">Aucun template.</div>
-      ) : (
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: 'var(--c-surface-2)' }}>
-              {['Nom', 'Boutons', 'Appliquer à', ''].map(h => (
-                <th key={h} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {templates.map(t => (
-              <tr key={t.id} style={{ borderBottom: '1px solid var(--c-surface-3)' }}>
-                <td style={{ padding: '10px 12px', fontWeight: 600 }}>{t.name}</td>
-                <td style={{ padding: '10px 12px' }}>{t.items.length}</td>
-                <td style={{ padding: '10px 12px' }}>
-                  <input placeholder="Numéro de poste" value={applyExt[t.id] || ''} onChange={e => setApplyExt(p => ({ ...p, [t.id]: e.target.value }))} style={{ fontSize: 12, width: 100, marginRight: 6 }} />
-                  <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => applyTemplate(t.id)}>Appliquer</button>
-                </td>
-                <td style={{ padding: '10px 12px' }}><button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  )
-}
-
 // ── Templates de tenant scopés a un modele -- niveau le plus specifique avant
 // le poste individuel (TASK-S044). Meme structure que TenantTemplatesSection,
 // avec un selecteur marque/modele (memes donnees que ContactDetail.jsx).
-function TenantModelTemplatesSection({ companyId, templates, loading, phoneModels, onRefresh }) {
-  const [showNew, setShowNew] = useState(false)
-  const [editing, setEditing] = useState(null)
-  const [form, setForm] = useState({ name: '', description: '' })
-  const [newModel, setNewModel] = useState(null)
-  const [expanded, setExpanded] = useState(null)
-
-  function openNew() { setForm({ name: '', description: '' }); setNewModel(null); setShowNew(true) }
-  function openEdit(t) { setForm({ name: t.name, description: t.description || '' }); setEditing(t) }
-  function closeForm() { setShowNew(false); setEditing(null) }
-
-  async function createTemplate() {
-    if (!form.name.trim() || !newModel) return
-    await api.post(`/v1/companies/${companyId}/tenant-model-templates`, { ...form, phone_model_id: newModel.id })
-    closeForm()
-    onRefresh()
-  }
-  async function saveEdit() {
-    if (!form.name.trim()) return
-    await api.put(`/v1/companies/${companyId}/tenant-model-templates/${editing.id}`, form)
-    closeForm()
-    onRefresh()
-  }
-  async function removeTemplate(id) {
-    if (!confirm('Supprimer ce template ?')) return
-    await api.delete(`/v1/companies/${companyId}/tenant-model-templates/${id}`)
-    onRefresh()
-  }
-  async function toggleDefault(t) {
-    await api.put(`/v1/companies/${companyId}/tenant-model-templates/${t.id}`, { is_default: !t.is_default })
-    onRefresh()
-  }
-  async function saveOptions(t, options) {
-    await api.put(`/v1/companies/${companyId}/tenant-model-templates/${t.id}`, { options })
-    onRefresh()
-  }
-  function modelLabel(id) {
-    const m = phoneModels.find(x => x.id === id)
-    return m ? `${m.brand} ${m.model}` : '—'
-  }
-
-  return (
-    <div style={{ marginTop: 24 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Templates par modèle ({templates.length})
-        </div>
-        <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }} onClick={openNew}>+ Nouveau template</button>
-      </div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        Le niveau le plus spécifique avant le poste lui-même — se superpose aux Templates de tenant ci-dessus, uniquement pour les postes du modèle choisi.
-      </div>
-      {loading ? <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div> : templates.length === 0 ? (
-        <div className="empty-tab">Aucun template.</div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {templates.map(t => (
-            <div key={t.id} style={{ background: 'var(--c-surface-2)', border: '1px solid var(--c-border)', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer' }} onClick={() => setExpanded(p => p === t.id ? null : t.id)}>
-                  {expanded === t.id ? '▾' : '▸'} {t.name}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{modelLabel(t.phone_model_id)}</span>
-                {t.is_default && <span style={{ background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', fontSize: 11, fontWeight: 700, borderRadius: 10, padding: '2px 8px' }}>Défaut</span>}
-                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px', marginLeft: 'auto' }} onClick={() => openEdit(t)}>✎ Modifier</button>
-                <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => toggleDefault(t)}>
-                  {t.is_default ? 'Retirer défaut' : 'Définir défaut'}
-                </button>
-                <button className="inv-del-btn" onClick={() => removeTemplate(t.id)}>✕</button>
-              </div>
-              {t.description && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{t.description}</div>}
-              {expanded === t.id && (
-                <PhoneOptionsEditor title="Options du template" value={t.options} onChange={next => saveOptions(t, next)} />
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-      {(showNew || editing) && (
-        <div className="modal-overlay">
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <h3 className="modal-title">{editing ? 'Modifier le template' : 'Nouveau template par modèle'}</h3>
-            <div className="form-group"><label>Nom *</label><input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} autoFocus /></div>
-            <div className="form-group"><label>Description</label><input value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} /></div>
-            {!editing && (
-              <div className="ifields-grid">
-                <Autocomplete
-                  label="Marque"
-                  items={[...new Set(phoneModels.map(m => m.brand))].map(b => ({ id: b, label: b }))}
-                  value={newModel ? { id: newModel.brand, label: newModel.brand } : null}
-                  onSelect={item => setNewModel(item ? { brand: item.id, id: null, model: null } : null)}
-                  openOnFocus
-                />
-                <Autocomplete
-                  label="Modèle *"
-                  items={phoneModels.filter(m => !newModel?.brand || m.brand === newModel.brand).map(m => ({ id: m.id, label: m.model, sub: m.device_type }))}
-                  value={newModel?.id ? { id: newModel.id, label: newModel.model } : null}
-                  onSelect={item => {
-                    const m = phoneModels.find(x => x.id === item?.id) || null
-                    setNewModel(m)
-                  }}
-                  openOnFocus
-                />
-              </div>
-            )}
-            {editing && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>Modèle : {modelLabel(editing.phone_model_id)} (fixe après création)</div>}
-            <div className="modal-actions">
-              <button className="btn-secondary" onClick={closeForm}>Annuler</button>
-              <button className="btn-primary" onClick={editing ? saveEdit : createTemplate} disabled={!form.name.trim() || (!editing && !newModel)}>{editing ? 'Enregistrer' : 'Créer'}</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ── Succursales (company_sites) -- TASK-S010/S010.4, plusieurs sites par
 // compagnie, chacun avec sa propre adresse 911 ET sa propre facturation.
 // ERPCRM est maitre ici (synchronise vers SIPV pour le 911, voir sync_site).
