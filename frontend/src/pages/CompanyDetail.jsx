@@ -10,7 +10,6 @@ import JournalFeed from '../components/JournalFeed'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import TelephonyTab, { E911AddressesSection } from './telephony/TelephonyTab'
 import BarterTab from './barter/BarterTab'
-import CompanyDossier from '../components/CompanyDossier'
 import useFeatures from '../hooks/useFeatures'
 import useRowSelection from '../hooks/useRowSelection'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
@@ -22,8 +21,8 @@ import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
-const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Échanges', 'Inventaire', 'Photos', 'Journal', 'Dossier']
-const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'echanges', 'inventaire', 'photos', 'journal', 'dossier']
+const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Échanges', 'Inventaire', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'echanges', 'inventaire', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -439,7 +438,6 @@ export default function CompanyDetail({ isNew }) {
   const tabParam = searchParams.get('tab')
   const initialTab = Math.max(0, TAB_SLUGS.indexOf(tabParam === 'cdr' ? 'telephonie' : tabParam))   // anciens liens ?tab=cdr
   const [tab, setTabState] = useState(initialTab)
-  const [telSub, setTelSub] = useState(null)        // sous-onglet de Téléphonie ouvert depuis le Dossier
   function setTab(i) {
     setTabState(i)
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); return next }, { replace: true })
@@ -686,9 +684,7 @@ export default function CompanyDetail({ isNew }) {
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}
-            {slug === 'telephonie' && <TelephonyTab key={telSub || 'tel'} companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} initialSubTab={telSub || (tabParam === 'cdr' ? 'cdr' : undefined)} />}
-            {slug === 'dossier' && <CompanyDossier companyId={id} barter={features.barter}
-              onOpenTab={(t, sub) => { setTelSub(sub || null); setTab(TAB_SLUGS.indexOf(t)) }} />}
+            {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} initialSubTab={tabParam === 'cdr' ? 'cdr' : undefined} />}
             {slug === 'photos' && <PhotosTab companyId={id} />}
             {slug === 'journal' && <JournalFeed entityId={id} />}
           </>

@@ -78,7 +78,7 @@ export function WallpaperSelect({ accountNumber, screen, value, onChange, disabl
 
 // Un fond dans la fenêtre Paramètres : ses tailles avec « Ajuster » directement (Philippe : « les settings de l'image, le
 // crop, l'ajust, le déplacement… »), et nom, par défaut, télécharger, supprimer sur la même ligne.
-function WallpaperRow({ group, readOnly, onChanged }) {
+function WallpaperRow({ group, readOnly, onChanged, chosen, onChoose }) {
   const [name, setName] = useState(group.name)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
@@ -106,8 +106,12 @@ function WallpaperRow({ group, readOnly, onChanged }) {
   }
   const sizes = [...SCREENS.map(s => s.key), ...group.versions.map(v => v.resolution).filter(r => !SCREENS.some(s => s.key === r))]
   return (
-    <div style={{ border: `1px solid ${group.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+    <div style={{ border: `${chosen ? 2 : 1}px solid ${chosen || group.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 14, marginBottom: 12,
+      background: chosen ? 'var(--c-tint-blue)' : undefined }}>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          {onChoose && chosen && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>{chosen === 'default' ? '✓ Utilisé (fond par défaut)' : '✓ Choisi pour ce modèle'}</span>}
+          {onChoose && chosen !== true && <button className="btn-primary" style={{ fontSize: 12 }} onClick={onChoose} aria-label={`Choisir ${group.name}`}>Choisir</button>}
+          {group.global && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Simple IP — se modifie dans Serveur</span>}
           <input value={name} onChange={e => setName(e.target.value)} onBlur={rename} disabled={readOnly} aria-label="Nom du fond d'écran"
             style={{ fontSize: 14, fontWeight: 600, padding: '5px 8px', flex: '1 1 220px', maxWidth: 360 }} />
           {group.is_default ? <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>Fond par défaut</span>
@@ -143,7 +147,7 @@ function WallpaperRow({ group, readOnly, onChanged }) {
   )
 }
 
-export default function WallpapersSection({ accountNumber, title, buttonOnly, onChanged }) {
+export default function WallpapersSection({ accountNumber, title, buttonOnly, onChanged, screen, value, onSelect }) {
   const [refresh, setRefresh] = useState(0)
   const list = useWallpapers(accountNumber, refresh)
   const [over, setOver] = useState(false)
@@ -210,7 +214,28 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
               <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { add(e.target.files[0]); e.target.value = '' }} />
             </div>
             {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-            {list === null ? <div className="loading">Chargement...</div> : own.length
+            {list === null ? <div className="loading">Chargement...</div> : onSelect ? (() => {
+              // Choix du fond du modèle (Philippe : « le choix de fond d'écran, et les settings de celui qui est choisi ») :
+              // le fond choisi en premier avec ses réglages ; le fond Simple IP se choisit ici, se modifie dans Serveur.
+              const all = groupWallpapers(list).filter(g => g.versions.some(v => v.resolution === screen))
+              const at = g => g.versions.find(v => v.resolution === screen)
+              const chosen = all.find(g => g.versions.some(v => v.id === value))
+              const def = all.find(g => !g.global && g.is_default) || all.find(g => g.global && g.is_default)
+              const shown = value ? chosen : def
+              const rest = all.filter(g => g !== shown)
+              return <>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10, fontSize: 13 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                    <input type="radio" checked={!value} onChange={() => onSelect(null)} style={{ accentColor: 'var(--brand)' }} />
+                    Fond par défaut de la compagnie{def ? ` (${def.name}${def.global ? ', Simple IP' : ''})` : ''}
+                  </label>
+                </div>
+                {shown && <WallpaperRow key={shown.id} group={shown} readOnly={shown.global} onChanged={reload} chosen={value ? true : 'default'}
+                  onChoose={() => onSelect(at(shown).id)} />}
+                {rest.map(g => <WallpaperRow key={g.id} group={g} readOnly={g.global} onChanged={reload} onChoose={() => onSelect(at(g).id)} />)}
+                {!all.length && <div className="empty-tab">Aucun fond d'écran à cette taille.</div>}
+              </>
+            })() : own.length
               ? own.map(g => <WallpaperRow key={g.id} group={g} readOnly={false} onChanged={reload} />)
               : <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
             <div className="modal-actions"><button className="btn-primary" onClick={() => setOpen(false)}>Fermer</button></div>

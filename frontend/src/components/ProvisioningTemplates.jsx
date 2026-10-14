@@ -251,7 +251,8 @@ function TemplateEditor({ companyId, account, phoneModels, template, onClose, on
         <div style={{ marginBottom: 22 }}>
           <WallpaperSelect accountNumber={account} screen={screen} value={wallpaperId} onChange={setWallpaperId}
             emptyLabel="Fond par défaut de la compagnie" refreshKey={wpRefresh}>
-            {account && <WallpapersSection accountNumber={account} buttonOnly onChanged={() => setWpRefresh(x => x + 1)} />}
+            {account && <WallpapersSection accountNumber={account} buttonOnly onChanged={() => setWpRefresh(x => x + 1)}
+              screen={screen} value={wallpaperId} onSelect={setWallpaperId} />}
           </WallpaperSelect>
         </div>
 
