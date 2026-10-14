@@ -151,6 +151,16 @@ Date(s) de travail : 2026-10-14
 - `CompanyDetail.css` : `.detail-tabs` passait en `overflow-x: auto` et dépassait d'un pixel en hauteur → barre de défilement dessinée à droite des onglets sous Windows ; remplacé par `flex-wrap: wrap` (aussi utilisé par 2 autres fiches).
 - Vérifié en 1920×1080 (Compagnie test, `?tab=cdr` → Téléphonie → CDR, aucune erreur).
 
+### TASK-002.7 [~] Fiche compagnie — « Dossier » : tout ce qui concerne la compagnie, rassemblé par des liens
+Classification: CURRENT
+Date de demande : 2026-10-14 (Philippe : « créer un fichier dédié pour chaque entreprise où on pourra mettre tout : les provisioning, les images de background, les messages de ticket, les factures, les ententes… TOUT ce qui a rapport avec la compagnie ; il va y avoir les appels enregistrés aussi » ; puis, après l'avis : « des liens pour copier les infos, c'est possible ; si le CDR est dans SIPV, le lien va les chercher instantanément ; oui, même idée que toi mentor »)
+Date(s) de travail : 2026-10-14
+
+- État constaté (2026-10-14) : rangement par type, pas par compagnie — ERPCRM : base (compagnies, contacts, tickets + messages, factures — PDF refait à la demande —, paiements, tâches, journal), `backend/storage/mail/<boîte>/` (courriels .eml), `storage/receipts/` (factures fournisseurs), `storage/barter/` (ententes de troc), `storage/bank_statements/`, `uploads/installation_photos/`, `uploads/catalogue/` ; SIPV : base (postes, modèles de provisionnement, CDR), `/var/lib/sipv/wallpapers/`, `/var/lib/sipv/moh_streams/`, appels enregistrés `/usr/local/freeswitch/recordings/` (52 Mo, en vrac, **pas dans la sauvegarde SIPV**), messages vocaux `/usr/local/freeswitch/storage/`. Pas de module « ententes / contrats » hors troc.
+- Décision (avis mentor accepté) : pas de copie dans un dossier physique (SIPV autonome et multi-serveur ; un document peut toucher plusieurs compagnies ; règle « lié, pas copié ») — une vue **Dossier** dans la fiche qui va chercher chaque élément là où il vit (ERPCRM ou SIPV) à l'ouverture.
+- Étapes : (1) onglet « Dossier » avec les liens en direct ; (2) « Télécharger le dossier complet » (ZIP) ; (3) nouveaux fichiers rangés sur disque sous un sous-dossier par numéro de compte (pas le nom).
+- À décider par Philippe : durée de conservation des appels enregistrés et leur place dans la sauvegarde cloud (aujourd'hui ni l'un ni l'autre).
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
