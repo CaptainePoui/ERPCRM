@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import RebootButton from '../../components/RebootButton'
 import PushConfigButton from '../../components/PushConfigButton'
+import FactoryResetButton from '../../components/FactoryResetButton'
 import api, { getToken } from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
 import QuickNewContact from '../../components/QuickNewContact'
@@ -468,7 +469,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ background: 'var(--c-surface-2)' }}>
-                {['','Ext.','Nom','DID associé','Messagerie','Renvoi/DND','IP publique','IP privée','Config','Redémarrer','Actif',''].map((h, i) => (
+                {['','Ext.','Nom','DID associé','Messagerie','Renvoi/DND','IP publique','IP privée','Config','Redémarrer','Remise à zéro','Actif',''].map((h, i) => (
                   <th key={i} style={{ textAlign: 'left', padding: '8px 12px', borderBottom: '1px solid var(--c-border)', fontSize: 12, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
                 ))}
               </tr>
@@ -518,6 +519,9 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
                       {sip && <RebootButton sipExtId={sip.id} extension={e.extension} registered={sip.registered} compact />}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      {sip && <FactoryResetButton sipExtId={sip.id} extension={e.extension} registered={sip.registered} compact />}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'center' }} onClick={ev => ev.stopPropagation()}>
                       <input type="checkbox" checked={sip ? sip.is_active : e.is_active}
