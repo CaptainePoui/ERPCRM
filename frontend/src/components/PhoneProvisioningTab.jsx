@@ -6,8 +6,8 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { box, title, muted, input, OptionsFields, TemplateCheck, KeyRow, KeysPage, SoftkeysPage, preferredLayouts } from './ProvisioningTemplates'
 
-const NONE = { button_type: 'none', label: '', value: '' }
-const asKey = b => ({ button_type: b.button_type, label: b.label || '', value: b.value || '' })
+const NONE = { button_type: 'none', label: '', value: '', sip_account_index: 1 }
+const asKey = b => ({ button_type: b.button_type, label: b.label || '', value: b.value || '', sip_account_index: b.sip_account_index || 1 })
 
 export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }) {
   const base = `/v1/contacts/${contactId}/sip-extension/phone/${phone.id}`
@@ -108,7 +108,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
             <KeysPage key={p} cat={cat} page={p} renderKey={(pos, n, modes) => {
               const k = `${p}-${pos}`
               const fromTpl = !(k in own)
-              return <KeyRow key={pos} n={n} modes={modes} k={fromTpl ? (tplKeys[k] || NONE) : own[k]} disabled={fromTpl}
+              return <KeyRow key={pos} n={n} modes={modes} accounts={cat.accounts} k={fromTpl ? (tplKeys[k] || NONE) : own[k]} disabled={fromTpl}
                 onChange={v => touch(setOwn)(prev => ({ ...prev, [k]: v }))}
                 check={<TemplateCheck checked={fromTpl} onChange={c => touch(setOwn)(prev => {
                   const next = { ...prev }; if (c) delete next[k]; else next[k] = { ...(tplKeys[k] || NONE) }; return next

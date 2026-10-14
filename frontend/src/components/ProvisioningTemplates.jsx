@@ -103,13 +103,17 @@ export function TemplateCheck({ checked, onChange }) {
   )
 }
 
-export function KeyRow({ n, k, modes, onChange, disabled, check }) {
+export function KeyRow({ n, k, modes, accounts = 1, onChange, disabled, check }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: check ? '64px 70px 1.3fr 1fr 1fr' : '64px 1.3fr 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: (check ? '64px 70px ' : '64px ') + '1.3fr 92px 1fr 1fr', gap: 6, alignItems: 'center', marginBottom: 6 }}>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)' }}>Touche {n}</div>
       {check}
       <select value={k.button_type} disabled={disabled} onChange={e => onChange({ ...k, button_type: e.target.value })} style={input} aria-label={`Touche ${n} mode`}>
         {modes.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+      </select>
+      <select value={k.sip_account_index || 1} disabled={disabled || k.button_type === 'none'} onChange={e => onChange({ ...k, sip_account_index: Number(e.target.value) })}
+        style={input} aria-label={`Touche ${n} compte`} title="Compte SIP du téléphone">
+        {Array.from({ length: accounts }, (_, i) => <option key={i} value={i + 1}>Compte {i + 1}</option>)}
       </select>
       <input placeholder="Description" value={k.label || ''} disabled={disabled || k.button_type === 'none'} onChange={e => onChange({ ...k, label: e.target.value })} style={input} aria-label={`Touche ${n} description`} />
       <input placeholder="Valeur" value={k.value || ''} disabled={disabled || k.button_type === 'none' || k.button_type === 'line'} onChange={e => onChange({ ...k, value: e.target.value })} style={input} aria-label={`Touche ${n} valeur`} />
@@ -190,7 +194,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
   const [catMsg, setCatMsg] = useState('')
   const [pages, setPages] = useState(template?.pages || 1)
   const [keys, setKeys] = useState(() => Object.fromEntries((template?.items || []).map(i => [`${i.page}-${i.position}`,
-    { button_type: i.button_type, label: i.label || '', value: i.value || '' }])))
+    { button_type: i.button_type, label: i.label || '', value: i.value || '', sip_account_index: i.sip_account_index || 1 }])))
   const [layouts, setLayouts] = useState(template?.softkeys?.layouts || null)
   const [view, setView] = useState('main')        // 'main' | 'softkeys'
   const [error, setError] = useState('')
@@ -208,7 +212,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
     }).catch(e => setCatMsg(e.response?.data?.detail || 'SIPV injoignable'))
   }, [modelId, companyId])
 
-  const key = (p, pos) => keys[`${p}-${pos}`] || { button_type: 'none', label: '', value: '' }
+  const key = (p, pos) => keys[`${p}-${pos}`] || { button_type: 'none', label: '', value: '', sip_account_index: 1 }
   const setKey = (p, pos, k) => setKeys(prev => ({ ...prev, [`${p}-${pos}`]: k }))
   function removePage() {
     if (!confirm(`Retirer la page ${pages} ? Ses touches repasseront à « aucune ».`)) return
@@ -273,7 +277,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
         {Array.from({ length: pages }, (_, p) => (
           <KeysPage key={p} cat={cat} page={p}
             header={p > 0 && p === pages - 1 && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={removePage}>Retirer la page</button>}
-            renderKey={(pos, n, modes) => <KeyRow key={pos} n={n} k={key(p, pos)} modes={modes} onChange={k => setKey(p, pos, k)} />} />
+            renderKey={(pos, n, modes) => <KeyRow key={pos} n={n} k={key(p, pos)} modes={modes} accounts={cat.accounts} onChange={k => setKey(p, pos, k)} />} />
         ))}
         {pages < cat.pages && <button type="button" className="btn-secondary" style={{ fontSize: 13, marginBottom: 22 }} onClick={() => setPages(pages + 1)}>+ Ajouter une page</button>}
 
