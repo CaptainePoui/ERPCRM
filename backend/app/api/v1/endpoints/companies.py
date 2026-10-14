@@ -12,7 +12,7 @@ from app.core import clock
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
-from app.core import branches, company_tree
+from app.core import branches, company_tree, account_numbers
 from app.core.telephony_lock import acquire_telephony_lock
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.entity import Entity, EntityType
@@ -102,6 +102,14 @@ def _log(db: AsyncSession, entity_id: uuid.UUID, user: User, action: str, **kwar
 
 @router.post("", response_model=CompanyOut, status_code=status.HTTP_201_CREATED)
 async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    # Chaque compagnie a son numero de compte (txxxx) des sa creation, hebergee ou pas (TASK-002.7, 2026-10-14) : il ne
+    # change jamais, sert aux filtres et a la Loi 25, et devient le numero du tenant si elle est hebergee.
+    account_number = (payload.account_number or "").strip() or None
+    if account_number:
+        if (await db.execute(select(Company.id).where(Company.account_number == account_number))).first():
+            raise HTTPException(status_code=409, detail=f"Le numéro de compte {account_number} est déjà utilisé")
+    else:
+        account_number = await account_numbers.assign(db)
     entity = Entity(entity_type=EntityType.company)
     db.add(entity)
     await db.flush()
@@ -109,7 +117,7 @@ async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_
     company = Company(
         id=entity.id,
         name=payload.name,
-        account_number=payload.account_number,
+        account_number=account_number,
         office_phone=payload.office_phone,
         legal_name=payload.legal_name,
         website=payload.website,
@@ -213,28 +221,13 @@ class SipvTenantToggle(BaseModel):
     billing_frequency: str = "mensuel"
 
 
-NEXT_TENANT_NUMBER_KEY = "next_tenant_number"
-# Point de depart : l'ancien systeme (Scopserv) allait jusqu'a T1045 -- premier
-# numero auto-assigne par ERPCRM = T1046 (demande Philippe 2026-08-06).
-NEXT_TENANT_NUMBER_DEFAULT = 1046
-
-
+# Suite des numeros de compte : app/core/account_numbers.py (TASK-002.7)
 async def _peek_next_tenant_account_number(db: AsyncSession) -> str:
-    result = await db.execute(select(AppSetting).where(AppSetting.key == NEXT_TENANT_NUMBER_KEY))
-    setting = result.scalar_one_or_none()
-    n = int(setting.value) if setting else NEXT_TENANT_NUMBER_DEFAULT
-    return f"t{n}"
+    return await account_numbers.peek(db)
 
 
 async def _advance_next_tenant_account_number(db: AsyncSession, used: str):
-    n = int(used.lstrip("tT")) + 1
-    result = await db.execute(select(AppSetting).where(AppSetting.key == NEXT_TENANT_NUMBER_KEY))
-    setting = result.scalar_one_or_none()
-    if setting:
-        setting.value = str(n)
-    else:
-        db.add(AppSetting(key=NEXT_TENANT_NUMBER_KEY, value=str(n),
-                          description="Prochain numero de tenant SIPV auto-assigne (format t####)"))
+    await account_numbers.advance(db, used)
 
 
 @router.post("/{company_id}/sipv-tenant", response_model=CompanyOut)

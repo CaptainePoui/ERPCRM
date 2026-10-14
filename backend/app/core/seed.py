@@ -69,7 +69,8 @@ async def seed_defaults(db: AsyncSession) -> None:
         ent = Entity(entity_type=EntityType.company)
         db.add(ent)
         await db.flush()
-        db.add(Company(id=ent.id, name="Mon entreprise", is_owner=True))
+        from app.core import account_numbers   # chaque compagnie a son numero (TASK-002.7)
+        db.add(Company(id=ent.id, name="Mon entreprise", is_owner=True, account_number=await account_numbers.assign(db)))
 
     for name in DEFAULT_FUNCTIONS:
         result = await db.execute(select(Function).where(Function.name == name))

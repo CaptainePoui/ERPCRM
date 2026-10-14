@@ -190,7 +190,8 @@ async def book_appointment(payload: BookingRequest, db: AsyncSession = Depends(g
     company_entity = Entity(entity_type=EntityType.company)
     db.add(company_entity)
     await db.flush()
-    company = Company(id=company_entity.id, name=payload.company_name)
+    from app.core import account_numbers   # chaque compagnie a son numero des sa creation (TASK-002.7)
+    company = Company(id=company_entity.id, name=payload.company_name, account_number=await account_numbers.assign(db))
     db.add(company)
 
     contact_entity = Entity(entity_type=EntityType.person)
