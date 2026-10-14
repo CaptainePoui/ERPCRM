@@ -76,7 +76,9 @@ export function WallpaperSelect({ accountNumber, screen, value, onChange, disabl
   )
 }
 
-function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
+// Un fond dans la fenêtre Paramètres : ses tailles avec « Ajuster » directement (Philippe : « les settings de l'image, le
+// crop, l'ajust, le déplacement… »), et nom, par défaut, télécharger, supprimer sur la même ligne.
+function WallpaperRow({ group, readOnly, onChanged }) {
   const [name, setName] = useState(group.name)
   const [editing, setEditing] = useState(null)
   const [error, setError] = useState('')
@@ -104,20 +106,17 @@ function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
   }
   const sizes = [...SCREENS.map(s => s.key), ...group.versions.map(v => v.resolution).filter(r => !SCREENS.some(s => s.key === r))]
   return (
-    <div className="modal-overlay">
-      <div className="modal-box" style={{ maxWidth: '96vw', width: 760, maxHeight: '94vh', overflowY: 'auto', cursor: 'default' }}>
-        <h3 className="modal-title">Fond d'écran « {group.name} »{group.global ? ' — Simple IP' : ''}</h3>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 14 }}>
-          <div className="form-group" style={{ margin: 0, flex: '1 1 260px' }}><label>Nom</label>
-            <input value={name} onChange={e => setName(e.target.value)} onBlur={rename} disabled={readOnly} aria-label="Nom du fond d'écran" /></div>
-          {!readOnly && !group.is_default && <button className="btn-secondary" disabled={busy} onClick={() => run(() => api.put(`/v1/telephony/wallpapers/${first.id}/default`))}>Fond par défaut</button>}
-          {group.is_default && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)', paddingBottom: 8 }}>Fond par défaut</span>}
-          <button className="btn-secondary" onClick={download}>Télécharger l'original</button>
-          {!readOnly && <button className="btn-secondary" style={{ color: '#DC2626' }} disabled={busy}
-            onClick={() => confirm(`Supprimer le fond « ${group.name} » (toutes ses tailles) ?`) && run(async () => { await api.delete(`/v1/telephony/wallpapers/${first.id}`); onClose() })}>Supprimer</button>}
+    <div style={{ border: `1px solid ${group.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 14, marginBottom: 12 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+          <input value={name} onChange={e => setName(e.target.value)} onBlur={rename} disabled={readOnly} aria-label="Nom du fond d'écran"
+            style={{ fontSize: 14, fontWeight: 600, padding: '5px 8px', flex: '1 1 220px', maxWidth: 360 }} />
+          {group.is_default ? <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)' }}>Fond par défaut</span>
+            : !readOnly && <button className="btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => run(() => api.put(`/v1/telephony/wallpapers/${first.id}/default`))}>Fond par défaut</button>}
+          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={download}>Télécharger l'original</button>
+          {!readOnly && <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} disabled={busy}
+            onClick={() => confirm(`Supprimer le fond « ${group.name} » (toutes ses tailles) ?`) && run(() => api.delete(`/v1/telephony/wallpapers/${first.id}`))}>Supprimer</button>}
         </div>
-        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>Chaque téléphone reçoit la version à la taille de son écran.</div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 14 }}>
           {sizes.map(res => {
             const v = group.versions.find(x => x.resolution === res)
             const label = SCREENS.find(s => s.key === res)?.label || res.replace('x', ' × ')
@@ -125,10 +124,11 @@ function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
               <div key={res} style={{ border: '1px solid var(--c-border)', borderRadius: 12, padding: 12 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{label}</div>
                 {v ? <>
-                  <WallpaperThumb w={v} height={130} />
+                  <WallpaperThumb w={v} height={120} />
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
                     <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{v.mode === 'fit' ? 'Fit (image entière)' : 'Crop (cadrée)'}</span>
-                    {!readOnly && <button className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(v)}>Ajuster</button>}
+                    {!readOnly && <button className="btn-primary" style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 12px' }} onClick={() => setEditing(v)}
+                      aria-label={`Ajuster ${group.name} ${res}`} title="Fit / Crop, déplacer l'image, zoom, Snap centre">Ajuster</button>}
                   </div>
                 </> : !readOnly ? <button className="btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => run(() => addSize(res))}>Créer cette taille</button>
                   : <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Pas de version à cette taille</span>}
@@ -137,8 +137,6 @@ function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
           })}
         </div>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{error}</div>}
-        <div className="modal-actions"><button className="btn-primary" onClick={onClose}>Fermer</button></div>
-      </div>
       {editing && <WallpaperEditor wallpaper={editing} accountNumber={editing.account_number} onClose={() => setEditing(null)}
         onSaved={() => { setEditing(null); onChanged() }} />}
     </div>
@@ -148,7 +146,6 @@ function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
 export default function WallpapersSection({ accountNumber, title, buttonOnly, onChanged }) {
   const [refresh, setRefresh] = useState(0)
   const list = useWallpapers(accountNumber, refresh)
-  const [managing, setManaging] = useState(null)       // id du fond
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -187,16 +184,6 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
   const [open, setOpen] = useState(false)
   const own = groupWallpapers(list).filter(g => accountNumber ? !g.global : g.global)
   const def = own.find(g => g.is_default)
-  const current = own.find(g => g.id === managing)
-  const card = g => (
-    <div key={g.id} onClick={() => setManaging(g.id)} role="button" aria-label={`Gérer ${g.name}`}
-      style={{ border: `1px solid ${g.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 10, width: 220, background: 'var(--c-surface)', cursor: 'pointer' }}>
-      <WallpaperThumb w={preview(g)} height={110} />
-      <div style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{g.name}</div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{g.versions.map(v => v.resolution.replace('x', '×')).join(' · ')}
-        {g.is_default && <span style={{ color: 'var(--brand)', fontWeight: 700 }}> · par défaut</span>}</div>
-    </div>
-  )
   return (
     <div style={buttonOnly ? { display: 'inline-flex' } : { marginTop: 28, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
       {!buttonOnly && <>
@@ -212,8 +199,8 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
           <div className="modal-box" style={{ maxWidth: '96vw', width: 980, maxHeight: '94vh', overflowY: 'auto', cursor: 'default' }}>
             <h3 className="modal-title">{title || 'Fonds d\'écran'}</h3>
             <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-              {accountNumber ? 'Le fond par défaut va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre. Cliquez un fond pour le gérer.'
-                : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes. Cliquez un fond pour le gérer.'}
+              {accountNumber ? 'Le fond par défaut va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre. « Ajuster » : Fit ou Crop, déplacer l\'image, zoom, Snap centre.'
+                : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes. « Ajuster » : Fit ou Crop, déplacer l\'image, zoom, Snap centre.'}
             </div>
             <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
               onDrop={e => { e.preventDefault(); setOver(false); add(e.dataTransfer.files[0]) }} onClick={() => !busy && inputRef.current?.click()}
@@ -224,13 +211,12 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
             </div>
             {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
             {list === null ? <div className="loading">Chargement...</div> : own.length
-              ? <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{own.map(card)}</div>
+              ? own.map(g => <WallpaperRow key={g.id} group={g} readOnly={false} onChanged={reload} />)
               : <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
             <div className="modal-actions"><button className="btn-primary" onClick={() => setOpen(false)}>Fermer</button></div>
           </div>
         </div>
       )}
-      {current && <ManageWallpaper group={current} readOnly={false} onClose={() => setManaging(null)} onChanged={reload} />}
     </div>
   )
 }
