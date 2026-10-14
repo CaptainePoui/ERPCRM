@@ -10,6 +10,7 @@ import Autocomplete from '../components/Autocomplete'
 import QuickNewContact from '../components/QuickNewContact'
 import RebootButton from '../components/RebootButton'
 import PushConfigButton from '../components/PushConfigButton'
+import PhoneProvisioningTab from '../components/PhoneProvisioningTab'
 import QuickNewCompany from '../components/QuickNewCompany'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import CdrReportsSection from '../components/CdrReportsSection'
@@ -304,7 +305,7 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
   )
 }
 
-const CONTACT_TABS = ['Général', 'CDR', 'Courriels']
+const CONTACT_TABS = ['Général', 'CDR', 'Courriels', 'Provisionnement']
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
@@ -327,8 +328,6 @@ export default function ContactDetail({ isNew }) {
   const [connInfoLoading, setConnInfoLoading] = useState(false)
   const [phone, setPhone] = useState(null)
   const [phoneModels, setPhoneModels] = useState([])
-  const [phoneTemplates, setPhoneTemplates] = useState([])       // modèles de provisionnement offerts à ce poste
-  const [keyModes, setKeyModes] = useState([])
   const [e911Addresses, setE911Addresses] = useState([])
   const [e911Assignment, setE911Assignment] = useState(null)
   const [e911Form, setE911Form] = useState({ e911_address_id: '', emergency_location: '', floor: '', office: '', alert_email: '' })
@@ -354,8 +353,6 @@ export default function ContactDetail({ isNew }) {
   const [showAttribute, setShowAttribute] = useState(false)
   const [attributeForm, setAttributeForm] = useState({ brand: null, model: null, mac_address: '', serial_number: '' })
   const [showButtons, setShowButtons] = useState(false)
-  const [buttons, setButtons] = useState([])
-  const [buttonsLoading, setButtonsLoading] = useState(false)
   // TASK-033 : popup de confirmation "Synchroniser avec SIPV" -- parite avec
   // le popup "Tenant telephonique SIPV" de CompanyDetail.jsx (meme structure).
   const [confirmSipv, setConfirmSipv] = useState(false)
@@ -614,11 +611,6 @@ export default function ContactDetail({ isNew }) {
   async function loadPhone() {
     const r = await api.get(`/v1/contacts/${id}/sip-extension/phone`)
     setPhone(r.data)
-    if (r.data) {
-      api.get(`/v1/contacts/${id}/sip-extension/phone/${r.data.id}/button-templates`).then(tr => setPhoneTemplates(tr.data)).catch(() => setPhoneTemplates([]))
-      if (r.data.phone_model_id) api.get(`/v1/contacts/${id}/sip-extension/key-catalog/${r.data.phone_model_id}`)
-        .then(kr => setKeyModes(kr.data.catalog?.modes || [])).catch(() => setKeyModes([]))
-    }
   }
 
   async function loadPhoneModels() {
@@ -638,46 +630,6 @@ export default function ContactDetail({ isNew }) {
     setShowAttribute(false)
   }
 
-  async function loadButtons() {
-    if (!phone) return
-    setButtonsLoading(true)
-    try {
-      const r = await api.get(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/buttons`)
-      setButtons(r.data)
-    } finally {
-      setButtonsLoading(false)
-    }
-  }
-
-  async function addButton() {
-    const position = (buttons.reduce((max, b) => Math.max(max, b.position), 0) || 0) + 1
-    const r = await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/buttons`, {
-      position, button_type: 'line',
-    })
-    setButtons(prev => [...prev, r.data])
-  }
-
-  async function saveButton(buttonId, field, value) {
-    const r = await api.put(`/v1/contacts/${id}/sip-extension/phone/buttons/${buttonId}`, { [field]: value })
-    setButtons(prev => prev.map(b => b.id === buttonId ? r.data : b))
-  }
-
-  async function removeButton(buttonId) {
-    await api.delete(`/v1/contacts/${id}/sip-extension/phone/buttons/${buttonId}`)
-    setButtons(prev => prev.filter(b => b.id !== buttonId))
-  }
-
-  async function saveAsTemplate() {
-    const name = prompt('Nom du modèle de provisionnement (ses options et ses touches deviennent un modèle de la compagnie, utilisé par ce poste) :')
-    if (!name || !name.trim()) return
-    try {
-      await api.post(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/save-as-template`, { name: name.trim() })
-    } catch (e) { alert(e.response?.data?.detail || 'Erreur'); return }
-    await loadPhone()
-    await loadButtons()
-    alert(`Modèle « ${name.trim()} » créé — visible dans Compagnie → Téléphonie → Provisionnement, et utilisé par ce poste.`)
-  }
-
   async function toggleConnInfo() {
     if (connInfo) { setConnInfo(null); return }
     setConnInfoLoading(true)
@@ -692,11 +644,6 @@ export default function ContactDetail({ isNew }) {
   async function saveSipExtField(field, value) {
     await api.put(`/v1/contacts/${id}/sip-extension`, { [field]: value })
     setSipExt(prev => ({ ...prev, [field]: value }))
-  }
-
-  async function choosePhoneTemplate(templateId) {
-    const r = await api.put(`/v1/contacts/${id}/sip-extension/phone/${phone.id}/button-template`, { button_template_id: templateId })
-    setPhone(prev => ({ ...prev, button_template_id: r.data.button_template_id }))
   }
 
   async function savePhoneField(field, value) {
@@ -913,7 +860,10 @@ export default function ContactDetail({ isNew }) {
       )}
 
       <div className="detail-body">
-        {isNew ? <NewContactForm /> : tab === 2 ? (
+        {isNew ? <NewContactForm /> : tab === 3 ? (
+          phone ? <PhoneProvisioningTab contactId={id} phone={phone} onPhoneChange={setPhone} />
+            : <div className="empty-tab">Aucun téléphone attribué à ce poste (bouton « Bouton » dans l'onglet Général pour en attribuer un).</div>
+        ) : tab === 2 ? (
           <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)"
             composeDefaults={{ to: c.email ? `${`${c.first_name || ''} ${c.last_name || ''}`.trim()} <${c.email}>`.trim() : '' }} />
         ) : tab === 1 ? (
@@ -974,7 +924,6 @@ export default function ContactDetail({ isNew }) {
                     setShowButtons(next)
                     if (next) {
                       if (!phone) { await loadPhoneModels(); setShowAttribute(true) }
-                      else loadButtons()
                     }
                   }}
                 >
@@ -1282,26 +1231,12 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    {phone && (() => {
-                      const tpl = phoneTemplates.find(t => t.id === phone.button_template_id)
-                      return (
-                      <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
-                        <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 4 }}>Modèle de provisionnement</div>
-                        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 8 }}>
-                          Les modèles se créent dans la fiche Compagnie → Téléphonie → Provisionnement (seuls ceux faits pour ce téléphone sont offerts).
-                          Ce poste peut ajuster une option ci-dessous ou une touche (bouton « Bouton ») par-dessus son modèle.
-                        </div>
-                        <select value={phone.button_template_id || ''} onChange={e => choosePhoneTemplate(e.target.value || null)}
-                          style={{ fontSize: 13, padding: '4px 8px', minWidth: 260, marginBottom: 12 }} aria-label="Modèle de provisionnement">
-                          <option value="">Aucun (valeurs par défaut, touches à aucune)</option>
-                          {phoneTemplates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                        </select>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 4 }}>Options ajustées pour ce poste</div>
-                        <PhoneOptionsEditor title="" value={phone.extra_config || {}} onChange={next => savePhoneField('extra_config', next)}
-                          templateOptions={tpl?.options || null} templateLabel={tpl?.name} />
+                    {phone && (
+                      <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10, fontSize: 13 }}>
+                        <span style={{ fontWeight: 600, color: 'var(--c-text-2)' }}>Provisionnement : </span>
+                        <a style={{ cursor: 'pointer' }} onClick={() => setTab(3)}>modèle, options, touches et boutons sous l'écran →</a>
                       </div>
-                      )
-                    })()}
+                    )}
 
                     <div style={{ marginTop: 16, borderTop: '1px solid var(--c-border)', paddingTop: 10 }}>
                       <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600, marginBottom: 6 }}>Plan d'appel</div>
@@ -1380,7 +1315,6 @@ export default function ContactDetail({ isNew }) {
                       <div style={{ fontSize: 13, color: 'var(--c-text-2)', fontWeight: 600 }}>
                         Appareil : {phone.mac_address} {phoneModels.length > 0 && phoneModels.find(m => m.id === phone.phone_model_id) && `(${phoneModels.find(m => m.id === phone.phone_model_id).brand} ${phoneModels.find(m => m.id === phone.phone_model_id).model})`}
                       </div>
-                      <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={loadButtons}>↻ Boutons</button>
                     </div>
 
                     <div style={{ marginBottom: 12 }}>
@@ -1395,46 +1329,9 @@ export default function ContactDetail({ isNew }) {
                       </div>
                     </div>
 
-                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-text-2)', marginBottom: 2 }}>Touches ajustées pour ce poste</div>
-                    <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 6 }}>
-                      {phone.button_template_id ? 'Chacune remplace la touche du modèle à la même place (page, position) ; les autres viennent du modèle.' : 'Sans modèle, seules ces touches sont envoyées ; les autres sont à « aucune ».'}
+                    <div style={{ fontSize: 13, marginTop: 8 }}>
+                      Touches, options et boutons sous l'écran : <a style={{ cursor: 'pointer' }} onClick={() => setTab(3)}>onglet Provisionnement →</a>
                     </div>
-                    {buttonsLoading && <div style={{ fontSize: 13, color: 'var(--c-muted)' }}>Chargement...</div>}
-                    {!buttonsLoading && (
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                        <thead>
-                          <tr style={{ background: 'var(--c-surface-3)' }}>
-                            {['Pos.', 'Page', 'Type', 'Libellé', 'Valeur', 'Destination', 'Compte', 'Client', 'Verrouillé', ''].map(h => (
-                              <th key={h} style={{ textAlign: 'left', padding: '4px 6px', fontSize: 11, fontWeight: 600, color: 'var(--c-muted)' }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {buttons.map(b => (
-                            <tr key={b.id} style={{ borderBottom: '1px solid var(--c-surface-3)' }}>
-                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.position} onBlur={e => saveButton(b.id, 'position', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.page} onBlur={e => saveButton(b.id, 'page', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px' }}>
-                                <select defaultValue={b.button_type} onChange={e => saveButton(b.id, 'button_type', e.target.value)} style={{ fontSize: 12 }}>
-                                  {(keyModes.some(m => m.key === b.button_type) ? keyModes : [...keyModes, { key: b.button_type, label: b.button_type }]).map(m => (
-                                    <option key={m.key} value={m.key}>{m.label}</option>
-                                  ))}
-                                </select>
-                              </td>
-                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.label || ''} onBlur={e => saveButton(b.id, 'label', e.target.value)} style={{ width: 90, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.value || ''} onBlur={e => saveButton(b.id, 'value', e.target.value)} style={{ width: 70, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px' }}><input defaultValue={b.destination || ''} onBlur={e => saveButton(b.id, 'destination', e.target.value)} style={{ width: 80, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px' }}><input type="number" defaultValue={b.sip_account_index} onBlur={e => saveButton(b.id, 'sip_account_index', parseInt(e.target.value, 10))} style={{ width: 40, fontSize: 12 }} /></td>
-                              <td style={{ padding: '3px 6px', textAlign: 'center' }}><input type="checkbox" defaultChecked={b.client_editable} onChange={e => saveButton(b.id, 'client_editable', e.target.checked)} /></td>
-                              <td style={{ padding: '3px 6px', textAlign: 'center' }}><input type="checkbox" defaultChecked={b.locked_by_simpleip} onChange={e => saveButton(b.id, 'locked_by_simpleip', e.target.checked)} /></td>
-                              <td style={{ padding: '3px 6px' }}><button className="inv-del-btn" onClick={() => removeButton(b.id)}>✕</button></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8 }} onClick={addButton}>+ Ajouter un bouton</button>
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', marginTop: 8, marginLeft: 8 }} onClick={saveAsTemplate}>Sauvegarder comme modèle</button>
                   </>
                 )}
               </div>

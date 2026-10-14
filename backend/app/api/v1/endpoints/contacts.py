@@ -899,6 +899,12 @@ async def get_contact_key_catalog(contact_id: uuid.UUID, model_id: uuid.UUID, _:
     return await _provisioning("GET", f"/key-catalog/{model_id}")
 
 
+@router.put("/{contact_id}/sip-extension/phone/{phone_id}/provisioning")
+async def save_contact_phone_provisioning(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: dict, _: User = Depends(get_current_user)):
+    """Onglet « Provisionnement » du poste : options, touches et boutons sous l'ecran personnalises par-dessus son modele."""
+    return await _provisioning("PUT", f"/{phone_id}/provisioning", payload)
+
+
 @router.put("/{contact_id}/sip-extension/phone/{phone_id}/button-template")
 async def set_contact_phone_button_template(contact_id: uuid.UUID, phone_id: uuid.UUID, payload: PhoneTemplateLink, _: User = Depends(get_current_user)):
     """Choisit le modele de provisionnement du poste (ceux de sa compagnie pour son modele de telephone ; aucun = ses
