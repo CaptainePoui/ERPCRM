@@ -894,9 +894,11 @@ async def list_wallpapers(account: str | None = None, _: User = Depends(get_curr
 
 @router.post("/wallpapers", status_code=201)
 async def create_wallpaper(name: str = Form(...), resolution: str = Form(...), account_number: str | None = Form(None),
-                           mode: str = Form("crop"), crop: str | None = Form(None), file: UploadFile = File(...),
-                           original: UploadFile | None = File(None), _: User = Depends(get_current_user)):
+                           mode: str = Form("fit"), crop: str | None = Form(None), group_id: str | None = Form(None),
+                           file: UploadFile = File(...), original: UploadFile | None = File(None), _: User = Depends(get_current_user)):
     form = {"name": name, "resolution": resolution, "mode": mode}
+    if group_id:
+        form["group_id"] = group_id
     if account_number:
         form["account_number"] = account_number
     if crop:

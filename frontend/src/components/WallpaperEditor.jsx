@@ -145,7 +145,7 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '96vw', width: 'auto', maxHeight: '94vh', display: 'flex', flexDirection: 'column', cursor: 'default', overflow: 'hidden' }}>
-        <h3 className="modal-title" style={{ flex: 'none' }}>{wallpaper ? `Recadrer « ${wallpaper.name} »` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
+        <h3 className="modal-title" style={{ flex: 'none' }}>{wallpaper ? `Ajuster « ${wallpaper.name} » — ${wallpaper.resolution.replace('x', ' × ')}` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
         <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start', overflowY: 'auto', minHeight: 0, flex: 1 }}>
           <div>
             {!img ? (

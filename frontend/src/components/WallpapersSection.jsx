@@ -1,7 +1,10 @@
-// Fonds d'écran (TASK-051, 2026-10-14) : ceux d'une compagnie (numéro de compte) ou les Global Simple IP (accountNumber
-// vide, page Serveur). Une vignette par fond, « par défaut » par taille d'écran (les postes sans choix le prennent ; sans
-// fond de compagnie, le Global), recadrer, supprimer ; dépôt d'une image (glisser ou choisir) qui ouvre l'éditeur.
-import { useEffect, useState } from 'react'
+// Fonds d'écran (TASK-051, 2026-10-14). Philippe : « recadrer ou crop, c'est des options de gestion après le choix du
+// background, pas en premier ; tu mets un background inadéquat pour le modèle ». Donc : on AJOUTE une image (glisser ou
+// choisir) → elle devient un fond avec sa version pour chaque taille d'écran, faite automatiquement en « Fit » (image
+// entière, jamais coupée ; telle quelle si déjà à la bonne taille). On clique un fond pour le GÉRER : nom, par défaut,
+// télécharger l'original, supprimer, et pour chaque taille l'aperçu + « Ajuster » (Fit / Crop, cadre bleu, Snap centre).
+// Le modèle et le poste choisissent un fond ; SIPV envoie la version à la taille de l'écran du téléphone.
+import { useEffect, useRef, useState } from 'react'
 import api from '../services/api'
 import WallpaperEditor, { SCREENS } from './WallpaperEditor'
 
@@ -27,21 +30,116 @@ export function useWallpapers(accountNumber, refreshKey) {
   return list
 }
 
-// Choix d'un fond d'écran pour un modèle ou un poste (taille d'écran du téléphone seulement)
+// Un fond = ses versions (une par taille d'écran)
+export function groupWallpapers(list) {
+  const m = new Map()
+  for (const w of list || []) {
+    if (!m.has(w.group_id)) m.set(w.group_id, { id: w.group_id, name: w.name, global: w.global, is_default: w.is_default, versions: [] })
+    m.get(w.group_id).versions.push(w)
+  }
+  return [...m.values()]
+}
+const preview = g => g.versions.find(v => v.resolution === '480x272') || g.versions[0]
+
+// Image → JPEG à la taille W×H en « Fit » (entière, bordure de la couleur du coin) ; telle quelle si déjà à la taille
+async function autoVersion(file, img, W, H) {
+  if (img.width === W && img.height === H && file.type === 'image/jpeg') return file
+  const c = document.createElement('canvas'); c.width = W; c.height = H
+  const ctx = c.getContext('2d')
+  const probe = document.createElement('canvas'); probe.width = probe.height = 1
+  probe.getContext('2d').drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1)
+  const [r, g, b] = probe.getContext('2d').getImageData(0, 0, 1, 1).data
+  ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.fillRect(0, 0, W, H)
+  const sc = Math.min(W / img.width, H / img.height), dw = img.width * sc, dh = img.height * sc
+  ctx.imageSmoothingQuality = 'high'; ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh)
+  return await new Promise(res => c.toBlob(res, 'image/jpeg', 0.92))
+}
+const hex = (r, g, b) => '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')
+
+// Choix d'un fond pour un modèle ou un poste : la liste des fonds ; la valeur est la version à la taille de l'écran
 export function WallpaperSelect({ accountNumber, screen, value, onChange, disabled, emptyLabel }) {
-  const list = useWallpapers(accountNumber)
-  const fits = (list || []).filter(w => w.resolution === screen)
-  const def = fits.find(w => !w.global && w.is_default) || fits.find(w => w.global && w.is_default)
-  const cur = fits.find(w => w.id === value)
+  const groups = groupWallpapers(useWallpapers(accountNumber)).filter(g => g.versions.some(v => v.resolution === screen))
+  const at = g => g.versions.find(v => v.resolution === screen)
+  const def = groups.find(g => !g.global && g.is_default) || groups.find(g => g.global && g.is_default)
+  const cur = groups.find(g => g.versions.some(v => v.id === value))
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-      <WallpaperThumb w={cur || def} height={60} />
-      <select value={value || ''} onChange={e => onChange(e.target.value || null)} disabled={disabled || !screen}
-        style={{ fontSize: 13, padding: '5px 8px', minWidth: 280 }} aria-label="Fond d'écran">
+      <WallpaperThumb w={cur ? at(cur) : def ? at(def) : null} height={60} />
+      <select value={cur?.id || ''} onChange={e => { const g = groups.find(x => x.id === e.target.value); onChange(g ? at(g).id : null) }}
+        disabled={disabled || !screen} style={{ fontSize: 13, padding: '5px 8px', minWidth: 280 }} aria-label="Fond d'écran">
         <option value="">{emptyLabel || 'Par défaut'}{def ? ` (${def.name}${def.global ? ', Simple IP' : ''})` : ''}</option>
-        {fits.map(w => <option key={w.id} value={w.id}>{w.name}{w.global ? ' — Simple IP' : ''}</option>)}
+        {groups.map(g => <option key={g.id} value={g.id}>{g.name}{g.global ? ' — Simple IP' : ''}</option>)}
       </select>
       {!screen && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Taille d'écran inconnue pour ce modèle.</span>}
+    </div>
+  )
+}
+
+function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
+  const [name, setName] = useState(group.name)
+  const [editing, setEditing] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const first = group.versions[0]
+  async function run(fn) { setBusy(true); setError(''); try { await fn(); onChanged() } catch (e) { setError(e.response?.data?.detail || 'Erreur') } finally { setBusy(false) } }
+  const rename = () => name.trim() && name.trim() !== group.name && run(() => { const fd = new FormData(); fd.append('name', name.trim()); return api.put(`/v1/telephony/wallpapers/${first.id}`, fd) })
+  async function download() {
+    const v = group.versions.find(x => x.has_original) || first
+    const r = await api.get(`/v1/telephony/wallpapers/${v.id}/image`, { params: v.has_original ? { original: true } : {}, responseType: 'blob' })
+    const a = document.createElement('a'); a.href = URL.createObjectURL(r.data); a.download = v.original_name || `${group.name}.jpg`; a.click()
+  }
+  async function addSize(res) {
+    const v = group.versions.find(x => x.has_original) || first
+    const r = await api.get(`/v1/telephony/wallpapers/${v.id}/image`, { params: v.has_original ? { original: true } : {}, responseType: 'blob' })
+    const img = await new Promise((ok, ko) => { const im = new Image(); im.onload = () => ok(im); im.onerror = ko; im.src = URL.createObjectURL(r.data) })
+    const [W, H] = res.split('x').map(Number)
+    const fd = new FormData()
+    fd.append('name', group.name); fd.append('resolution', res); fd.append('mode', 'fit'); fd.append('group_id', group.id)
+    fd.append('crop', JSON.stringify({ zoom: 1, cx: 0.5, cy: 0.5 }))
+    fd.append('file', await autoVersion(new File([r.data], 'o', { type: r.data.type }), img, W, H), 'wallpaper.jpg')
+    fd.append('original', r.data, v.original_name || 'original.jpg')
+    if (!group.global && first.account_number) fd.append('account_number', first.account_number)
+    await api.post('/v1/telephony/wallpapers', fd)
+  }
+  const sizes = [...SCREENS.map(s => s.key), ...group.versions.map(v => v.resolution).filter(r => !SCREENS.some(s => s.key === r))]
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ maxWidth: '96vw', width: 760, maxHeight: '94vh', overflowY: 'auto', cursor: 'default' }}>
+        <h3 className="modal-title">Fond d'écran « {group.name} »{group.global ? ' — Simple IP' : ''}</h3>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 14 }}>
+          <div className="form-group" style={{ margin: 0, flex: '1 1 260px' }}><label>Nom</label>
+            <input value={name} onChange={e => setName(e.target.value)} onBlur={rename} disabled={readOnly} aria-label="Nom du fond d'écran" /></div>
+          {!readOnly && !group.is_default && <button className="btn-secondary" disabled={busy} onClick={() => run(() => api.put(`/v1/telephony/wallpapers/${first.id}/default`))}>Fond par défaut</button>}
+          {group.is_default && <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--brand)', paddingBottom: 8 }}>Fond par défaut</span>}
+          <button className="btn-secondary" onClick={download}>Télécharger l'original</button>
+          {!readOnly && <button className="btn-secondary" style={{ color: '#DC2626' }} disabled={busy}
+            onClick={() => confirm(`Supprimer le fond « ${group.name} » (toutes ses tailles) ?`) && run(async () => { await api.delete(`/v1/telephony/wallpapers/${first.id}`); onClose() })}>Supprimer</button>}
+        </div>
+        <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>Chaque téléphone reçoit la version à la taille de son écran.</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))', gap: 14 }}>
+          {sizes.map(res => {
+            const v = group.versions.find(x => x.resolution === res)
+            const label = SCREENS.find(s => s.key === res)?.label || res.replace('x', ' × ')
+            return (
+              <div key={res} style={{ border: '1px solid var(--c-border)', borderRadius: 12, padding: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>{label}</div>
+                {v ? <>
+                  <WallpaperThumb w={v} height={130} />
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{v.mode === 'fit' ? 'Fit (image entière)' : 'Crop (cadrée)'}</span>
+                    {!readOnly && <button className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(v)}>Ajuster</button>}
+                  </div>
+                </> : !readOnly ? <button className="btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => run(() => addSize(res))}>Créer cette taille</button>
+                  : <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Pas de version à cette taille</span>}
+              </div>
+            )
+          })}
+        </div>
+        {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10 }}>{error}</div>}
+        <div className="modal-actions"><button className="btn-primary" onClick={onClose}>Fermer</button></div>
+      </div>
+      {editing && <WallpaperEditor wallpaper={editing} accountNumber={editing.account_number} onClose={() => setEditing(null)}
+        onSaved={() => { setEditing(null); onChanged() }} />}
     </div>
   )
 }
@@ -49,89 +147,78 @@ export function WallpaperSelect({ accountNumber, screen, value, onChange, disabl
 export default function WallpapersSection({ accountNumber, title }) {
   const [refresh, setRefresh] = useState(0)
   const list = useWallpapers(accountNumber, refresh)
-  const [editing, setEditing] = useState(null)        // null | 'new' | fond
+  const [managing, setManaging] = useState(null)       // id du fond
   const [over, setOver] = useState(false)
-  const [dropped, setDropped] = useState(null)
+  const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const inputRef = useRef(null)
   const reload = () => setRefresh(x => x + 1)
 
-  async function makeDefault(w) {
-    setError('')
-    try { await api.put(`/v1/telephony/wallpapers/${w.id}/default`); reload() } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
-  }
-  async function remove(w) {
-    if (!confirm(`Supprimer le fond d'écran « ${w.name} » (${w.resolution.replace('x', '×')}) ?`)) return
-    setError('')
-    try { await api.delete(`/v1/telephony/wallpapers/${w.id}`); reload() } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
+  // Ajouter : le fond est créé tout de suite, avec une version par taille d'écran (Fit), sans passer par le cadrage
+  async function add(file) {
+    if (!file) return
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type)) { setError('Choisissez une image JPEG ou PNG'); return }
+    setBusy(true); setError('')
+    try {
+      const img = await new Promise((ok, ko) => { const im = new Image(); im.onload = () => ok(im); im.onerror = ko; im.src = URL.createObjectURL(file) })
+      const probe = document.createElement('canvas'); probe.width = probe.height = 1
+      probe.getContext('2d').drawImage(img, 0, 0, 1, 1, 0, 0, 1, 1)
+      const [r, g, b] = probe.getContext('2d').getImageData(0, 0, 1, 1).data
+      let groupId = null
+      for (const sc of SCREENS) {
+        const [W, H] = sc.key.split('x').map(Number)
+        const fd = new FormData()
+        fd.append('name', file.name.replace(/\.[^.]+$/, '')); fd.append('resolution', sc.key); fd.append('mode', 'fit')
+        fd.append('crop', JSON.stringify({ zoom: 1, cx: 0.5, cy: 0.5, bg: hex(r, g, b) }))
+        fd.append('file', await autoVersion(file, img, W, H), 'wallpaper.jpg'); fd.append('original', file, file.name)
+        if (accountNumber) fd.append('account_number', accountNumber)
+        if (groupId) fd.append('group_id', groupId)
+        const res = await api.post('/v1/telephony/wallpapers', fd)
+        groupId = groupId || res.data.group_id
+      }
+      reload()
+    } catch (e) { setError(e.response?.data?.detail || 'Image illisible') } finally { setBusy(false) }
   }
 
-  const own = (list || []).filter(w => accountNumber ? !w.global : w.global)
-  const globals = accountNumber ? (list || []).filter(w => w.global) : []
-  const card = (w, readOnly) => (
-    <div key={w.id} style={{ border: `1px solid ${w.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 10, width: 220, background: 'var(--c-surface)' }}>
-      <WallpaperThumb w={w} height={110} />
-      <div style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{w.name}</div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{w.resolution.replace('x', ' × ')} · {w.mode === 'fit' ? 'Fit' : 'Crop'}
-        {w.is_default && <span style={{ color: 'var(--brand)', fontWeight: 700 }}> · par défaut</span>}</div>
-      {!readOnly && (
-        <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }}>
-          {!w.is_default && <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => makeDefault(w)}>Par défaut</button>}
-          <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => setEditing(w)}>Recadrer</button>
-          <button className="btn-secondary" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => remove(w)}>Supprimer</button>
-        </div>
-      )}
+  const groups = groupWallpapers(list)
+  const own = groups.filter(g => accountNumber ? !g.global : g.global)
+  const globals = accountNumber ? groups.filter(g => g.global) : []
+  const current = groups.find(g => g.id === managing)
+  const card = g => (
+    <div key={g.id} onClick={() => setManaging(g.id)} role="button" aria-label={`Gérer ${g.name}`}
+      style={{ border: `1px solid ${g.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 10, width: 220, background: 'var(--c-surface)', cursor: 'pointer' }}>
+      <WallpaperThumb w={preview(g)} height={110} />
+      <div style={{ fontWeight: 600, fontSize: 13, marginTop: 8 }}>{g.name}</div>
+      <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{g.versions.map(v => v.resolution.replace('x', '×')).join(' · ')}
+        {g.is_default && <span style={{ color: 'var(--brand)', fontWeight: 700 }}> · par défaut</span>}</div>
     </div>
   )
   return (
     <div style={{ marginTop: 28 }}>
       <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{title || 'Fonds d\'écran'}</div>
       <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        {accountNumber ? 'Le fond « par défaut » de chaque taille d\'écran va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre ; sans fond de la compagnie, ils prennent celui de Simple IP.'
-          : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes.'}
+        {accountNumber ? 'Le fond par défaut va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre ; sans fond de la compagnie, ils prennent celui de Simple IP. Cliquez un fond pour le gérer.'
+          : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes. Cliquez un fond pour le gérer.'}
       </div>
       <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
-        onDrop={e => { e.preventDefault(); setOver(false); const f = e.dataTransfer.files[0]; if (f) { setDropped(f); setEditing('new') } }}
-        onClick={() => { setDropped(null); setEditing('new') }}
+        onDrop={e => { e.preventDefault(); setOver(false); add(e.dataTransfer.files[0]) }} onClick={() => !busy && inputRef.current?.click()}
         style={{ border: `2px dashed ${over ? 'var(--brand)' : 'var(--c-border)'}`, background: over ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', borderRadius: 10,
           padding: '14px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: 'var(--c-muted)', marginBottom: 14 }}>
-        Glissez une image ici ou <span style={{ color: 'var(--brand)' }}>choisissez un fichier</span> — elle sera ajustée à l'écran du téléphone (Fit ou Crop).
+        {busy ? 'Ajout du fond…' : <>Ajouter un fond d'écran : glissez une image ici ou <span style={{ color: 'var(--brand)' }}>choisissez un fichier</span></>}
+        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { add(e.target.files[0]); e.target.value = '' }} />
       </div>
       {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
       {list === null ? <div className="loading">Chargement...</div> : (
         <>
-          {SCREENS.map(sc => {
-            const items = own.filter(w => w.resolution === sc.key)
-            return items.length ? <div key={sc.key} style={{ marginBottom: 14 }}>
-              <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 6 }}>{sc.label}</div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{items.map(w => card(w, false))}</div>
-            </div> : null
-          })}
-          {own.filter(w => !SCREENS.some(sc => sc.key === w.resolution)).length > 0 && <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 6 }}>Autres tailles</div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{own.filter(w => !SCREENS.some(sc => sc.key === w.resolution)).map(w => card(w, false))}</div>
-          </div>}
-          {own.length === 0 && <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
+          {own.length ? <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>{own.map(card)}</div>
+            : <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
           {globals.length > 0 && <div style={{ marginTop: 6 }}>
             <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 6 }}>Simple IP (Global — se gèrent dans Serveur)</div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{globals.map(w => card(w, true))}</div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{globals.map(card)}</div>
           </div>}
         </>
       )}
-      {editing && <DroppedEditor key={editing === 'new' ? 'new' : editing.id} accountNumber={accountNumber} wallpaper={editing === 'new' ? null : editing}
-        dropped={editing === 'new' ? dropped : null} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />}
+      {current && <ManageWallpaper group={current} readOnly={!!accountNumber && current.global} onClose={() => setManaging(null)} onChanged={reload} />}
     </div>
   )
-}
-
-// Ouvre l'éditeur avec le fichier déposé dans la zone, s'il y en a un
-function DroppedEditor({ dropped, ...props }) {
-  useEffect(() => {
-    if (!dropped) return
-    const t = setTimeout(() => {
-      const input = document.querySelector('.modal-box input[type=file]')
-      if (input) { const dt = new DataTransfer(); dt.items.add(dropped); input.files = dt.files; input.dispatchEvent(new Event('change', { bubbles: true })) }
-    }, 50)
-    return () => clearTimeout(t)
-  }, [dropped])
-  return <WallpaperEditor {...props} />
 }
