@@ -494,6 +494,20 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-005.22 — Affirmé à Philippe qu'ERPCRM bloque l'émission d'une facture dans une période déclarée (faux)
+
+**Date** : 2026-10-14
+
+**On croyait** : que « Taxes déclarées jusqu'au » (`tax_lock_date`) empêche d'émettre un brouillon daté dans une période déclarée, et qu'envoyer un brouillon le redate au jour même — dit à Philippe (« ERPCRM refuse d'émettre une facture dans une période déjà déclarée ») et écrit dans le 1er rappel des brouillons (« elle sera datée du jour »).
+
+**Preuve** : lecture de `invoices.py` en vérifiant le texte du rappel : `send` passe le brouillon à « envoyee » sans toucher `issue_date` ; `tax_lock_date` ne sert qu'à refuser le retour en brouillon et les ajustements. Le courriel du rappel était déjà parti.
+
+**Cause réelle** : affirmation faite de mémoire sur le rôle d'un réglage (« verrouille ces factures ») au lieu de lire le code avant de répondre à une question fiscale.
+
+**Correction** : texte du rappel et description de la tâche corrigés ; Philippe informé ; garde-fou proposé (refuser d'émettre un brouillon daté dans une période déclarée), pas construit sans son GO.
+
+**Leçon (à ne pas refaire)** : toute réponse sur ce que le système empêche ou fait automatiquement (surtout fiscal) se vérifie dans le code AVANT d'être dite — jamais à partir du nom d'un réglage.
+
 ## TASK-021.1 — Profils périodiques importés un jour après les factures : cycle du 2 octobre perdu
 
 **Date** : 2026-10-14 (erreur du 2026-10-02)
