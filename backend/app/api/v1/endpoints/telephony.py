@@ -855,3 +855,80 @@ async def get_option_catalog(model_id: uuid.UUID, _: User = Depends(get_current_
     if code != 200:
         raise HTTPException(status_code=code, detail=(data or {}).get("detail") if isinstance(data, dict) else data)
     return data
+
+
+# ── Fonds d'ecran (TASK-051, 2026-10-14) : stockes et servis aux telephones par SIPV ; ERPCRM les montre et les envoie ──
+async def _wp(method: str, path: str, json: dict | None = None):
+    try:
+        code, data = await sipv_client.provisioning(method, path, json)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code in (404, 422):
+        raise HTTPException(status_code=code, detail=(data or {}).get("detail") if isinstance(data, dict) else data)
+    return data
+
+
+async def _wp_form(method: str, path: str, form: dict, files: dict):
+    try:
+        code, data = await sipv_client.provisioning_form(method, path, form, files)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code in (404, 422):
+        raise HTTPException(status_code=code, detail=(data or {}).get("detail"))
+    return data
+
+
+async def _files(file: UploadFile | None, original: UploadFile | None) -> dict:
+    out = {}
+    if file is not None:
+        out["file"] = ("wallpaper.jpg", await file.read(), "image/jpeg")
+    if original is not None:
+        out["original"] = (original.filename or "original", await original.read(), original.content_type or "application/octet-stream")
+    return out
+
+
+@router.get("/wallpapers")
+async def list_wallpapers(account: str | None = None, _: User = Depends(get_current_user)):
+    return await _wp("GET", f"/wallpapers?account={account}" if account else "/wallpapers")
+
+
+@router.post("/wallpapers", status_code=201)
+async def create_wallpaper(name: str = Form(...), resolution: str = Form(...), account_number: str | None = Form(None),
+                           mode: str = Form("crop"), crop: str | None = Form(None), file: UploadFile = File(...),
+                           original: UploadFile | None = File(None), _: User = Depends(get_current_user)):
+    form = {"name": name, "resolution": resolution, "mode": mode}
+    if account_number:
+        form["account_number"] = account_number
+    if crop:
+        form["crop"] = crop
+    return await _wp_form("POST", "/wallpapers", form, await _files(file, original))
+
+
+@router.put("/wallpapers/{wallpaper_id}")
+async def update_wallpaper(wallpaper_id: uuid.UUID, name: str | None = Form(None), mode: str | None = Form(None),
+                           crop: str | None = Form(None), file: UploadFile | None = File(None),
+                           original: UploadFile | None = File(None), _: User = Depends(get_current_user)):
+    form = {k: v for k, v in {"name": name, "mode": mode, "crop": crop}.items() if v is not None}
+    return await _wp_form("PUT", f"/wallpapers/{wallpaper_id}", form, await _files(file, original))
+
+
+@router.put("/wallpapers/{wallpaper_id}/default")
+async def default_wallpaper(wallpaper_id: uuid.UUID, _: User = Depends(get_current_user)):
+    return await _wp("PUT", f"/wallpapers/{wallpaper_id}/default")
+
+
+@router.delete("/wallpapers/{wallpaper_id}", status_code=204)
+async def delete_wallpaper(wallpaper_id: uuid.UUID, _: User = Depends(get_current_user)):
+    await _wp("DELETE", f"/wallpapers/{wallpaper_id}")
+
+
+@router.get("/wallpapers/{wallpaper_id}/image")
+async def wallpaper_image(wallpaper_id: uuid.UUID, original: bool = False, _: User = Depends(get_current_user)):
+    try:
+        code, body, ctype = await sipv_client.provisioning_bytes(
+            f"/wallpapers/{wallpaper_id}/original" if original else f"/wallpapers/file/{wallpaper_id}.jpg")
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
+    if code != 200:
+        raise HTTPException(status_code=code, detail="Image introuvable")
+    return Response(content=body, media_type=ctype, headers={"Cache-Control": "no-cache"})

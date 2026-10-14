@@ -834,6 +834,24 @@ async def remove_paging_group_member(member_id: str) -> None:
         resp.raise_for_status()
 
 
+async def provisioning_form(method: str, path: str, data: dict, files: dict) -> tuple[int, dict | None]:
+    """Envoi d'images (fonds d'ecran, TASK-051) : formulaire multipart vers SIPV ; refus (404, 422) remontes tels quels."""
+    async with _client() as client:
+        resp = await client.request(method, f"{settings.SIPV_API_URL}/api/v1/provisioning{path}", data=data, files=files,
+                                    headers=_headers())
+        if resp.status_code in (404, 422):
+            return resp.status_code, resp.json()
+        resp.raise_for_status()
+        return resp.status_code, resp.json()
+
+
+async def provisioning_bytes(path: str) -> tuple[int, bytes, str]:
+    """Fichier (image) lu chez SIPV : (statut, contenu, type)."""
+    async with _client() as client:
+        resp = await client.get(f"{settings.SIPV_API_URL}/api/v1/provisioning{path}", headers=_headers())
+        return resp.status_code, resp.content, resp.headers.get("content-type", "application/octet-stream")
+
+
 async def provisioning(method: str, path: str, json: dict | None = None, params: dict | None = None) -> tuple[int, dict | list | None]:
     """Modeles de provisionnement (TASK-051) : (statut, reponse) ; les refus de SIPV (404, 422) remontent tels quels."""
     async with _client() as client:

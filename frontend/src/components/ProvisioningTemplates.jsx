@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import OptionsTree from './OptionsTree'
+import WallpapersSection from './WallpapersSection'
 
 export const box = { border: '1px solid var(--c-border)', borderRadius: 12, padding: 18, marginBottom: 16, background: 'var(--c-surface)' }
 export const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
@@ -281,7 +282,10 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
     catch (e) { setError(e.response?.data?.detail || 'Erreur') }
   }
 
-  if (!sipvEnabled) return <div className="empty-tab">Cette compagnie n'a pas de tenant téléphonique.</div>
+  const [account, setAccount] = useState(null)
+  useEffect(() => { api.get(`/v1/companies/${companyId}`).then(r => setAccount(r.data.account_number || null)).catch(() => {}) }, [companyId])
+  const wallpapers = account ? <WallpapersSection accountNumber={account} /> : null
+  if (!sipvEnabled) return <div><div className="empty-tab">Cette compagnie n'a pas de tenant téléphonique.</div>{wallpapers}</div>
   const current = templates?.find(t => t.id === selected)
   return (
     <div>
@@ -321,6 +325,7 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
         <TemplateEditor key={selected} companyId={companyId} phoneModels={phoneModels} template={selected === 'new' ? null : current}
           onClose={() => setSelected(null)} onSaved={t => { load(); setSelected(t.id) }} />
       )}
+      {wallpapers}
     </div>
   )
 }

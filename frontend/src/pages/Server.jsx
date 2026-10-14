@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import OptionsTree from '../components/OptionsTree'
+import WallpapersSection from '../components/WallpapersSection'
 import TenantMigration from '../components/TenantMigration'
 import InternalDevices from '../components/InternalDevices'
 import './Admin.css'
@@ -60,6 +61,7 @@ export default function Server() {
                 </div>
                 <SipChannelIpsSection server={s} onSave={updateServerField} />
                 <PhoneDefaultsSection server={s} />
+                <WallpapersSection title="Fonds d'écran Global (Simple IP)" />
               </div>
             ))
           )}
