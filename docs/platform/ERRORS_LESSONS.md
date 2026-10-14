@@ -22,6 +22,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Même jour, 2e erreur** : `flush_inbound_reg <user> reboot` a été choisi pour « redémarrer » sans lire ce qu'il fait d'autre — il **efface l'enregistrement** côté serveur. Le GXP2135 refusant l'ordre (401), il est resté hors ligne pour le serveur jusqu'à son renouvellement. Remplacé par `check_sync` (envoie seulement le NOTIFY). Leçon : avant d'utiliser une commande FreeSWITCH en production, vérifier tous ses effets (pas seulement celui recherché), et tester sur un appareil réel avec trace SIP — le « +OK » de FreeSWITCH ne dit rien de la réponse du téléphone.
 
+**2026-10-14 — Touches Grandstream écrites aux mauvais codes (même tâche)**
+
+**On croyait** : que la touche *n* d'un GXP2135 se programme à `P23800 + 4(n-1)` avec une seule table de modes — « confirmé empiriquement » le 2026-08-02 contre un fichier ScopServ, et « corrigé » le 2026-10-11 (0070) sans ouvrir le gabarit officiel.
+
+**Preuve** : page web du poste 102 (photos de Philippe) — touches 1-4 = anciennes lignes, « Park »/« park 1 » d'avant, touches 11-14 = « Information » et « Verrouillage clavier » portant nos PARK/park 1-3 ; SIP Server = « sipv-lab ».
+
+**Cause réelle** : gabarit officiel du firmware (`~/GrandStream/Template_Config_Pcode/…1.0.11.106.txt`, fourni par Philippe et jamais ouvert) : touches 1-6 = `P1363…`/`P1465…`, `P23800` = touche 7, et les touches dynamiques (pages 2-4) ont une autre légende (19 = Information, 26 = Verrouillage clavier). P47 recevait le nom du serveur.
+
+**Correction** : codes et légendes par modèle tirés du gabarit, règle vérifiée pour les 5 modèles GXP21xx (SIPV 0072) ; P47 = adresse IPv4 du proxy.
+
+**Leçon** : pour un appareil, le gabarit officiel du fabricant et de son firmware est la seule source ; une note « confirmé empiriquement » ou une correction précédente dans les tâches n'est pas une preuve. Philippe a dû chercher lui-même ce que j'aurais dû trouver — coût réel pour lui.
+
 ---
 
 ## TASK-002.5 — Trois vraies factures déplacées comme « essais »
