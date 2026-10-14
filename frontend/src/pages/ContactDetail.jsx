@@ -862,7 +862,7 @@ export default function ContactDetail({ isNew }) {
 
       <div className="detail-body">
         {isNew ? <NewContactForm /> : tab === 3 ? (
-          phone ? <PhoneProvisioningTab contactId={id} phone={phone} onPhoneChange={setPhone} />
+          phone ? <PhoneProvisioningTab contactId={id} phone={phone} account={sipExt?.username?.split('-')[0] || null} onPhoneChange={setPhone} />
             : <div className="empty-tab">Aucun téléphone attribué à ce poste (bouton « Bouton » dans l'onglet Général pour en attribuer un).</div>
         ) : tab === 2 ? (
           <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)"

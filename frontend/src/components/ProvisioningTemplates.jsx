@@ -8,7 +8,7 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import OptionsTree from './OptionsTree'
-import WallpapersSection from './WallpapersSection'
+import WallpapersSection, { WallpaperSelect } from './WallpapersSection'
 
 export const box = { border: '1px solid var(--c-border)', borderRadius: 12, padding: 18, marginBottom: 16, background: 'var(--c-surface)' }
 export const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
@@ -152,7 +152,7 @@ export function SoftkeysPage({ cat, layouts, onChange, onBack, inheritedLayouts 
   )
 }
 
-function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) {
+function TemplateEditor({ companyId, account, phoneModels, template, onClose, onSaved }) {
   const [name, setName] = useState(template?.name || '')
   const [modelId, setModelId] = useState(template?.phone_model_id || '')
   const [cat, setCat] = useState(null)
@@ -162,6 +162,9 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
   const [keys, setKeys] = useState(() => Object.fromEntries((template?.items || []).map(i => [`${i.page}-${i.position}`,
     { button_type: i.button_type, label: i.label || '', value: i.value || '', sip_account_index: i.sip_account_index || 1 }])))
   const [layouts, setLayouts] = useState(template?.softkeys?.layouts || null)
+  const [wallpaperId, setWallpaperId] = useState(template?.wallpaper_id || null)
+  const [screen, setScreen] = useState(null)
+  const [isDefault, setIsDefault] = useState(!!template?.is_default)
   const [view, setView] = useState('main')        // 'main' | 'softkeys'
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -174,6 +177,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
       setCat(r.data.catalog)
       setOptions(o => o || { ...r.data.default_options })              // nouveau modèle : valeurs Simple IP, modifiables
       setLayouts(l => l || preferredLayouts(r.data.catalog))
+      setScreen(r.data.screen || null)
     }).catch(e => setCatMsg(e.response?.data?.detail || 'SIPV injoignable'))
   }, [modelId, companyId])
 
@@ -189,7 +193,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
     setSaving(true); setError('')
     const items = Object.entries(keys).map(([k, v]) => { const [page, position] = k.split('-').map(Number); return { page, position, ...v } })
       .filter(i => i.page < pages && i.button_type !== 'none')
-    const body = { name: name.trim(), phone_model_id: modelId, pages, options, softkeys: { layouts }, items }
+    const body = { name: name.trim(), phone_model_id: modelId, pages, options, softkeys: { layouts }, items, wallpaper_id: wallpaperId, is_default: isDefault }
     try {
       const r = template ? await api.put(`/v1/companies/${companyId}/button-templates/${template.id}`, body)
         : await api.post(`/v1/companies/${companyId}/button-templates`, body)
@@ -230,12 +234,23 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
           <div className="ifield-label">Nom</div>
           <input value={name} onChange={e => setName(e.target.value)} style={input} placeholder="ex. Réception" aria-label="Nom du modèle" />
         </div>
+        <label style={{ display: 'flex', alignItems: 'flex-end', gap: 8, fontSize: 13, cursor: 'pointer', paddingBottom: 6 }}
+          title="Les postes de ce modèle de téléphone qui n'ont pas de modèle choisi prennent celui-ci (comme « Default Model Template » de l'UCM)">
+          <input type="checkbox" checked={isDefault} onChange={e => setIsDefault(e.target.checked)} style={{ accentColor: 'var(--brand)' }} aria-label="Modèle par défaut" />
+          Modèle par défaut
+        </label>
       </div>
       {catMsg && <div style={{ ...muted, marginBottom: 12 }}>{catMsg}</div>}
 
       {cat && (<>
         <div style={title}>Options du téléphone</div>
         <div style={{ marginBottom: 22 }}><OptionsTree modelId={modelId} value={options || {}} onChange={setOptions} /></div>
+
+        <div style={title}>Fond d'écran</div>
+        <div style={{ marginBottom: 22 }}>
+          <WallpaperSelect accountNumber={account} screen={screen} value={wallpaperId} onChange={setWallpaperId}
+            emptyLabel="Fond par défaut de la compagnie" />
+        </div>
 
         <div style={title}>Touches à côté de l'écran</div>
         <div style={{ ...muted, marginBottom: 10 }}>Touches « Ligne » : la première affiche le nom du poste ; les suivantes s'affichent sans nom et servent aux appels suivants du même poste (comme sur l'UCM).</div>
@@ -308,7 +323,7 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
               <tr key={t.id} onClick={() => pick(t.id)} aria-selected={selected === t.id}
                 style={{ cursor: 'pointer', background: selected === t.id ? 'var(--c-tint-blue)' : undefined,
                   boxShadow: selected === t.id ? 'inset 3px 0 0 var(--brand)' : undefined }}>
-                <td style={{ fontWeight: 600 }}>{t.name}</td>
+                <td style={{ fontWeight: 600 }}>{t.name}{t.is_default && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: 'var(--brand)' }}>par défaut</span>}</td>
                 <td>{t.phone_model || <span style={muted}>—</span>}</td>
                 <td>{t.pages}</td>
                 <td>{t.items.length}</td>
@@ -322,7 +337,7 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
         </table>
       )}
       {selected && (selected === 'new' || current) && (
-        <TemplateEditor key={selected} companyId={companyId} phoneModels={phoneModels} template={selected === 'new' ? null : current}
+        <TemplateEditor key={selected} companyId={companyId} account={account} phoneModels={phoneModels} template={selected === 'new' ? null : current}
           onClose={() => setSelected(null)} onSaved={t => { load(); setSelected(t.id) }} />
       )}
       {wallpapers}

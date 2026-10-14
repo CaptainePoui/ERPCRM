@@ -5,18 +5,22 @@
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import OptionsTree from './OptionsTree'
+import { WallpaperSelect } from './WallpapersSection'
 import { box, title, muted, input, TemplateCheck, KeyRow, KeysPage, SoftkeysPage, preferredLayouts } from './ProvisioningTemplates'
 
 const NONE = { button_type: 'none', label: '', value: '', sip_account_index: 1 }
 const asKey = b => ({ button_type: b.button_type, label: b.label || '', value: b.value || '', sip_account_index: b.sip_account_index || 1 })
 
-export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }) {
+export default function PhoneProvisioningTab({ contactId, phone, account, onPhoneChange }) {
   const base = `/v1/contacts/${contactId}/sip-extension/phone/${phone.id}`
   const [templates, setTemplates] = useState([])
   const [cat, setCat] = useState(null)
   const [options, setOptions] = useState(phone.extra_config || {})
   const [own, setOwn] = useState({})                  // "page-position" -> touche personnalisée du poste
   const [layouts, setLayouts] = useState(phone.softkeys?.layouts || {})
+  const [wpCustom, setWpCustom] = useState(!!phone.wallpaper_id)           // case « Modèle » décochée
+  const [wallpaperId, setWallpaperId] = useState(phone.wallpaper_id || null)
+  const [screen, setScreen] = useState(null)
   const [view, setView] = useState('main')
   const [dirty, setDirty] = useState(false)
   const [msg, setMsg] = useState('')
@@ -26,10 +30,11 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
     api.get(`${base}/button-templates`).then(r => setTemplates(r.data)).catch(() => setTemplates([]))
     api.get(`${base}/buttons`).then(r => setOwn(Object.fromEntries(r.data.map(b => [`${b.page}-${b.position}`, asKey(b)]))))
     if (phone.phone_model_id) api.get(`/v1/contacts/${contactId}/sip-extension/key-catalog/${phone.phone_model_id}`)
-      .then(r => setCat(r.data.catalog)).catch(() => setCat(null))
+      .then(r => { setCat(r.data.catalog); setScreen(r.data.screen || null) }).catch(() => setCat(null))
   }, [phone.id])   // eslint-disable-line
 
-  const tpl = templates.find(t => t.id === phone.button_template_id) || null
+  const defTpl = templates.find(t => t.is_default) || null            // « modèle par défaut » de ce modèle de téléphone
+  const tpl = templates.find(t => t.id === phone.button_template_id) || (phone.button_template_id ? null : defTpl)
   const tplKeys = Object.fromEntries((tpl?.items || []).map(i => [`${i.page}-${i.position}`, asKey(i)]))
   const tplLayouts = tpl?.softkeys?.layouts || (cat ? preferredLayouts(cat) : {})
   const touch = f => (...a) => { f(...a); setDirty(true); setMsg('') }
@@ -44,8 +49,8 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
     setSaving(true); setMsg('')
     const buttons = Object.entries(own).map(([k, v]) => { const [page, position] = k.split('-').map(Number); return { page, position, ...v } })
     try {
-      const r = await api.put(`${base}/provisioning`, { extra_config: options, softkeys: { layouts }, buttons })
-      onPhoneChange({ ...phone, extra_config: r.data.extra_config, softkeys: r.data.softkeys })
+      const r = await api.put(`${base}/provisioning`, { extra_config: options, softkeys: { layouts }, buttons, wallpaper_id: wpCustom ? wallpaperId : null })
+      onPhoneChange({ ...phone, extra_config: r.data.extra_config, softkeys: r.data.softkeys, wallpaper_id: r.data.wallpaper_id })
       setDirty(false); setMsg('Enregistré — le téléphone le prendra au prochain chargement de sa configuration (bouton « Pousser la config »).')
     } catch (e) { setMsg(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
   }
@@ -59,7 +64,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
   }
 
   const pages = cat ? Math.max(tpl?.pages || 1, ...Object.keys(own).map(k => Number(k.split('-')[0]) + 1)) : 0
-  const customCount = Object.keys(options).length + Object.keys(own).length + Object.keys(layouts).length
+  const customCount = Object.keys(options).length + Object.keys(own).length + Object.keys(layouts).length + (wpCustom ? 1 : 0)
   const actions = (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 18, flexWrap: 'wrap' }}>
       <button className="btn-primary" onClick={save} disabled={saving || !dirty}>{saving ? '...' : 'Enregistrer'}</button>
@@ -82,7 +87,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <select value={phone.button_template_id || ''} onChange={e => chooseTemplate(e.target.value)} aria-label="Modèle de provisionnement"
             style={{ ...input, width: 320 }}>
-            <option value="">Aucun (valeurs par défaut, touches à « aucune »)</option>
+            <option value="">{defTpl ? `Modèle par défaut (${defTpl.name})` : 'Aucun (valeurs par défaut, touches à « aucune »)'}</option>
             {templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
           </select>
           <span style={muted}>
@@ -100,6 +105,13 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
           <div style={title}>Options du téléphone</div>
           <div style={{ marginBottom: 22 }}>
             <OptionsTree modelId={phone.phone_model_id} value={options} inherited={tpl?.options || {}} onChange={touch(setOptions)} />
+          </div>
+
+          <div style={{ ...title, display: 'flex', alignItems: 'center', gap: 10 }}>Fond d'écran
+            <TemplateCheck checked={!wpCustom} onChange={c => { touch(setWpCustom)(!c); setWallpaperId(c ? null : (tpl?.wallpaper_id || null)) }} /></div>
+          <div style={{ marginBottom: 22 }}>
+            <WallpaperSelect accountNumber={account} screen={screen} value={wpCustom ? wallpaperId : (tpl?.wallpaper_id || null)} disabled={!wpCustom}
+              onChange={v => touch(setWallpaperId)(v)} emptyLabel="Fond par défaut de la compagnie" />
           </div>
 
           <div style={title}>Touches à côté de l'écran</div>
