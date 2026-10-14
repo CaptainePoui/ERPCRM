@@ -80,7 +80,7 @@ export function WallpaperSelect({ accountNumber, screen, value, onChange, disabl
 // puis, du fond choisi : nom, par défaut, télécharger, supprimer, et son éditeur graphique ouvert directement (Fit / Crop,
 // déplacement dans le cadre bleu, zoom, Snap centre), une taille d'écran à la fois. Le fond Simple IP se modifie aussi
 // (avertissement avant d'enregistrer : il change le fond de tous les téléphones).
-function WallpaperWorkspace({ list, accountNumber, screen, value, onSelect, onChanged }) {
+function WallpaperWorkspace({ list, accountNumber, screen, value, onSelect, onChanged, focusId, onFocused }) {
   const groups = groupWallpapers(list).filter(g => (accountNumber ? true : g.global) && (!screen || g.versions.some(v => v.resolution === screen)))
     .sort((a, b) => (a.global === b.global ? 0 : a.global ? 1 : -1))
   const def = groups.find(g => !g.global && g.is_default) || groups.find(g => g.global && g.is_default)
@@ -91,6 +91,12 @@ function WallpaperWorkspace({ list, accountNumber, screen, value, onSelect, onCh
   // avec le modèle »)
   const [size, setSize] = useState(screen || current?.versions[0]?.resolution)
   useEffect(() => { if (current && !current.versions.some(v => v.resolution === size)) setSize(screen && current.versions.some(v => v.resolution === screen) ? screen : current.versions[0].resolution) }, [currentId])   // eslint-disable-line
+  // Image importée (Philippe : « si on importe une image d'un cadre différent, le mode graphisme nous sert à gérer la
+  // bonne taille et sauvegarder ») : elle devient le fond sélectionné et son éditeur s'ouvre aussitôt
+  useEffect(() => {
+    const g = groups.find(x => x.id === focusId)
+    if (g) { pick(g); onFocused?.() }
+  }, [focusId, list])   // eslint-disable-line
   const version = current?.versions.find(v => v.resolution === size)
   const at = g => g.versions.find(v => v.resolution === screen) || g.versions[0]
   function pick(g) { setCurrentId(g.id); if (onSelect) onSelect(at(g).id) }
@@ -162,6 +168,7 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
   const [over, setOver] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [focusId, setFocusId] = useState(null)        // fond qui vient d'être importé
   const inputRef = useRef(null)
   const reload = () => { setRefresh(x => x + 1); onChanged?.() }
 
@@ -187,6 +194,7 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
         const res = await api.post('/v1/telephony/wallpapers', fd)
         groupId = groupId || res.data.group_id
       }
+      setFocusId(groupId)
       reload()
     } catch (e) { setError(e.response?.data?.detail || 'Image illisible') } finally { setBusy(false) }
   }
@@ -224,7 +232,7 @@ export default function WallpapersSection({ accountNumber, title, buttonOnly, on
             </div>
             {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
             {list === null ? <div className="loading">Chargement...</div>
-              : <WallpaperWorkspace list={list} accountNumber={accountNumber} screen={screen} value={value} onSelect={onSelect} onChanged={reload} />}
+              : <WallpaperWorkspace list={list} accountNumber={accountNumber} screen={screen} value={value} onSelect={onSelect} onChanged={reload} focusId={focusId} onFocused={() => setFocusId(null)} />}
             <div className="modal-actions"><button className="btn-primary" onClick={() => setOpen(false)}>Fermer</button></div>
           </div>
         </div>
