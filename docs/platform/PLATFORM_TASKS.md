@@ -557,6 +557,13 @@ Date(s) de travail : 2026-10-14
 - Preuve : les 44 PDF (42 + 112260/112261) recomparés : concordance numéro/client/total partout sauf INV-112215 (brouillon) et INV-112251.
 - En attente de Philippe : **INV-112251 MGB** (160,23 $ réglée par « crédits appliqués » dans l'ancien logiciel, mais aucun crédit ouvert chez MGB dans ERPCRM — d'où vient ce crédit ?) — numéro laissé libre ; dates de D'Astous (ERPCRM 2026-10-07, ancien logiciel 2026-10-14) et Physotech troc (2026-10-08 / 2026-10-14) non changées ; **Compagnie test** a encore une récurrence active qui prendra un vrai numéro le 2026-11-10.
 
+### TASK-005.20 [ ] PDF des factures ERPCRM inspiré de celui de l'ancien logiciel
+Date de demande : 2026-10-14 (Philippe, en déposant l'historique des factures PDF : « tu pourrais te guider pour les factures de ceux de Zoho, je les trouvais bien »)
+Date(s) de travail : —
+
+- Modèle : les PDF de l'ancien logiciel dans `/home/simpleip/Simple_IP/factures_zoho/Invoices*.zip` (en-tête vendeur à gauche, « Solde dû » en haut à droite, bloc « Facturer à » + date/conditions/échéance, tableau # / Article & Description / Quantité / Taux / Montant avec la description sous le nom de l'article, totaux Sous-total / TPS / TVQ / Total / Paiement effectué / Solde dû, Remarques, options de paiement, conditions d'utilisation, n° TPS/TVQ en pied de page). Jamais le mot « Zoho » dans le PDF (TASK-005.11).
+- Pas commencé : à faire après l'import de l'historique.
+
 ### TASK-005.17 [x] PDF à télécharger : facture, avoir, devis, entente d'échange (troc)
 Date de demande : 2026-10-08 (Philippe : « sur les factures ou avoirs ou ententes j'aimerais pouvoir en faire des PDF à télécharger » ; « je veux des PDF pour tout échange : facture, avoir, devis, entente (troc) »)
 Date(s) de travail : 2026-10-08
