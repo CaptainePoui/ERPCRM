@@ -57,8 +57,8 @@ async function autoVersion(file, img, W, H) {
 const hex = (r, g, b) => '#' + [r, g, b].map(x => x.toString(16).padStart(2, '0')).join('')
 
 // Choix d'un fond pour un modèle ou un poste : la liste des fonds ; la valeur est la version à la taille de l'écran
-export function WallpaperSelect({ accountNumber, screen, value, onChange, disabled, emptyLabel }) {
-  const groups = groupWallpapers(useWallpapers(accountNumber)).filter(g => g.versions.some(v => v.resolution === screen))
+export function WallpaperSelect({ accountNumber, screen, value, onChange, disabled, emptyLabel, refreshKey, children }) {
+  const groups = groupWallpapers(useWallpapers(accountNumber, refreshKey)).filter(g => g.versions.some(v => v.resolution === screen))
   const at = g => g.versions.find(v => v.resolution === screen)
   const def = groups.find(g => !g.global && g.is_default) || groups.find(g => g.global && g.is_default)
   const cur = groups.find(g => g.versions.some(v => v.id === value))
@@ -70,6 +70,7 @@ export function WallpaperSelect({ accountNumber, screen, value, onChange, disabl
         <option value="">{emptyLabel || 'Par défaut'}{def ? ` (${def.name}${def.global ? ', Simple IP' : ''})` : ''}</option>
         {groups.map(g => <option key={g.id} value={g.id}>{g.name}{g.global ? ' — Simple IP' : ''}</option>)}
       </select>
+      {children}
       {!screen && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>Taille d'écran inconnue pour ce modèle.</span>}
     </div>
   )
@@ -144,7 +145,7 @@ function ManageWallpaper({ group, readOnly, onClose, onChanged }) {
   )
 }
 
-export default function WallpapersSection({ accountNumber, title }) {
+export default function WallpapersSection({ accountNumber, title, buttonOnly, onChanged }) {
   const [refresh, setRefresh] = useState(0)
   const list = useWallpapers(accountNumber, refresh)
   const [managing, setManaging] = useState(null)       // id du fond
@@ -152,7 +153,7 @@ export default function WallpapersSection({ accountNumber, title }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const inputRef = useRef(null)
-  const reload = () => setRefresh(x => x + 1)
+  const reload = () => { setRefresh(x => x + 1); onChanged?.() }
 
   // Ajouter : le fond est créé tout de suite, avec une version par taille d'écran (Fit), sans passer par le cadrage
   async function add(file) {
@@ -180,10 +181,13 @@ export default function WallpapersSection({ accountNumber, title }) {
     } catch (e) { setError(e.response?.data?.detail || 'Image illisible') } finally { setBusy(false) }
   }
 
-  const groups = groupWallpapers(list)
-  const own = groups.filter(g => accountNumber ? !g.global : g.global)
-  const globals = accountNumber ? groups.filter(g => g.global) : []
-  const current = groups.find(g => g.id === managing)
+  // Philippe (2026-10-14) : pas de section qui allonge la page -- une ligne avec un bouton « Paramètres » ; l'ajout d'image
+  // et la gestion sont dans cette fenêtre. Les fonds Simple IP (Global) ne sont pas montrés dans une compagnie : ils se
+  // gèrent dans Serveur.
+  const [open, setOpen] = useState(false)
+  const own = groupWallpapers(list).filter(g => accountNumber ? !g.global : g.global)
+  const def = own.find(g => g.is_default)
+  const current = own.find(g => g.id === managing)
   const card = g => (
     <div key={g.id} onClick={() => setManaging(g.id)} role="button" aria-label={`Gérer ${g.name}`}
       style={{ border: `1px solid ${g.is_default ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 12, padding: 10, width: 220, background: 'var(--c-surface)', cursor: 'pointer' }}>
@@ -194,31 +198,39 @@ export default function WallpapersSection({ accountNumber, title }) {
     </div>
   )
   return (
-    <div style={{ marginTop: 28 }}>
-      <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>{title || 'Fonds d\'écran'}</div>
-      <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
-        {accountNumber ? 'Le fond par défaut va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre ; sans fond de la compagnie, ils prennent celui de Simple IP. Cliquez un fond pour le gérer.'
-          : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes. Cliquez un fond pour le gérer.'}
-      </div>
-      <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
-        onDrop={e => { e.preventDefault(); setOver(false); add(e.dataTransfer.files[0]) }} onClick={() => !busy && inputRef.current?.click()}
-        style={{ border: `2px dashed ${over ? 'var(--brand)' : 'var(--c-border)'}`, background: over ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', borderRadius: 10,
-          padding: '14px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: 'var(--c-muted)', marginBottom: 14 }}>
-        {busy ? 'Ajout du fond…' : <>Ajouter un fond d'écran : glissez une image ici ou <span style={{ color: 'var(--brand)' }}>choisissez un fichier</span></>}
-        <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { add(e.target.files[0]); e.target.value = '' }} />
-      </div>
-      {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
-      {list === null ? <div className="loading">Chargement...</div> : (
-        <>
-          {own.length ? <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 14 }}>{own.map(card)}</div>
-            : <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
-          {globals.length > 0 && <div style={{ marginTop: 6 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 6 }}>Simple IP (Global — se gèrent dans Serveur)</div>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{globals.map(card)}</div>
-          </div>}
-        </>
+    <div style={buttonOnly ? { display: 'inline-flex' } : { marginTop: 28, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+      {!buttonOnly && <>
+        <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title || 'Fonds d\'écran'}</div>
+        {def && <WallpaperThumb w={preview(def)} height={34} />}
+        <span style={{ fontSize: 13, color: 'var(--c-muted)' }}>
+          {list === null ? 'Chargement…' : own.length ? `${own.length} fond(s)${def ? ` · par défaut : ${def.name}` : ''}` : 'Aucun fond'}
+        </span>
+      </>}
+      <button type="button" className="btn-secondary" style={{ fontSize: 13 }} onClick={() => setOpen(true)} aria-label="Paramètres des fonds d'écran">⚙ Paramètres</button>
+      {open && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ maxWidth: '96vw', width: 980, maxHeight: '94vh', overflowY: 'auto', cursor: 'default' }}>
+            <h3 className="modal-title">{title || 'Fonds d\'écran'}</h3>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>
+              {accountNumber ? 'Le fond par défaut va sur tous les postes de la compagnie, sauf si leur modèle ou le poste en choisit un autre. Cliquez un fond pour le gérer.'
+                : 'Fond de tous les téléphones (« Global ») : ceux d\'une compagnie le remplacent pour ses postes. Cliquez un fond pour le gérer.'}
+            </div>
+            <div onDragOver={e => { e.preventDefault(); setOver(true) }} onDragLeave={() => setOver(false)}
+              onDrop={e => { e.preventDefault(); setOver(false); add(e.dataTransfer.files[0]) }} onClick={() => !busy && inputRef.current?.click()}
+              style={{ border: `2px dashed ${over ? 'var(--brand)' : 'var(--c-border)'}`, background: over ? 'var(--c-tint-blue)' : 'var(--c-surface-2)', borderRadius: 10,
+                padding: '14px 16px', textAlign: 'center', cursor: 'pointer', fontSize: 13, color: 'var(--c-muted)', marginBottom: 14 }}>
+              {busy ? 'Ajout du fond…' : <>Ajouter un fond d'écran : glissez une image ici ou <span style={{ color: 'var(--brand)' }}>choisissez un fichier</span></>}
+              <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" style={{ display: 'none' }} onChange={e => { add(e.target.files[0]); e.target.value = '' }} />
+            </div>
+            {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
+            {list === null ? <div className="loading">Chargement...</div> : own.length
+              ? <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>{own.map(card)}</div>
+              : <div className="empty-tab">Aucun fond d'écran{accountNumber ? ' pour cette compagnie' : ''}.</div>}
+            <div className="modal-actions"><button className="btn-primary" onClick={() => setOpen(false)}>Fermer</button></div>
+          </div>
+        </div>
       )}
-      {current && <ManageWallpaper group={current} readOnly={!!accountNumber && current.global} onClose={() => setManaging(null)} onChanged={reload} />}
+      {current && <ManageWallpaper group={current} readOnly={false} onClose={() => setManaging(null)} onChanged={reload} />}
     </div>
   )
 }

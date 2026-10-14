@@ -165,6 +165,7 @@ function TemplateEditor({ companyId, account, phoneModels, template, onClose, on
   const [wallpaperId, setWallpaperId] = useState(template?.wallpaper_id || null)
   const [screen, setScreen] = useState(null)
   const [isDefault, setIsDefault] = useState(!!template?.is_default)
+  const [wpRefresh, setWpRefresh] = useState(0)
   const [view, setView] = useState('main')        // 'main' | 'softkeys'
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -249,7 +250,9 @@ function TemplateEditor({ companyId, account, phoneModels, template, onClose, on
         <div style={title}>Fond d'écran</div>
         <div style={{ marginBottom: 22 }}>
           <WallpaperSelect accountNumber={account} screen={screen} value={wallpaperId} onChange={setWallpaperId}
-            emptyLabel="Fond par défaut de la compagnie" />
+            emptyLabel="Fond par défaut de la compagnie" refreshKey={wpRefresh}>
+            {account && <WallpapersSection accountNumber={account} buttonOnly onChanged={() => setWpRefresh(x => x + 1)} />}
+          </WallpaperSelect>
         </div>
 
         <div style={title}>Touches à côté de l'écran</div>
@@ -299,8 +302,7 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
 
   const [account, setAccount] = useState(null)
   useEffect(() => { api.get(`/v1/companies/${companyId}`).then(r => setAccount(r.data.account_number || null)).catch(() => {}) }, [companyId])
-  const wallpapers = account ? <WallpapersSection accountNumber={account} /> : null
-  if (!sipvEnabled) return <div><div className="empty-tab">Cette compagnie n'a pas de tenant téléphonique.</div>{wallpapers}</div>
+  if (!sipvEnabled) return <div className="empty-tab">Cette compagnie n'a pas de tenant téléphonique.</div>
   const current = templates?.find(t => t.id === selected)
   return (
     <div>
@@ -340,7 +342,6 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
         <TemplateEditor key={selected} companyId={companyId} account={account} phoneModels={phoneModels} template={selected === 'new' ? null : current}
           onClose={() => setSelected(null)} onSaved={t => { load(); setSelected(t.id) }} />
       )}
-      {wallpapers}
     </div>
   )
 }
