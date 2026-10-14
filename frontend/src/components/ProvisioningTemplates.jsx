@@ -269,6 +269,7 @@ function TemplateEditor({ companyId, phoneModels, template, onClose, onSaved }) 
         <div style={{ marginBottom: 22 }}><OptionsFields brand={brand} value={options || {}} onChange={setOptions} /></div>
 
         <div style={title}>Touches à côté de l'écran</div>
+        <div style={{ ...muted, marginBottom: 10 }}>Touches « Ligne » : la première affiche le nom du poste ; les suivantes s'affichent sans nom et servent aux appels suivants du même poste (comme sur l'UCM).</div>
         {Array.from({ length: pages }, (_, p) => (
           <KeysPage key={p} cat={cat} page={p}
             header={p > 0 && p === pages - 1 && <button type="button" className="btn-secondary" style={{ marginLeft: 'auto', fontSize: 12, padding: '3px 10px' }} onClick={removePage}>Retirer la page</button>}

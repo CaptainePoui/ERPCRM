@@ -103,6 +103,7 @@ export default function PhoneProvisioningTab({ contactId, phone, onPhoneChange }
           </div>
 
           <div style={title}>Touches à côté de l'écran</div>
+          <div style={{ ...muted, marginBottom: 10 }}>Touches « Ligne » : la première affiche le nom du poste ; les suivantes s'affichent sans nom et servent aux appels suivants du même poste (comme sur l'UCM).</div>
           {Array.from({ length: pages }, (_, p) => (
             <KeysPage key={p} cat={cat} page={p} renderKey={(pos, n, modes) => {
               const k = `${p}-${pos}`
