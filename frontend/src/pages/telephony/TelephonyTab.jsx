@@ -6,6 +6,7 @@ import Autocomplete from '../../components/Autocomplete'
 import PhoneOptionsEditor from '../../components/PhoneOptionsEditor'
 import QuickNewContact from '../../components/QuickNewContact'
 import ParkingLotsSection from './ParkingLotsSection'
+import CdrReportsSection from '../../components/CdrReportsSection'
 
 // ── Téléphonie Tab ────────────────────────────────────────────────────────────
 const DID_DESTINATION_TYPES = [
@@ -62,7 +63,7 @@ function TemplateDropdownChain({ options, selectedIds, onChange }) {
   )
 }
 
-function TelephonyTab({ companyId, companyName, sipvEnabled }) {
+function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
   const navigate = useNavigate()
   const [dids, setDids] = useState([])
   const [exts, setExts] = useState([])
@@ -95,7 +96,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
   const [schedules, setSchedules] = useState([])
   const [showNewSchedule, setShowNewSchedule] = useState(false)
   const [prompts, setPrompts] = useState([])
-  const [subTab, setSubTab] = useState('numeros')
+  const [subTab, setSubTab] = useState(initialSubTab || 'numeros')
 
   useEffect(() => {
     Promise.all([
@@ -310,9 +311,10 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
     { key: 'postes', label: 'Postes' },
     { key: 'acheminement', label: "Acheminement d'appels" },
     { key: 'horaires', label: 'Horaires & Audio' },
-    { key: 'appareils', label: 'Appareils' },
+    { key: 'appareils', label: 'Provisionnement' },
     { key: 'urgence', label: 'Urgence & Sécurité' },
     { key: 'avance', label: 'Avancé' },
+    { key: 'cdr', label: 'CDR' },
   ]
 
   return (
@@ -711,6 +713,11 @@ function TelephonyTab({ companyId, companyName, sipvEnabled }) {
 
       {subTab === 'avance' && (<>
       <TrunkSection companyId={companyId} />
+      </>)}
+
+      {subTab === 'cdr' && (<>
+      <CdrSection companyId={companyId} />
+      <CdrReportsSection companyId={companyId} />
       </>)}
 
       {showNewDid && (

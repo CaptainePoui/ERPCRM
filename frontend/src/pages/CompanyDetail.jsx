@@ -8,8 +8,7 @@ import NewTaskModal from '../components/NewTaskModal'
 import QuickNewContact from '../components/QuickNewContact'
 import JournalFeed from '../components/JournalFeed'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
-import TelephonyTab, { CdrSection, E911AddressesSection } from './telephony/TelephonyTab'
-import CdrReportsSection from '../components/CdrReportsSection'
+import TelephonyTab, { E911AddressesSection } from './telephony/TelephonyTab'
 import BarterTab from './barter/BarterTab'
 import useFeatures from '../hooks/useFeatures'
 import useRowSelection from '../hooks/useRowSelection'
@@ -21,8 +20,9 @@ import ConnectivityPanel from '../components/ConnectivityPanel'
 import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 
-const TABS = ['Général', 'Transactions', 'Échanges', 'Contacts', 'Courriels', 'Tickets', 'Inventaire', 'Téléphonie', 'CDR', 'Tâches', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'transactions', 'echanges', 'contacts', 'courriels', 'tickets', 'inventaire', 'telephonie', 'cdr', 'taches', 'photos', 'journal']
+// Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
+const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Échanges', 'Inventaire', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'echanges', 'inventaire', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -435,7 +435,8 @@ export default function CompanyDetail({ isNew }) {
   const { id } = useParams()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const initialTab = Math.max(0, TAB_SLUGS.indexOf(searchParams.get('tab')))
+  const tabParam = searchParams.get('tab')
+  const initialTab = Math.max(0, TAB_SLUGS.indexOf(tabParam === 'cdr' ? 'telephonie' : tabParam))   // anciens liens ?tab=cdr
   const [tab, setTabState] = useState(initialTab)
   function setTab(i) {
     setTabState(i)
@@ -683,14 +684,7 @@ export default function CompanyDetail({ isNew }) {
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}
-            {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} />}
-            {slug === 'cdr' && (
-              <>
-                <CdrSection companyId={id} />
-                <CdrReportsSection companyId={id} />
-              </>
-            )}
-            {slug === 'taches' && <TachesTab companyId={id} companyName={c.name} onShowTask={() => setShowTask(true)} />}
+            {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} initialSubTab={tabParam === 'cdr' ? 'cdr' : undefined} />}
             {slug === 'photos' && <PhotosTab companyId={id} />}
             {slug === 'journal' && <JournalFeed entityId={id} />}
           </>
@@ -1379,6 +1373,7 @@ function PhotosTab({ companyId }) {
   )
 }
 
+// Plus affiché dans la fiche (2026-10-14) : les tâches iront dans les tickets ; gardé pour ce travail
 function TachesTab({ companyId, companyName, onShowTask }) {
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)

@@ -25,7 +25,7 @@
 
 .form-error { background: var(--c-tint-red); color: #DC2626; padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; }
 
-.detail-tabs { display: flex; gap: 6px; border-bottom: 1px solid var(--c-border); margin-bottom: 24px; overflow-x: auto; }
+.detail-tabs { display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--c-border); margin-bottom: 24px; }
 .tab-btn { background: none; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 12px 12px; font-size: 14px; font-weight: 600; white-space: nowrap; font-family: inherit; color: var(--c-muted); cursor: pointer; transition: color 0.15s, border-color 0.15s; }
 .tab-btn:hover { color: var(--brand); }
 .tab-btn.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
