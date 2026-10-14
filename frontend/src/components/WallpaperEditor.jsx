@@ -25,7 +25,17 @@ function clampCenter(img, W, H, mode, zoom, cx, cy) {
   return [dw <= W ? Math.min(mx, Math.max(1 - mx, cx)) : 0.5, dh <= H ? Math.min(my, Math.max(1 - my, cy)) : 0.5]
 }
 
-export default function WallpaperEditor({ accountNumber, wallpaper, resolutions, onClose, onSaved }) {
+// Dans une fenêtre à part, ou affiché directement dans la fenêtre Paramètres (inline)
+function Wrap({ inline, children }) {
+  if (inline) return <div style={{ border: '1px solid var(--c-border)', borderRadius: 12, padding: 14, display: 'flex', flexDirection: 'column' }}>{children}</div>
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ maxWidth: '96vw', width: 'auto', maxHeight: '94vh', display: 'flex', flexDirection: 'column', cursor: 'default', overflow: 'hidden' }}>{children}</div>
+    </div>
+  )
+}
+
+export default function WallpaperEditor({ accountNumber, wallpaper, resolutions, onClose, onSaved, inline }) {
   const [file, setFile] = useState(null)               // nouveau fichier choisi
   const [img, setImg] = useState(null)
   const [name, setName] = useState(wallpaper?.name || '')
@@ -44,7 +54,7 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   // échelle d'affichage : assez grande pour cadrer, sans dépasser la fenêtre (Philippe : « la fenêtre dépasse »)
   const [vh, setVh] = useState(window.innerHeight)
   useEffect(() => { const f = () => setVh(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f) }, [])
-  const s = Math.max(0.5, Math.min(1.6, 560 / W, (vh - 260 - 2 * MARGIN) / H))
+  const s = Math.max(0.5, Math.min(inline ? 1.3 : 1.6, 560 / W, (vh - (inline ? 520 : 260) - 2 * MARGIN) / H))
 
   function load(blob) {
     const url = URL.createObjectURL(blob)
@@ -116,6 +126,7 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   }
 
   async function save() {
+    if (wallpaper?.global && !confirm('Attention : ce fond est celui de Simple IP. L\'enregistrer change le fond de TOUS les téléphones qui l\'utilisent. Continuer ?')) return
     setSaving(true); setError('')
     try {
       const out = document.createElement('canvas'); out.width = W; out.height = H
@@ -143,9 +154,8 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   const seg = active => ({ fontSize: 13, padding: '5px 14px', border: '1px solid var(--c-border-strong)', cursor: 'pointer',
     background: active ? 'var(--brand)' : 'transparent', color: active ? '#fff' : 'inherit' })
   return (
-    <div className="modal-overlay">
-      <div className="modal-box" style={{ maxWidth: '96vw', width: 'auto', maxHeight: '94vh', display: 'flex', flexDirection: 'column', cursor: 'default', overflow: 'hidden' }}>
-        <h3 className="modal-title" style={{ flex: 'none' }}>{wallpaper ? `Ajuster « ${wallpaper.name} » — ${wallpaper.resolution.replace('x', ' × ')}` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
+    <Wrap inline={inline}>
+        <h3 className="modal-title" style={{ flex: 'none', ...(inline ? { fontSize: 15, margin: '0 0 10px' } : {}) }}>{wallpaper ? `Ajuster « ${wallpaper.name} » — ${wallpaper.resolution.replace('x', ' × ')}` : 'Nouveau fond d\'écran'}{accountNumber ? '' : ' — Global Simple IP'}</h3>
         <div style={{ display: 'flex', gap: 22, alignItems: 'flex-start', overflowY: 'auto', minHeight: 0, flex: 1 }}>
           <div>
             {!img ? (
@@ -165,8 +175,8 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
             {img && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 6 }}>Glissez l'image pour la cadrer dans le cadre bleu (l'écran du téléphone) ; molette = zoom. Image : {img.width}×{img.height}</div>}
           </div>
           <div style={{ width: 300, flex: 'none', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <div className="form-group" style={{ margin: 0 }}><label>Nom</label>
-              <input value={name} onChange={e => setName(e.target.value)} aria-label="Nom du fond d'écran" /></div>
+            {!inline && <div className="form-group" style={{ margin: 0 }}><label>Nom</label>
+              <input value={name} onChange={e => setName(e.target.value)} aria-label="Nom du fond d'écran" /></div>}
             <div className="form-group" style={{ margin: 0 }}><label>Écran du téléphone</label>
               <select value={res} onChange={e => setRes(e.target.value)} disabled={!!wallpaper} aria-label="Écran du téléphone">
                 {(resolutions?.length ? SCREENS.filter(x => resolutions.includes(x.key)) : SCREENS).map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
@@ -194,11 +204,11 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
           </div>
         </div>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 10, flex: 'none' }}>{error}</div>}
-        <div className="modal-actions" style={{ flex: 'none' }}>
-          <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
-          <button className="btn-primary" onClick={save} disabled={saving || !img || !name.trim()}>{saving ? '...' : 'Enregistrer'}</button>
+        <div className="modal-actions" style={{ flex: 'none', ...(inline ? { marginTop: 10 } : {}) }}>
+          {!inline && <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>}
+          {inline && <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler les changements</button>}
+          <button className="btn-primary" onClick={save} disabled={saving || !img || !name.trim()}>{saving ? '...' : 'Enregistrer le cadrage'}</button>
         </div>
-      </div>
-    </div>
+    </Wrap>
   )
 }
