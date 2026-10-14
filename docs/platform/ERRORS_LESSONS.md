@@ -48,6 +48,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+
+**2026-10-14 — Code SIPV rechargé à moitié (même tâche)**
+
+**On croyait** : que `systemctl reload sipv-backend` met en service tout nouveau code SIPV.
+
+**Preuve** : après le reload, l'aperçu de migration depuis ERPCRM répondait 422 ; `openapi.json` du port 8022 montrait encore l'ancien schéma (champ `e911`), celui du port 8020 le nouveau.
+
+**Cause réelle** : ERPCRM parle à SIPV par `sipv-backend-tls` (uvicorn séparé, port 8022), que le reload (HUP du gunicorn 8020) ne touche pas. Déjà noté pour les redémarrages (« toujours les deux ») mais pas appliqué au nouveau réflexe « reload ».
+
+**Correction** : `sudo systemctl restart sipv-backend-tls` (FreeSWITCH n'utilise que 8020 : sans effet sur les téléphones) ; règle ajoutée à la mémoire d'infrastructure.
+
+**Leçon** : changement de code SIPV = `reload sipv-backend` **et** `restart sipv-backend-tls`, puis vérifier que le port 8022 sert le nouveau code avant de tester par ERPCRM.
 ## TASK-002.5 — Trois vraies factures déplacées comme « essais »
 
 **Date** : 2026-10-10

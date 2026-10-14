@@ -1,7 +1,8 @@
 // Serveur -> Migration (TASK-051, 2026-10-10) : deplacer des postes et des numeros d'un tenant a un autre, comme un
 // technicien. On coche les postes et les numeros qui partent ; chaque groupe et reglage : laisser, deplacer ou copier
-// (copier = les deux restent actifs, l'ancien sans les postes partis, le nouveau avec eux) ; on confirme l'adresse 911
-// de ce qui arrive ; apercu, puis Migrer. L'historique d'appels reste dans l'ancien tenant, marque « migre ».
+// (copier = les deux restent actifs, l'ancien sans les postes partis, le nouveau avec eux) ; chaque poste et numero garde
+// son adresse 911 (Philippe, 2026-10-14) ; apercu, puis Migrer. L'historique d'appels reste dans l'ancien tenant, marque
+// « migre ». Une maison mere sans tenant est offerte comme arrivee : son tenant est cree a la migration.
 import { useEffect, useMemo, useState } from 'react'
 import api from '../services/api'
 
@@ -12,9 +13,9 @@ export default function TenantMigration() {
   const [src, setSrc] = useState('')
   const [dst, setDst] = useState('')
   const [inv, setInv] = useState(null)
-  const [addrs, setAddrs] = useState([])
-  const [exts, setExts] = useState({})        // id -> { on, new_number, site }
-  const [dids, setDids] = useState({})        // id -> { on, site }
+  const [dests, setDests] = useState([])
+  const [exts, setExts] = useState({})        // id -> { on, new_number }
+  const [dids, setDids] = useState({})        // id -> { on }
   const [objs, setObjs] = useState({})        // kind -> { id: action }
   const [preview, setPreview] = useState(null)
   const [result, setResult] = useState(null)
@@ -27,25 +28,16 @@ export default function TenantMigration() {
     setInv(null); setExts({}); setDids({}); setObjs({}); setPreview(null); setResult(null); setError('')
     if (id) api.get(`/v1/migration/inventory/${id}`).then(r => setInv(r.data)).catch(e => setError(e.response?.data?.detail || 'SIPV injoignable'))
   }
-  useEffect(() => { loadSource(src) }, [src])
   useEffect(() => {
-    setAddrs([]); setPreview(null)
-    if (dst) api.get(`/v1/migration/addresses/${dst}`).then(r => setAddrs(r.data))
-  }, [dst])
-  const defSite = addrs[0]?.id || ''
+    loadSource(src); setDst(''); setDests([])
+    if (src) api.get(`/v1/migration/destinations/${src}`).then(r => setDests(r.data))
+  }, [src])
 
   const payload = useMemo(() => {
-    const e911 = {}
-    const extensions = Object.entries(exts).filter(([, v]) => v.on).map(([id, v]) => {
-      if (v.site || defSite) e911[`extension:${id}`] = v.site || defSite
-      return { id, new_number: v.new_number || undefined }
-    })
-    const didIds = Object.entries(dids).filter(([, v]) => v.on).map(([id, v]) => {
-      if (v.site || defSite) e911[`did:${id}`] = v.site || defSite
-      return id
-    })
-    return { source_company_id: src, dest_company_id: dst, extensions, dids: didIds, objects: objs, e911 }
-  }, [exts, dids, objs, src, dst, defSite])
+    const extensions = Object.entries(exts).filter(([, v]) => v.on).map(([id, v]) => ({ id, new_number: v.new_number || undefined }))
+    const didIds = Object.entries(dids).filter(([, v]) => v.on).map(([id]) => id)
+    return { source_company_id: src, dest_company_id: dst, extensions, dids: didIds, objects: objs }
+  }, [exts, dids, objs, src, dst])
 
   // Tout changement de choix efface l'apercu : il faut le revoir avant de migrer
   useEffect(() => { setPreview(null) }, [payload])
@@ -86,12 +78,6 @@ export default function TenantMigration() {
   const muted = { fontSize: 13, color: 'var(--c-muted)' }
   const th = { textAlign: 'left', padding: '8px 10px', fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--c-border)', whiteSpace: 'nowrap' }
   const td = { padding: '8px 10px', borderBottom: '1px solid var(--c-border)', fontSize: 14, verticalAlign: 'middle' }
-  const addrSelect = (value, onChange) => (
-    <select value={value || defSite} onChange={e => onChange(e.target.value)} style={{ fontSize: 13, maxWidth: 320 }}>
-      {addrs.length === 0 && <option value="">— aucune adresse 911 —</option>}
-      {addrs.map(a => <option key={a.id} value={a.id}>{a.company} — {a.text}</option>)}
-    </select>
-  )
   const nOn = Object.values(exts).filter(v => v.on).length + Object.values(dids).filter(v => v.on).length
 
   return (
@@ -115,7 +101,7 @@ export default function TenantMigration() {
             <label>Tenant d'arrivée</label>
             <select value={dst} onChange={e => setDst(e.target.value)}>
               <option value="">— Choisir —</option>
-              {tenants.filter(t => t.company_id !== src).map(t => <option key={t.company_id} value={t.company_id}>{t.account_number} — {t.name}</option>)}
+              {dests.map(t => <option key={t.company_id} value={t.company_id}>{t.account_number} — {t.name}{t.new_tenant ? ' (maison mère, tenant créé à la migration)' : ''}</option>)}
             </select>
           </div>
         </div>
@@ -131,7 +117,7 @@ export default function TenantMigration() {
             {inv.extensions.length === 0 ? <div style={muted}>Aucun poste.</div> : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr>{['', 'Poste', 'Nom', 'Téléphone', 'Messages vocaux', '911 actuel', 'Nouveau numéro', '911 à l\'arrivée'].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
+                  <thead><tr>{['', 'Poste', 'Nom', 'Téléphone', 'Messages vocaux', '911', 'Nouveau numéro'].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
                   <tbody>
                     {inv.extensions.map(e => {
                       const v = exts[e.id] || {}
@@ -145,7 +131,6 @@ export default function TenantMigration() {
                           <td style={td}>{e.voicemail_messages || <span style={muted}>0</span>}</td>
                           <td style={{ ...td, ...muted }}>{e.e911?.text || '—'}</td>
                           <td style={td}>{v.on && <input value={v.new_number ?? ''} placeholder={e.extension} onChange={x => set({ new_number: x.target.value })} style={{ width: 80, fontSize: 13 }} />}</td>
-                          <td style={td}>{v.on && dst && addrSelect(v.site, site => set({ site }))}</td>
                         </tr>
                       )
                     })}
@@ -160,7 +145,7 @@ export default function TenantMigration() {
             {inv.dids.length === 0 ? <div style={muted}>Aucun numéro.</div> : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                  <thead><tr>{['', 'Numéro', 'Note', 'Destination', '911 actuel', '911 à l\'arrivée'].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
+                  <thead><tr>{['', 'Numéro', 'Note', 'Destination', '911'].map(x => <th key={x} style={th}>{x}</th>)}</tr></thead>
                   <tbody>
                     {inv.dids.map(d => {
                       const v = dids[d.id] || {}
@@ -172,7 +157,6 @@ export default function TenantMigration() {
                           <td style={td}>{d.label || <span style={muted}>—</span>}</td>
                           <td style={{ ...td, ...muted }}>{d.destination_type}{d.destination ? ` : ${d.destination}` : ''}</td>
                           <td style={{ ...td, ...muted }}>{d.e911?.text || '—'}</td>
-                          <td style={td}>{v.on && dst && addrSelect(v.site, site => set({ site }))}</td>
                         </tr>
                       )
                     })}
