@@ -4,15 +4,17 @@ Regles de Philippe :
 - plusieurs niveaux ; seules les boucles sont refusees ;
 - facturee a elle-meme, sauf si on choisit une de ses maisons meres (bill_to_company_id) ;
 - la succursale tombe dans le tenant de sa maison mere : son adresse 911 y est ajoutee, prise de son adresse ;
-- seule la succursale a un tenant -> il passe a la maison mere (le tenant SIPV ne change pas, seule la fiche qui le porte) ;
-- les deux ont un tenant, ou on decoche une succursale qui partage le tenant de sa maison mere -> alerte (la telephonie
-  devra etre migree, TASK-051) ; la liaison se fait quand meme, la telephonie reste ou elle est.
+- chaque compagnie garde son numero de compte ERPCRM ; on ne les echange jamais (2026-10-14, Philippe : « pas de
+  tricherie, on migre ») ;
+- la succursale a son propre tenant (que la maison mere en ait un ou pas), ou on decoche une succursale qui partage le
+  tenant de sa maison mere -> alerte (la telephonie devra etre migree, TASK-051) ; la liaison se fait quand meme, la
+  telephonie reste ou elle est.
 """
 import re
 import uuid
 import httpx
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import sipv_client
@@ -82,27 +84,6 @@ async def sync_branch_site(db: AsyncSession, branch: Company) -> str | None:
     return None
 
 
-async def transfer_tenant(db: AsyncSession, branch: Company, parent: Company) -> None:
-    """Seule la succursale a un tenant : il passe a la maison mere. Sur SIPV le tenant ne change pas (postes, numeros,
-    911 intacts) ; il est seulement rattache a la fiche de la maison mere."""
-    try:
-        await sipv_client.sync_company(account_number=branch.account_number, company_name=parent.name,
-                                       erpcrm_company_id=str(parent.id), is_active=True)
-    except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"SIPV injoignable : {e}")
-    parent.sipv_enabled, parent.sipv_tenant_id, parent.account_number = True, branch.sipv_tenant_id, branch.account_number
-    branch.sipv_enabled, branch.sipv_tenant_id, branch.account_number = False, None, None
-    # Les adresses 911 du tenant suivent ; celle de la succursale elle-meme reste liee a sa fiche
-    for s in (await db.execute(select(CompanySite).where(CompanySite.company_id == branch.id))).scalars().all():
-        s.company_id = parent.id
-        if s.branch_company_id is None and s.is_primary:
-            s.branch_company_id = branch.id
-    from app.models.telephony import DID, Extension
-    from app.models.cdr_report import CdrReportSchedule
-    for model in (DID, Extension, CdrReportSchedule):
-        await db.execute(update(model).where(model.company_id == branch.id).values(company_id=parent.id))
-
-
 def _alert(text: str):
     raise HTTPException(status_code=409, detail={"alert": text})
 
@@ -142,6 +123,10 @@ async def set_parent(db: AsyncSession, co: Company, parent_id, bill_to_id, confi
                 _alert(f"{co.name} et {new_holder.name} ont chacune leur tenant téléphonique. Les compagnies seront liées, "
                        f"mais la téléphonie de {co.name} devra être migrée vers le tenant de {new_holder.name}. "
                        "Rien ne change dans sa téléphonie en attendant.")
+            if parent and has_tenant(co) and not new_holder:
+                _alert(f"{co.name} a son tenant téléphonique ({co.account_number}), mais {parent.name} n'en a pas. Les compagnies "
+                       f"seront liées et chacune garde son numéro ; la téléphonie de {co.name} devra être migrée vers un tenant "
+                       f"de {parent.name} ({parent.account_number}). Rien ne change dans sa téléphonie en attendant.")
             if shares and (new_holder is None or new_holder.id != old_holder.id):
                 _alert(f"Les postes, numéros et l'adresse 911 de {co.name} sont dans le tenant de {old_holder.name}. "
                        f"Sa téléphonie devra être migrée vers {'son propre tenant' if not parent else 'le tenant de ' + (new_holder.name if new_holder else parent.name)}. "
@@ -161,10 +146,7 @@ async def set_parent(db: AsyncSession, co: Company, parent_id, bill_to_id, confi
     co.parent_company_id, co.bill_to_company_id = parent_id, new_bill_to
 
     if changing:
-        if parent and has_tenant(co) and not new_holder:
-            await transfer_tenant(db, co, parent)
-            warnings.append(f"Le tenant téléphonique de {co.name} est maintenant celui de {parent.name}.")
-        elif parent and not has_tenant(co) and new_holder and not shares:
+        if parent and not has_tenant(co) and new_holder and not shares:
             w = await sync_branch_site(db, co)
             if w:
                 warnings.append(w)
