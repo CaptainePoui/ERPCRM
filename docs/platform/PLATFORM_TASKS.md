@@ -580,6 +580,7 @@ Date de demande : 2026-10-14 (Philippe, en découvrant les factures HRH 2021 et 
 Date(s) de travail : —
 
 - Pas commencé. Piste : comme les rappels de déclaration de taxes (`core/tax_reminders.py`, tâche dans le module Tâches), une tâche/rappel hebdomadaire qui liste les brouillons et leur âge.
+- Ajout de Philippe (2026-10-14) : « il faudrait avoir un moyen de mettre donner pour ne pas que les brouillons que je veux donner pop à chaque semaine » — une facture qu'il décide d'offrir au client (ex. J. Lavoie INV-000675) doit sortir du rappel, sans entrer dans les taxes ni dans le solde du client, et rester visible dans l'historique comme offerte.
 
 ### TASK-005.17 [x] PDF à télécharger : facture, avoir, devis, entente d'échange (troc)
 Date de demande : 2026-10-08 (Philippe : « sur les factures ou avoirs ou ententes j'aimerais pouvoir en faire des PDF à télécharger » ; « je veux des PDF pour tout échange : facture, avoir, devis, entente (troc) »)
