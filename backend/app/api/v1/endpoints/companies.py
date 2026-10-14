@@ -1682,3 +1682,92 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
         },
         "transactions": rows,
     }
+
+
+# ── Dossier de la compagnie (TASK-002.7, 2026-10-14) ─────────────────────────────────────────────────────────────
+# Philippe : « tout ce qui a rapport avec la compagnie, rassemblé… des liens : si le CDR est dans SIPV, le lien va les
+# chercher instantanément ». Aucune copie : chaque section est lue à l'ouverture là où elle vit (ERPCRM ou SIPV) ; une
+# source injoignable n'empêche pas les autres (« indisponible » dans sa section).
+@router.get("/{company_id}/dossier")
+async def company_dossier(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    from sqlalchemy import func
+    from app.models.ticket import Ticket
+    from app.models.invoice import Invoice
+    from app.models.mailbox import MailMessage, Mailbox
+    from app.models.barter import BarterExchange, BarterFile
+    from app.api.v1.endpoints.mail import _visible
+    co = await db.get(Company, company_id)
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    out: dict = {"company": {"id": str(co.id), "name": co.name, "account_number": co.account_number}}
+
+    n = (await db.execute(select(func.count()).select_from(Ticket).where(Ticket.company_id == company_id))).scalar()
+    rows = (await db.execute(select(Ticket).where(Ticket.company_id == company_id).order_by(Ticket.created_at.desc()).limit(5))).scalars().all()
+    out["tickets"] = {"count": n, "items": [{"id": str(t.id), "title": t.title, "status": t.status,
+                                             "date": t.created_at.isoformat() if t.created_at else None} for t in rows]}
+
+    n = (await db.execute(select(func.count()).select_from(Invoice).where(Invoice.company_id == company_id))).scalar()
+    rows = (await db.execute(select(Invoice).where(Invoice.company_id == company_id).order_by(Invoice.issue_date.desc()).limit(5))).scalars().all()
+    out["invoices"] = {"count": n, "items": [{"id": str(i.id), "number": i.number, "status": i.status, "total": str(i.total),
+                                              "date": i.issue_date.isoformat() if i.issue_date else None} for i in rows]}
+
+    mq = select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(MailMessage.company_id == company_id, _visible(user))
+    n = (await db.execute(select(func.count()).select_from(mq.subquery()))).scalar()
+    rows = (await db.execute(mq.order_by(MailMessage.sent_at.desc().nulls_last()).limit(5))).scalars().all()
+    out["mails"] = {"count": n, "items": [{"id": str(m.id), "subject": m.subject or "(sans objet)",
+                                           "date": m.sent_at.isoformat() if m.sent_at else None} for m in rows]}
+
+    rows = (await db.execute(select(BarterFile).join(BarterExchange, BarterExchange.id == BarterFile.barter_id)
+                             .where(BarterExchange.company_id == company_id).order_by(BarterFile.created_at.desc()))).scalars().all()
+    out["agreements"] = {"count": len(rows), "items": [{"id": str(f.id), "filename": f.filename,
+                                                        "date": f.created_at.isoformat() if f.created_at else None} for f in rows[:5]]}
+
+    n = (await db.execute(select(func.count()).select_from(InstallationPhoto).where(InstallationPhoto.company_id == company_id))).scalar()
+    out["photos"] = {"count": n}
+
+    # SIPV, en direct
+    async def live(key, fn):
+        try:
+            out[key] = await fn()
+        except Exception:
+            out[key] = {"unavailable": True}
+    tenant = str(co.sipv_tenant_id) if co.sipv_enabled and co.sipv_tenant_id else None
+    acct = co.account_number
+
+    async def provisioning():
+        tpls = []
+        if tenant:
+            code, data = await sipv_client.provisioning("GET", f"/button-templates/tenant/{tenant}")
+            tpls = data if code == 200 else []
+        wps = []
+        if acct:
+            code, data = await sipv_client.provisioning("GET", f"/wallpapers?account={acct}")
+            wps = [w for w in (data or []) if not w.get("global")] if code == 200 else []
+        groups = {}
+        for w in wps:
+            groups.setdefault(w["group_id"], w)
+        return {"templates": [{"id": t["id"], "name": t["name"], "phone_model": t.get("phone_model"), "is_default": t.get("is_default"),
+                               "phones": t.get("phones")} for t in tpls],
+                "wallpapers": [{"id": g["id"], "name": g["name"], "is_default": g.get("is_default")} for g in groups.values()]}
+    await live("provisioning", provisioning)
+
+    async def calls():
+        if not tenant:
+            return {"count": 0, "items": []}
+        data = await sipv_client.list_cdr(tenant, page=1, page_size=5)
+        return {"count": data.get("total", 0), "items": [{"date": c.get("start_time"), "src": c.get("src"), "dst": c.get("dst"),
+                                                         "duration": c.get("billsec"), "direction": c.get("direction")} for c in data.get("items", [])]}
+    await live("calls", calls)
+
+    async def recordings():
+        if not tenant:
+            return {"count": 0, "items": []}
+        async with sipv_client._client() as client:
+            r = await client.get(f"{sipv_client.settings.SIPV_API_URL}/api/v1/recordings/tenant/{tenant}", params={"limit": 1000},
+                                 headers=sipv_client._headers())
+            r.raise_for_status()
+            data = r.json()
+        return {"count": len(data), "items": [{"id": x["id"], "date": x.get("started_at"), "caller": x.get("caller"), "callee": x.get("callee"),
+                                               "duration": x.get("duration")} for x in data[:5]]}
+    await live("recordings", recordings)
+    return out
