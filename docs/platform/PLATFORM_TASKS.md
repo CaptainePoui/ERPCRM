@@ -175,6 +175,12 @@ Date(s) de travail : —
 - Constat : aucun historique de nom aujourd'hui. Construction Nationale : ancien nom « Patio Design » en note interne + règle de bénéficiaire « PATIO DESIGN MONTREA » (TASK-042.2) ; HBA → HB Architectes : règle seulement. Audacie et « Guimond Lavallée Inc. » = deux fiches actives pour la même compagnie (factures de l'ancien logiciel sous Guimond Lavallée, ex. 1312).
 - À faire : au changement du nom d'une compagnie, fenêtre « Changement de nom / achat ? » → l'ancien nom est gardé avec ses dates (pas une copie : la fiche reste la même, identité = id interne) ; la Banque, l'historique de l'ancien logiciel et la recherche reconnaissent l'ancien ET le nouveau nom pendant la transition. Regrouper deux fiches existantes de la même compagnie (Guimond Lavallée → Audacie) : factures, paiements, contacts déplacés vers une seule, l'autre nom gardé comme ancien nom. Sauvegarde avant, montré à Philippe avant d'appliquer.
 
+### TASK-002.9 [ ] Tout consulter dans la fiche du client, sans en sortir
+Date de demande : 2026-10-15 (Philippe : « je veux ça dans chaque client… Paiements reçus c'est un regroupement… quand je clique sur une entreprise, Transactions, une facture, je suis déplacé dans l'onglet Factures, je suis sorti du client, je n'aime pas ça du tout… on va trouver un système où je vais pouvoir tout consulter dans le client et rester dans le client »)
+Date(s) de travail : —
+
+- Principe : les données d'un client vivent dans sa fiche ; Ventes > Factures / Paiements reçus ne sont que des regroupements. Ouvrir une facture, un paiement, un chèque depuis la fiche le montre dans la fiche (retour = la fiche, onglet conservé).
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
