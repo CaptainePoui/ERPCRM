@@ -371,6 +371,10 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
     if updates.get("barter_settlement"):
         from app.api.v1.endpoints.settings import require_barter
         await require_barter(db)
+    if updates.get("status") in ("payee", "partiellement_payee") and updates.get("status") != inv.status:
+        # 2026-10-15 (Philippe : « je n'accepte pas d'argent… impossible de le payer autrement qu'en le payant ») :
+        # « payée » se calcule seulement par les paiements reçus et les avoirs -- jamais a la main
+        raise HTTPException(status_code=400, detail="Une facture devient payée seulement par un paiement reçu ou un avoir")
     if updates.get("status") == "brouillon" and inv.status != "brouillon":
         await _check_can_revert_to_draft(inv, db)
     if updates.get("status") == "annulee" and inv.status != "annulee":

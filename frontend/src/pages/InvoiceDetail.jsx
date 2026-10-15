@@ -21,8 +21,8 @@ const STATUS_LABELS = {
 const STATUS_TRANSITIONS = {
   brouillon: ['envoyee', 'annulee'],
   // « brouillon » : refusé par le serveur si un paiement est confirmé ou si la période de taxes est déclarée (TASK-005.8)
-  envoyee:   ['brouillon', 'payee', 'en_retard', 'annulee'],
-  en_retard: ['brouillon', 'payee', 'annulee'],
+  envoyee:   ['brouillon', 'en_retard', 'annulee'],   // « payée » : seulement par un paiement (2026-10-15)
+  en_retard: ['brouillon', 'annulee'],
   payee:     [],
   // Statut calcule par les paiements (TASK-005.4) : pas de transition manuelle
   partiellement_payee: [],
@@ -237,7 +237,12 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
-  const canCashManually = !isCredit && !['brouillon', 'annulee', 'payee'].includes(inv.status) && inv.total - confirmedPaid > 0.005
+  const canBarter = features.barter && !isCredit && !inv.late_fee_for_id && !['payee', 'annulee'].includes(inv.status)
+  const gearItems = [
+    ...(canOffer ? [['Offrir au client', () => offer(true)]] : []),
+    ...(inv.offered_at ? [["Annuler l'offre", () => offer(false)]] : []),
+    ...(canBarter ? [[inv.barter_settlement ? "Retirer de l'échange" : 'Régler en échange', () => saveField('barter_settlement', !inv.barter_settlement)]] : []),
+  ]
 
   return (
     <div className={embedded ? '' : 'page'}>
@@ -262,22 +267,22 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               → {isCredit && t === 'envoyee' ? 'Émettre' : STATUS_LABELS[t]?.label}
             </button>
           ))}
-          {canOffer && <button className="btn-secondary" onClick={() => offer(true)} style={{ fontSize: 12 }}>Offrir au client</button>}
-          {inv.offered_at && <button className="btn-secondary" onClick={() => offer(false)} style={{ fontSize: 12 }}>Annuler l'offre</button>}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
           <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
-          {canCashManually && (
+          {/* Options discretes (Philippe : « offert et échange dans un engrenage discret ») -- pas d'encaissement a la main :
+              un paiement ne vient que du numerique (banque, Interac, carte) */}
+          {gearItems.length > 0 && (
             <div style={{ position: 'relative' }}>
-              <button className="btn-secondary" onClick={() => setMoreOpen(o => !o)} style={{ fontSize: 12 }} title="Autres actions">⋯</button>
+              <button className="btn-secondary" onClick={() => setMoreOpen(o => !o)} style={{ fontSize: 13, padding: '4px 9px' }} title="Options">⚙</button>
               {moreOpen && (
-                <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.3)', minWidth: 300, padding: 4 }}>
-                  <button className="btn-secondary" style={{ width: '100%', textAlign: 'left', border: 'none', fontSize: 12 }}
-                    onClick={() => { setMoreOpen(false); if (confirm("Ce paiement n'est pas encore à la banque ?\nLes dépôts des relevés BNC se relient tout seuls aux factures — n'encaissez à la main que le comptant ou un paiement à noter avant le relevé.")) setShowAddPayment(true) }}>
-                    Encaisser à la main (comptant, chèque remis en main propre…)
-                  </button>
+                <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.3)', minWidth: 260, padding: 4 }}>
+                  {gearItems.map(([label, fn]) => (
+                    <button key={label} className="btn-secondary" style={{ width: '100%', textAlign: 'left', border: 'none', fontSize: 12 }}
+                      onClick={() => { setMoreOpen(false); fn() }}>{label}</button>
+                  ))}
                 </div>
               )}
             </div>
@@ -302,12 +307,6 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
             <div className="inv-info-row">
               <span>Avis de retard pour</span>
               <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => go(inv.late_fee_for_id)}>Voir la facture en retard</strong>
-            </div>
-          )}
-          {features.barter && !inv.credit_of_id && !inv.late_fee_for_id && (
-            <div className="inv-info-row">
-              <span title="Une facture à régler en troc n'a jamais de frais de retard">À régler en troc</span>
-              <input type="checkbox" checked={!!inv.barter_settlement} onChange={e => saveField('barter_settlement', e.target.checked)} />
             </div>
           )}
           <div className="inv-info-row">
