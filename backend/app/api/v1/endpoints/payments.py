@@ -47,6 +47,7 @@ class PaymentOut(BaseModel):
     source: str
     reference: str | None
     kind: str = "payment"   # payment | credit (avoir applique -- se retire par /payments/credit-allocations/{id})
+    document_count: int = 0  # cheques / pieces attaches (TASK-005.24)
 
 
 class PaymentCreate(BaseModel):
@@ -337,6 +338,10 @@ async def list_payments(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     )
     payments = result.scalars().unique().all()
     out = [_payment_out(cp, invoice_id) for cp in payments]
+    docs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).where(PaymentDocument.payment_id.in_([cp.id for cp in payments]))
+                                  .group_by(PaymentDocument.payment_id))).all()) if payments else {}
+    for o in out:
+        o.document_count = docs.get(o.id, 0)
     # Avoirs appliques sur cette facture
     for ca, credit in (await db.execute(
         select(CreditAllocation, Invoice).join(Invoice, Invoice.id == CreditAllocation.credit_invoice_id)

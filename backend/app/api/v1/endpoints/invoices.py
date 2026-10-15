@@ -728,19 +728,40 @@ async def generate_next(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
     return await _build_out(next_inv, db)
 
 
-@router.get("/{invoice_id}/pdf")
-async def download_invoice_pdf(invoice_id: uuid.UUID, generated: bool = Query(default=False), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    """PDF d'une facture : le document d'origine s'il existe (TASK-005.23), sinon genere (etat de paiement courant).
-    ?generated=1 : toujours le PDF genere par ERPCRM."""
+async def _invoice_pdf_bytes(invoice_id, db) -> tuple:
+    """Un seul document (Philippe, 2026-10-15 : « PDF c'est tout ») : l'original de l'ancien logiciel s'il existe
+    (TASK-005.23), sinon le PDF d'ERPCRM (TASK-005.20)."""
     from app.core.invoice_pdf import generate_invoice_pdf
     from app.core.invoice_originals import original_bytes
     inv = await db.get(Invoice, invoice_id)
-    pdf_bytes = None if generated else original_bytes(inv)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    pdf_bytes = original_bytes(inv)
     if pdf_bytes is None:
         try:
             pdf_bytes = await generate_invoice_pdf(invoice_id, db)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e))
+    return inv, pdf_bytes
+
+
+@router.get("/{invoice_id}/preview")
+async def preview_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Le document affiche dans la fiche de la facture : chaque page du PDF en image (fiable partout, cellulaire compris)."""
+    import base64, subprocess, tempfile
+    from pathlib import Path
+    _inv, pdf_bytes = await _invoice_pdf_bytes(invoice_id, db)
+    with tempfile.TemporaryDirectory() as tmp:
+        (Path(tmp) / "f.pdf").write_bytes(pdf_bytes)
+        subprocess.run(["pdftoppm", "-r", "110", "-png", f"{tmp}/f.pdf", f"{tmp}/p"], check=True, capture_output=True)
+        pages = ["data:image/png;base64," + base64.b64encode(p.read_bytes()).decode() for p in sorted(Path(tmp).glob("p-*.png"))]
+    return {"pages": pages}
+
+
+@router.get("/{invoice_id}/pdf")
+async def download_invoice_pdf(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """PDF d'une facture : le document d'origine s'il existe, sinon celui d'ERPCRM."""
+    inv, pdf_bytes = await _invoice_pdf_bytes(invoice_id, db)
     filename = f"{'avoir' if inv and inv.credit_of_id else 'facture'}-{inv.number if inv else invoice_id}.pdf"
     return Response(
         content=pdf_bytes,

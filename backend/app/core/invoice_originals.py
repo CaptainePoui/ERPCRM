@@ -3,7 +3,7 @@
 Les factures de l'ancien logiciel (et de QuickBooks, reprises dedans) gardent le document exact que le client a recu :
 fichier dans storage/invoice_originals/ (hors du dossier public /uploads, inclus dans la sauvegarde), nom dans
 invoices.original_pdf. Quand il existe, c'est lui que le portail et le bouton PDF donnent ; le PDF genere par ERPCRM
-reste disponible (?generated=1). Philippe : « oui ce serait cool et on les a ».
+n'est plus offert a cote (2026-10-15, « PDF c'est tout »). Philippe : « oui ce serait cool et on les a ».
 """
 from pathlib import Path
 

@@ -7,6 +7,7 @@ import { todayIso } from '../utils/date'
 import useFeatures from '../hooks/useFeatures'
 import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
+import PaymentModal from '../components/PaymentModal'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -69,6 +70,8 @@ export default function InvoiceDetail() {
   const [catalogue, setCatalogue] = useState([])
   const [addingLine, setAddingLine] = useState(false)
   const [editingLine, setEditingLine] = useState(null)
+  const [editingLines, setEditingLines] = useState(false)   // TASK-005.20 : lignes seulement en « Modifier »
+  const [openPayment, setOpenPayment] = useState(null)      // fiche du paiement (cheques)
   const [actioning, setActioning] = useState(false)
   const [payments, setPayments] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
@@ -252,9 +255,7 @@ export default function InvoiceDetail() {
           {inv.offered_at && <button className="btn-secondary" onClick={() => offer(false)} style={{ fontSize: 12 }}>Annuler l'offre</button>}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
-          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}
-            title={inv.has_original_pdf ? "Document d'origine, tel que reçu par le client" : undefined}>⬇ {inv.has_original_pdf ? "PDF d'origine" : 'PDF'}</button>
-          {inv.has_original_pdf && <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf?generated=1`, `facture-${inv.number}-erpcrm.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF ERPCRM</button>}
+          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
@@ -362,11 +363,24 @@ export default function InvoiceDetail() {
         </div>
       </div>
 
-      {/* Lignes */}
+      {/* La facture elle-meme (TASK-005.20, Philippe : « je veux la facture elle-même ») : le PDF que recoit le client,
+          l'original quand il existe ; les lignes ne s'affichent que pour modifier un brouillon */}
+      {!editingLines && (
+        <div className="inv-lines-section">
+          <div className="inv-section-title" style={{ marginBottom: 12 }}>
+            {isCredit ? 'Avoir' : 'Facture'}
+            {editable && <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setEditingLines(true)}>Modifier</button>}
+          </div>
+          <InvoiceDocument id={id} version={`${inv.status}|${inv.total}|${inv.lines.length}|${inv.notes || ''}|${confirmedPaid}`} />
+        </div>
+      )}
+
+      {editingLines && (
       <div className="inv-lines-section">
         <div className="inv-section-title" style={{ marginBottom: 12 }}>
           Lignes de facturation
           {editable && <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setAddingLine(true)}>+ Ajouter</button>}
+          <button className="btn-secondary" style={{ marginLeft: 8, padding: '5px 12px', fontSize: 12 }} onClick={() => setEditingLines(false)}>Terminé</button>
         </div>
 
         <table className="inv-lines-table">
@@ -416,6 +430,9 @@ export default function InvoiceDetail() {
           <div className="inv-total-row inv-grand-total"><span>Total</span><span>{fmt(inv.total)}</span></div>
         </div>
       </div>
+      )}
+
+      {openPayment && <PaymentModal paymentId={openPayment} onClose={() => setOpenPayment(null)} />}
 
       {addingLine && (
         <AddLineModal
@@ -468,7 +485,7 @@ export default function InvoiceDetail() {
         <div className="inv-lines-section" style={{ marginTop: 16 }}>
           <div className="inv-section-title" style={{ marginBottom: 12 }}>
             Paiements et avoirs reçus
-            <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowAddPayment(true)}>+ Encaisser</button>
+            <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowAddPayment(true)} title="Enregistrer à la main un paiement reçu pour cette facture (chèque, comptant, virement…) — les dépôts de la banque se relient tout seuls">+ Encaisser</button>
             {openCredits.length > 0 && inv.total - confirmedPaid > 0.005 && (
               <button className="btn-secondary" style={{ marginLeft: 8, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowApplyCredit(true)}>
                 Appliquer un avoir ({fmt(openCredits.reduce((t, c) => t + c.remaining, 0))} disponible)
@@ -489,7 +506,9 @@ export default function InvoiceDetail() {
               {payments.map(p => (
                 <tr key={p.id} style={p.status === 'confirmed' ? undefined : { color: 'var(--c-muted)' }}>
                   <td>{p.paid_at ? new Date(p.paid_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
-                  <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}{p.reference ? ` · ${p.reference}` : ''}</td>
+                  <td>{p.method_name}{p.card_last4 ? ` ••••${p.card_last4}` : ''}{p.reference ? ` · ${p.reference}` : ''}
+                    {p.kind !== 'credit' && <button className="btn-secondary" style={{ padding: '1px 8px', fontSize: 11, marginLeft: 8 }} onClick={() => setOpenPayment(p.id)}>
+                      {p.document_count > 0 ? (p.document_count > 1 ? 'Voir les chèques' : 'Voir le chèque') : 'Détails'}</button>}</td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(p.net_amount)}</td>
                   <td>
                     <span style={{ fontSize: 12, fontWeight: 600, color: PAYMENT_STATUS[p.status]?.color || '#6B7280' }}>{PAYMENT_STATUS[p.status]?.label || p.status}</span>
@@ -914,6 +933,27 @@ function AddLineModal({ catalogue, onClose, onSave }) {
           <button className="btn-primary" onClick={save} disabled={saving || !form.description.trim()}>{saving ? '...' : 'Ajouter'}</button>
         </div>
       </div>
+    </div>
+  )
+}
+
+
+// Le document lui-meme, comme le recoit le client (original de l'ancien logiciel s'il existe, sinon le PDF d'ERPCRM) ;
+// recharge quand la facture change (version)
+function InvoiceDocument({ id, version }) {
+  const [pages, setPages] = useState(null)
+  const [err, setErr] = useState(false)
+  useEffect(() => {
+    let alive = true
+    setErr(false)
+    api.get(`/v1/invoices/${id}/preview`).then(r => alive && setPages(r.data.pages)).catch(() => alive && setErr(true))
+    return () => { alive = false }
+  }, [id, version])
+  if (err) return <div style={{ color: 'var(--c-faint)', padding: 16 }}>Document non disponible.</div>
+  if (!pages) return <div className="loading">Chargement du document...</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, background: 'var(--c-surface-2)', borderRadius: 8, padding: 16 }}>
+      {pages.map((src, n) => <img key={n} src={src} alt={`Page ${n + 1}`} style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 4, boxShadow: '0 4px 18px rgba(0,0,0,.25)' }} />)}
     </div>
   )
 }
