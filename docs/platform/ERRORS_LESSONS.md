@@ -534,6 +534,20 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : avant de choisir une heuristique de rapprochement, la mesurer sur les cas dont on connaît la vérité (ici les paiements datés) ; un script relançable doit reconstruire depuis la base tout ce qu'il considère « déjà utilisé » ; « montant réglé inchangé » ne prouve pas que les dates/attributions sont justes — vérifier aussi un client réel de bout en bout.
 
+## TASK-042.8 — Chèques jumeaux : jumelage déduit appliqué, contredit au lot suivant
+
+**Date** : 2026-10-15
+
+**On croyait** : que deux chèques de 114,98 $ (Clinique #822 du 2020-02-29, Pro-Sin #8056 du 2020-04-09) allaient dans les deux dépôts de 114,98 $ (2020-04-17, 2020-05-27), chacun au plus proche après sa date — appliqué avec la mention « jumelage déduit ».
+
+**Preuve** : le lot suivant contenait un 3e chèque de 114,98 $ (J. Carrier #112874 du 2020-05-20), qui ne peut aller que sur le dépôt du 2020-05-27.
+
+**Cause réelle** : l'ensemble des chèques n'était pas connu (Philippe numérise par lots) ; « deux chèques, deux dépôts » supposait qu'il n'y en aurait pas d'autres.
+
+**Correction** : 2020-05-27 → J. Carrier (chèque attaché) ; le 2020-04-17 reste à confirmer (Pro-Sin OU Clinique, note sur le paiement) ; chèque de la Clinique remis en attente.
+
+**Leçon (à ne pas refaire)** : quand des pièces arrivent par lots, ne jamais appliquer un jumelage qui dépend de l'absence d'autres pièces — le garder en attente jusqu'à la fin de la période ou la réponse de Philippe ; un montant récurrent (114,98 $ = prix de plusieurs clients) n'identifie rien.
+
 ## TASK-021.1 — Profils périodiques importés un jour après les factures : cycle du 2 octobre perdu
 
 **Date** : 2026-10-14 (erreur du 2026-10-02)
