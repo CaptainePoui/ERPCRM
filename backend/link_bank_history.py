@@ -49,6 +49,12 @@ EXTRA = {"ACVRQ Nesly Dieudonné": "ACVRQ", "Vendu RÉSIDENCE LA ROSIÈRE INC. F
          "Les Systèmes D'écran Strong-MDI": "STRONG"}     # Oxygene : compagnie a part dans ERPCRM (appris des factures)
 
 
+# date du paiement dans l'historique de l'ancien logiciel vs date du depot BNC : mesure du 2026-10-15 sur les depots relies,
+# le paiement est date du jour du depot ou 1 a 5 jours AVANT (cartes, fins de semaine), jamais plus d'un jour apres
+# (avant : -3 / +7 -> Waterco 318,61 $ paye le 10, depose le 14, sans client)
+HIST_MIN, HIST_MAX = -6, 2
+
+
 def zoho_entries():
     out = []
     for r in csv.DictReader(open(HISTORY, encoding="utf-8-sig")):
@@ -92,7 +98,7 @@ async def main(apply: bool):
         done = (await db.execute(select(BankTransaction).where(BankTransaction.amount > 0, BankTransaction.client_payment_id.is_not(None))
                                  .order_by(BankTransaction.posted_date))).scalars().all()
         for t in done:
-            zs = [z for z in zoho if not z["used"] and z["amount"] == Decimal(t.amount) and -3 <= (z["date"] - t.posted_date).days <= 7
+            zs = [z for z in zoho if not z["used"] and z["amount"] == Decimal(t.amount) and HIST_MIN <= (z["date"] - t.posted_date).days <= HIST_MAX
                   and company_of(z["client"]) == t.company_id]
             if zs:
                 min(zs, key=lambda z: abs((z["date"] - t.posted_date).days))["used"] = True
@@ -115,11 +121,11 @@ async def main(apply: bool):
         def client_of(tx):
             """(compagnie, source) du depot, ou (None, raison)."""
             amt, d0 = Decimal(tx.amount), tx.posted_date
-            zs = [z for z in zoho if not z["used"] and z["amount"] == amt and -3 <= (z["date"] - d0).days <= 7]
+            zs = [z for z in zoho if not z["used"] and z["amount"] == amt and HIST_MIN <= (z["date"] - d0).days <= HIST_MAX]
             clients = {company_of(z["client"]) for z in zs}
             group = None
             if not zs:                       # lot (cartes) : plusieurs paiements du meme jour qui font la somme
-                same = [z for z in zoho if not z["used"] and -1 <= (z["date"] - d0).days <= 3 and z["amount"] < amt]
+                same = [z for z in zoho if not z["used"] and HIST_MIN <= (z["date"] - d0).days <= HIST_MAX and z["amount"] < amt]
                 for k in (2, 3, 4):
                     hits = [c for c in itertools.combinations(same, k) if sum(z["amount"] for z in c) == amt]
                     if len(hits) == 1:
