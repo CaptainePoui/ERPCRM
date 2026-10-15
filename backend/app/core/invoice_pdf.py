@@ -170,7 +170,7 @@ def _esc(s) -> str:
 
 def _money(v) -> str:
     d = Decimal(str(v))
-    return f"{'-' if d < 0 else ''}${abs(d):,.2f}"
+    return f"{d:.2f} $"          # Philippe : « montant normal Québec 1234.56 »
 
 
 async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
