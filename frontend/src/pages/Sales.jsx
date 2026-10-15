@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
-import PaymentModal from '../components/PaymentModal'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
 
 // Menu Ventes (TASK-044, 2026-10-02) : pages ajoutees a cote de Devis / Factures / Recurrence
@@ -40,7 +39,6 @@ export function SalesPayments() {
   const [rows, setRows] = useState(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const [open, setOpen] = useState(null)        // TASK-005.24 : fiche du paiement (cheques)
   const reload = () => api.get('/v1/payments').then(r => setRows(r.data))
   useEffect(() => { reload() }, [])
   const q = search.trim().toLowerCase()
@@ -69,9 +67,9 @@ export function SalesPayments() {
               {shown.slice(0, 500).map(p => {
                 const [sl, sc] = STATUS[p.status] || [p.status, C.muted]
                 return (
-                  <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => setOpen(p.id)}>
+                  <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => navigate(`/companies/${p.company_id}?tab=transactions&paiement=${p.id}`)}>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(p.received_at)}</td>
-                    <td style={td}><span style={{ color: C.link, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); navigate(`/companies/${p.company_id}`) }}>{p.company_name}</span></td>
+                    <td style={td}><span style={{ color: C.link }}>{p.company_name}</span></td>
                     <td style={{ ...td, fontSize: 12 }}>
                       {p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : (p.invoice_numbers.join(', ') || EMPTY)}
                       {p.document_count > 0 && <span title="Chèque attaché" style={{ marginLeft: 6, color: C.muted }}>· {p.document_count} chèque{p.document_count > 1 ? 's' : ''}</span>}
@@ -89,7 +87,6 @@ export function SalesPayments() {
           {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premiers affichés — utilisez la recherche.</div>}
         </div>
       </div>
-      {open && <PaymentModal paymentId={open} onClose={() => setOpen(null)} onChanged={reload} />}
     </div>
   )
 }

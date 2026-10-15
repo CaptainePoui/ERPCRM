@@ -62,9 +62,14 @@ function fmtOpened(iso) {
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
-export default function InvoiceDetail() {
-  const { id } = useParams()
+// TASK-002.9 (Philippe : « tout consulter dans le client et rester dans le client ») : la facture s'affiche dans la fiche
+// de son client (embedded) ; ouverte par /invoices/:id, elle y est redirigee
+export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onOpenInvoice }) {
+  const params = useParams()
+  const id = invoiceId || params.id
   const navigate = useNavigate()
+  const go = otherId => embedded && onOpenInvoice ? onOpenInvoice(otherId) : navigate(`/invoices/${otherId}`)
+  const back = () => embedded && onBack ? onBack() : navigate('/invoices')
   const [inv, setInv] = useState(null)
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState([])
@@ -72,6 +77,7 @@ export default function InvoiceDetail() {
   const [editingLine, setEditingLine] = useState(null)
   const [editingLines, setEditingLines] = useState(false)   // TASK-005.20 : lignes seulement en « Modifier »
   const [openPayment, setOpenPayment] = useState(null)      // fiche du paiement (cheques)
+  const [moreOpen, setMoreOpen] = useState(false)           // menu « ⋯ Autres actions »
   const [actioning, setActioning] = useState(false)
   const [payments, setPayments] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
@@ -94,6 +100,10 @@ export default function InvoiceDetail() {
       api.get(`/v1/payments/invoice/${id}`),
       api.get('/v1/payments/methods'),
     ]).then(([r, c, p, m]) => {
+      if (!embedded && r.data.company_id) {
+        navigate(`/companies/${r.data.company_id}?tab=transactions&facture=${id}`, { replace: true })
+        return
+      }
       setInv(r.data)
       setCatalogue(c.data.filter(i => i.is_active))
       setPayments(p.data)
@@ -180,7 +190,7 @@ export default function InvoiceDetail() {
   async function deleteInvoice() {
     if (!confirm('Supprimer cette facture ?')) return
     await api.delete(`/v1/invoices/${id}`)
-    navigate('/invoices')
+    back()
   }
 
   async function toggleOpens() {
@@ -200,7 +210,7 @@ export default function InvoiceDetail() {
     setActioning(true)
     try {
       const r = await api.post(`/v1/invoices/${id}/credit`)
-      navigate(`/invoices/${r.data.id}`)
+      go(r.data.id)
     } finally { setActioning(false) }
   }
 
@@ -209,11 +219,11 @@ export default function InvoiceDetail() {
     setActioning(true)
     try {
       const r = await api.post(`/v1/invoices/${id}/generate-next`)
-      navigate(`/invoices/${r.data.id}`)
+      go(r.data.id)
     } finally { setActioning(false) }
   }
 
-  if (loading) return <div className="page"><div className="loading">Chargement...</div></div>
+  if (loading) return <div className={embedded ? '' : 'page'}><div className="loading">Chargement...</div></div>
   if (!inv) return null
 
   const confirmedPaid = payments.filter(p => p.status === 'confirmed').reduce((s, p) => s + p.net_amount, 0)
@@ -227,12 +237,13 @@ export default function InvoiceDetail() {
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
+  const canCashManually = !isCredit && !['brouillon', 'annulee', 'payee'].includes(inv.status) && inv.total - confirmedPaid > 0.005
 
   return (
-    <div className="page">
+    <div className={embedded ? '' : 'page'}>
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={() => navigate('/invoices')} style={{ padding: '6px 12px' }}>← Retour</button>
+          <button className="btn-secondary" onClick={back} style={{ padding: '6px 12px' }}>{embedded ? '← Transactions' : '← Retour'}</button>
           <div>
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
@@ -258,6 +269,19 @@ export default function InvoiceDetail() {
           <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
+          {canCashManually && (
+            <div style={{ position: 'relative' }}>
+              <button className="btn-secondary" onClick={() => setMoreOpen(o => !o)} style={{ fontSize: 12 }} title="Autres actions">⋯</button>
+              {moreOpen && (
+                <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.3)', minWidth: 300, padding: 4 }}>
+                  <button className="btn-secondary" style={{ width: '100%', textAlign: 'left', border: 'none', fontSize: 12 }}
+                    onClick={() => { setMoreOpen(false); if (confirm("Ce paiement n'est pas encore à la banque ?\nLes dépôts des relevés BNC se relient tout seuls aux factures — n'encaissez à la main que le comptant ou un paiement à noter avant le relevé.")) setShowAddPayment(true) }}>
+                    Encaisser à la main (comptant, chèque remis en main propre…)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
           {editable && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
         </div>
@@ -271,13 +295,13 @@ export default function InvoiceDetail() {
           {inv.credit_of_id && (
             <div className="inv-info-row">
               <span>Avoir pour</span>
-              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.credit_of_id}`)}>Voir facture originale</strong>
+              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => go(inv.credit_of_id)}>Voir facture originale</strong>
             </div>
           )}
           {inv.late_fee_for_id && (
             <div className="inv-info-row">
               <span>Avis de retard pour</span>
-              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${inv.late_fee_for_id}`)}>Voir la facture en retard</strong>
+              <strong style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => go(inv.late_fee_for_id)}>Voir la facture en retard</strong>
             </div>
           )}
           {features.barter && !inv.credit_of_id && !inv.late_fee_for_id && (
@@ -461,7 +485,7 @@ export default function InvoiceDetail() {
               {creditInfo.allocations.map(a => (
                 <tr key={a.id}>
                   <td>{a.applied_at ? new Date(a.applied_at + 'T00:00:00').toLocaleDateString('fr-CA') : '—'}</td>
-                  <td><span style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => navigate(`/invoices/${a.invoice_id}`)}>{a.invoice_number}</span></td>
+                  <td><span style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={() => go(a.invoice_id)}>{a.invoice_number}</span></td>
                   <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmt(a.amount)}</td>
                   <td><button className="inv-del-btn" title="Retirer l'application" onClick={() => removeCreditAllocation(a.id)}>✕</button></td>
                 </tr>
@@ -485,7 +509,7 @@ export default function InvoiceDetail() {
         <div className="inv-lines-section" style={{ marginTop: 16 }}>
           <div className="inv-section-title" style={{ marginBottom: 12 }}>
             Paiements et avoirs reçus
-            <button className="btn-primary" style={{ marginLeft: 12, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowAddPayment(true)} title="Enregistrer à la main un paiement reçu pour cette facture (chèque, comptant, virement…) — les dépôts de la banque se relient tout seuls">+ Encaisser</button>
+           
             {openCredits.length > 0 && inv.total - confirmedPaid > 0.005 && (
               <button className="btn-secondary" style={{ marginLeft: 8, padding: '5px 12px', fontSize: 12 }} onClick={() => setShowApplyCredit(true)}>
                 Appliquer un avoir ({fmt(openCredits.reduce((t, c) => t + c.remaining, 0))} disponible)

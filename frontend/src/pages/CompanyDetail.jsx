@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import PaymentModal from '../components/PaymentModal'
+import InvoiceDetail from './InvoiceDetail'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
@@ -351,12 +352,37 @@ function payState(t) {
   return { label: 'Non payée', color: 'var(--brand)' }
 }
 
-const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payées'], ['retard', 'En retard'], ['avoirs', 'Avoirs']]
+const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payées'], ['retard', 'En retard'], ['avoirs', 'Avoirs'], ['paiements', 'Paiements']]
 
-function TransactionsTab({ companyId, companyName, filter, setFilter }) {
+// Paiements recus du client (TASK-002.9) : date, montant, factures payees, depot BNC, cheques -- clic = fiche du paiement
+function ClientPaymentsList({ companyId, onOpen }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => { api.get('/v1/payments', { params: { company_id: companyId } }).then(r => setRows(r.data)) }, [companyId])
+  if (!rows) return <div className="loading">Chargement...</div>
+  const SRC = { zoho_import: 'Paiement antérieur', portal: 'Déclaré au portail', manual: 'Encaissé à la main', bank_import: 'Banque', gateway: 'Paiement en ligne', interac_email: 'Courriel Interac', barter: 'Troc' }
+  return (
+    <table className="cd-tx-table">
+      <thead><tr><th>Date</th><th>Paie</th><th>Mode</th><th>Origine</th><th>Chèque</th><th style={{ textAlign: 'right' }}>Montant</th></tr></thead>
+      <tbody>
+        {rows.map(p => (
+          <tr key={p.id} className="cd-tx-row" onClick={() => onOpen(p.id)} style={p.status === 'confirmed' ? undefined : { color: 'var(--c-faint)' }}>
+            <td style={{ whiteSpace: 'nowrap' }}>{fmtD(p.received_at)}</td>
+            <td style={{ fontWeight: 600 }}>{p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : (p.invoice_numbers.join(', ') || 'Aucune facture')}</td>
+            <td>{p.method_name}</td>
+            <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{SRC[p.source] || p.source}{p.bank_matched ? ' · vu en banque' : ''}{p.status !== 'confirmed' ? ` · ${p.status}` : ''}</td>
+            <td>{p.document_count > 0 ? <span className="cd-tx-badge" style={{ color: '#2563EB', borderColor: '#2563EB' }}>{p.document_count > 1 ? `${p.document_count} pièces` : 'Chèque'}</span> : ''}</td>
+            <td style={{ textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600 }}>{money(p.amount)}</td>
+          </tr>
+        ))}
+        {rows.length === 0 && <tr><td colSpan={6} className="empty-tab">Aucun paiement</td></tr>}
+      </tbody>
+    </table>
+  )
+}
+
+function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvoice, onOpenPayment }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
-  const [pay, setPay] = useState(null)          // TASK-005.24 : paiement d'une facture perdue (cheques)
   const reload = () => api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions))
   useEffect(() => { reload() }, [companyId])
   const live = t => t.status !== 'brouillon' && t.status !== 'annulee'
@@ -369,6 +395,14 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
   })
   // Selection multiple (TASK-046) : case, Ctrl+clic, Maj+clic -> barre d'actions en bas
   const sel = useRowSelection(shown)
+  if (filter === 'paiements') return (
+    <div>
+      <div className="filter-tabs" style={{ marginBottom: 12 }}>
+        {TX_FILTERS.map(([v, l]) => <button key={v} className={`filter-tab${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>{l}</button>)}
+      </div>
+      <ClientPaymentsList companyId={companyId} onOpen={onOpenPayment} />
+    </div>
+  )
   if (!rows) return <div className="loading">Chargement...</div>
   const picked = sel.visible.filter(t => t.kind !== 'lost').map(t => ({ ...t, company_id: companyId, company_name: companyName, is_credit: t.kind === 'credit' }))
   // Totaux sur les factures seulement : un avoir applique est deja compte dans le « Payé » de sa facture
@@ -396,7 +430,7 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
             {shown.map(t => {
               const st = payState(t)
               return (
-                <tr key={t.id} onClick={e => t.kind === 'lost' ? setPay(t.id) : sel.rowClick(e, t.id, () => navigate(`/invoices/${t.id}`))} onMouseDown={sel.noTextSelect}
+                <tr key={t.id} onClick={e => t.kind === 'lost' ? onOpenPayment(t.id) : sel.rowClick(e, t.id, () => onOpenInvoice(t.id))} onMouseDown={sel.noTextSelect}
                   className="cd-tx-row" style={sel.selected.has(t.id) ? { background: 'var(--c-tint-blue)' } : undefined}>
                   <td onClick={e => e.stopPropagation()}>{t.kind !== 'lost' && <input type="checkbox" checked={sel.selected.has(t.id)} onChange={e => sel.toggle(t.id, e.nativeEvent)} />}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtD(t.issue_date)}</td>
@@ -431,7 +465,6 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
         </table>
       </div>
       <BulkInvoiceBar items={picked} onClear={sel.clear} onDone={reload} />
-      {pay && <PaymentModal paymentId={pay} onClose={() => setPay(null)} onChanged={reload} />}
     </div>
   )
 }
@@ -445,12 +478,21 @@ export default function CompanyDetail({ isNew }) {
   const [tab, setTabState] = useState(initialTab)
   function setTab(i) {
     setTabState(i)
-    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); return next }, { replace: true })
+    setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); next.delete('facture'); return next }, { replace: true })
   }
   const slug = TAB_SLUGS[tab]
   const features = useFeatures()   // Echanges (troc) : onglet cache si l'option est decochee (Administration → Integrations)
   useEffect(() => { if (slug === 'echanges' && !features.loading && !features.barter) setTab(0) }, [slug, features.loading, features.barter])
   const [txFilter, setTxFilter] = useState('')   // filtre de l'onglet Transactions (ouvert depuis la vue d'ensemble)
+  // TASK-002.9 : facture et paiement ouverts DANS la fiche (?facture= / ?paiement=) -- on reste dans le client
+  const openInvoiceId = searchParams.get('facture')
+  const openPaymentId = searchParams.get('paiement')
+  const setParam = (key, value) => setSearchParams(prev => {
+    const next = new URLSearchParams(prev)
+    next.set('tab', 'transactions')
+    if (value) next.set(key, value); else next.delete(key)
+    return next
+  })
   const [company, setCompany] = useState(null)
   const [loading, setLoading] = useState(!isNew)
   const [statuses, setStatuses] = useState([])
@@ -683,7 +725,11 @@ export default function CompanyDetail({ isNew }) {
               </div>
             )}
 
-            {slug === 'transactions' && <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter} />}
+            {slug === 'transactions' && (openInvoiceId
+              ? <InvoiceDetail key={openInvoiceId} invoiceId={openInvoiceId} embedded onBack={() => setParam('facture', null)} onOpenInvoice={i => setParam('facture', i)} />
+              : <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter}
+                  onOpenInvoice={i => setParam('facture', i)} onOpenPayment={p => setParam('paiement', p)} />)}
+            {openPaymentId && <PaymentModal paymentId={openPaymentId} onClose={() => setParam('paiement', null)} />}
             {slug === 'echanges' && features.barter && <BarterTab companyId={id} companyName={c.name} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
