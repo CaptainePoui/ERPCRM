@@ -287,7 +287,7 @@ export default function InvoiceDetail() {
             </div>
           )}
           <div className="inv-info-row">
-            <span>Transmission</span>
+            <span>Envoi</span>
             <select value={inv.transmission_status || ''} onChange={e => saveField('transmission_status', e.target.value)}
               style={{ fontSize: 13, color: inv.transmission_status === 'non_transmise' ? 'var(--c-on-amber)' : undefined }}>
               {!inv.transmission_status && <option value="">Inconnue (importée)</option>}

@@ -93,17 +93,19 @@ _UPLOADS = Path(__file__).resolve().parents[2]
 # TASK-005.20 (2026-10-15) : presentation de l'ancien logiciel (Philippe : « je les trouvais bien ») -- logo et vendeur
 # a gauche, « FACTURE » + solde du a droite, Facturer a / dates, tableau # / Article & Description / Quantite / Taux /
 # Montant avec l'image de l'article et la description sous son nom, totaux jusqu'au solde du, remarques, conditions,
-# n° TPS/TVQ en pied de page -- avec une touche ERPCRM : Inter, bande de couleur, carte du solde, pastille d'etat.
+# n° TPS/TVQ en pied de page -- avec une touche ERPCRM : Inter, carte du solde, pastille d'etat, etampe PAYÉ (pas de bande de couleur : Philippe).
 _CSS2 = """
 @font-face { font-family: Inter; font-weight: 400; src: url("FONTS/Inter-400.woff2"); }
 @font-face { font-family: Inter; font-weight: 600; src: url("FONTS/Inter-600.woff2"); }
 @font-face { font-family: Inter; font-weight: 700; src: url("FONTS/Inter-700.woff2"); }
-@page { size: letter; margin: 14mm 14mm 18mm 14mm;
-  @bottom-left { content: "FOOTER"; font-family: Inter, sans-serif; font-size: 7pt; color: #94a3b8; }
-  @bottom-right { content: "Page " counter(page) " de " counter(pages); font-family: Inter, sans-serif; font-size: 7pt; color: #94a3b8; } }
+@page { size: letter; margin: 14mm 14mm 22mm 14mm;
+  @bottom-center { content: element(pagefoot); width: 100%; } }
+.pagefoot { position: running(pagefoot); width: 100%; font-family: Inter, sans-serif; color: #94a3b8; }
+.pagefoot .l1 { display: flex; justify-content: space-between; font-size: 7pt; }
+.pagefoot .l1 .pg::after { content: "Page " counter(page) " de " counter(pages); }
+.pagefoot .l2 { font-size: 6.2pt; margin-top: 2px; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: Inter, "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e293b; line-height: 1.45; }
-.bar { height: 5px; border-radius: 3px; background: linear-gradient(90deg, #1e3a8a, #2563eb 55%, #38bdf8); margin-bottom: 14px; }
 .top { display: flex; justify-content: space-between; align-items: flex-start; }
 .seller img { height: 52px; margin-bottom: 6px; }
 .seller .name { font-weight: 700; font-size: 10.5pt; color: #0f172a; }
@@ -120,7 +122,9 @@ body { font-family: Inter, "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e
 .due span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .due strong { font-size: 15pt; color: #0f172a; }
 .due.zero strong { color: #16a34a; }
-.meta { display: flex; justify-content: space-between; margin: 20px 0 14px; }
+.meta { display: flex; justify-content: space-between; margin: 20px 0 14px; position: relative; }
+.stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-16deg); border: 3px double #16a34a;
+  color: #16a34a; font-weight: 700; font-size: 26pt; letter-spacing: .14em; padding: 2px 18px; border-radius: 8px; opacity: .8; }
 .billto span, .dates span { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .billto .co { font-weight: 700; font-size: 10pt; color: #0f172a; margin-top: 2px; }
 .billto p { color: #334155; }
@@ -152,7 +156,6 @@ table.lines { width: 100%; border-collapse: collapse; }
 .notes { margin-top: 18px; page-break-inside: avoid; }
 .notes span { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .notes p { color: #334155; white-space: pre-line; margin-top: 2px; }
-.terms { margin-top: 18px; font-size: 6.5pt; color: #94a3b8; }
 """
 
 _STATUS = {"payee": ("PAYÉE", "paid"), "en_retard": ("EN RETARD", "late"), "partiellement_payee": ("PARTIELLEMENT PAYÉE", "part"),
@@ -165,7 +168,8 @@ def _esc(s) -> str:
 
 
 def _money(v) -> str:
-    return f"{Decimal(str(v)):,.2f} $".replace(",", " ").replace(".", ",")
+    d = Decimal(str(v))
+    return f"{'-' if d < 0 else ''}${abs(d):,.2f}"
 
 
 async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
@@ -235,27 +239,29 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 
     sums = f'<tr><td class="k">Sous-total</td><td>{_money(inv.subtotal)}</td></tr>'
     if inv.apply_tps:
-        sums += f'<tr><td class="k">TPS {f'{float(inv.tps_rate):.4g}'.replace('.', ',')} %</td><td>{_money(inv.tps_amount)}</td></tr>'
+        sums += f'<tr><td class="k">TPS {float(inv.tps_rate):.4g}%</td><td>{_money(inv.tps_amount)}</td></tr>'
     if inv.apply_tvq:
-        sums += f'<tr><td class="k">TVQ {f'{float(inv.tvq_rate):.4g}'.replace('.', ',')} %</td><td>{_money(inv.tvq_amount)}</td></tr>'
+        sums += f'<tr><td class="k">TVQ {float(inv.tvq_rate):.4g}%</td><td>{_money(inv.tvq_amount)}</td></tr>'
     sums += f'<tr class="total"><td class="k">Total</td><td>{_money(inv.total)}</td></tr>'
     if not is_credit:
         if paid:
-            sums += f'<tr><td class="k">Paiement effectué</td><td>−{_money(paid)}</td></tr>'
+            sums += f'<tr><td class="k">Paiement effectué</td><td>{_money(-paid)}</td></tr>'
         if credits:
-            sums += f'<tr><td class="k">Crédits appliqués</td><td>−{_money(credits)}</td></tr>'
+            sums += f'<tr><td class="k">Crédits appliqués</td><td>{_money(-credits)}</td></tr>'
         sums += f'<tr class="bal"><td class="k">Solde dû</td><td>{_money(balance)}</td></tr>'
 
     notes = f'<div class="notes"><span>Remarques</span><p>{_esc(inv.notes)}</p></div>' if inv.notes else ""
     terms_html = ""
     if not is_credit:
         from app.core import late_fees
-        terms_html = f'<div class="terms">{late_fees.terms_text(await late_fees.config(db))}</div>'
+        terms_html = _esc(late_fees.terms_text(await late_fees.config(db)))
     footer = " · ".join(x for x in [f"TPS {info['tps']}" if info["tps"] else "", f"TVQ {info['tvq']}" if info["tvq"] else ""] if x)
-    css = _CSS2.replace("FONTS/", (_BRAND / "fonts").as_uri() + "/").replace('"FOOTER"', '"' + footer.replace('"', "") + '"')
+    css = _CSS2.replace("FONTS/", (_BRAND / "fonts").as_uri() + "/")
+    pagefoot = (f'<div class="pagefoot"><div class="l1"><span>{_esc(footer)}</span><span class="pg"></span></div>'
+                + (f'<div class="l2">{terms_html}</div>' if terms_html else "") + "</div>")
 
     html = f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><style>{css}</style></head><body>
-<div class="bar"></div>
+{pagefoot}
 <div class="top">
   <div class="seller">{seller}</div>
   <div class="doc"><h1>{doc_label}</h1><div class="num">N° {_esc(inv.number)}</div>
@@ -264,12 +270,12 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 <div class="meta">
   <div class="billto"><span>Facturer à</span>{bill}</div>
   <div class="dates"><table>{dates}</table></div>
+  {'<div class="stamp">PAYÉ</div>' if inv.status == "payee" and not is_credit else ""}
 </div>
 <table class="lines"><thead><tr><th>#</th><th>Article &amp; description</th><th class="r">Quantité</th><th class="r">Taux</th><th class="r">Montant</th></tr></thead>
 <tbody>{rows}</tbody></table>
 <div class="sum"><table>{sums}</table></div>
 {notes}
-{terms_html}
 </body></html>"""
     buf = io.BytesIO()
     HTML(string=html, base_url=str(_BRAND)).write_pdf(buf)
