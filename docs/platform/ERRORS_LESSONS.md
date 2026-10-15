@@ -522,6 +522,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : avant de déplacer/supprimer des objets liés, lire les cascades du modèle ; mettre le contrôle de cohérence (sommes, réglé par facture vs sauvegarde) DANS l'essai à blanc, pas après l'écriture ; une règle de rapprochement passe par l'information la plus précise (la date réelle) avant l'heuristique (la plus vieille).
 
+**2026-10-15 (même tâche, plus tard) — « Plus vieilles factures d'abord » : mauvais mois attribués ; relance qui reprend l'historique déjà utilisé**
+
+**On croyait** : (1) qu'à défaut de date réelle, un dépôt paie les plus vieilles factures ouvertes du client ; (2) qu'une relance du script ne voit que ce qui reste.
+
+**Preuve** : (1) Poséidon : le dépôt de 1 302,22 $ du 2021-11-05 (2 × 651,11) non relié, parce qu'un groupe devait être fait des 10 plus vieilles factures libres (le client en avait encore de 2020) ; août et septembre 2021 pris ensuite par les dépôts de février et avril 2022 → « payées 6 mois en retard » au portail. Mesuré sur les 790 paiements datés de l'ancien logiciel (2024-2026) : 91 % arrivent dans les 40 jours après la facture, 47 % le jour même. (2) après application, une relance reliait encore Jardin-Idéal 261,22 $ du 2025-07-22 : les lignes d'historique des dépôts déjà reliés n'étaient plus marquées prises dans la nouvelle exécution.
+
+**Cause réelle** : (1) heuristique choisie sans la mesurer contre les attributions réelles disponibles ; groupe limité aux plus vieilles. (2) l'état « ligne d'historique prise » vivait seulement en mémoire d'une exécution.
+
+**Correction** : règle de Philippe — facture datée juste avant le dépôt (0 à 400 jours ; carte = jour même), seule ou le groupe le plus récent, puis seulement les plus vieilles ; tours jusqu'à stabilité dans la même exécution ; au départ, chaque dépôt déjà relié réserve sa ligne d'historique. État d'avant la liaison remis depuis la sauvegarde de 08:35 (0 écart), réappliqué : 1 268 dépôts, réglé de chaque facture inchangé, relance = 0.
+
+**Leçon (à ne pas refaire)** : avant de choisir une heuristique de rapprochement, la mesurer sur les cas dont on connaît la vérité (ici les paiements datés) ; un script relançable doit reconstruire depuis la base tout ce qu'il considère « déjà utilisé » ; « montant réglé inchangé » ne prouve pas que les dates/attributions sont justes — vérifier aussi un client réel de bout en bout.
+
 ## TASK-021.1 — Profils périodiques importés un jour après les factures : cycle du 2 octobre perdu
 
 **Date** : 2026-10-14 (erreur du 2026-10-02)

@@ -11,8 +11,9 @@ Sources (la BNC est la seule verite des montants) :
 
 Regle d'association (par client, depots traites dans l'ordre chronologique) :
 1. un paiement du meme montant date a 7 jours ou moins du depot (date reelle connue pour les factures 2024-2026) ;
-2. sinon le plus vieux paiement du meme montant dont la facture est datee avant le depot (+5 j), au plus 400 jours avant ;
-3. sinon le plus vieux groupe de 2 a 4 paiements (factures avant le depot) dont la somme egale le depot.
+2. sinon le paiement du meme montant dont la facture est datee JUSTE AVANT le depot (0 a 400 jours ; une carte paie le jour
+   meme), puis le groupe de 2 a 4 factures le plus recent (parmi les 12 plus proches) ; sinon les plus vieilles factures
+   (client en retard qui rattrape). Regle de Philippe du 2026-10-15 (avant : plus vieilles d'abord).
 Rien d'approximatif : un montant doit tomber au cent. Ce qui ne tombe pas reste a Philippe (rapport).
 Un depot qui paie plusieurs factures : les encaissements sont fusionnes en UN (un depot = un paiement reparti sur
 ses factures), date du depot. Un depot qui couvre plusieurs CLIENTS (lot de cartes) n'est pas relie (rapport).
@@ -86,6 +87,15 @@ async def main(apply: bool):
         txs = (await db.execute(select(BankTransaction).where(BankTransaction.status == "unclassified", BankTransaction.amount > 0)
                                 .order_by(BankTransaction.posted_date, BankTransaction.amount))).scalars().all()
         linked_ids = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None)))).scalars())
+        # depots deja relies (passage precedent) : leur ligne d'historique est prise, sinon un autre depot du meme montant
+        # pourrait la reprendre a la relance (Jardin-Ideal 261,22 $ du 2025-07-22, 2026-10-15)
+        done = (await db.execute(select(BankTransaction).where(BankTransaction.amount > 0, BankTransaction.client_payment_id.is_not(None))
+                                 .order_by(BankTransaction.posted_date))).scalars().all()
+        for t in done:
+            zs = [z for z in zoho if not z["used"] and z["amount"] == Decimal(t.amount) and -3 <= (z["date"] - t.posted_date).days <= 7
+                  and company_of(z["client"]) == t.company_id]
+            if zs:
+                min(zs, key=lambda z: abs((z["date"] - t.posted_date).days))["used"] = True
         pays = (await db.execute(select(ClientPayment).options(selectinload(ClientPayment.allocations))
                                  .where(ClientPayment.source == "zoho_import", ClientPayment.status == "confirmed"))).scalars().all()
         inv_date = dict((await db.execute(select(Invoice.id, Invoice.issue_date))).all())
@@ -120,7 +130,7 @@ async def main(apply: bool):
             rule_cid = tx.company_id or (rules.get(payee_key(tx.payee)) if tx.payee else None)
 
             def has_pay(c):
-                return any(f["amount"] == amt and f["idate"] <= d0 + timedelta(days=5) and (d0 - f["idate"]).days <= 400 for f in free[c])
+                return any(f["amount"] == amt and 0 <= (d0 - f["idate"]).days <= 400 for f in free[c])
             if len(clients) > 1:             # meme montant, meme jour, plusieurs clients : le beneficiaire ou le seul qui doit ce montant
                 if rule_cid in clients:
                     clients = {rule_cid}
@@ -137,17 +147,17 @@ async def main(apply: bool):
             if not tx.payee:                 # depot sans nom (cheque, Interac) : un seul paiement de ce montant, tous clients
                 owing = [c for c in free if has_pay(c)]
                 if len(owing) == 1 and sum(1 for f in free[owing[0]] if f["amount"] == amt
-                                           and f["idate"] <= d0 + timedelta(days=5) and (d0 - f["idate"]).days <= 120) == 1:
+                                           and 0 <= (d0 - f["idate"]).days <= 120) == 1:
                     return owing[0], "montant unique", []
             return None, "inconnu", []
 
         def find(tx, cid, dated):
             """dated=True : seulement les paiements dates a 7 jours du depot (date reelle connue, attribution de l'ancien
-            logiciel), seuls ou en groupe ; dated=False : les plus vieilles factures."""
+            logiciel), seuls ou en groupe ; dated=False : factures juste avant le depot, puis les plus vieilles."""
             amt, d0 = Decimal(tx.amount), tx.posted_date
-            cand = [f for f in free[cid] if f["idate"] <= d0 + timedelta(days=5) and (d0 - f["idate"]).days <= 400]
-            if dated:
-                near = [f for f in cand if abs((f["p"].received_at - d0).days) <= 7]
+            cand = [f for f in free[cid] if 0 <= (d0 - f["idate"]).days <= 400]
+            if dated:                        # date reelle de l'ancien logiciel : facture datee jusqu'a 5 j apres acceptee
+                near = [f for f in free[cid] if -5 <= (d0 - f["idate"]).days <= 400 and abs((f["p"].received_at - d0).days) <= 7]
                 single = [f for f in near if f["amount"] == amt]
                 if single:
                     return [min(single, key=lambda f: abs((f["p"].received_at - d0).days))], "meme montant, date du paiement"
@@ -156,44 +166,70 @@ async def main(apply: bool):
                         if sum(f["amount"] for f in combo) == amt:
                             return list(combo), f"{k} factures, date du paiement"
                 return None, None
-            same_amt = [f for f in cand if f["amount"] == amt]
+            # 2026-10-15 (Philippe) : d'abord les factures datees juste avant le depot (91 % des paiements dates de
+            # l'ancien logiciel arrivent dans les 40 jours, 47 % le jour meme), seule ou en groupe ; les plus vieilles
+            # seulement ensuite (client en retard qui rattrape). Avant : plus vieilles d'abord -> Poseidon 1 302,22 $ du
+            # 2021-11-05 (aout + septembre) non relie, aout et septembre pris par des depots de 2022.
+            recent = sorted(cand, key=lambda f: f["idate"], reverse=True)
+            same_amt = [f for f in recent if f["amount"] == amt]
             if same_amt:
-                return [same_amt[0]], "meme montant, plus vieille facture"
+                return [same_amt[0]], "meme montant, facture juste avant"
+            for k in (2, 3, 4):
+                hits = [c for c in itertools.combinations(recent[:12], k) if sum(f["amount"] for f in c) == amt]
+                if hits:            # le groupe le plus recent : sa plus vieille facture la plus proche du depot
+                    best = max(hits, key=lambda c: (min(f["idate"] for f in c), sum(f["idate"].toordinal() for f in c)))
+                    return sorted(best, key=lambda f: f["idate"]), f"{k} factures juste avant"
             for k in (2, 3, 4):
                 for combo in itertools.combinations(cand[:10], k):
                     if sum(f["amount"] for f in combo) == amt:
                         return list(combo), f"{k} plus vieilles factures"
             return None, None
 
-        pending = []
-        for tx in txs:
-            cid, src, zused = client_of(tx)
-            if cid is None:
-                if src == "plusieurs":
-                    cats["plusieurs clients possibles / lot de cartes"] += 1
-                    examples["plusieurs clients"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or ''} -> {[z['client'] for z in zused]}")
-                else:
-                    cats["client inconnu"] += 1
-                    examples["client inconnu"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or tx.reference or ''}")
-                continue
-            for z in zused:
-                z["used"] = True
-            pending.append((tx, cid, src))
-        for dated in (True, False):          # 1re passe : attribution datee ; 2e : plus vieilles factures
-            rest = []
-            for tx, cid, src in pending:
-                pick, how = find(tx, cid, dated)
-                if not pick:
-                    rest.append((tx, cid, src))
+        # en tours : un depot relie libere ses paiements, ce qui peut lever l'ambiguite d'un autre (meme montant) ;
+        # on recommence avec ceux qui restent jusqu'a ce qu'un tour ne relie plus rien (avant : relancer --apply a la main)
+        remaining, rounds = list(txs), 0
+        while True:
+            rounds += 1
+            cats = Counter({k: v for k, v in cats.items() if k.startswith("relie")})
+            examples = defaultdict(list)
+            pending, unlinked = [], []
+            n_before = len(plan)
+            for tx in remaining:
+                cid, src, zused = client_of(tx)
+                if cid is None:
+                    unlinked.append(tx)
+                    if src == "plusieurs":
+                        cats["plusieurs clients possibles / lot de cartes"] += 1
+                        examples["plusieurs clients"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or ''} -> {[z['client'] for z in zused]}")
+                    else:
+                        cats["client inconnu"] += 1
+                        examples["client inconnu"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or tx.reference or ''}")
                     continue
-                for f in pick:
-                    free[cid].remove(f)
-                cats[f"relie ({how})" + (" -- client par montant unique" if src == "montant unique" else "")] += 1
-                plan.append((tx, cid, [f["p"] for f in pick], src))
-            pending = rest
-        for tx, cid, src in pending:
-            cats["client connu, aucun paiement anterieur qui tombe juste"] += 1
-            examples["aucun paiement"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or ''} -> {names.get(cid)}")
+                for z in zused:
+                    z["used"] = True
+                pending.append((tx, cid, src, zused))
+            for dated in (True, False):          # 1re passe : attribution datee ; 2e : factures juste avant, puis plus vieilles
+                rest = []
+                for tx, cid, src, zused in pending:
+                    pick, how = find(tx, cid, dated)
+                    if not pick:
+                        rest.append((tx, cid, src, zused))
+                        continue
+                    for f in pick:
+                        free[cid].remove(f)
+                    cats[f"relie ({how})" + (" -- client par montant unique" if src == "montant unique" else "")] += 1
+                    plan.append((tx, cid, [f["p"] for f in pick], src))
+                pending = rest
+            for tx, cid, src, zused in pending:
+                unlinked.append(tx)
+                for z in zused:              # pas relie : l'historique reste disponible au tour suivant
+                    z["used"] = False
+                cats["client connu, aucun paiement anterieur qui tombe juste"] += 1
+                examples["aucun paiement"].append(f"{tx.posted_date} {tx.amount} {tx.description} {tx.payee or ''} -> {names.get(cid)}")
+            if len(plan) == n_before:
+                break
+            remaining = sorted(unlinked, key=lambda t: (t.posted_date, t.amount))
+        print("Tours :", rounds)
 
         # paiements anterieurs restes sans depot, sur la periode couverte par la BNC
         first_bank = date(2019, 10, 1)
