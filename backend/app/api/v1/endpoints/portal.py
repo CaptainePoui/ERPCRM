@@ -276,7 +276,7 @@ async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSes
     for p in lost:
         out.append({
             "id": str(p.id), "lost_invoice": True, "invoice_number": p.lost_invoice_number, "status": "payee",
-            "total_ttc": float(p.amount), "issue_date": None, "due_date": None, "paid_date": str(p.received_at) if p.received_at else None,
+            "total_ttc": float(p.amount), "issue_date": str(p.received_at) if p.received_at else None, "due_date": None, "paid_date": str(p.received_at) if p.received_at else None,
             "created_at": p.created_at.isoformat() if p.created_at else None,
             "confirmed_paid": float(p.amount), "pending_paid": 0.0, "balance": 0.0,
         })
