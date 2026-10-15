@@ -508,6 +508,20 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : toute réponse sur ce que le système empêche ou fait automatiquement (surtout fiscal) se vérifie dans le code AVANT d'être dite — jamais à partir du nom d'un réglage.
 
+## TASK-042.7 — Fusion de paiements : répartitions emportées par la suppression ; groupe « plus vieilles factures » avant l'attribution datée
+
+**Date** : 2026-10-15
+
+**On croyait** : (1) qu'en changeant `payment_id` d'une répartition, puis en supprimant l'ancien encaissement, la répartition suivait le nouvel encaissement ; (2) qu'en traitant les dépôts dans l'ordre chronologique, « même montant à 7 jours, sinon plus vieilles factures » suffisait.
+
+**Preuve** : (1) après l'application (1 244 dépôts), 81 encaissements avaient un montant plus grand que leur répartition ; `ClientPayment.allocations` a `cascade="all, delete-orphan"` : la répartition restait dans `other.allocations` et partait avec `other`. (2) Hamak 263,30 $ du 2026-09-03 relié à INV-111698 + INV-111774 (les plus vieilles) alors que l'ancien logiciel avait daté du jour même INV-112148 + INV-112183.
+
+**Cause réelle** : (1) modification par la colonne au lieu de la relation ORM, sans relire la cascade du modèle ; vérification de cohérence faite APRÈS l'application. (2) la règle des groupes n'avait pas d'étape « datée » : un vieux paiement du même montant passait avant celui que la date désignait.
+
+**Correction** : (1) 110 répartitions recréées depuis la sauvegarde de 08:33 (contrôle : réglé de chaque facture identique) ; puis état d'avant la liaison remis exactement pour les lignes touchées (0 écart) ; fusion réécrite par la relation (`other.allocations.remove` / `keep.allocations.append`). (2) deux passes : attribution datée (seule ou en groupe) pour tous les dépôts d'abord, plus vieilles factures ensuite. Réappliqué : 1 233 dépôts, 0 écart.
+
+**Leçon (à ne pas refaire)** : avant de déplacer/supprimer des objets liés, lire les cascades du modèle ; mettre le contrôle de cohérence (sommes, réglé par facture vs sauvegarde) DANS l'essai à blanc, pas après l'écriture ; une règle de rapprochement passe par l'information la plus précise (la date réelle) avant l'heuristique (la plus vieille).
+
 ## TASK-021.1 — Profils périodiques importés un jour après les factures : cycle du 2 octobre perdu
 
 **Date** : 2026-10-14 (erreur du 2026-10-02)
