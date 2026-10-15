@@ -210,7 +210,11 @@ async def main(apply: bool):
             for e in v[:12]:
                 print("   ", e)
 
-        json.dump({"categories": dict(cats), "examples": {k: v for k, v in examples.items()},
+        json.dump({"linked": [{"date": str(tx.posted_date), "amount": str(tx.amount), "bank": f"{tx.description} {tx.payee or ''}".strip(),
+                               "company": names.get(cid), "client_from": src,
+                               "invoices": sorted(inv_num[a.invoice_id] for p in ps for a in p.allocations)}
+                              for tx, cid, ps, src in plan],
+                   "categories": dict(cats), "examples": {k: v for k, v in examples.items()},
                    "unlinked_payments": [{"company": names.get(f["p"].company_id), "amount": str(f["amount"]),
                                           "invoice_date": str(f["idate"]), "invoices": [inv_num[a.invoice_id] for a in f["p"].allocations]}
                                          for f in sorted(left, key=lambda f: f["idate"])]},
