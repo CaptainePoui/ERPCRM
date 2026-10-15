@@ -1,7 +1,7 @@
 """
 Cheques numerises de Philippe (TASK-042.8) -- application par lot, une seule regle (2026-10-15, apres « faire les
 chèques, les attribuer à la bonne place et après voir ce qui manque ») :
-chaque cheque va au PREMIER depot BNC du meme montant, de sa date a +70 jours, dont le paiement n'a pas encore de
+chaque cheque va au PREMIER depot BNC du meme montant, de sa date -7 j (cheque date d avance) a +70 jours, dont le paiement n'a pas encore de
 cheque attache (les cheques d'un client regulier se deposent dans l'ordre) :
 - depot deja relie a un paiement de ce client (ou de sa maison mere / ses succursales) -> cheque attache au paiement ;
 - depot non classe et anterieur au 2020-06-01 -> paiement « Facture perdue (ancien logiciel) » + cheque ;
@@ -52,7 +52,7 @@ async def main(tsv: Path, apply: bool):
             assert comp, f"compagnie inconnue : {cname}"
             fam = await family(db, comp.id)
             txs = (await db.execute(select(BankTransaction).where(
-                BankTransaction.amount == amt, BankTransaction.posted_date.between(d, d + timedelta(days=70)))
+                BankTransaction.amount == amt, BankTransaction.posted_date.between(d - timedelta(days=7), d + timedelta(days=70)))
                 .order_by(BankTransaction.posted_date))).scalars().all()
             pick = None
             for tx in txs:
