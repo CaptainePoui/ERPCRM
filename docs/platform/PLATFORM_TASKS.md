@@ -6058,6 +6058,14 @@ Date(s) de travail : 2026-10-07
 
 ---
 
+### TASK-044.2 [ ] Factures fournisseur payées par les remboursements de la carte Mastercard (logique de Philippe)
+Date de demande : 2026-10-15 (Philippe : « le principe ne marche que si tu laisses dans ERPCRM les factures fournisseur pas payées et elles le deviennent quand je paie ma carte, comme ça je sais quel montant je dois rembourser » ; « plus tard tu regarderas »)
+Date(s) de travail : 2026-10-15
+
+- Règle : Philippe paie tous ses fournisseurs avec sa Mastercard World Elite ****3364 et rembourse la carte avant le 15 depuis le compte BNC (part personnelle de son compte perso). Une facture fournisseur reste « non payée » dans ERPCRM tant que le remboursement de carte qui la couvre n'est pas fait ; total non payé = ce que Simple IP doit rembourser sur la carte. Paiement fournisseur = le retrait BNC du remboursement (méthode « Banque », compte Simple IP), jamais la date du prélèvement sur la carte. Taxes inchangées (date de la facture).
+- Fait (2026-10-15) : ScopServ #36405 (sept., 1 293,64 $) et #36687 (oct., 1 625,72 $) créées d'après leurs PDF (TVQ notée « TVP » sur leurs factures) ; #36132, #36405, #36687 payées par les deux remboursements du 2026-10-15 du compte BNC (2 666,09 $ = #36132 + 1 000,98 $ de #36405 ; 1 918,38 $ = 292,66 $ de #36405 + #36687) — à relier automatiquement à l'arrivée du relevé BNC (même montant, même date).
+- À faire (plus tard) : 44 factures fournisseur non payées (7 374,66 $, févr.-oct. 2026 : Amazon, Elite, Bell, MyDomaine, ChatGPT, Claude, Spotify, Gentek…) — relier les remboursements de carte passés des relevés BNC à leurs factures ; vérifier Techni-Express (commissions) et Richard Handfield, probablement hors carte.
+
 ## TASK-045 [ERPCRM] [x] Fuseau horaire de l'entreprise — « quel jour on est » à l'heure de Montréal partout
 Date de demande : 2026-10-07 (Philippe, au soir : « pourquoi elle est demain ?? » sur la facture des textos ; puis « oui go pour le fuseau horaire, c'est super important que tout le ERPCRM et le SIPV soit au bon fuseau horaire… le serveur est ici à Montréal »)
 Date(s) de travail : 2026-10-07 (soir, heure du Québec)
