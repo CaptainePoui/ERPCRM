@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import Autocomplete from '../components/Autocomplete'
+import PaymentModal from '../components/PaymentModal'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
@@ -355,12 +356,13 @@ const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payé
 function TransactionsTab({ companyId, companyName, filter, setFilter }) {
   const navigate = useNavigate()
   const [rows, setRows] = useState(null)
+  const [pay, setPay] = useState(null)          // TASK-005.24 : paiement d'une facture perdue (cheques)
   const reload = () => api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions))
   useEffect(() => { reload() }, [companyId])
   const live = t => t.status !== 'brouillon' && t.status !== 'annulee'
   const shown = (rows || []).filter(t => {
     if (filter === 'ouvertes') return t.kind === 'invoice' && live(t) && t.remaining > 0.005
-    if (filter === 'payees') return t.kind === 'invoice' && live(t) && t.remaining <= 0.005
+    if (filter === 'payees') return (t.kind === 'invoice' || t.kind === 'lost') && live(t) && t.remaining <= 0.005
     if (filter === 'retard') return t.overdue
     if (filter === 'avoirs') return t.kind === 'credit'
     return true
@@ -368,7 +370,7 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
   // Selection multiple (TASK-046) : case, Ctrl+clic, Maj+clic -> barre d'actions en bas
   const sel = useRowSelection(shown)
   if (!rows) return <div className="loading">Chargement...</div>
-  const picked = sel.visible.map(t => ({ ...t, company_id: companyId, company_name: companyName, is_credit: t.kind === 'credit' }))
+  const picked = sel.visible.filter(t => t.kind !== 'lost').map(t => ({ ...t, company_id: companyId, company_name: companyName, is_credit: t.kind === 'credit' }))
   // Totaux sur les factures seulement : un avoir applique est deja compte dans le « Payé » de sa facture
   const invs = shown.filter(t => live(t) && t.kind === 'invoice')
   const sum = k => invs.reduce((s, t) => s + t[k], 0)
@@ -394,12 +396,13 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
             {shown.map(t => {
               const st = payState(t)
               return (
-                <tr key={t.id} onClick={e => sel.rowClick(e, t.id, () => navigate(`/invoices/${t.id}`))} onMouseDown={sel.noTextSelect}
+                <tr key={t.id} onClick={e => t.kind === 'lost' ? setPay(t.id) : sel.rowClick(e, t.id, () => navigate(`/invoices/${t.id}`))} onMouseDown={sel.noTextSelect}
                   className="cd-tx-row" style={sel.selected.has(t.id) ? { background: 'var(--c-tint-blue)' } : undefined}>
-                  <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(t.id)} onChange={e => sel.toggle(t.id, e.nativeEvent)} /></td>
+                  <td onClick={e => e.stopPropagation()}>{t.kind !== 'lost' && <input type="checkbox" checked={sel.selected.has(t.id)} onChange={e => sel.toggle(t.id, e.nativeEvent)} />}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtD(t.issue_date)}</td>
                   <td style={{ whiteSpace: 'nowrap', fontWeight: 600 }}>
-                    {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}{t.number}
+                    {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}
+                    {t.kind === 'lost' ? <span title="Facture de l'ancien logiciel dont le document n'a pas été conservé">{t.number ? `#${t.number} ` : ''}<span style={{ fontWeight: 500, color: 'var(--c-muted)' }}>Facture perdue (ancien logiciel)</span>{t.document_count > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--c-faint)' }}> · chèque</span>}</span> : t.number}
                     {t.site_label && <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 400 }}>{t.site_label}</div>}
                   </td>
                   <td>
@@ -428,6 +431,7 @@ function TransactionsTab({ companyId, companyName, filter, setFilter }) {
         </table>
       </div>
       <BulkInvoiceBar items={picked} onClear={sel.clear} onDone={reload} />
+      {pay && <PaymentModal paymentId={pay} onClose={() => setPay(null)} onChanged={reload} />}
     </div>
   )
 }

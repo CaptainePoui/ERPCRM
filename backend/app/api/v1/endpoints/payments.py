@@ -1,7 +1,7 @@
 import uuid
 from decimal import Decimal
 from datetime import date
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, text, cast, Integer
 from sqlalchemy.orm import selectinload
@@ -10,7 +10,8 @@ from app.core import clock
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.payment import PaymentMethod
-from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation
+from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation, PaymentDocument
+from app.core import payment_documents
 from app.models.invoice import Invoice
 from app.models.user import User
 
@@ -215,12 +216,112 @@ async def list_all_payments(db: AsyncSession = Depends(get_db), _: User = Depend
     )).all():
         nums.setdefault(pid, []).append(num)
     banked = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None)))).scalars().all())
+    docs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).group_by(PaymentDocument.payment_id))).all())
     return [{
         "id": str(cp.id), "company_id": str(cp.company_id), "company_name": name, "amount": float(cp.amount),
         "status": cp.status, "source": cp.source, "method_name": cp.method_name, "reference": cp.reference,
         "received_at": cp.received_at, "created_at": cp.created_at, "invoice_numbers": sorted(nums.get(cp.id, [])),
         "bank_matched": cp.id in banked,
+        "lost_invoice": cp.lost_invoice, "lost_invoice_number": cp.lost_invoice_number, "document_count": docs.get(cp.id, 0),
     } for cp, name in rows]
+
+
+# ── Detail d'un paiement + pieces jointes (TASK-005.24 / TASK-042.8, 2026-10-15) ──
+
+async def payment_detail_dict(db: AsyncSession, cp: ClientPayment) -> dict:
+    from app.models.company import Company
+    from app.models.bank_account import BankTransaction
+    comp = await db.get(Company, cp.company_id)
+    allocs = (await db.execute(select(PaymentAllocation, Invoice.number).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+                               .where(PaymentAllocation.payment_id == cp.id).order_by(Invoice.number))).all()
+    tx = (await db.execute(select(BankTransaction).where(BankTransaction.client_payment_id == cp.id))).scalars().first()
+    docs = (await db.execute(select(PaymentDocument).where(PaymentDocument.payment_id == cp.id).order_by(PaymentDocument.created_at))).scalars().all()
+    return {
+        "id": str(cp.id), "company_id": str(cp.company_id), "company_name": comp.name if comp else None,
+        "amount": float(cp.amount), "status": cp.status, "source": cp.source, "method_name": cp.method_name,
+        "reference": cp.reference, "received_at": cp.received_at, "notes": cp.notes,
+        "lost_invoice": cp.lost_invoice, "lost_invoice_number": cp.lost_invoice_number,
+        "allocations": [{"invoice_id": str(a.invoice_id), "number": n, "amount": float(a.amount_allocated)} for a, n in allocs],
+        "bank": {"id": str(tx.id), "account_id": str(tx.account_id), "posted_date": tx.posted_date, "amount": float(tx.amount),
+                 "description": tx.description, "payee": tx.payee} if tx else None,
+        "documents": [{"id": str(d.id), "kind": d.kind, "original_name": d.original_name, "created_at": d.created_at,
+                       "media_type": payment_documents.media_type(d)} for d in docs],
+    }
+
+
+@router.get("/{payment_id}/detail")
+async def payment_detail(payment_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    cp = await db.get(ClientPayment, payment_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    return await payment_detail_dict(db, cp)
+
+
+@router.post("/{payment_id}/documents", status_code=status.HTTP_201_CREATED)
+async def add_payment_document(payment_id: uuid.UUID, file: UploadFile = File(...), kind: str = Form("cheque"),
+                               db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Ajoute une piece (cheque numerise, preuve) a un paiement."""
+    from pathlib import Path
+    cp = await db.get(ClientPayment, payment_id)
+    if not cp:
+        raise HTTPException(status_code=404, detail="Paiement introuvable")
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in payment_documents.TYPES:
+        raise HTTPException(status_code=400, detail="Format accepté : image (JPG, PNG, WEBP) ou PDF")
+    data = await file.read()
+    if not data or len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Fichier vide ou trop gros (20 Mo au plus)")
+    payment_documents.save(db, cp.id, data, ext, file.filename, kind if kind in ("cheque", "preuve") else "cheque")
+    await db.commit()
+    return await payment_detail_dict(db, cp)
+
+
+@router.get("/documents/{doc_id}/file")
+async def payment_document_file(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    doc = await db.get(PaymentDocument, doc_id)
+    if not doc or not payment_documents.path_of(doc).is_file():
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    return FileResponse(payment_documents.path_of(doc), media_type=payment_documents.media_type(doc))
+
+
+@router.delete("/documents/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_payment_document(doc_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    doc = await db.get(PaymentDocument, doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document introuvable")
+    f = payment_documents.path_of(doc)
+    await db.delete(doc)
+    await db.commit()
+    f.unlink(missing_ok=True)
+
+
+class LostInvoiceUpdate(BaseModel):
+    company_id: uuid.UUID | None = None
+    invoice_number: str | None = None
+    notes: str | None = None
+
+
+@router.patch("/{payment_id}/lost-invoice")
+async def update_lost_invoice(payment_id: uuid.UUID, payload: LostInvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Toujours modifiable : client, numero de la facture perdue, note (le depot bancaire suit le client)."""
+    from app.models.company import Company
+    from app.models.bank_account import BankTransaction
+    cp = await db.get(ClientPayment, payment_id)
+    if not cp or not cp.lost_invoice:
+        raise HTTPException(status_code=404, detail="Paiement de facture perdue introuvable")
+    if payload.company_id and payload.company_id != cp.company_id:
+        if not await db.get(Company, payload.company_id):
+            raise HTTPException(status_code=404, detail="Compagnie introuvable")
+        cp.company_id = payload.company_id
+        for tx in (await db.execute(select(BankTransaction).where(BankTransaction.client_payment_id == cp.id))).scalars().all():
+            tx.company_id, tx.company_source = payload.company_id, "manual"
+    if payload.invoice_number is not None:
+        cp.lost_invoice_number = payload.invoice_number.strip().lstrip("#") or None
+    if payload.notes is not None:
+        cp.notes = payload.notes.strip() or None
+    await db.commit()
+    return await payment_detail_dict(db, cp)
 
 
 # ── Payments (vue par facture, retro-compat frontend) ────────────────────────
@@ -536,6 +637,7 @@ async def delete_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Paiement introuvable")
 
     invoice_ids = [a.invoice_id for a in cp.allocations]
+    files = [payment_documents.path_of(d) for d in (await db.execute(select(PaymentDocument).where(PaymentDocument.payment_id == cp.id))).scalars().all()]
     await db.delete(cp)
     await db.flush()
 
@@ -543,3 +645,5 @@ async def delete_payment(payment_id: uuid.UUID, db: AsyncSession = Depends(get_d
         await _recalculate_invoice_status(iid, db)
 
     await db.commit()
+    for f in files:
+        f.unlink(missing_ok=True)

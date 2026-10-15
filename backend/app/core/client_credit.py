@@ -4,7 +4,8 @@ Philippe : « si il y a un surplus qu'il aille en premier a des restes de factur
 n'en a pas il le met en credit dans le dossier client » ; « un depot d'un client sans aucune facture ouverte, il va
 en credit tout seul ». Le credit n'est pas un avoir (aucun effet sur les ventes ni les taxes) : c'est la partie d'un
 encaissement confirme qui n'est repartie sur aucune facture. Il paie tout seul la prochaine facture emise du client
-(meme encaissement, nouvelle repartition). Les paiements « Troc » n'en font jamais (toujours repartis au complet).
+(meme encaissement, nouvelle repartition). Les paiements « Troc » n'en font jamais (toujours repartis au complet), ni
+les paiements d'une facture perdue de l'ancien logiciel (TASK-005.24 : ils paient une facture qui n'est pas dans ERPCRM).
 """
 from decimal import Decimal
 
@@ -21,7 +22,8 @@ async def credits(db, company_id) -> list[tuple]:
     rows = (await db.execute(
         select(ClientPayment, func.coalesce(alloc.c.s, 0)).outerjoin(alloc, alloc.c.payment_id == ClientPayment.id)
         .where(ClientPayment.company_id == company_id, ClientPayment.status == "confirmed",
-               ClientPayment.method_code != "troc", ClientPayment.amount - func.coalesce(alloc.c.s, 0) > 0)
+               ClientPayment.method_code != "troc", ClientPayment.lost_invoice.is_(False),
+               ClientPayment.amount - func.coalesce(alloc.c.s, 0) > 0)
         .order_by(ClientPayment.received_at, ClientPayment.created_at))).all()
     return [(cp, (Decimal(cp.amount) - Decimal(s)).quantize(CENT)) for cp, s in rows]
 

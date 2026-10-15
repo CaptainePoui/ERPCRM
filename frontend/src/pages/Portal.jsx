@@ -161,11 +161,19 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
                   )}
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>{inv.issue_date || '—'}</td>
-                <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>{inv.invoice_number}</td>
+                <td style={{ fontFamily: 'monospace', fontWeight: 600 }}>
+                  {inv.lost_invoice ? (
+                    // TASK-005.24 : facture de l'ancien logiciel dont le document n'a pas ete conserve
+                    <span title="Facture de notre ancien logiciel dont le document n'a pas pu être conservé ; le paiement reçu est confirmé par notre relevé bancaire.">
+                      {inv.invoice_number ? `#${inv.invoice_number} ` : ''}<span style={{ fontFamily: 'inherit', fontWeight: 500, fontSize: 12, color: 'var(--c-muted)' }}>Facture perdue (ancien logiciel)</span>
+                    </span>
+                  ) : inv.invoice_number}
+                </td>
                 <td>
                   <span style={{ color: STATUS_COLOR[inv.status] || 'var(--c-muted)', fontWeight: 600, fontSize: 12 }}>
                     {STATUS_FR[inv.status] || inv.status}
                   </span>
+                  {inv.lost_invoice && inv.paid_date && <span style={{ color: 'var(--c-muted)', fontSize: 11, marginLeft: 6 }}>le {inv.paid_date}</span>}
                   {inv.pending_paid > 0 && (
                     <span style={{ color: '#2563EB', fontSize: 11, marginLeft: 6 }}>
                       ({fmt(inv.pending_paid)} en attente)
@@ -179,12 +187,12 @@ function InvoicesTab({ invoices, onRefresh, fmt, fmtDate }) {
                 </td>
                 <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{fmtDate(inv.due_date)}</td>
                 <td>
-                  <button
+                  {!inv.lost_invoice && <button
                     onClick={() => downloadPdf(inv.id, inv.invoice_number)}
                     style={{ background: 'none', border: '1px solid var(--c-border)', borderRadius: 4,
                       padding: '2px 8px', fontSize: 12, cursor: 'pointer', color: 'var(--c-muted)' }}
                     title="Télécharger PDF"
-                  >PDF</button>
+                  >PDF</button>}
                 </td>
               </tr>
             )

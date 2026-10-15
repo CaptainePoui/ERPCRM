@@ -38,9 +38,18 @@ class ClientPayment(Base):
     received_at: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
+    # TASK-005.24 : paiement d'une facture de l'ancien logiciel dont le document est perdu (avant juin 2020) --
+    # aucune repartition, jamais du credit au dossier, aucun effet sur ventes/taxes ; visible au portail
+    lost_invoice: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    lost_invoice_number: Mapped[str | None] = mapped_column(String(50))
+
     company: Mapped["Company"] = relationship("Company")
     allocations: Mapped[list["PaymentAllocation"]] = relationship(
         "PaymentAllocation", back_populates="payment", cascade="all, delete-orphan"
+    )
+    documents: Mapped[list["PaymentDocument"]] = relationship(
+        "PaymentDocument", back_populates="payment", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="PaymentDocument.created_at"
     )
 
 
@@ -69,3 +78,18 @@ class CreditAllocation(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     applied_at: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class PaymentDocument(Base):
+    """Piece attachee a un encaissement (TASK-005.24 / TASK-042.8) : cheque numerise, preuve de virement...
+    Fichier dans storage/payment_documents/ (hors /uploads public, inclus dans la sauvegarde)."""
+    __tablename__ = "payment_documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("client_payments.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False, default="cheque", server_default="cheque")
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_name: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    payment: Mapped["ClientPayment"] = relationship("ClientPayment", back_populates="documents")

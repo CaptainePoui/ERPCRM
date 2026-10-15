@@ -12,7 +12,7 @@ from app.models.entity_log import EntityLog
 from app.models.catalogue import CatalogueItem
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.payment import Payment, PaymentMethod
-from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation
+from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation, PaymentDocument
 from app.models.ticket import Ticket, TicketEntry
 from app.models.maintenance import ClientAccess
 from app.models.equipment import Equipment

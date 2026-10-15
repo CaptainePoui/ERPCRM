@@ -1658,6 +1658,19 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
                      "site_label": i.site_label_snapshot, "barter_settlement": i.barter_settlement,
                      "late_fee": i.late_fee_for_id is not None, "offered": i.offered_at is not None})
 
+    # TASK-005.24 : paiements de factures perdues de l'ancien logiciel (pas de facture dans ERPCRM, hors totaux)
+    from app.models.client_payment import PaymentDocument
+    lost = (await db.execute(select(ClientPayment).where(ClientPayment.company_id == company_id, ClientPayment.lost_invoice.is_(True),
+                                                         ClientPayment.status == "confirmed"))).scalars().all()
+    ndocs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).where(PaymentDocument.payment_id.in_([p.id for p in lost]))
+                                   .group_by(PaymentDocument.payment_id))).all()) if lost else {}
+    for p in lost:
+        rows.append({"id": str(p.id), "kind": "lost", "number": p.lost_invoice_number, "issue_date": p.received_at,
+                     "due_date": None, "status": "payee", "total": float(p.amount), "paid": float(p.amount), "credited": 0.0,
+                     "remaining": 0.0, "overdue": False, "site_label": None, "barter_settlement": False, "late_fee": False,
+                     "offered": False, "document_count": ndocs.get(p.id, 0)})
+    rows.sort(key=lambda r: (r["issue_date"] or date.min), reverse=True)
+
     from app.core import client_credit
     paid_fy = (await db.execute(
         select(func.sum(ClientPayment.amount)).where(ClientPayment.company_id == company_id,

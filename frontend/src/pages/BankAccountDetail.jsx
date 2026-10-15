@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
+import PaymentModal from '../components/PaymentModal'
 import { useRefs, VendorPicker, CategorySelect, AllocationTable, allocList, allocSum, computeTaxes, TAX_CODES, TAX_MODES } from './purchases/common'
 import { LINE_CLASSES } from './purchases/Receipts'
 import { IconBank, IconCalendar, IconSearch, IconSettings } from '../components/Icons'
@@ -167,6 +168,7 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
   const [showPaid, setShowPaid] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
+  const [lostNum, setLostNum] = useState('')      // TASK-005.24 : numero de la facture perdue (facultatif)
 
   useEffect(() => {
     api.get(`/v1/bank/transactions/${tx.id}/suggestions`).then(r => { setSugg(r.data); setMethod(r.data.method_code) })
@@ -232,6 +234,15 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
     setSaving(true); setError(null)
     try {
       await api.post(`/v1/bank/transactions/${tx.id}/match`, { remember_payee: remember, ...body })
+      await onDone()
+    } catch (e) { setError(errText(e)) } finally { setSaving(false) }
+  }
+
+  // TASK-005.24 : le depot paie une facture de l'ancien logiciel dont le document est perdu (pas de credit)
+  async function submitLost() {
+    setSaving(true); setError(null)
+    try {
+      await api.post(`/v1/bank/transactions/${tx.id}/lost-invoice`, { company_id: company.id, invoice_number: lostNum.trim() || null })
       await onDone()
     } catch (e) { setError(errText(e)) } finally { setSaving(false) }
   }
@@ -312,6 +323,17 @@ function MatchModal({ tx, onClose, onDone, embedded }) {
                 {remaining < 0 ? 'Dépasse le dépôt' : remaining > 0 ? `Reste ${fmtMoney(remaining)} non réparti (crédit du client)` : 'Montant exact'}
               </span>
             </div>
+          </div>
+        )}
+
+        {company && allocated === 0 && (
+          <div style={{ ...box, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ fontSize: 13, flex: '1 1 300px' }}>
+              <strong>Facture perdue (ancien logiciel)</strong>
+              <div style={{ color: C.muted, fontSize: 12 }}>Le dépôt paie une facture dont le document n'a pas été conservé : le client le voit au portail, rien en crédit, aucun effet sur les taxes.</div>
+            </div>
+            <input placeholder="N° de facture (si connu)" value={lostNum} onChange={e => setLostNum(e.target.value)} style={{ width: 170 }} />
+            <button className="btn-secondary" disabled={saving} onClick={submitLost}>Facture perdue</button>
           </div>
         )}
 
@@ -636,6 +658,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
   const refs = useRefs()
   const [d, setD] = useState(null)
   const [error, setError] = useState(null)
+  const [pay, setPay] = useState(null)          // TASK-005.24 : fiche du paiement lie (cheques)
   const load = async () => setD((await api.get(`/v1/bank/transactions/${txId}/detail`)).data)
   useEffect(() => { load() }, [txId])
   async function run(fn) {
@@ -692,7 +715,9 @@ function TransactionModal({ txId, onClose, onChanged }) {
               <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', color: C.red }} onClick={() => confirm("Annuler cette association ?") && run(() => api.post(`/v1/bank/transactions/${d.id}/unmatch`))}>Annuler l'association</button>
             </div>
             <div style={{ fontSize: 13, marginTop: 6 }}>
-              {d.linked.kind === 'client_payment' && <>Encaissement {d.linked.method} du {fmtD(d.linked.received_at)} · {fmtMoney(d.linked.amount)}{d.linked.created_by_link ? ' (créé par l\'association)' : ''}</>}
+              {d.linked.kind === 'client_payment' && <>Encaissement {d.linked.method} du {fmtD(d.linked.received_at)} · {fmtMoney(d.linked.amount)}{d.linked.created_by_link ? ' (créé par l\'association)' : ''}
+                {d.linked.lost_invoice && <> · <strong>Facture perdue (ancien logiciel){d.linked.lost_invoice_number ? ` #${d.linked.lost_invoice_number}` : ''}</strong></>}
+                <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px', marginLeft: 8 }} onClick={() => setPay(d.linked.payment_id)}>Paiement et chèques</button></>}
               {d.linked.kind === 'expense' && <>Dépense du {fmtD(d.linked.date)} · {d.linked.category || 'sans compte'}{d.linked.vendor ? ` · ${d.linked.vendor}` : ''} · {fmtMoney(d.linked.amount)} (TPS {fmtMoney(d.linked.tps)}, TVQ {fmtMoney(d.linked.tvq)}){d.linked.created_by_link ? ' — créée par l\'association' : ''}</>}
               {d.linked.kind === 'vendor_payment' && <>Paiement fournisseur du {fmtD(d.linked.date)} · {d.linked.payee} · {fmtMoney(d.linked.amount)}</>}
               {d.linked.kind === 'government' && <>Versement — {d.linked.type}, période du {fmtD(d.linked.period_start)} au {fmtD(d.linked.period_end)} · paie le dû {fmtMoney(d.linked.applied)}{d.linked.tps || d.linked.tvq ? ` (TPS ${fmtMoney(d.linked.tps)}, TVQ ${fmtMoney(d.linked.tvq)})` : ''}{d.linked.penalty > 0 && <strong style={{ color: C.red }}> · pénalités et intérêts {fmtMoney(d.linked.penalty)}</strong>}</>}
@@ -710,6 +735,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
           </div>
         )}
 
+        {pay && <PaymentModal paymentId={pay} onClose={() => setPay(null)} onChanged={async () => { await load(); await onChanged() }} />}
         {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         <div className="modal-actions">
           {d.status === 'unclassified' && <button className="btn-secondary" onClick={() => run(() => api.post('/v1/bank/transactions/bulk', { ids: [d.id], action: 'exclude' }))}>Exclure (pas une transaction d'affaires)</button>}
@@ -947,7 +973,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
                 <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance{t.auto_matched && <div style={{ fontSize: 11, color: C.muted }}>automatiquement (sûre)</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{(t.invoice_numbers || []).join(', ')}{t.credit_left > 0.004 && <div style={{ color: '#D97706' }}>{fmtMoney(t.credit_left)} en crédit du client</div>}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{t.lost_invoice ? `Facture perdue${t.lost_invoice_number ? ` #${t.lost_invoice_number}` : ''}` : (t.invoice_numbers || []).join(', ')}{t.credit_left > 0.004 && <div style={{ color: '#D97706' }}>{fmtMoney(t.credit_left)} en crédit du client</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={e => { e.stopPropagation(); unmatch(t) }} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
               </tr>
             ))}

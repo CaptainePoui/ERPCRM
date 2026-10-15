@@ -85,6 +85,8 @@ class TransactionOut(BaseModel):
     matched_at: datetime | None = None
     invoice_numbers: list[str] = []
     credit_left: float = 0          # partie du depot encore en credit au dossier du client (2026-10-08)
+    lost_invoice: bool = False      # paiement d'une facture perdue de l'ancien logiciel (TASK-005.24)
+    lost_invoice_number: str | None = None
     suggestion: dict | None = None  # onglet « Reconnu » : suggestion sure pour « Valider »
     auto_matched: bool = False      # associee automatiquement a l'import (TASK-042.2)
     ai_status: str | None = None
@@ -511,7 +513,10 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
         cp = await db.get(ClientPayment, t.client_payment_id)
         spread = (await db.execute(select(func.sum(PaymentAllocation.amount_allocated))
                                    .where(PaymentAllocation.payment_id == t.client_payment_id))).scalar() or 0
-        out.credit_left = float(Decimal(cp.amount) - Decimal(spread)) if cp else 0
+        if cp and cp.lost_invoice:          # TASK-005.24 : paie une facture hors ERPCRM, jamais du credit
+            out.lost_invoice, out.lost_invoice_number = True, cp.lost_invoice_number
+        else:
+            out.credit_left = float(Decimal(cp.amount) - Decimal(spread)) if cp else 0
     if with_suggestion and t.status == "unclassified" and t.company_id:
         out.suggestion = await bm.best_exact(db, t)
     if t.vendor_id:
@@ -669,6 +674,46 @@ async def match_transaction(tx_id: uuid.UUID, payload: MatchIn, db: AsyncSession
     return await _tx_out(tx, db, with_suggestion=False)
 
 
+class LostInvoiceIn(BaseModel):
+    company_id: uuid.UUID
+    invoice_number: str | None = None
+    note: str | None = None
+
+
+LOST_NOTE = "Paiement d'une facture de l'ancien logiciel dont le document n'a pas été conservé"
+
+
+@router.post("/transactions/{tx_id}/lost-invoice", response_model=TransactionOut)
+async def match_lost_invoice(tx_id: uuid.UUID, payload: LostInvoiceIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-005.24 : le depot paie une facture de l'ancien logiciel dont le document est perdu (Philippe, 2026-10-15 :
+    « dans le portail client avec facture perdue pour ceux qu'on connaît… sans exclure »). Encaissement confirme du
+    client, relie au depot, sans repartition : jamais du credit, aucun effet sur ventes/taxes. « Annuler » le retire."""
+    tx = await _get_tx(tx_id, db)
+    if tx.status != "unclassified":
+        raise HTTPException(status_code=400, detail="Transaction déjà traitée")
+    if tx.amount <= 0:
+        raise HTTPException(status_code=400, detail="Seuls les dépôts paient une facture")
+    if not await db.get(Company, payload.company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    code = "cheque" if "depot mobile" in bm.payee_key(tx.description) else bm.guess_method(tx.description)
+    method = (await db.execute(select(PaymentMethod).where(PaymentMethod.code == code))).scalar_one_or_none()
+    if not method:
+        raise HTTPException(status_code=400, detail="Mode de paiement inconnu")
+    num = (payload.invoice_number or "").strip().lstrip("#") or None
+    cp = ClientPayment(company_id=payload.company_id, status="confirmed", source="bank_import", method_code=method.code,
+                       method_name=method.name, amount=Decimal(tx.amount), received_at=tx.posted_date,
+                       lost_invoice=True, lost_invoice_number=num,
+                       notes=(payload.note or "").strip() or f"{LOST_NOTE} — dépôt du {tx.posted_date} : {tx.description}"
+                             + (f" — {tx.payee}" if tx.payee else ""))
+    db.add(cp)
+    await db.flush()
+    tx.client_payment_id, tx.payment_created = cp.id, True
+    tx.status, tx.matched_at = "matched", datetime.now(timezone.utc)
+    tx.company_id, tx.company_source = payload.company_id, "manual"
+    await db.commit()
+    return await _tx_out(tx, db, with_suggestion=False)
+
+
 @router.post("/transactions/{tx_id}/unmatch", response_model=TransactionOut)
 async def unmatch_transaction(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Annule une association : supprime l'encaissement s'il a ete cree par l'association,
@@ -688,6 +733,12 @@ async def unmatch_transaction(tx_id: uuid.UUID, db: AsyncSession = Depends(get_d
     if tx.status != "matched" or not tx.client_payment_id:
         raise HTTPException(status_code=400, detail="Transaction non associée")
     cp = await db.get(ClientPayment, tx.client_payment_id)
+    if cp and tx.payment_created:
+        from app.models.client_payment import PaymentDocument
+        if (await db.execute(select(func.count()).select_from(PaymentDocument).where(PaymentDocument.payment_id == cp.id))).scalar_one():
+            # l'encaissement serait supprime avec son cheque numerise (TASK-005.24) -- on ne perd jamais une piece
+            raise HTTPException(status_code=400, detail="Ce paiement a un chèque attaché : modifiez le paiement (client, facture) "
+                                                        "ou retirez d'abord le chèque avant d'annuler l'association")
     invoice_ids = list((await db.execute(select(PaymentAllocation.invoice_id).where(PaymentAllocation.payment_id == cp.id))).scalars().all()) if cp else []
     tx.client_payment_id, tx.status, tx.matched_at = None, "unclassified", None
     if cp and tx.payment_created:
@@ -950,7 +1001,8 @@ async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db
             allocs = (await db.execute(select(PaymentAllocation, Invoice).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
                                        .where(PaymentAllocation.payment_id == cp.id).order_by(Invoice.issue_date))).all()
             out["linked"] = {"kind": "client_payment", "created_by_link": tx.payment_created, "method": cp.method_name, "source": cp.source,
-                             "received_at": cp.received_at, "amount": float(cp.amount),
+                             "received_at": cp.received_at, "amount": float(cp.amount), "payment_id": str(cp.id),
+                             "lost_invoice": cp.lost_invoice, "lost_invoice_number": cp.lost_invoice_number,
                              "items": [{"id": str(i.id), "number": i.number, "date": i.issue_date, "total": float(i.total), "amount": float(a.amount_allocated)} for a, i in allocs]}
     elif tx.expense_id:
         e = (await db.execute(select(Expense).where(Expense.id == tx.expense_id).execution_options(populate_existing=True))).scalar_one_or_none()

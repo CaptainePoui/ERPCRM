@@ -270,6 +270,17 @@ async def portal_invoices(u: PortalUser = Depends(get_portal_user), db: AsyncSes
             "pending_paid": pending,
             "balance": max(0.0, round(total - confirmed, 2)),
         })
+    # TASK-005.24 : factures de l'ancien logiciel dont le document est perdu -- le paiement recu, sans PDF
+    lost = (await db.execute(select(ClientPayment).where(ClientPayment.company_id == u.company_id, ClientPayment.lost_invoice.is_(True),
+                                                         ClientPayment.status == "confirmed"))).scalars().all()
+    for p in lost:
+        out.append({
+            "id": str(p.id), "lost_invoice": True, "invoice_number": p.lost_invoice_number, "status": "payee",
+            "total_ttc": float(p.amount), "issue_date": None, "due_date": None, "paid_date": str(p.received_at) if p.received_at else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+            "confirmed_paid": float(p.amount), "pending_paid": 0.0, "balance": 0.0,
+        })
+    out.sort(key=lambda r: r.get("issue_date") or r.get("paid_date") or "", reverse=True)
     return out
 
 
