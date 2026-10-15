@@ -122,9 +122,10 @@ body { font-family: Inter, "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e
 .due span { display: block; font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .due strong { font-size: 15pt; color: #0f172a; }
 .due.zero strong { color: #16a34a; }
-.meta { display: flex; justify-content: space-between; margin: 20px 0 14px; position: relative; }
+.head { position: relative; }
+.meta { display: flex; justify-content: space-between; margin: 20px 0 14px; }
 .stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-16deg); border: 3px double #16a34a;
-  color: #16a34a; font-weight: 700; font-size: 26pt; letter-spacing: .14em; padding: 2px 18px; border-radius: 8px; opacity: .8; }
+  color: #16a34a; font-weight: 700; font-size: 78pt; letter-spacing: .1em; padding: 0 36px; border-radius: 18px; border-width: 8px; opacity: .55; line-height: 1.15; }
 .billto span, .dates span { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .billto .co { font-weight: 700; font-size: 10pt; color: #0f172a; margin-top: 2px; }
 .billto p { color: #334155; }
@@ -262,6 +263,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 
     html = f"""<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><style>{css}</style></head><body>
 {pagefoot}
+<div class="head">
 <div class="top">
   <div class="seller">{seller}</div>
   <div class="doc"><h1>{doc_label}</h1><div class="num">N° {_esc(inv.number)}</div>
@@ -270,7 +272,8 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 <div class="meta">
   <div class="billto"><span>Facturer à</span>{bill}</div>
   <div class="dates"><table>{dates}</table></div>
-  {'<div class="stamp">PAYÉ</div>' if inv.status == "payee" and not is_credit else ""}
+</div>
+{'<div class="stamp">PAYÉ</div>' if inv.status == "payee" and not is_credit else ""}
 </div>
 <table class="lines"><thead><tr><th>#</th><th>Article &amp; description</th><th class="r">Quantité</th><th class="r">Taux</th><th class="r">Montant</th></tr></thead>
 <tbody>{rows}</tbody></table>
