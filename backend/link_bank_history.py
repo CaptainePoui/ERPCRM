@@ -150,7 +150,10 @@ async def main(apply: bool):
                 return None, "plusieurs", group or zs
             if rule_cid:
                 return rule_cid, "regle beneficiaire", []
-            if not tx.payee:                 # depot sans nom (cheque, Interac) : un seul paiement de ce montant, tous clients
+            # depot sans nom (cheque, Interac) : un seul paiement de ce montant, tous clients -- seulement des juin 2020 :
+            # avant, les factures QuickBooks manquent, « un seul client a ce montant » ne prouve rien (2026-10-15 : les
+            # cheques de Philippe ont montre Houle #1300 relie a K-DO, Groupe Lavoie relie a Guimond Lavallee)
+            if not tx.payee and d0 >= date(2020, 6, 1):
                 owing = [c for c in free if has_pay(c)]
                 if len(owing) == 1 and sum(1 for f in free[owing[0]] if f["amount"] == amt
                                            and 0 <= (d0 - f["idate"]).days <= 120) == 1:
