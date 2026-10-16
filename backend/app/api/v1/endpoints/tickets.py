@@ -360,6 +360,30 @@ async def add_entry(ticket_id: uuid.UUID, payload: EntryCreate, current_user: Us
     return out
 
 
+class EntryUpdate(BaseModel):
+    duration_minutes: int | None = None
+    description: str | None = None
+    is_billable: bool | None = None
+
+
+@router.put("/{ticket_id}/entries/{entry_id}", response_model=TicketOut)
+async def update_entry(ticket_id: uuid.UUID, entry_id: uuid.UUID, payload: EntryUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Corriger une saisie de temps deja enregistree (Philippe, 2026-10-16 : intervention commencee avant le ticket)."""
+    t = await _get_ticket(ticket_id, db)
+    entry = next((e for e in t.entries if e.id == entry_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entrée introuvable")
+    if entry.invoiced:
+        raise HTTPException(status_code=400, detail="Cette saisie est déjà facturée")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(entry, k, v)
+    t.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    t = await _get_ticket(ticket_id, db)
+    return await _build_out(t, db)
+
+
 @router.delete("/{ticket_id}/entries/{entry_id}", response_model=TicketOut)
 async def delete_entry(ticket_id: uuid.UUID, entry_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     t = await _get_ticket(ticket_id, db)

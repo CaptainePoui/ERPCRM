@@ -257,6 +257,16 @@ export default function TicketDetail() {
     } finally { setSavingNote(false) }
   }
 
+  // Corriger le temps d'une saisie deja enregistree (clic sur la duree)
+  const [editMins, setEditMins] = useState(null)
+  async function saveMins(e) {
+    const v = parseInt(editMins?.v)
+    setEditMins(null)
+    if (isNaN(v) || v === e.duration_minutes) return
+    const r = await api.put(`/v1/tickets/${id}/entries/${e.id}`, { duration_minutes: v })
+    applyTicket(r.data)
+  }
+
   async function donnerTemps(mins) {
     const r = await api.post(`/v1/tickets/${id}/entries`, {
       description: `Temps offert (${mins} min)`,
@@ -627,7 +637,15 @@ export default function TicketDetail() {
                   <td>{e.description}</td>
                   <td style={{ color: 'var(--c-muted)' }}>{e.user_name || '—'}</td>
                   <td style={{ color: 'var(--c-muted)', fontSize: 12 }}>{catalogue.find(c => c.id === e.catalogue_item_id)?.name || '—'}</td>
-                  <td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtMins(e.duration_minutes)}</td>
+                  <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {editMins?.id === e.id
+                      ? <input type="number" autoFocus value={editMins.v} style={{ width: 70, textAlign: 'right' }}
+                          onChange={ev => setEditMins({ id: e.id, v: ev.target.value })}
+                          onKeyDown={ev => { if (ev.key === 'Enter') saveMins(e); if (ev.key === 'Escape') setEditMins(null) }}
+                          onBlur={() => saveMins(e)} />
+                      : <span title={e.invoiced ? 'Déjà facturée' : 'Cliquer pour corriger le temps (minutes)'} style={{ cursor: e.invoiced ? 'default' : 'pointer', borderBottom: e.invoiced ? 'none' : '1px dashed var(--c-faint)' }}
+                          onClick={() => !e.invoiced && setEditMins({ id: e.id, v: String(e.duration_minutes) })}>{fmtMins(e.duration_minutes)}</span>}
+                  </td>
                   <td>{e.is_billable ? <span className="tkt-billable">Fact.</span> : '—'}</td>
                   <td style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
                     {isClientReply && (
