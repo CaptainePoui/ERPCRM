@@ -6,7 +6,9 @@ import api from '../services/api'
 import useFeatures from '../hooks/useFeatures'
 import { askConfirm } from './Dialog'
 
-export default function CompanySettingsPanel() {
+export default function CompanySettingsPanel({ only = null }) {
+  // only : 'entreprise' (coordonnees) | 'general' (apparence, fuseau, taux, numerotation) | 'factures' (frais de retard)
+  const show = k => !only || only === k
   const [settings, setSettings] = useState(null)
   const [users, setUsers] = useState([])
   const [saving, setSaving] = useState(false)
@@ -39,13 +41,13 @@ export default function CompanySettingsPanel() {
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 520px), 1fr))', columnGap: 20, alignItems: 'start', padding: '0 0 40px' }}>
       {msg && <div style={{ gridColumn: '1 / -1', background: 'var(--c-tint-green)', color: 'var(--c-on-green)', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
-      <AppearanceSection />
-      <BusinessSection />
-      <TimezoneSection />
-      <LateFeesSection />
+      {show('general') && <AppearanceSection />}
+      {show('entreprise') && <BusinessSection />}
+      {show('general') && <TimezoneSection />}
+      {show('factures') && <LateFeesSection />}
 
       {/* ── Taux de service ── */}
-      <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      {show('general') && <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
         <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: 'var(--c-text)' }}>Taux de service Simple IP</h3>
         <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
           Ce taux s'applique aux tickets, factures et tous les articles catalogue liés au taux horaire.
@@ -98,9 +100,9 @@ export default function CompanySettingsPanel() {
         <button className="btn-primary" onClick={saveSettings} disabled={saving} style={{ marginTop: 16 }}>
           {saving ? 'Sauvegarde...' : 'Sauvegarder'}
         </button>
-      </div>
+      </div>}
 
-      <NumberingSection />
+      {show('general') && <NumberingSection />}
 
     </div>
   )

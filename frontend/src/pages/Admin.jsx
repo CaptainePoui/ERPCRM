@@ -55,18 +55,20 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal', 'Pastilles']
+const TABS = ['Utilisateurs', 'Portail client', 'Intégrations', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal', 'pastilles']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'integrations', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal']
+// anciens onglets regroupes dans Configuration generale (2026-10-16)
+const OLD_TABS = { tickets: 'tickets', 'methodes-paiement': 'paiements', pastilles: 'pastilles' }
 
 export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams()
   // google_calendar/backup restent prioritaires -- ce sont des callbacks OAuth qui
   // doivent atterrir sur le bon onglet meme sans ?tab= (IntegrationsPanel/BackupPanel
   // les effacent eux-memes une fois le message affiche, voir plus bas).
-  const initialTab = searchParams.get('google_calendar') ? 3
-    : searchParams.get('backup') ? 4
-    : Math.max(0, TAB_SLUGS.indexOf(searchParams.get('tab') === 'tickets' ? 'configuration' : searchParams.get('tab')))
+  const initialTab = searchParams.get('google_calendar') ? 2
+    : searchParams.get('backup') ? 3
+    : Math.max(0, TAB_SLUGS.indexOf(OLD_TABS[searchParams.get('tab')] ? 'configuration' : searchParams.get('tab')))
   const [tab, setTab] = useState(initialTab)
 
   // Persiste l'onglet actif dans l'URL -- sinon un refresh retombe toujours sur
@@ -91,14 +93,12 @@ export default function Admin() {
       <div className="adm-body">
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
-        {tab === 2 && <PaymentMethodsPanel />}
-        {tab === 3 && <><MailboxesPanel /><IntegrationsPanel /></>}   {/* option Echanges (troc) retiree : remplacee par les Ententes (TASK-005.26) */}
-        {tab === 4 && <BackupPanel />}
-        {tab === 5 && <><InvoiceSettingsPanel /><div style={{ height: 28 }} /><TicketsSettingsPanel /></>}
-        {tab === 6 && <KnowledgeGraphViewer />}
-        {tab === 7 && <CompanySettingsPanel />}
-        {tab === 8 && <JournalPanel />}
-        {tab === 9 && <PastillesPanel />}
+        {tab === 2 && <><MailboxesPanel /><IntegrationsPanel /></>}
+        {tab === 3 && <BackupPanel />}
+        {tab === 4 && <ConfigPanel initial={OLD_TABS[searchParams.get('tab')] || searchParams.get('section')} />}
+        {tab === 5 && <KnowledgeGraphViewer />}
+        {tab === 6 && <CompanySettingsPanel only="entreprise" />}
+        {tab === 7 && <JournalPanel />}
       </div>
     </div>
   )
@@ -108,6 +108,24 @@ export default function Admin() {
 
 // Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
 // rassembler dans un onglet config générale ») -- factures : conditions de paiement
+// Configuration generale (2026-10-16, Philippe) : tous les reglages generaux au meme endroit, en sous-onglets
+const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles']]
+function ConfigPanel({ initial }) {
+  const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
+  return (
+    <div>
+      <div className="filter-tabs" style={{ marginBottom: 18 }}>
+        {CONFIG_TABS.map(([k, l]) => <button key={k} className={`filter-tab${sub === k ? ' active' : ''}`} onClick={() => setSub(k)}>{l}</button>)}
+      </div>
+      {sub === 'general' && <CompanySettingsPanel only="general" />}
+      {sub === 'factures' && <><InvoiceSettingsPanel /><div style={{ height: 24 }} /><CompanySettingsPanel only="factures" /></>}
+      {sub === 'paiements' && <PaymentMethodsPanel />}
+      {sub === 'tickets' && <TicketsSettingsPanel />}
+      {sub === 'pastilles' && <PastillesPanel />}
+    </div>
+  )
+}
+
 function InvoiceSettingsPanel() {
   const [days, setDays] = useState('')
   const [saved, setSaved] = useState(false)
