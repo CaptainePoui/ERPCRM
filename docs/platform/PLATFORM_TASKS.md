@@ -6360,8 +6360,10 @@ Date(s) de travail : 2026-10-10, 2026-10-11
   - Leçon (ERRORS_LESSONS TASK-051) : `reload sipv-backend` ne recharge pas `sipv-backend-tls` (8022, par où passe ERPCRM) → 422 jusqu'au redémarrage de celui-ci.
 - Reste (Philippe) : vérifier sur le 102 le fond recadré et les boutons sous l'écran en appel ; feu vert pour effacer les anciennes tables (templates de tenant, templates par modèle) ; recadrer au besoin CNJ / Mc Crystal / Waterco ; test réel de la remise à zéro.
 
-## TASK-052 [ERPCRM] [ ] Recherche globale (champ du haut) : tolérante et sur tout
+## TASK-052 [ERPCRM] [x] Recherche globale (champ du haut) : tolérante et sur tout
 Date de demande : 2026-10-16 (Philippe : « dans le champ de recherche en haut j'aimerais trouver l'entreprise même s'il me manque un espace, un -, un ' ou des accents ; j'ai tenté de rechercher dastou et je ne trouvais rien ; aussi rechercher une facture, j'ai dû aller dans Factures ; j'aimerais que ce champ soit une recherche de tout : un prix (avec . ou , pas de différence), une facture, un nom, contact ou entreprise »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-16
 
 - Existant : `/v1/search` (compagnies, contacts ; ilike + unaccent). À faire : comparaison sans espaces, tirets, apostrophes ni accents (« dastou » trouve « D'Astous Auto ») ; numéros de facture ; montants (1234.56 = 1234,56) ; résultats ouverts dans la fiche du client (TASK-002.9).
+- Fait (2026-10-16) : `search.py` — noms comparés sans accents, espaces, tirets, apostrophes ni ponctuation (`regexp_replace(unaccent(lower(...)))`), compagnies (nom, nom légal, n° de compte), contacts (prénom + nom collés, courriel, téléphones) ; si aucune compagnie, ressemblance (difflib, ≥ 0,66, en Python — pas d'extension pg_trgm) pour les fautes de frappe ; factures par numéro (« 112183 », « 1372 ») ou par montant ; paiements par montant ; montants « 131.65 », « 131,65 », « 1 103,65 », « $1,234.56 » équivalents. Facture / paiement trouvés ouverts dans la fiche du client. Essais : « dastou », « d astous » → D Astous Auto ; « physoteque », « physotheque » → Physotech ; « jacquescartier » → Résidence Jacques-Cartier ; « 131,65 » → factures Hamak ; « 1 103,65 » → paiement Domaine des Cascades.
+

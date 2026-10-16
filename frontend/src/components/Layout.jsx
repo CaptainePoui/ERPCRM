@@ -106,7 +106,11 @@ function GlobalSearch() {
     setQ('')
     setResults([])
     setOpen(false)
-    navigate(result.type === 'company' ? `/companies/${result.id}` : `/contacts/${result.id}`)
+    // factures et paiements : ouverts dans la fiche du client (TASK-002.9 / TASK-052)
+    navigate(result.type === 'company' ? `/companies/${result.id}`
+      : result.type === 'invoice' ? `/companies/${result.company_id}?tab=transactions&facture=${result.id}`
+      : result.type === 'payment' ? `/companies/${result.company_id}?tab=transactions&paiement=${result.id}`
+      : `/contacts/${result.id}`)
   }
 
   function onKeyDown(e) {
@@ -123,7 +127,7 @@ function GlobalSearch() {
       <input
         className="global-search"
         aria-label="Rechercher"
-        placeholder="Rechercher une compagnie ou un contact…"
+        placeholder="Rechercher : compagnie, contact, facture, montant…"
         value={q}
         onChange={onChange}
         onKeyDown={onKeyDown}
@@ -134,7 +138,7 @@ function GlobalSearch() {
         <div className="search-dropdown">
           {results.map((r, i) => (
             <div key={r.id} className={`search-item${i === active ? ' search-item-active' : ''}`} onMouseDown={() => go(r)}>
-              <span className="search-item-type">{r.type === 'company' ? <IconBuilding width={14} height={14} /> : <IconUser width={14} height={14} />}</span>
+              <span className="search-item-type">{r.type === 'company' ? <IconBuilding width={14} height={14} /> : r.type === 'invoice' ? '🧾' : r.type === 'payment' ? '$' : <IconUser width={14} height={14} />}</span>
               <span className="search-item-label">{r.label}</span>
               {r.sub && <span className="search-item-sub">{r.sub}</span>}
             </div>
