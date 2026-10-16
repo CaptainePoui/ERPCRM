@@ -305,7 +305,7 @@ async def update_line(line_id: uuid.UUID, payload: LineUpdate, db: AsyncSession 
 
 
 class PauseIn(BaseModel):
-    pause_start: date
+    pause_start: date | None = None     # par defaut aujourd'hui : la pause commence quand on la donne
     pause_end: date
 
 
@@ -314,10 +314,9 @@ async def set_pause(rb_id: uuid.UUID, payload: PauseIn, db: AsyncSession = Depen
     """TASK-005.26 : pause de facturation (ex. 8 mois et 12 jours gratuits) -- aucun cycle qui commence dans la pause
     n'est facture ; a la reprise, le cycle repart de cette date, meme rythme. Modifiable, annulable."""
     rb = await _get_rb(rb_id, db)
+    payload.pause_start = rb.pause_start or payload.pause_start or clock.today()
     if payload.pause_end <= payload.pause_start:
         raise HTTPException(status_code=400, detail="La fin de la pause doit suivre son début")
-    if rb.last_invoice_date and payload.pause_start <= rb.last_invoice_date:
-        raise HTTPException(status_code=400, detail=f"Ce cycle est déjà facturé (dernière facture du {rb.last_invoice_date}) : la pause commence au plus tôt le {_unpaused_next(rb)}")
     rb.pause_start, rb.pause_end = payload.pause_start, payload.pause_end
     await db.commit()
     return _out(await _get_rb(rb_id, db))
@@ -360,24 +359,29 @@ def next_missing_cycle(rb) -> tuple[date, date]:
     # Derniere facture anterieure au debut du cycle : le cycle a ete deplace (reprise apres un echange, TASK-005.13)
     nxt = rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
         else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
-    if in_pause(rb, nxt):         # TASK-005.26 : rien pendant la pause, le cycle repart a la reprise
-        return _cycle_bounds(rb.pause_end, rb.frequency, rb.pause_end)
+    shifted = paused_next(rb, nxt)
+    if shifted:                   # TASK-005.26 : la pause repousse le cycle de sa duree
+        return _cycle_bounds(shifted, rb.frequency, shifted)
     return _cycle_bounds(rb.start_date, rb.frequency, nxt)
 
 
-def in_pause(rb, day: date) -> bool:
-    return bool(getattr(rb, "pause_start", None) and rb.pause_end and rb.pause_start <= day < rb.pause_end)
+def paused_next(rb, nxt: date) -> date | None:
+    """Philippe (2026-10-16) : « si je fais une pause de 8 mois et 2 jours, c'est juste une pause, le cycle continue
+    après ; s'il restait 23 jours avant sa facturation, quand ça recommence il reste 23 jours » -- la prochaine facture
+    est repoussee de la duree de la pause (pause_end - pause_start, en jours), le rythme reprend de la."""
+    if not (getattr(rb, "pause_start", None) and rb.pause_end) or nxt < rb.pause_start:
+        return None
+    return nxt + (rb.pause_end - rb.pause_start)
 
 
 def resume_after_pause(rb, today: date) -> bool:
-    """La pause est finie (pause_end <= aujourd'hui) et elle couvrait le prochain cycle : le cycle repart de la date de
-    reprise, meme rythme (comme apres un echange, TASK-005.13), et la pause est effacee. Retourne True si change."""
-    if not (rb.pause_start and rb.pause_end) or rb.pause_end > today:
-        return False
+    """La date repoussee est arrivee : le cycle repart de cette date (meme rythme) et la pause est effacee."""
     nxt = rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
         else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
-    if rb.pause_start <= nxt < rb.pause_end:
-        rb.start_date = rb.pause_end
+    shifted = paused_next(rb, nxt)
+    if not shifted or shifted > today:
+        return False
+    rb.start_date = shifted
     rb.pause_start = rb.pause_end = None
     return True
 

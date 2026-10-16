@@ -26,45 +26,56 @@ export function diffPeriod(a, b) {
 }
 
 // ── Pause de facturation (fenetre moderne) ─────────────────────────────────────
+// Philippe : la pause commence quand on la donne et repousse le cycle de sa duree (23 jours restants = 23 jours apres)
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`
+export function spell(a, b) {
+  const { months, days } = diffPeriod(a, b)
+  const y = Math.floor(months / 12), m = months % 12
+  const parts = [y && plural(y, 'an', 'ans'), m && `${m} mois`, days && plural(days, 'jour', 'jours')].filter(Boolean)
+  return parts.length > 1 ? parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1] : (parts[0] || '0 jour')
+}
 function PauseModal({ rb, onClose, onSaved }) {
+  const start = rb.pause_start || todayIso()
   const [mode, setMode] = useState('duree')
-  const [start, setStart] = useState(rb.pause_start || rb.unpaused_next)
-  const [end, setEnd] = useState(rb.pause_end || addPeriod(rb.unpaused_next, 1, 0))
-  const d = start && end && end > start ? diffPeriod(start, end) : { months: 0, days: 0 }
+  const [end, setEnd] = useState(rb.pause_end || addPeriod(start, 1, 0))
+  const d = end > start ? diffPeriod(start, end) : { months: 0, days: 0 }
+  const y = Math.floor(d.months / 12), m = d.months % 12
+  const setDur = (yy, mm, dd) => setEnd(addPeriod(start, (parseInt(yy) || 0) * 12 + (parseInt(mm) || 0), parseInt(dd) || 0))
+  const shiftDays = Math.round((Date.parse(end) - Date.parse(start)) / 86400000)
+  const newNext = rb.unpaused_next ? addPeriod(rb.unpaused_next, 0, shiftDays) : null
   const [err, setErr] = useState(null)
-  const free = start && end ? Math.round((Date.parse(end) - Date.parse(start)) / 86400000) : 0
   async function save() {
     setErr(null)
     try { await api.put(`/v1/recurring-billing/${rb.id}/pause`, { pause_start: start, pause_end: end }); onSaved() } catch (e) { setErr(errText(e)) }
   }
   const seg = on => ({ flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
     background: on ? 'var(--brand)' : 'transparent', color: on ? '#fff' : 'var(--c-muted)' })
-  const field = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--c-muted)', fontWeight: 600 }
+  const field = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--c-muted)', fontWeight: 600, flex: 1 }
   const inp = { padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', color: 'var(--c-text)', fontSize: 14 }
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 480, maxWidth: '94vw', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <h3 className="modal-title" style={{ margin: 0 }}>Mettre la facturation en pause</h3>
-          <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>Aucune facture pendant la pause. À la reprise, la facturation repart de cette date, au même rythme.</div>
+          <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>La pause repousse le cycle : les jours qui restaient avant la prochaine facture restent après la pause.</div>
         </div>
         <div style={{ display: 'flex', gap: 4, background: 'var(--c-surface-2)', borderRadius: 10, padding: 4 }}>
           <button style={seg(mode === 'duree')} onClick={() => setMode('duree')}>Pour une durée</button>
           <button style={seg(mode === 'date')} onClick={() => setMode('date')}>Jusqu'à une date</button>
         </div>
-        <label style={field}>À partir du<input type="date" style={inp} value={start} onChange={e => setStart(e.target.value)} /></label>
         {mode === 'date' ? (
-          <label style={field}>Reprise le<input type="date" style={inp} value={end} onChange={e => setEnd(e.target.value)} /></label>
+          <label style={field}>Fin de la pause<input type="date" style={inp} value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>
         ) : (
           <div style={{ display: 'flex', gap: 12 }}>
-            <label style={{ ...field, flex: 1 }}>Mois<input type="number" min="0" style={inp} value={d.months} onChange={e => setEnd(addPeriod(start, parseInt(e.target.value) || 0, d.days))} /></label>
-            <label style={{ ...field, flex: 1 }}>Jours<input type="number" min="0" style={inp} value={d.days} onChange={e => setEnd(addPeriod(start, d.months, parseInt(e.target.value) || 0))} /></label>
+            <label style={field}>Années<input type="number" min="0" style={inp} value={y} onChange={e => setDur(e.target.value, m, d.days)} /></label>
+            <label style={field}>Mois<input type="number" min="0" style={inp} value={m} onChange={e => setDur(y, e.target.value, d.days)} /></label>
+            <label style={field}>Jours<input type="number" min="0" style={inp} value={d.days} onChange={e => setDur(y, m, e.target.value)} /></label>
           </div>
         )}
         <div style={{ background: 'var(--c-tint-blue)', borderRadius: 10, padding: '12px 14px', fontSize: 14 }}>
           {end > start
-            ? <><strong>{free} jours gratuits</strong> — aucune facture du {start} au {addPeriod(end, 0, -1)}, reprise le <strong>{end}</strong></>
-            : 'Choisissez une durée ou une date de reprise.'}
+            ? <><strong>{spell(start, end)} offerts</strong>{newNext ? <> — la prochaine facture passe du {rb.unpaused_next} au <strong>{newNext}</strong></> : null}</>
+            : 'Choisissez une durée ou une date de fin.'}
         </div>
         {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
         <div className="modal-actions">
@@ -180,7 +191,7 @@ export default function EntenteView({ company, onRefresh, onOpenInvoice, oldExch
   const label = { fontSize: 13, color: 'var(--c-muted)' }
   const row = (k, v) => <div style={{ display: 'flex', padding: '7px 0', fontSize: 13 }}><span style={{ ...label, minWidth: 190 }}>{k}</span><span>{v}</span></div>
   const today = todayIso()
-  const state = !sel ? null : !sel.is_active ? ['Arrêtée', '#6B7280'] : sel.pause_start && sel.pause_end > today ? ['En pause', '#D97706'] : ['Active', '#059669']
+  const state = !sel ? null : !sel.is_active ? ['Arrêtée', '#6B7280'] : sel.pause_start ? ['En pause', '#D97706'] : ['Active', '#059669']
   const item = { display: 'block', width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: '9px 14px', fontSize: 13, color: 'var(--c-text)', cursor: 'pointer', borderRadius: 6 }
 
   return (
@@ -217,7 +228,7 @@ export default function EntenteView({ company, onRefresh, onOpenInvoice, oldExch
           {/* chiffres */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', borderBottom: '1px solid var(--c-border)' }}>
             {[['Montant de la facture', money(sel.next_total)],
-              [sel.pause_start && sel.pause_end > today ? 'Reprise de la facturation' : 'Prochaine date de facturation', sel.is_active ? sel.current_cycle_start : '—'],
+              ['Prochaine date de facturation', sel.is_active ? sel.current_cycle_start : '—'],
               ['Période récurrente', FREQ[sel.frequency] || sel.frequency]].map(([k, v], i) => (
               <div key={k} style={{ padding: '14px 18px', textAlign: 'center', borderLeft: i ? '1px solid var(--c-border)' : 'none' }}>
                 <div style={label}>{k}</div><div style={{ fontSize: 16, fontWeight: 600, marginTop: 4, color: i === 1 ? 'var(--brand)' : undefined }}>{v}</div>
@@ -231,13 +242,12 @@ export default function EntenteView({ company, onRefresh, onOpenInvoice, oldExch
               <div style={{ padding: 18, borderRight: '1px solid var(--c-border)' }}>
                 <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: '.06em', color: 'var(--c-muted)', marginBottom: 6 }}>DÉTAILS</div>
                 {row('Statut du profil', <span style={{ background: state[1], color: '#fff', borderRadius: 4, padding: '1px 8px', fontSize: 12, fontWeight: 600 }}>{state[0]}</span>)}
-                {sel.pause_start && row('Pause', `du ${sel.pause_start} au ${sel.pause_end}`)}
+                {sel.pause_start && row('Pause', `${spell(sel.pause_start, sel.pause_end)} offerts, depuis le ${sel.pause_start}`)}
                 {row('Date de début', sel.start_date)}
                 {row('Date de fin', sel.end_date || "N'expire jamais")}
                 {row('Conditions de paiement', `${sel.terms_days} net`)}
-                {row('Frais de retard', <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={!company.no_late_fees} onChange={e => run(() => api.put(`/v1/companies/${company.id}`, { no_late_fees: !e.target.checked }))} />
-                  {company.no_late_fees ? 'Non — ce client ne paie jamais de frais de retard' : 'Oui'}</label>)}
+                {row('Frais de retard', <input type="checkbox" checked={!company.no_late_fees} style={{ cursor: 'pointer' }}
+                  onChange={e => run(() => api.put(`/v1/companies/${company.id}`, { no_late_fees: !e.target.checked }))} />)}
                 <div style={{ fontWeight: 600, fontSize: 12, letterSpacing: '.06em', color: 'var(--c-muted)', margin: '16px 0 6px' }}>NOTES</div>
                 <textarea key={company.notes_internal || ''} rows={5} defaultValue={company.notes_internal || ''} placeholder="Notes sur l'entreprise (les mêmes que dans Général)"
                   style={{ width: '100%', padding: 10, borderRadius: 8, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', color: 'var(--c-text)', font: 'inherit', fontSize: 13, resize: 'vertical' }}
