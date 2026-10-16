@@ -126,6 +126,7 @@ body { font-family: Inter, "DejaVu Sans", sans-serif; font-size: 9pt; color: #1e
 .meta { display: flex; justify-content: space-between; margin: 20px 0 14px; }
 .stamp { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-16deg); border: 3px double #16a34a;
   color: #16a34a; font-weight: 700; font-size: 78pt; letter-spacing: .1em; padding: 0 36px; border-radius: 18px; border-width: 8px; opacity: .55; line-height: 1.15; }
+.stamp.part { border-color: #ea8a00; color: #ea8a00; font-size: 40pt; border-width: 6px; padding: 0 22px; white-space: nowrap; }
 .stamp.late { border-color: #dc2626; color: #dc2626; font-size: 40pt; border-width: 6px; padding: 0 22px; white-space: nowrap; }
 .billto span, .dates span { font-size: 7.5pt; text-transform: uppercase; letter-spacing: .08em; color: #64748b; }
 .billto .co { font-weight: 700; font-size: 10pt; color: #0f172a; margin-top: 2px; }
@@ -274,7 +275,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
   <div class="billto"><span>Facturer à</span>{bill}</div>
   <div class="dates"><table>{dates}</table></div>
 </div>
-{'<div class="stamp">PAYÉ</div>' if inv.status == "payee" and not is_credit else '<div class="stamp late">EN RETARD</div>' if inv.status == "en_retard" and not is_credit else ""}
+{'<div class="stamp">PAYÉ</div>' if inv.status == "payee" and not is_credit else '<div class="stamp late">EN RETARD</div>' if inv.status == "en_retard" and not is_credit else '<div class="stamp part">SOLDE DÛ</div>' if inv.status == "partiellement_payee" and not is_credit else ""}
 </div>
 <table class="lines"><thead><tr><th>#</th><th>Article &amp; description</th><th class="r">Quantité</th><th class="r">Taux</th><th class="r">Montant</th></tr></thead>
 <tbody>{rows}</tbody></table>
