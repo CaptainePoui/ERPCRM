@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../../services/api'
 import { C, EMPTY, fmtMoney, fmtD, th, thR, td, tdR, headRow, Card, Modal, Field, VendorPicker, CategorySelect, useRefs, errText } from './common'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 export const LINE_CLASSES = [
   ['materiel_taxable', 'Matériel taxable'], ['materiel_non_taxable', 'Matériel non taxable'],
@@ -164,9 +165,9 @@ export function ReceiptDrop({ onExpenseCreated }) {
   async function act(d, what) {
     try {
       if (what === 'retry') await api.post(`/v1/purchases/receipts/${d.id}/retry`)
-      if (what === 'delete') { if (!confirm(`Retirer « ${d.filename} » ?`)) return; await api.delete(`/v1/purchases/receipts/${d.id}`) }
+      if (what === 'delete') { if (!await askConfirm(`Retirer « ${d.filename} » ?`)) return; await api.delete(`/v1/purchases/receipts/${d.id}`) }
       await load()
-    } catch (e) { alert(errText(e)) }
+    } catch (e) { showAlert(errText(e)) }
   }
   const open = docs.filter(d => d.status !== 'created')
   const done = docs.filter(d => d.status === 'created')

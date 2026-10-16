@@ -4,6 +4,7 @@ import api from '../services/api'
 import './PurchaseOrderDetail.css'
 import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
+import { askConfirm } from '../components/Dialog'
 
 const STATUS_STYLES = {
   brouillon:          { color: 'var(--c-muted)', bg: 'var(--c-surface-3)', label: 'Brouillon' },
@@ -43,7 +44,7 @@ export default function PurchaseOrderDetail() {
   }
 
   async function changeStatus(newStatus) {
-    if (!confirm(`Passer le BC en statut « ${STATUS_STYLES[newStatus]?.label} » ?`)) return
+    if (!await askConfirm(`Passer le BC en statut « ${STATUS_STYLES[newStatus]?.label} » ?`)) return
     setActioning(true)
     try {
       const r = await api.post(`/v1/purchase-orders/${id}/status`, { status: newStatus })
@@ -52,7 +53,7 @@ export default function PurchaseOrderDetail() {
   }
 
   async function deletePO() {
-    if (!confirm('Supprimer ce bon de commande ?')) return
+    if (!await askConfirm('Supprimer ce bon de commande ?')) return
     await api.delete(`/v1/purchase-orders/${id}`)
     navigate('/purchase-orders')
   }

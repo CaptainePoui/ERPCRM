@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../services/api'
 import WallpaperEditor, { SCREENS } from './WallpaperEditor'
+import { askConfirm } from './Dialog'
 
 const thumbs = new Map()
 export function WallpaperThumb({ w, height = 90 }) {
@@ -156,7 +157,7 @@ function WallpaperActions({ group, onChanged }) {
         : !group.global && <button className="btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={() => run(() => api.put(`/v1/telephony/wallpapers/${first.id}/default`))}>Fond par défaut de la compagnie</button>}
       <button className="btn-secondary" style={{ fontSize: 12 }} onClick={download}>Télécharger l'original</button>
       {!group.global && <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} disabled={busy}
-        onClick={() => confirm(`Supprimer le fond « ${group.name} » (toutes ses tailles) ?`) && run(() => api.delete(`/v1/telephony/wallpapers/${first.id}`))}>Supprimer</button>}
+        onClick={async () => await askConfirm(`Supprimer le fond « ${group.name} » (toutes ses tailles) ?`) && run(() => api.delete(`/v1/telephony/wallpapers/${first.id}`))}>Supprimer</button>}
       {error && <span style={{ color: '#DC2626', fontSize: 13 }}>{error}</span>}
     </div>
   )

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { askConfirm } from './Dialog'
 
 // Interrupteur de creation automatique des periodiques (parametres recurring_auto_sales /
 // recurring_auto_purchases, services/recurring_poller.py cote serveur)
@@ -8,7 +9,7 @@ export default function AutoRecurringToggle({ settingKey, onText, offText }) {
   useEffect(() => { api.get('/v1/settings').then(r => setOn(r.data[settingKey])) }, [settingKey])
   async function toggle() {
     const next = !on
-    if (!confirm(next ? `Activer la création automatique ?\n\n${onText}` : 'Désactiver la création automatique ? Il faudra cliquer chaque cycle à la main.')) return
+    if (!await askConfirm(next ? `Activer la création automatique ?\n\n${onText}` : 'Désactiver la création automatique ? Il faudra cliquer chaque cycle à la main.')) return
     const r = await api.put('/v1/settings', { [settingKey]: next })
     setOn(r.data[settingKey])
   }

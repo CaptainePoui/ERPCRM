@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import api from '../services/api'
 import './EcomOrders.css'
+import { askConfirm } from '../components/Dialog'
 
 const STATUS_STYLES = {
   nouveau:        { color: 'var(--brand)', bg: 'var(--brand-bg)', label: 'Nouveau' },
@@ -81,7 +82,7 @@ export function EcomOrderDetail() {
   }
 
   async function cancel() {
-    if (!confirm('Annuler cette commande ?')) return
+    if (!await askConfirm('Annuler cette commande ?')) return
     setUpdating(true)
     try {
       const r = await api.put(`/v1/ecom/orders/${id}/status`, { status: 'annule' })

@@ -8,6 +8,7 @@ import useFeatures from '../hooks/useFeatures'
 import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 import PaymentModal from '../components/PaymentModal'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -122,10 +123,10 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function removeCreditAllocation(allocId) {
-    if (!confirm("Retirer cette application de l'avoir ? Le montant redevient disponible sur l'avoir et dû sur la facture.")) return
+    if (!await askConfirm("Retirer cette application de l'avoir ? Le montant redevient disponible sur l'avoir et dû sur la facture.")) return
     try {
       await api.delete(`/v1/payments/credit-allocations/${allocId}`)
-    } catch (e) { alert(e.response?.data?.detail || 'Retrait impossible'); return }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Retrait impossible'); return }
     const r = await api.get(`/v1/invoices/${id}`)
     setInv(r.data)
     setPayments((await api.get(`/v1/payments/invoice/${id}`)).data)
@@ -149,13 +150,13 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
 
   // Un paiement declare au portail peut couvrir plusieurs factures : confirmer/rejeter s'applique a toutes
   async function confirmPayment(p) {
-    if (!confirm(`Confirmer la réception du paiement ${p.reference || ''} ? (s'applique à toutes les factures qu'il couvre)`)) return
+    if (!await askConfirm(`Confirmer la réception du paiement ${p.reference || ''} ? (s'applique à toutes les factures qu'il couvre)`)) return
     await api.patch(`/v1/payments/${p.id}/confirm`)
     await loadPayments()
   }
 
   async function rejectPayment(p) {
-    if (!confirm(`Rejeter le paiement ${p.reference || ''} (jamais reçu) ? (s'applique à toutes les factures qu'il couvre)`)) return
+    if (!await askConfirm(`Rejeter le paiement ${p.reference || ''} (jamais reçu) ? (s'applique à toutes les factures qu'il couvre)`)) return
     await api.patch(`/v1/payments/${p.id}/reject`)
     await loadPayments()
   }
@@ -166,20 +167,20 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function changeStatus(s) {
-    if (s === 'brouillon' && !confirm('Remettre cette facture en brouillon ? Elle redevient modifiable et ne compte plus dans les montants dus.')) return
+    if (s === 'brouillon' && !await askConfirm('Remettre cette facture en brouillon ? Elle redevient modifiable et ne compte plus dans les montants dus.')) return
     try {
       const r = await api.put(`/v1/invoices/${id}`, { status: s })
       setInv(r.data)
-    } catch (e) { alert(e.response?.data?.detail || 'Changement de statut impossible') }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Changement de statut impossible') }
   }
 
   // TASK-005.22 : un brouillon offert au client sort des taxes, du solde et du rappel des brouillons
   async function offer(on) {
-    if (on && !confirm('Offrir cette facture au client ? Elle ne sera jamais facturée : hors taxes, hors solde, hors portail, et elle sort du rappel des brouillons. Vous pourrez annuler.')) return
+    if (on && !await askConfirm('Offrir cette facture au client ? Elle ne sera jamais facturée : hors taxes, hors solde, hors portail, et elle sort du rappel des brouillons. Vous pourrez annuler.')) return
     try {
       const r = await api.post(`/v1/invoices/${id}/${on ? 'offer' : 'unoffer'}`)
       setInv(r.data)
-    } catch (e) { alert(e.response?.data?.detail || 'Action impossible') }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Action impossible') }
   }
 
   async function deleteLine(lineId) {
@@ -188,7 +189,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function deleteInvoice() {
-    if (!confirm('Supprimer cette facture ?')) return
+    if (!await askConfirm('Supprimer cette facture ?')) return
     await api.delete(`/v1/invoices/${id}`)
     back()
   }
@@ -206,7 +207,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function createCredit() {
-    if (!confirm('Créer un avoir (note de crédit) pour cette facture ?')) return
+    if (!await askConfirm('Créer un avoir (note de crédit) pour cette facture ?')) return
     setActioning(true)
     try {
       const r = await api.post(`/v1/invoices/${id}/credit`)
@@ -215,7 +216,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function generateNext() {
-    if (!confirm('Générer la prochaine facture récurrente ?')) return
+    if (!await askConfirm('Générer la prochaine facture récurrente ?')) return
     setActioning(true)
     try {
       const r = await api.post(`/v1/invoices/${id}/generate-next`)
@@ -269,7 +270,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
           ))}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
-          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => alert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
+          <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => showAlert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>
           <button className="btn-secondary" onClick={() => setShowSendModal(true)} style={{ fontSize: 12 }}>📧 Envoyer</button>
           <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
           {/* Options discretes (Philippe : « offert et échange dans un engrenage discret ») -- pas d'encaissement a la main :

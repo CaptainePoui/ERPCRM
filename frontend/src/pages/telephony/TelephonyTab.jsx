@@ -9,6 +9,7 @@ import QuickNewContact from '../../components/QuickNewContact'
 import ParkingLotsSection from './ParkingLotsSection'
 import CdrReportsSection from '../../components/CdrReportsSection'
 import ProvisioningTemplates from '../../components/ProvisioningTemplates'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 // ── Téléphonie Tab ────────────────────────────────────────────────────────────
 const DID_DESTINATION_TYPES = [
@@ -146,7 +147,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
     api.get(`/v1/companies/${companyId}/queues`).then(r => setQueues(r.data))
   }
 
-  async function removeDid(id) { if (!confirm('Supprimer ce DID ?')) return; await api.delete(`/v1/telephony/dids/${id}`); setDids(p => p.filter(d => d.id !== id)) }
+  async function removeDid(id) { if (!await askConfirm('Supprimer ce DID ?')) return; await api.delete(`/v1/telephony/dids/${id}`); setDids(p => p.filter(d => d.id !== id)) }
   async function updateDidFields(id, fields) {
     const r = await api.put(`/v1/telephony/dids/${id}`, fields)
     setDids(p => p.map(d => d.id === id ? r.data : d))
@@ -164,7 +165,7 @@ function TelephonyTab({ companyId, companyName, sipvEnabled, initialSubTab }) {
     if (!draggingDidId) return
     updateDidFields(draggingDidId, { destination_type: null, destination: null })
   }
-  async function removeExt(id) { if (!confirm('Supprimer cette extension ?')) return; await api.delete(`/v1/telephony/extensions/${id}`); setExts(p => p.filter(e => e.id !== id)) }
+  async function removeExt(id) { if (!await askConfirm('Supprimer cette extension ?')) return; await api.delete(`/v1/telephony/extensions/${id}`); setExts(p => p.filter(e => e.id !== id)) }
 
   // Active/desactive le poste reel (SIPV) quand il existe, sinon la fiche
   // ERPCRM seule -- meme principe que la case a cocher Actif d'un DID.
@@ -829,7 +830,7 @@ function TrunkSection({ companyId }) {
     load()
   }
   async function removeTrunk(id) {
-    if (!confirm('Supprimer ce trunk ? Les routes qui l\'utilisent devront être réassignées.')) return
+    if (!await askConfirm('Supprimer ce trunk ? Les routes qui l\'utilisent devront être réassignées.')) return
     await api.delete(`/v1/telephony/trunks/${id}`)
     load()
   }
@@ -1175,7 +1176,7 @@ function MohSelectionSection({ companyId, sipvEnabled, sipExts }) {
   }
 
   async function deleteFile(f) {
-    if (!confirm(`Supprimer définitivement le fichier MOH "${f.name}" ? Cette action est irréversible.`)) return
+    if (!await askConfirm(`Supprimer définitivement le fichier MOH "${f.name}" ? Cette action est irréversible.`)) return
     await api.delete(`/v1/server/moh/${f.id}`)
     load()
   }
@@ -1410,12 +1411,12 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
   }
 
   async function removePrompt(p) {
-    if (!confirm(`Supprimer la phrase "${p.name}" ?`)) return
+    if (!await askConfirm(`Supprimer la phrase "${p.name}" ?`)) return
     try {
       await api.delete(`/v1/telephony/prompts/${p.id}`)
       onRefresh()
     } catch (e) {
-      alert(e.response?.data?.detail || 'Suppression impossible')
+      showAlert(e.response?.data?.detail || 'Suppression impossible')
     }
   }
 
@@ -1426,7 +1427,7 @@ function PromptsSection({ companyId, prompts, sipExts, onRefresh }) {
       await api.put(`/v1/telephony/prompts/${p.id}`, { name: name.trim() })
       onRefresh()
     } catch (e) {
-      alert(e.response?.data?.detail || 'Renommage impossible')
+      showAlert(e.response?.data?.detail || 'Renommage impossible')
     }
   }
 
@@ -1584,7 +1585,7 @@ function SchedulesSection({ companyId, schedules, onRefresh, mergedExtensions, r
 
   async function updateSchedule(id, patch) { await api.put(`/v1/telephony/schedules/${id}`, patch); onRefresh() }
   async function removeSchedule(id) {
-    if (!confirm('Supprimer cet horaire ? Les DID qui l\'utilisent perdront leur horaire.')) return
+    if (!await askConfirm('Supprimer cet horaire ? Les DID qui l\'utilisent perdront leur horaire.')) return
     await api.delete(`/v1/telephony/schedules/${id}`); onRefresh()
   }
   async function updateRule(ruleId, patch) { await api.put(`/v1/telephony/schedules/rules/${ruleId}`, patch); onRefresh() }
@@ -1713,7 +1714,7 @@ function RingGroupsSection({ companyId, ringGroups, ringGroupsLoading, sipExts, 
   }
 
   async function removeGroup(rgId) {
-    if (!confirm('Supprimer ce groupe d\'appel ?')) return
+    if (!await askConfirm('Supprimer ce groupe d\'appel ?')) return
     await api.delete(`/v1/companies/${companyId}/ring-groups/${rgId}`)
     onRefresh()
   }
@@ -1915,7 +1916,7 @@ function PickupGroupSection({ companyId, sipExts, onRefresh }) {
     load()
   }
   async function removeGroup(id) {
-    if (!confirm('Supprimer ce groupe de pickup ? Les postes membres seront retirés du groupe.')) return
+    if (!await askConfirm('Supprimer ce groupe de pickup ? Les postes membres seront retirés du groupe.')) return
     await api.delete(`/v1/companies/${companyId}/pickup-groups/${id}`)
     load()
   }
@@ -2037,7 +2038,7 @@ function PagingGroupsSection({ companyId, pagingGroups, pagingGroupsLoading, sip
   }
 
   async function removeGroup(pgId) {
-    if (!confirm('Supprimer ce groupe de paging ?')) return
+    if (!await askConfirm('Supprimer ce groupe de paging ?')) return
     await api.delete(`/v1/companies/${companyId}/paging-groups/${pgId}`)
     onRefresh()
   }
@@ -2212,7 +2213,7 @@ export function E911AddressesSection({ companyId, sipvEnabled = true }) {
     } finally { setSaving(false) }
   }
   async function deactivate(id) {
-    if (!confirm('Désactiver cette succursale ? Les postes qui y sont assignés perdront leur localisation 911. Réactivable en tout temps.')) return
+    if (!await askConfirm('Désactiver cette succursale ? Les postes qui y sont assignés perdront leur localisation 911. Réactivable en tout temps.')) return
     await api.delete(`/v1/companies/${companyId}/sites/${id}`)
     onRefresh()
   }

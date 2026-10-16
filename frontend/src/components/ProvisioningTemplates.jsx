@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import OptionsTree from './OptionsTree'
 import WallpapersSection, { WallpaperSelect } from './WallpapersSection'
+import { askConfirm } from './Dialog'
 
 export const box = { border: '1px solid var(--c-border)', borderRadius: 12, padding: 18, marginBottom: 16, background: 'var(--c-surface)' }
 export const title = { fontWeight: 700, fontSize: 13, color: 'var(--c-text-2)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10 }
@@ -184,8 +185,8 @@ function TemplateEditor({ companyId, account, phoneModels, template, onClose, on
 
   const key = (p, pos) => keys[`${p}-${pos}`] || { button_type: 'none', label: '', value: '', sip_account_index: 1 }
   const setKey = (p, pos, k) => setKeys(prev => ({ ...prev, [`${p}-${pos}`]: k }))
-  function removePage() {
-    if (!confirm(`Retirer la page ${pages} ? Ses touches repasseront à « aucune ».`)) return
+  async function removePage() {
+    if (!await askConfirm(`Retirer la page ${pages} ? Ses touches repasseront à « aucune ».`)) return
     setKeys(prev => Object.fromEntries(Object.entries(prev).filter(([k]) => !k.startsWith(`${pages - 1}-`))))
     setPages(pages - 1)
   }
@@ -290,12 +291,12 @@ export default function ProvisioningTemplates({ companyId, phoneModels, sipvEnab
   const load = () => api.get(`/v1/companies/${companyId}/button-templates`).then(r => setTemplates(r.data)).catch(() => setTemplates([]))
   useEffect(() => { load() }, [companyId])   // eslint-disable-line
 
-  function pick(next) {
-    if (selected && selected !== next && !confirm('Quitter ce modèle ? Les changements non enregistrés seront perdus.')) return
+  async function pick(next) {
+    if (selected && selected !== next && !await askConfirm('Quitter ce modèle ? Les changements non enregistrés seront perdus.')) return
     setSelected(next)
   }
   async function remove(t) {
-    if (!confirm(`Supprimer le modèle « ${t.name} » ?`)) return
+    if (!await askConfirm(`Supprimer le modèle « ${t.name} » ?`)) return
     setError('')
     try { await api.delete(`/v1/companies/${companyId}/button-templates/${t.id}`); if (selected === t.id) setSelected(null); load() }
     catch (e) { setError(e.response?.data?.detail || 'Erreur') }

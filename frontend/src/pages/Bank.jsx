@@ -5,6 +5,7 @@ import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import { IconBank, IconCreditCard, IconCash, IconSearch, IconChevronDown, IconCalendar } from '../components/Icons'
 import { parseDay } from '../utils/date'
+import { askConfirm } from '../components/Dialog'
 
 // Onglet Banque (TASK-042) -- interface et options. Aucune source de transactions
 // n'est branchee : soldes, non classees et graphique affichent un etat vide.
@@ -135,7 +136,7 @@ export default function Bank() {
     })
 
   async function toggleActive(a) {
-    if (a.is_active && !confirm(`Désactiver le compte « ${a.name} » ? Il restera consultable dans les comptes inactifs.`)) return
+    if (a.is_active && !await askConfirm(`Désactiver le compte « ${a.name} » ? Il restera consultable dans les comptes inactifs.`)) return
     await api.put(`/v1/bank/accounts/${a.id}`, { is_active: !a.is_active })
     if (a.is_active && scope === a.id) setScope('all')
     await load()
@@ -490,7 +491,7 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
   }
 
   async function cancelImport(imp) {
-    if (!confirm(`Annuler l'import « ${imp.filename} » ? Ses ${imp.rows_new} transaction(s) seront retirées du compte.`)) return
+    if (!await askConfirm(`Annuler l'import « ${imp.filename} » ? Ses ${imp.rows_new} transaction(s) seront retirées du compte.`)) return
     try {
       await api.delete(`/v1/bank/statements/${imp.id}`)
       await loadHistory(); await onImported?.()
@@ -602,7 +603,7 @@ export function RulesModal({ onClose }) {
     catch (e) { setError(e.response?.data?.detail || 'Erreur') }
   }
   async function remove(rule) {
-    if (!confirm(`Supprimer la règle « ${rule.payee} → ${rule.company_name} » ? Les lignes non classées qu'elle reconnaissait ne seront plus attribuées (les associations déjà faites restent).`)) return
+    if (!await askConfirm(`Supprimer la règle « ${rule.payee} → ${rule.company_name} » ? Les lignes non classées qu'elle reconnaissait ne seront plus attribuées (les associations déjà faites restent).`)) return
     await api.delete(`/v1/bank/rules/${rule.id}`); await load()
   }
   return (

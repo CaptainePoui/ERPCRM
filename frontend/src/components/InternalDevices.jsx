@@ -7,6 +7,7 @@ import { Link } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from './Autocomplete'
 import RebootButton from './RebootButton'
+import { askConfirm } from './Dialog'
 
 function ServerInternalDevices({ server }) {
   const [data, setData] = useState(null)
@@ -24,9 +25,9 @@ function ServerInternalDevices({ server }) {
     try { await fn(); await load() } catch (e) { setError(e.response?.data?.detail || 'Erreur') } finally { setBusy(null) }
   }
   const addTenant = t => t && run(t.id, () => api.post(`/v1/server/servers/${server.id}/internal-devices/tenants/${t.id}`))
-  const removeTenant = t => {
+  const removeTenant = async t => {
     const n = t.extensions.filter(e => e.internal).length
-    if (!confirm(`Retirer ${t.company_name} (${t.account_number}) des appareils internes ?${n ? ` Ses ${n} poste(s) coché(s) repasseront sur l'adresse externe.` : ''}`)) return
+    if (!await askConfirm(`Retirer ${t.company_name} (${t.account_number}) des appareils internes ?${n ? ` Ses ${n} poste(s) coché(s) repasseront sur l'adresse externe.` : ''}`)) return
     run(t.id, () => api.delete(`/v1/server/servers/${server.id}/internal-devices/tenants/${t.id}`))
   }
   const toggle = (e, internal) => run(e.id, () => api.put(`/v1/server/internal-devices/extensions/${e.id}`, { internal }))

@@ -18,6 +18,7 @@ import CdrReportsSection from '../components/CdrReportsSection'
 import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import { todayIso, parseDay } from '../utils/date'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
 function InlineField({ label, value, onSave, type = 'text', multiline }) {
@@ -464,7 +465,7 @@ export default function ContactDetail({ isNew }) {
   }
 
   async function removeE911() {
-    if (!confirm('Retirer la localisation 911 de ce poste ?')) return
+    if (!await askConfirm('Retirer la localisation 911 de ce poste ?')) return
     await api.delete(`/v1/contacts/${id}/sip-extension/911`)
     setE911Assignment(null)
     setE911Form({ e911_address_id: '', emergency_location: '', floor: '', office: '', alert_email: '' })
@@ -604,7 +605,7 @@ export default function ContactDetail({ isNew }) {
   }
 
   async function removeGreeting() {
-    if (!confirm("Supprimer le message d'accueil ?")) return
+    if (!await askConfirm("Supprimer le message d'accueil ?")) return
     const r = await api.delete(`/v1/contacts/${id}/sip-extension/voicemail/greeting`)
     setVoicemailBox(r.data)
   }
@@ -677,19 +678,19 @@ export default function ContactDetail({ isNew }) {
   }
 
   async function deleteContact() {
-    if (!confirm(`Êtes-vous sûr de vouloir supprimer le contact « ${c.first_name} ${c.last_name} » ? Cette action est irréversible.`)) return
+    if (!await askConfirm(`Êtes-vous sûr de vouloir supprimer le contact « ${c.first_name} ${c.last_name} » ? Cette action est irréversible.`)) return
     try {
       await api.delete(`/v1/contacts/${id}`)
       navigate('/contacts')
     } catch (e) {
-      alert(e.response?.data?.detail || 'Suppression impossible')
+      showAlert(e.response?.data?.detail || 'Suppression impossible')
     }
   }
 
   async function savePhone(value) {
     const officeCompany = contact.companies?.find(x => x.is_primary) || contact.companies?.[0]
     if (officeCompany) {
-      if (!confirm(`Attention, vous allez changer le téléphone bureau de « ${officeCompany.company_name} ». Êtes-vous sûr ?`)) return
+      if (!await askConfirm(`Attention, vous allez changer le téléphone bureau de « ${officeCompany.company_name} ». Êtes-vous sûr ?`)) return
       await api.put(`/v1/contacts/${id}/office-phone`, { value })
       await load()
     } else {
@@ -897,13 +898,13 @@ export default function ContactDetail({ isNew }) {
                 onChange={async e => {
                   const val = e.target.checked
                   if (val) { setConfirmSipv(true); return }
-                  if (!confirm('Désactiver le poste SIP de ce contact dans SIPV ? (réversible — le poste n\'est pas supprimé)')) return
+                  if (!await askConfirm('Désactiver le poste SIP de ce contact dans SIPV ? (réversible — le poste n\'est pas supprimé)')) return
                   try {
                     const r = await api.put(`/v1/contacts/${id}/sip-extension/deactivate`)
                     setContact(r.data)
                     setSipExt(null)
                   } catch (e) {
-                    alert(e.response?.data?.detail || 'Désactivation impossible')
+                    showAlert(e.response?.data?.detail || 'Désactivation impossible')
                   }
                 }}
                 style={{ width: 16, height: 16, accentColor: 'var(--brand)', cursor: 'pointer' }}
@@ -1506,7 +1507,7 @@ function PortalAccessSection({ contact }) {
   }
 
   async function del() {
-    if (!confirm(`Supprimer l'accès portail de ${contact.first_name} ${contact.last_name} ?`)) return
+    if (!await askConfirm(`Supprimer l'accès portail de ${contact.first_name} ${contact.last_name} ?`)) return
     await api.delete(`/v1/portal/users/${portalUser.id}`)
     setPortalUser(null)
   }

@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
 import { todayIso } from '../utils/date'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 // Onglet « Impôts et formulaires » (TASK-043)
 
@@ -75,7 +76,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
   }, [selected?.start, selected?.end, refreshKey])
 
   async function declare() {
-    if (!confirm(`Marquer la période du ${periodLabel(selected)} comme déclarée ?\n\nLes factures de cette période seront verrouillées (plus de suppression ni de retour en brouillon) et la tâche de rappel sera fermée.`)) return
+    if (!await askConfirm(`Marquer la période du ${periodLabel(selected)} comme déclarée ?\n\nLes factures de cette période seront verrouillées (plus de suppression ni de retour en brouillon) et la tâche de rappel sera fermée.`)) return
     setError(null)
     try { await api.post('/v1/taxes/declare', { end: selected.end }); await load() } catch (e) { setError(errText(e)) }
   }
@@ -265,8 +266,8 @@ function AdjustmentsSection({ refreshKey, onEdit, onChanged }) {
   const [data, setData] = useState(null)
   useEffect(() => { api.get('/v1/taxes/adjustments').then(r => setData(r.data)) }, [refreshKey])
   async function remove(a) {
-    if (!confirm('Supprimer cet ajustement ?')) return
-    try { await api.delete(`/v1/taxes/adjustments/${a.id}`); await onChanged() } catch (e) { alert(errText(e)) }
+    if (!await askConfirm('Supprimer cet ajustement ?')) return
+    try { await api.delete(`/v1/taxes/adjustments/${a.id}`); await onChanged() } catch (e) { showAlert(errText(e)) }
   }
   return (
     <div style={card}>
@@ -358,7 +359,7 @@ function PaymentsSection({ refreshKey, onEdit, onChanged }) {
   const [rows, setRows] = useState(null)
   useEffect(() => { api.get('/v1/taxes/payments').then(r => setRows(r.data)) }, [refreshKey])
   async function remove(p) {
-    if (!confirm('Supprimer ce paiement de taxe ?')) return
+    if (!await askConfirm('Supprimer ce paiement de taxe ?')) return
     await api.delete(`/v1/taxes/payments/${p.id}`); await onChanged()
   }
   return (

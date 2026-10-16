@@ -7,6 +7,7 @@ import api from '../services/api'
 import OptionsTree from './OptionsTree'
 import { WallpaperSelect } from './WallpapersSection'
 import { box, title, muted, input, TemplateCheck, KeyRow, KeysPage, SoftkeysPage, preferredLayouts } from './ProvisioningTemplates'
+import { askConfirm, showAlert } from './Dialog'
 
 const NONE = { button_type: 'none', label: '', value: '', sip_account_index: 1 }
 const asKey = b => ({ button_type: b.button_type, label: b.label || '', value: b.value || '', sip_account_index: b.sip_account_index || 1 })
@@ -40,7 +41,7 @@ export default function PhoneProvisioningTab({ contactId, phone, account, onPhon
   const touch = f => (...a) => { f(...a); setDirty(true); setMsg('') }
 
   async function chooseTemplate(id) {
-    if (dirty && !confirm('Changer de modèle ? Les changements non enregistrés de cet onglet seront perdus.')) return
+    if (dirty && !await askConfirm('Changer de modèle ? Les changements non enregistrés de cet onglet seront perdus.')) return
     const r = await api.put(`${base}/button-template`, { button_template_id: id || null })
     onPhoneChange({ ...phone, button_template_id: r.data.button_template_id })
   }
@@ -56,10 +57,10 @@ export default function PhoneProvisioningTab({ contactId, phone, account, onPhon
   }
 
   async function saveAsTemplate() {
-    if (dirty) { alert('Enregistrez d\'abord vos changements.'); return }
+    if (dirty) { showAlert('Enregistrez d\'abord vos changements.'); return }
     const name = prompt('Nom du nouveau modèle (les réglages de ce poste deviennent un modèle de la compagnie, utilisé par ce poste) :')
     if (!name?.trim()) return
-    try { await api.post(`${base}/save-as-template`, { name: name.trim() }) } catch (e) { alert(e.response?.data?.detail || 'Erreur'); return }
+    try { await api.post(`${base}/save-as-template`, { name: name.trim() }) } catch (e) { showAlert(e.response?.data?.detail || 'Erreur'); return }
     window.location.reload()
   }
 

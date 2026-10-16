@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../../services/api'
 import Autocomplete from '../../components/Autocomplete'
 import { todayIso } from '../../utils/date'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 // Onglet « Entente » de la fiche client (TASK-005.26), sur le modele de l'ancien logiciel que Philippe aime :
 // en-tete (Modifier, Creer une facture, Plus), montant / prochaine date / periode, Details + notes du client a gauche,
@@ -114,7 +115,7 @@ function NextInvoiceEditor({ rb, company, onDone, onChanged }) {
     await api.put(`/v1/recurring-billing/lines/${l.id}`, data); onChanged()
   }
   async function removeLine(l) {
-    if (!confirm('Retirer cette ligne de la facture périodique ?')) return
+    if (!await askConfirm('Retirer cette ligne de la facture périodique ?')) return
     await api.delete(`/v1/recurring-billing/lines/${l.id}`); onChanged()
   }
   async function addItem(item) {
@@ -194,11 +195,11 @@ export default function EntenteView({ company, onRefresh, onOpenInvoice, oldExch
   useEffect(() => { load() }, [company.id])
   useEffect(() => { if (sel) api.get(`/v1/recurring-billing/${sel.id}/invoices`).then(r => setChildren(r.data)); else setChildren(null) }, [sel?.id])
 
-  async function run(fn) { setBusy(true); try { await fn(); await load(); await onRefresh() } catch (e) { alert(errText(e)) } finally { setBusy(false) } }
+  async function run(fn) { setBusy(true); try { await fn(); await load(); await onRefresh() } catch (e) { showAlert(errText(e)) } finally { setBusy(false) } }
   const createNow = () => run(async () => {
-    if (!confirm('Créer maintenant la prochaine facture de cette entente ?')) return
+    if (!await askConfirm('Créer maintenant la prochaine facture de cette entente ?')) return
     const r = await api.post(`/v1/recurring-billing/${sel.id}/generate-invoice`)
-    if (r.data?.covered) alert(r.data.detail)
+    if (r.data?.covered) showAlert(r.data.detail)
     if (r.data?.invoice_id) onOpenInvoice(r.data.invoice_id)
   })
   const createProfile = () => run(() => api.post(`/v1/companies/${company.id}/recurring-billing`, { start_date: todayIso(), frequency: 'mensuel' }))
@@ -234,9 +235,9 @@ export default function EntenteView({ company, onRefresh, onOpenInvoice, oldExch
               {menu && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 10, boxShadow: '0 12px 32px rgba(0,0,0,.35)', minWidth: 240, padding: 6 }}>
                   <button style={item} onClick={() => { setMenu(false); setPause(true) }}>{sel.pause_start ? 'Modifier la pause…' : 'Mettre en pause…'}</button>
-                  {sel.pause_start && <button style={item} onClick={() => { setMenu(false); if (confirm('Annuler la pause ? La facturation reprend au cycle normal.')) run(() => api.delete(`/v1/recurring-billing/${sel.id}/pause`)) }}>Annuler la pause</button>}
+                  {sel.pause_start && <button style={item} onClick={async () => { setMenu(false); if (await askConfirm('Annuler la pause ? La facturation reprend au cycle normal.')) run(() => api.delete(`/v1/recurring-billing/${sel.id}/pause`)) }}>Annuler la pause</button>}
                   {sel.is_active
-                    ? <button style={{ ...item, color: '#DC2626' }} onClick={() => { setMenu(false); if (confirm('Arrêter la facturation de cette entente ? Plus aucune facture ne sera créée.')) run(() => api.put(`/v1/recurring-billing/${sel.id}`, { is_active: false })) }}>Arrêter la facturation</button>
+                    ? <button style={{ ...item, color: '#DC2626' }} onClick={async () => { setMenu(false); if (await askConfirm('Arrêter la facturation de cette entente ? Plus aucune facture ne sera créée.')) run(() => api.put(`/v1/recurring-billing/${sel.id}`, { is_active: false })) }}>Arrêter la facturation</button>
                     : <button style={item} onClick={() => { setMenu(false); run(() => api.put(`/v1/recurring-billing/${sel.id}`, { is_active: true })) }}>Réactiver la facturation</button>}
                 </div>
               )}

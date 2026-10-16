@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import SignatureEditor from '../components/SignatureEditor'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n) }
@@ -256,7 +257,7 @@ function CommissionsSection() {
                     <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--c-muted)' }}>{fmt(c.invoiced_total)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{fmt(c.commission_amount)}</td>
                     <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                      <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => alert(`Commission à payer: ${fmt(c.commission_amount)} à ${c.first_name} ${c.last_name}`)}>
+                      <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => showAlert(`Commission à payer: ${fmt(c.commission_amount)} à ${c.first_name} ${c.last_name}`)}>
                         Payer
                       </button>
                     </td>
@@ -305,7 +306,7 @@ function SignatureModal({ employee, onClose, onSaved }) {
       if ((employee.user_id || '') !== userId) await api.patch(`/v1/employees/${employee.contact_id}`, { user_id: userId || null })
       if (mail && (mailForm.work_email !== (mail.work_email || '') || mailForm.password || mailForm.personal_email !== (mail.personal_email || '')
           || mailForm.sync_since !== (mail.sync_since || ''))) {
-        if (!mailForm.work_email && mail.work_email && !confirm(`Retirer la boîte ${mail.work_email} d'ERPCRM ? Ses courriels copiés n'apparaîtront plus dans Courriels (rien n'est effacé dans la boîte elle-même).`)) { setSaving(false); return }
+        if (!mailForm.work_email && mail.work_email && !await askConfirm(`Retirer la boîte ${mail.work_email} d'ERPCRM ? Ses courriels copiés n'apparaîtront plus dans Courriels (rien n'est effacé dans la boîte elle-même).`)) { setSaving(false); return }
         await api.put(`/v1/employees/${employee.contact_id}/mail`, { work_email: mailForm.work_email || null, password: mailForm.password || null,
           personal_email: mailForm.personal_email || null, sync_since: mailForm.sync_since || null })
       }

@@ -7,6 +7,7 @@ import api from '../services/api'
 import Autocomplete from './Autocomplete'
 import QuickNewCompany from './QuickNewCompany'
 import QuickNewContact from './QuickNewContact'
+import { askConfirm } from './Dialog'
 
 const KINDS = [
   { kind: 'internet', icon: '🌐', label: 'Internet', hint: 'Qui fournit sa connexion Internet' },
@@ -110,7 +111,7 @@ function Side({ companyId, def, data, companies, loadCompanies, onSaved }) {
           )}
           <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap', marginTop: 4 }}>
             {data ? <button className="btn-secondary" style={{ color: '#DC2626' }} disabled={saving}
-              onClick={() => { if (confirm(`Retirer ${def.label.toLowerCase()} de cette fiche ?`)) save(true) }}>Retirer</button> : <span />}
+              onClick={async () => { if (await askConfirm(`Retirer ${def.label.toLowerCase()} de cette fiche ?`)) save(true) }}>Retirer</button> : <span />}
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="btn-secondary" onClick={() => setEditing(false)} disabled={saving}>Annuler</button>
               <button className="btn-primary" onClick={() => save()} disabled={saving || !company}>{saving ? '...' : 'Enregistrer'}</button>

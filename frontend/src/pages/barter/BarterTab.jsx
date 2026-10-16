@@ -9,6 +9,7 @@ import { todayIso } from '../../utils/date'
 import useRowSelection from '../../hooks/useRowSelection'
 import BulkInvoiceBar from '../../components/BulkInvoiceBar'
 import { downloadFile } from '../../utils/download'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 const today = () => todayIso()
 const errText = e => e.response?.data?.detail || 'Erreur'
@@ -222,15 +223,15 @@ function ExchangeCard({ b, companyName, onEdit, onChanged }) {
     setBusy(true)
     const fd = new FormData()
     ;[...list].forEach(x => fd.append('files', x))
-    try { await api.post(`/v1/barter/${b.id}/files`, fd); await onChanged() } catch (e) { alert(errText(e)) } finally { setBusy(false) }
+    try { await api.post(`/v1/barter/${b.id}/files`, fd); await onChanged() } catch (e) { showAlert(errText(e)) } finally { setBusy(false) }
   }
   async function removeFile(fl) {
-    if (!confirm(`Retirer la pièce « ${fl.filename} » ?`)) return
+    if (!await askConfirm(`Retirer la pièce « ${fl.filename} » ?`)) return
     await api.delete(`/v1/barter/files/${fl.id}`); await onChanged()
   }
   async function remove() {
-    if (!confirm(`Supprimer l'échange « ${b.description} » ?`)) return
-    try { await api.delete(`/v1/barter/${b.id}`); await onChanged() } catch (e) { alert(errText(e)) }
+    if (!await askConfirm(`Supprimer l'échange « ${b.description} » ?`)) return
+    try { await api.delete(`/v1/barter/${b.id}`); await onChanged() } catch (e) { showAlert(errText(e)) }
   }
   const row = (l, v, opts = {}) => <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, fontSize: 13, fontWeight: opts.bold ? 700 : 400, color: opts.color }}><span>{l}</span><span>{v}</span></div>
   return (
@@ -241,7 +242,7 @@ function ExchangeCard({ b, companyName, onEdit, onChanged }) {
           <div style={{ fontSize: 12, color: C.muted }}>Échange du {b.exchange_date}{b.recurring_name ? ` · paie « ${b.recurring_name} »` : ' · aucune facture périodique'}</div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn-secondary" onClick={() => downloadFile(`/v1/barter/${b.id}/pdf`, `echange-${(companyName || '').replace(/[^\p{L}\p{N}]+/gu, '-')}-${b.exchange_date}.pdf`).catch(() => alert('PDF non disponible'))}>⬇ PDF</button>
+          <button className="btn-secondary" onClick={() => downloadFile(`/v1/barter/${b.id}/pdf`, `echange-${(companyName || '').replace(/[^\p{L}\p{N}]+/gu, '-')}-${b.exchange_date}.pdf`).catch(() => showAlert('PDF non disponible'))}>⬇ PDF</button>
           <button className="btn-secondary" onClick={onEdit}>Modifier</button>
           {!b.applications.length && <button className="btn-secondary" style={{ color: C.red }} onClick={remove}>Supprimer</button>}
         </div>

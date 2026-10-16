@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import DialogHost from './components/Dialog'
 import { createBrowserRouter, createRoutesFromElements, RouterProvider, Routes, Route, Navigate } from 'react-router-dom'
 import Login from './pages/Login'
 import Layout from './components/Layout'
@@ -115,5 +116,5 @@ const router = createBrowserRouter(createRoutesFromElements(
 ))
 
 export default function App() {
-  return <RouterProvider router={router} />
+  return <><RouterProvider router={router} /><DialogHost /></>
 }

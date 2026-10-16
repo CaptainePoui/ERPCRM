@@ -22,6 +22,7 @@ import MailBrowser from '../components/MailBrowser'
 import ConnectivityPanel from '../components/ConnectivityPanel'
 import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
 const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
@@ -832,7 +833,7 @@ function CommunicationsSection({ entityId, company, onRefresh }) {
   }
 
   async function remove(commId) {
-    if (!confirm('Retirer cette coordonnée ?')) return
+    if (!await askConfirm('Retirer cette coordonnée ?')) return
     await api.delete(`/v1/companies/${entityId}/communications/${commId}`)
     await onRefresh()
   }
@@ -946,11 +947,11 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
       await onRefresh()
       setLinking(false)
       setForm({ contact_id: '', email: '', function_ids: [], is_primary: false })
-    } catch (e) { alert(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
   }
 
   async function unlink(contactId) {
-    if (!confirm('Retirer ce contact de la compagnie ?')) return
+    if (!await askConfirm('Retirer ce contact de la compagnie ?')) return
     await api.delete(`/v1/companies/${companyId}/contacts/${contactId}`)
     await onRefresh()
   }
@@ -1151,7 +1152,7 @@ function MaintenanceTab({ companyId }) {
   }
 
   async function remove(id) {
-    if (!confirm('Supprimer cet accès ?')) return
+    if (!await askConfirm('Supprimer cet accès ?')) return
     await api.delete(`/v1/maintenance/${id}`)
     setAccesses(p => p.filter(a => a.id !== id))
   }
@@ -1256,7 +1257,7 @@ function InventaireTab({ companyId }) {
   }, [companyId])
 
   async function remove(id) {
-    if (!confirm('Supprimer cet équipement ?')) return
+    if (!await askConfirm('Supprimer cet équipement ?')) return
     await api.delete(`/v1/equipment/${id}`)
     setItems(p => p.filter(e => e.id !== id))
   }
@@ -1396,7 +1397,7 @@ function PhotosTab({ companyId }) {
   }
 
   async function remove(photoId) {
-    if (!confirm('Retirer cette photo ?')) return
+    if (!await askConfirm('Retirer cette photo ?')) return
     await api.delete(`/v1/companies/${companyId}/photos/${photoId}`)
     load()
   }

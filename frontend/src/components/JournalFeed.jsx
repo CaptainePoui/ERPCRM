@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { askConfirm } from './Dialog'
 
 // ── Journal (compagnie ou contact — entite_id determine cote backend ce qui est inclus) ──
 export default function JournalFeed({ entityId }) {
@@ -22,7 +23,7 @@ export default function JournalFeed({ entityId }) {
   }
 
   async function revert(log) {
-    if (!confirm(`Remettre « ${log.field_label || log.field_name} » à « ${log.old_value || '—'} » ?`)) return
+    if (!await askConfirm(`Remettre « ${log.field_label || log.field_name} » à « ${log.old_value || '—'} » ?`)) return
     await api.post(`/v1/entities/logs/${log.id}/revert`)
     await load()
   }

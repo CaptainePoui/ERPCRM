@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import api from '../services/api'
 import SignatureEditor from './SignatureEditor'
+import { askConfirm } from './Dialog'
 
 const TITLES = { new: 'Nouveau courriel', reply: 'Répondre', reply_all: 'Répondre à tous', forward: 'Transférer' }
 const MAX_TOTAL = 20 * 1024 * 1024
@@ -49,8 +50,8 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
   const dirty = !!(html.replace(/<[^>]+>/g, '').trim() || files.length || (mode === 'new' && (to.trim() || subject.trim())))
   const originBox = source && boxes && !boxes.some(b => b.id === source.mailbox_id) ? source.mailbox : null
 
-  function cancel() {
-    if (dirty && !window.confirm('Abandonner ce courriel ? Ce que vous avez écrit sera perdu.')) return
+  async function cancel() {
+    if (dirty && !await askConfirm('Abandonner ce courriel ? Ce que vous avez écrit sera perdu.')) return
     onClose()
   }
 
@@ -59,7 +60,7 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
     if (!from) return setErr('Choisissez la boîte d’envoi')
     if (!to.trim()) return setErr('Indiquez au moins un destinataire')
     if (total > MAX_TOTAL) return setErr('Pièces jointes trop lourdes (20 Mo au total)')
-    if (!subject.trim() && !window.confirm('Envoyer sans objet ?')) return
+    if (!subject.trim() && !await askConfirm('Envoyer sans objet ?')) return
     setSending(true)
     const fd = new FormData()
     fd.append('data', JSON.stringify({

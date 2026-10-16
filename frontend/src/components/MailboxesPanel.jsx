@@ -3,6 +3,7 @@
 // toutes les boites actives. Mot de passe chiffre, jamais reaffiche. Backend : api/v1/endpoints/mailboxes.py.
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { askConfirm } from './Dialog'
 
 const errText = e => e.response?.data?.detail || 'Erreur'
 const short = label => label.split(' — ')[0]
@@ -151,7 +152,7 @@ function MailboxModal({ box, functions, defaultHost, onClose, onSaved }) {
     } catch (e) { setError(errText(e)); setSaving(false) }
   }
   async function remove() {
-    if (!confirm(`Retirer ${box.email} d'ERPCRM ? Rien n'est effacé dans la boîte de courriel elle-même.`)) return
+    if (!await askConfirm(`Retirer ${box.email} d'ERPCRM ? Rien n'est effacé dans la boîte de courriel elle-même.`)) return
     await api.delete(`/v1/mailboxes/${box.id}`); onSaved()
   }
 

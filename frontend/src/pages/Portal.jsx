@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../services/api'
 import './Portal.css'
 import { parseDay } from '../utils/date'
+import { askConfirm } from '../components/Dialog'
 
 const PORTAL_KEY = 'portal_session'
 
@@ -1033,7 +1034,7 @@ function TelephonyAudioPanel({ perms }) {
   useEffect(load, [])
 
   async function deletePrompt(id) {
-    if (!confirm('Supprimer cette phrase ?')) return
+    if (!await askConfirm('Supprimer cette phrase ?')) return
     setError('')
     try {
       await portalApi.delete(`/v1/portal/telephony/prompts/${id}`)
@@ -1055,7 +1056,7 @@ function TelephonyAudioPanel({ perms }) {
   }
 
   async function deleteMoh(id) {
-    if (!confirm('Supprimer ce fichier de musique d\'attente ?')) return
+    if (!await askConfirm('Supprimer ce fichier de musique d\'attente ?')) return
     setError('')
     try {
       await portalApi.delete(`/v1/portal/telephony/moh/${id}`)

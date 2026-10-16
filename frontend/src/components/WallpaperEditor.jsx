@@ -4,6 +4,7 @@
 // et le cadrage sont envoyés aussi, pour pouvoir recadrer plus tard. Popup fermé seulement par Annuler / Enregistrer.
 import { useEffect, useRef, useState } from 'react'
 import api from '../services/api'
+import { askConfirm } from './Dialog'
 
 export const SCREENS = [{ key: '320x240', label: '320 × 240 (GXP2130, GXP2135)' }, { key: '480x272', label: '480 × 272 (GXP2140, GXP2160, GXP2170)' }]
 const MARGIN = 70             // marge autour du cadre où l'on voit la partie coupée de l'image
@@ -126,7 +127,7 @@ export default function WallpaperEditor({ accountNumber, wallpaper, resolutions,
   }
 
   async function save() {
-    if (wallpaper?.global && !confirm('Attention : ce fond est celui de Simple IP. L\'enregistrer change le fond de TOUS les téléphones qui l\'utilisent. Continuer ?')) return
+    if (wallpaper?.global && !await askConfirm('Attention : ce fond est celui de Simple IP. L\'enregistrer change le fond de TOUS les téléphones qui l\'utilisent. Continuer ?')) return
     setSaving(true); setError('')
     try {
       const out = document.createElement('canvas'); out.width = W; out.height = H

@@ -6,6 +6,7 @@ import TimerNavigationPrompt from '../components/TimerNavigationPrompt'
 import './Tickets.css'
 import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
+import { askConfirm } from '../components/Dialog'
 
 const PRIORITY_LABELS = {
   faible:   { label: 'Faible',    color: '#6B7280' },
@@ -287,13 +288,13 @@ export default function TicketDetail() {
   }
 
   async function splitToNewTicket(eid) {
-    if (!confirm("Déplacer cette réponse vers un nouveau ticket ? Ce ticket sera refermé.")) return
+    if (!await askConfirm("Déplacer cette réponse vers un nouveau ticket ? Ce ticket sera refermé.")) return
     const r = await api.post(`/v1/tickets/${id}/entries/${eid}/split-to-new-ticket`)
     applyTicket(r.data)
   }
 
   async function deleteTicket() {
-    if (!confirm('Supprimer ce ticket ?')) return
+    if (!await askConfirm('Supprimer ce ticket ?')) return
     await api.delete(`/v1/tickets/${id}`)
     navigate('/tickets')
   }

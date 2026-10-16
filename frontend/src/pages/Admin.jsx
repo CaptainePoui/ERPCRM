@@ -9,6 +9,7 @@ import MailboxesPanel from '../components/MailboxesPanel'
 import CompanySettingsPanel from '../components/CompanySettingsPanel'
 import JournalPanel from '../components/JournalPanel'
 import PastillesPanel from '../components/PastillesPanel'
+import { askConfirm } from '../components/Dialog'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
@@ -159,7 +160,7 @@ function OptionsPanel() {
   useEffect(() => { api.get('/v1/settings').then(r => setBarter(!!r.data.barter_enabled)) }, [])
 
   async function toggle(on) {
-    if (!on && !confirm("Retirer les options d'échange (troc) ? L'onglet Échanges des compagnies, la marque « À régler en troc » des factures et le mode de paiement Troc disparaîtront. Les échanges déjà enregistrés continuent de s'appliquer (une entente reste une entente) : ils sont seulement cachés.")) return
+    if (!on && !await askConfirm("Retirer les options d'échange (troc) ? L'onglet Échanges des compagnies, la marque « À régler en troc » des factures et le mode de paiement Troc disparaîtront. Les échanges déjà enregistrés continuent de s'appliquer (une entente reste une entente) : ils sont seulement cachés.")) return
     setSaving(true)
     try {
       const r = await api.put('/v1/settings', { barter_enabled: on })
@@ -217,7 +218,7 @@ function IntegrationsPanel() {
   }
 
   async function disconnect() {
-    if (!confirm('Déconnecter Google Calendar ? Le module RDV continuera de fonctionner avec seulement les rendez-vous locaux comme contrainte.')) return
+    if (!await askConfirm('Déconnecter Google Calendar ? Le module RDV continuera de fonctionner avec seulement les rendez-vous locaux comme contrainte.')) return
     setDisconnecting(true)
     try {
       await api.post('/v1/google-calendar/disconnect')
@@ -340,7 +341,7 @@ function BackupPanel() {
   }
 
   async function disconnect(provider) {
-    if (!confirm(`Déconnecter ${PROVIDER_LABELS[provider]} ? Le backup vers ce cloud sera suspendu.`)) return
+    if (!await askConfirm(`Déconnecter ${PROVIDER_LABELS[provider]} ? Le backup vers ce cloud sera suspendu.`)) return
     await api.post(`/v1/backup/connections/${provider}/disconnect`)
     await load()
   }
@@ -351,7 +352,7 @@ function BackupPanel() {
   }
 
   async function deleteCycle(cycle) {
-    if (!confirm(`Supprimer le cycle ${FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
+    if (!await askConfirm(`Supprimer le cycle ${FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
     await api.delete(`/v1/backup/cycles/${cycle.id}`)
     setCycles(p => p.filter(c => c.id !== cycle.id))
   }
@@ -675,7 +676,7 @@ function UsersPanel() {
   }
 
   async function deleteUser(user) {
-    if (!confirm(`Supprimer ${user.full_name} ?`)) return
+    if (!await askConfirm(`Supprimer ${user.full_name} ?`)) return
     await api.delete(`/v1/admin/users/${user.id}`)
     setUsers(p => p.filter(u => u.id !== user.id))
   }
@@ -815,7 +816,7 @@ function PortalUsersPanel() {
   }
 
   async function deleteUser(u) {
-    if (!confirm(`Supprimer l'accès portail de ${u.full_name} ?`)) return
+    if (!await askConfirm(`Supprimer l'accès portail de ${u.full_name} ?`)) return
     await api.delete(`/v1/portal/users/${u.id}`)
     setUsers(p => p.filter(x => x.id !== u.id))
   }

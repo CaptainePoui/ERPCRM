@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import api from '../services/api'
 import Autocomplete from './Autocomplete'
 import { C, EMPTY, fmtDate, fmtMoney } from '../pages/Bank'
+import { askConfirm } from './Dialog'
 
 // Fiche d'un paiement recu (TASK-005.24 / TASK-042.8, 2026-10-15) : ce qu'il paie, le depot BNC qui le prouve,
 // les cheques attaches (Philippe : « on devrait les mettre dans paiement lié au client »). Une facture perdue de
@@ -95,7 +96,7 @@ export default function PaymentModal({ paymentId, onClose, onChanged }) {
                 <div key={doc.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   <DocThumb doc={doc} onOpen={setBig} />
                   <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 8px', color: C.red, alignSelf: 'flex-start' }}
-                    onClick={() => confirm('Retirer ce chèque du paiement ? Le fichier sera supprimé.') && run(() => api.delete(`/v1/payments/documents/${doc.id}`))}>Retirer</button>
+                    onClick={async () => await askConfirm('Retirer ce chèque du paiement ? Le fichier sera supprimé.') && run(() => api.delete(`/v1/payments/documents/${doc.id}`))}>Retirer</button>
                 </div>
               ))}
             </div>

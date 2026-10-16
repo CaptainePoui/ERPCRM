@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import AutoRecurringToggle from '../components/AutoRecurringToggle'
 import { todayIso } from '../utils/date'
+import { askConfirm, showAlert } from '../components/Dialog'
 
 const FREQ_LABELS = { hebdomadaire: 'Hebdomadaire', mensuel: 'Mensuelle', bimestriel: 'Bimestrielle', trimestriel: 'Trimestrielle', biannuel: 'Biannuelle', annuel: 'Annuelle' }
 
@@ -34,7 +35,7 @@ function PauseBox({ rb, onChanged }) {
     catch (e) { setErr(e.response?.data?.detail || 'Pause impossible') }
   }
   async function clear() {
-    if (!confirm('Annuler la pause ? La facturation reprend au cycle normal.')) return
+    if (!await askConfirm('Annuler la pause ? La facturation reprend au cycle normal.')) return
     await api.delete(`/v1/recurring-billing/${rb.id}/pause`); onChanged()
   }
   const left = rb.pause_end ? Math.max(0, Math.round((Date.parse(rb.pause_end) - Date.parse(today)) / 86400000)) : 0
@@ -96,20 +97,20 @@ export default function Recurrence({ companyId = null }) {
   useEffect(() => { load() }, [])
 
   async function generateInvoice(id) {
-    if (!confirm('Générer une facture maintenant avec les lignes actuelles de cette récurrence ?')) return
+    if (!await askConfirm('Générer une facture maintenant avec les lignes actuelles de cette récurrence ?')) return
     try {
       const r = await api.post(`/v1/recurring-billing/${id}/generate-invoice`)
       load()
-      if (r.data?.covered) alert(r.data.detail)   // cycle couvert par un echange (troc) : aucune facture
+      if (r.data?.covered) showAlert(r.data.detail)   // cycle couvert par un echange (troc) : aucune facture
       if (r.data?.invoice_id) navigate(`/invoices/${r.data.invoice_id}`)   // redirige dans la fiche du client
-    } catch (e) { alert(e.response?.data?.detail || 'Génération impossible') }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Génération impossible') }
   }
 
   async function saveEndDate(rb, value) {
     try {
       await api.put(`/v1/recurring-billing/${rb.id}`, value ? { end_date: value } : { clear_end_date: true })
       load()
-    } catch (e) { alert(e.response?.data?.detail || 'Date de fin invalide') }
+    } catch (e) { showAlert(e.response?.data?.detail || 'Date de fin invalide') }
   }
 
   const [search, setSearch] = useState('')
@@ -117,7 +118,7 @@ export default function Recurrence({ companyId = null }) {
   const shown = items.filter(rb => !q || [rb.company_name, rb.name, rb.site_label].some(v => (v || '').toLowerCase().includes(q)))
 
   async function removeLine(lineId) {
-    if (!confirm('Retirer cette ligne de la récurrence ?')) return
+    if (!await askConfirm('Retirer cette ligne de la récurrence ?')) return
     await api.delete(`/v1/recurring-billing/lines/${lineId}`)
     load()
   }

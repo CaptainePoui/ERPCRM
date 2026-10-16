@@ -6,6 +6,7 @@ import WallpapersSection from '../components/WallpapersSection'
 import TenantMigration from '../components/TenantMigration'
 import InternalDevices from '../components/InternalDevices'
 import './Admin.css'
+import { askConfirm } from '../components/Dialog'
 
 const SERVER_TABS = ['Téléphonie', 'Backup cloud', 'Migration', 'Appareils internes']
 
@@ -191,7 +192,7 @@ function BackupCloudSection() {
   }
 
   async function disconnect(provider) {
-    if (!confirm(`Déconnecter ${SIPV_PROVIDER_LABELS[provider]} ? Le backup SIPV vers ce cloud sera suspendu.`)) return
+    if (!await askConfirm(`Déconnecter ${SIPV_PROVIDER_LABELS[provider]} ? Le backup SIPV vers ce cloud sera suspendu.`)) return
     await api.post(`/v1/server/backup/connections/${provider}/disconnect`)
     await load()
   }
@@ -202,7 +203,7 @@ function BackupCloudSection() {
   }
 
   async function deleteCycle(cycle) {
-    if (!confirm(`Supprimer le cycle ${SIPV_FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
+    if (!await askConfirm(`Supprimer le cycle ${SIPV_FREQUENCY_LABELS[cycle.frequency_type]} ?`)) return
     await api.delete(`/v1/server/backup/cycles/${cycle.id}`)
     setCycles(p => p.filter(c => c.id !== cycle.id))
   }
@@ -608,7 +609,7 @@ function MohLibrarySection({ companies }) {
   }
 
   async function removeFile(f) {
-    if (!confirm(`Supprimer "${f.name}" ? (retiré de toutes les sélections de compagnie)`)) return
+    if (!await askConfirm(`Supprimer "${f.name}" ? (retiré de toutes les sélections de compagnie)`)) return
     await api.delete(`/v1/server/moh/${f.id}`)
     loadFiles()
   }

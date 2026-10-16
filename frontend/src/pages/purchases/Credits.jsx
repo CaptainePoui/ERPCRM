@@ -4,6 +4,7 @@ import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, TAX_CODES, TAX_MODES, AllocationTable, allocList, allocSum, computeTaxes, useRefs, errText,
 } from './common'
+import { askConfirm } from '../../components/Dialog'
 
 // Avoir fournisseur (remboursement, retour) : reduit les factures du meme fournisseur ; ses taxes
 // diminuent les CTI/RTI de la periode.
@@ -41,7 +42,7 @@ function CreditModal({ credit, onClose, onSaved }) {
     } catch (e) { setError(errText(e)) }
   }
   async function remove() {
-    if (!confirm('Supprimer cet avoir ? Les factures qu\'il réglait redeviennent à payer.')) return
+    if (!await askConfirm('Supprimer cet avoir ? Les factures qu\'il réglait redeviennent à payer.')) return
     await api.delete(`/v1/purchases/credits/${credit.id}`)
     onSaved()
   }

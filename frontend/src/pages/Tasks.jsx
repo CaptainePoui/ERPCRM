@@ -7,6 +7,7 @@ import QuickNewContact from '../components/QuickNewContact'
 import UnsavedChangesPrompt from '../components/UnsavedChangesPrompt'
 import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
 import { parseDay } from '../utils/date'
+import { askConfirm } from '../components/Dialog'
 
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const PRIORITY_COLORS = { basse: 'var(--c-muted)', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
@@ -420,7 +421,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
   }
 
   async function del() {
-    if (!window.confirm('Supprimer cette tâche ?')) return
+    if (!await askConfirm('Supprimer cette tâche ?')) return
     await api.delete(`/v1/tasks/${task.id}`)
     onDeleted(task.id)
   }
@@ -1479,7 +1480,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   }
 
   async function del() {
-    if (!confirm('Supprimer cet événement Google ?')) return
+    if (!await askConfirm('Supprimer cet événement Google ?')) return
     setDeleting(true)
     try {
       await api.delete('/v1/google-calendar/events', { data: { calendar_id: data.calendar_id, event_id: data.event_id } })

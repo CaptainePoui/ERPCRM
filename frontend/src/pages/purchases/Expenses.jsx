@@ -14,6 +14,7 @@ import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
   CategorySelect, TaxTotals, Filters, TAX_CODES, TAX_MODES, FREQS, freqLabel, computeTaxes, useRefs, errText,
 } from './common'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 const PAID_THROUGH = ["Compte de l'entreprise", 'Carte de crédit', "Remboursement d'employé", 'Petite caisse']
 
@@ -84,7 +85,7 @@ export function PurchaseExpenses() {
     } catch (e) { setError(errText(e)) }
   }
   async function remove() {
-    if (!confirm('Supprimer cette dépense ?')) return
+    if (!await askConfirm('Supprimer cette dépense ?')) return
     await api.delete(`/v1/purchases/expenses/${edit.id}`)
     setEdit(null); load()
   }
@@ -197,7 +198,7 @@ export function PurchaseRecurringExpenses() {
 
   async function generate(r, ev) {
     ev.stopPropagation()
-    try { await api.post(`/v1/purchases/recurring-expenses/${r.id}/generate`); load() } catch (e) { alert(errText(e)) }
+    try { await api.post(`/v1/purchases/recurring-expenses/${r.id}/generate`); load() } catch (e) { showAlert(errText(e)) }
   }
   async function save() {
     setError('')
@@ -212,7 +213,7 @@ export function PurchaseRecurringExpenses() {
     } catch (e) { setError(errText(e)) }
   }
   async function remove() {
-    if (!confirm('Supprimer cette dépense périodique ? Les dépenses déjà enregistrées restent.')) return
+    if (!await askConfirm('Supprimer cette dépense périodique ? Les dépenses déjà enregistrées restent.')) return
     await api.delete(`/v1/purchases/recurring-expenses/${edit.id}`)
     setEdit(null); load()
   }

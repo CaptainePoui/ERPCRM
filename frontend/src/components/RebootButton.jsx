@@ -2,12 +2,13 @@
 // Fiche du poste (a cote du statut en direct) et liste des postes de la compagnie (entre IP privee et Actif).
 import { useState } from 'react'
 import api from '../services/api'
+import { askConfirm } from './Dialog'
 
 export default function RebootButton({ sipExtId, extension, registered, compact = false }) {
   const [state, setState] = useState(null)      // null | 'busy' | 'ok' | message d'erreur
   async function reboot(ev) {
     ev?.stopPropagation()
-    if (!confirm(`Redémarrer le téléphone du poste ${extension} ? Un appel en cours sera coupé.`)) return
+    if (!await askConfirm(`Redémarrer le téléphone du poste ${extension} ? Un appel en cours sera coupé.`)) return
     setState('busy')
     try {
       await api.post(`/v1/telephony/extensions/${sipExtId}/reboot`)

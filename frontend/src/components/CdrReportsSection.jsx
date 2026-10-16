@@ -1,5 +1,6 @@
 import { useState, useEffect, Fragment } from 'react'
 import api from '../services/api'
+import { askConfirm, showAlert } from './Dialog'
 
 // TASK-032.2 -- rapports CDR programmés par courriel. Partagé entre
 // CompanyDetail.jsx (onglet CDR, tous les postes) et ContactDetail.jsx
@@ -40,7 +41,7 @@ export default function CdrReportsSection({ companyId, fixedExtension }) {
     load()
   }
   async function removeReport(id) {
-    if (!confirm('Supprimer ce rapport programmé ?')) return
+    if (!await askConfirm('Supprimer ce rapport programmé ?')) return
     await api.delete(`/v1/telephony/cdr-reports/${id}`)
     load()
   }
@@ -48,10 +49,10 @@ export default function CdrReportsSection({ companyId, fixedExtension }) {
     setSending(id)
     try {
       const r = await api.post(`/v1/telephony/cdr-reports/${id}/send-now`)
-      alert(r.data.success ? `Envoyé (${r.data.call_count} appel(s), ${r.data.recipient_count} destinataire(s)).` : `Échec : ${r.data.error_message || 'erreur inconnue'}`)
+      showAlert(r.data.success ? `Envoyé (${r.data.call_count} appel(s), ${r.data.recipient_count} destinataire(s)).` : `Échec : ${r.data.error_message || 'erreur inconnue'}`)
       loadLogs(id)
     } catch (e) {
-      alert(e.response?.data?.detail || 'Erreur')
+      showAlert(e.response?.data?.detail || 'Erreur')
     } finally { setSending(null) }
   }
   function loadLogs(id) {

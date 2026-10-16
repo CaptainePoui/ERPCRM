@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import useFeatures from '../hooks/useFeatures'
+import { askConfirm } from './Dialog'
 
 export default function CompanySettingsPanel() {
   const [settings, setSettings] = useState(null)
@@ -124,7 +125,7 @@ function LateFeesSection() {
   async function save(extra = {}) {
     setMsg('')
     const body = { ...cfg, ...extra }
-    if (extra.late_fees_enabled && !confirm(`Allumer les frais de retard ? ERPCRM créera et enverra par courriel ${preview?.notices.length || 0} avis de retard, puis les suivants au fil des jours. Assure-toi que l'ancien logiciel n'en fait plus.`)) return
+    if (extra.late_fees_enabled && !await askConfirm(`Allumer les frais de retard ? ERPCRM créera et enverra par courriel ${preview?.notices.length || 0} avis de retard, puis les suivants au fil des jours. Assure-toi que l'ancien logiciel n'en fait plus.`)) return
     try {
       await api.put('/v1/settings', { ...body, late_fee_monthly_rate: Number(body.late_fee_monthly_rate), late_fee_admin: Number(body.late_fee_admin),
         late_fee_grace_days: Number(body.late_fee_grace_days), late_fee_interval_days: Number(body.late_fee_interval_days) })
@@ -275,7 +276,7 @@ function NumberingSection() {
   async function save(key) {
     setMsg({ ...msg, [key]: '' })
     const e = edit[key]
-    if (!confirm(`Le prochain numéro sera ${preview(e)}. Le compteur ne pourra plus jamais revenir en arrière. Continuer ?`)) return
+    if (!await askConfirm(`Le prochain numéro sera ${preview(e)}. Le compteur ne pourra plus jamais revenir en arrière. Continuer ?`)) return
     try {
       await api.put(`/v1/settings/numbering/${key}`, { prefix: e.prefix, next_value: Number(e.next_value), padding: Number(e.padding) })
       setMsg({ ...msg, [key]: 'Enregistré' }); load()

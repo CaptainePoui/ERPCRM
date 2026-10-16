@@ -5,6 +5,7 @@ import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, VendorPicker,
   AllocationTable, allocList, allocSum, useRefs, errText,
 } from './common'
+import { askConfirm } from '../../components/Dialog'
 
 const METHODS = ['Virement', 'Prélèvement automatique', 'Carte de crédit', 'Chèque', 'Interac', 'Comptant']
 
@@ -70,7 +71,7 @@ export function PaymentModal({ payment, presetVendorId, presetBillId, onClose, o
     } catch (e) { setError(errText(e)); setSaving(false) }
   }
   async function remove() {
-    if (!confirm('Supprimer ce paiement ? Les factures qu\'il réglait redeviennent à payer.')) return
+    if (!await askConfirm('Supprimer ce paiement ? Les factures qu\'il réglait redeviennent à payer.')) return
     await api.delete(`/v1/purchases/payments/${payment.id}`)
     onSaved()
   }

@@ -10,6 +10,7 @@ import {
   ACCOUNT_TYPES, C, EMPTY, fmtDate, fmtMoney,
   Dropdown, MenuItem, Indicator, BankChart, AccountModal, StatementsModal,
 } from './Bank'
+import { askConfirm } from '../components/Dialog'
 
 // Fiche d'un compte de l'onglet Banque (TASK-042) -- interface et options.
 // Aucune source de transactions n'est branchee : tableaux et montants vides.
@@ -712,7 +713,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
           <div style={box}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 600, fontSize: 14 }}>Lié à</div>
-              <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', color: C.red }} onClick={() => confirm("Annuler cette association ?") && run(() => api.post(`/v1/bank/transactions/${d.id}/unmatch`))}>Annuler l'association</button>
+              <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', color: C.red }} onClick={async () => await askConfirm("Annuler cette association ?") && run(() => api.post(`/v1/bank/transactions/${d.id}/unmatch`))}>Annuler l'association</button>
             </div>
             <div style={{ fontSize: 13, marginTop: 6 }}>
               {d.linked.kind === 'client_payment' && <>Encaissement {d.linked.method} du {fmtD(d.linked.received_at)} · {fmtMoney(d.linked.amount)}{d.linked.created_by_link ? ' (créé par l\'association)' : ''}
@@ -942,7 +943,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
   const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
   async function unmatch(t) {
     const what = t.amount > 0 ? `du dépôt de ${fmtMoney(t.amount)} (${t.company_name})` : `du retrait de ${fmtMoney(-t.amount)}`
-    if (!confirm(`Annuler l'association ${what} ? ${t.payment_created ? "Ce qui a été créé par l'association (encaissement, dépense ou paiement fournisseur) sera supprimé." : "L'élément existant sera seulement délié."}`)) return
+    if (!await askConfirm(`Annuler l'association ${what} ? ${t.payment_created ? "Ce qui a été créé par l'association (encaissement, dépense ou paiement fournisseur) sera supprimé." : "L'élément existant sera seulement délié."}`)) return
     await api.post(`/v1/bank/transactions/${t.id}/unmatch`)
     await onChanged()
   }

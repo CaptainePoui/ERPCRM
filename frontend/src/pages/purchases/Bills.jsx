@@ -9,6 +9,7 @@ import {
 import { recurringState } from './Expenses'
 import { PaymentModal } from './Payments'
 import HistoryButton from '../../components/HistoryButton'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 const toNum = v => parseFloat(v) || 0
 const lineAmount = l => Math.round(toNum(l.qty) * toNum(l.rate) * 100) / 100
@@ -151,8 +152,8 @@ export function PurchaseBillDetail() {
     setSaving(false)
   }
   async function remove() {
-    if (!confirm('Supprimer cette facture fournisseur ?')) return
-    try { await api.delete(`/v1/purchases/bills/${id}`); navigate('/purchases/bills') } catch (e) { alert(errText(e, 'Suppression impossible')) }
+    if (!await askConfirm('Supprimer cette facture fournisseur ?')) return
+    try { await api.delete(`/v1/purchases/bills/${id}`); navigate('/purchases/bills') } catch (e) { showAlert(errText(e, 'Suppression impossible')) }
   }
   const [sl, sc] = bill ? (BILL_STATUS[bill.status] || [bill.status, C.muted]) : ['Nouvelle', C.muted]
 
@@ -243,7 +244,7 @@ export function PurchaseRecurringBills() {
 
   async function generate(r, ev) {
     ev.stopPropagation()
-    try { const res = await api.post(`/v1/purchases/recurring-bills/${r.id}/generate`); load(); navigate(`/purchases/bills/${res.data.id}`) } catch (e) { alert(errText(e)) }
+    try { const res = await api.post(`/v1/purchases/recurring-bills/${r.id}/generate`); load(); navigate(`/purchases/bills/${res.data.id}`) } catch (e) { showAlert(errText(e)) }
   }
   async function save() {
     setError('')
@@ -257,7 +258,7 @@ export function PurchaseRecurringBills() {
     } catch (e) { setError(errText(e)) }
   }
   async function remove() {
-    if (!confirm('Supprimer cette facture périodique ? Les factures déjà créées restent.')) return
+    if (!await askConfirm('Supprimer cette facture périodique ? Les factures déjà créées restent.')) return
     await api.delete(`/v1/purchases/recurring-bills/${edit.id}`)
     setEdit(null); load()
   }

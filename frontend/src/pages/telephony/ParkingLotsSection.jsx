@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import api from '../../services/api'
+import { askConfirm, showAlert } from '../../components/Dialog'
 
 // ── Parcage — TASK-S061. Premier morceau de l'arborescence par domaine
 // (frontend/src/pages/telephony/) plutôt qu'empilé dans CompanyDetail.jsx --
@@ -33,7 +34,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
   async function createLot() {
     if (!form.name.trim() || !form.park_extension.trim()) return
     if (form.timeout_return_mode === 'fixed' && !form.return_extension) {
-      alert('Choisis un poste dédié avant de créer le lot')
+      showAlert('Choisis un poste dédié avant de créer le lot')
       return
     }
     try {
@@ -45,7 +46,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
       setShowNew(false)
       onRefresh()
     } catch (e) {
-      alert(e.response?.data?.detail || 'Erreur lors de la création')
+      showAlert(e.response?.data?.detail || 'Erreur lors de la création')
     }
   }
 
@@ -54,7 +55,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
       await api.put(`/v1/companies/${companyId}/parking-lots/${lotId}`, fields)
       onRefresh()
     } catch (e) {
-      alert(e.response?.data?.detail || 'Erreur lors de la modification')
+      showAlert(e.response?.data?.detail || 'Erreur lors de la modification')
     }
   }
 
@@ -63,7 +64,7 @@ export default function ParkingLotsSection({ companyId, parkingLots, parkingLots
   }
 
   async function removeLot(lotId) {
-    if (!confirm('Supprimer ce lot de parcage ?')) return
+    if (!await askConfirm('Supprimer ce lot de parcage ?')) return
     await api.delete(`/v1/companies/${companyId}/parking-lots/${lotId}`)
     onRefresh()
   }
