@@ -66,6 +66,7 @@ class CompanyUpdate(BaseModel):
     is_taxable: bool | None = None
     tvq_applicable: bool | None = None
     is_active: bool | None = None
+    no_late_fees: bool | None = None   # TASK-005.26 : entente sans frais de retard
 
 
 class CompanyListItem(BaseModel):
@@ -101,6 +102,7 @@ class CompanyOut(BaseModel):
     annual_revenue: float | None
     notes_internal: str | None
     is_active: bool
+    no_late_fees: bool = False
     is_owner: bool = False
     sipv_enabled: bool
     sipv_tenant_id: uuid.UUID | None

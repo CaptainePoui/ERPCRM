@@ -93,6 +93,9 @@ class RecurringBillingOut(BaseModel):
     current_cycle_end: date
     lines: list[LineOut]
     subtotal: float
+    pause_start: date | None = None      # TASK-005.26
+    pause_end: date | None = None
+    unpaused_next: date | None = None     # prochain cycle sans la pause (debut propose d'une pause)
 
 
 class RecurringBillingCreate(BaseModel):
@@ -129,7 +132,13 @@ def _out(rb: CompanyRecurringBilling) -> RecurringBillingOut:
         current_cycle_start=cycle_start, current_cycle_end=cycle_end,
         lines=[LineOut.model_validate(l) for l in rb.lines],
         subtotal=round(sum(l.qty * l.unit_price for l in rb.lines), 2),
+        pause_start=rb.pause_start, pause_end=rb.pause_end, unpaused_next=_unpaused_next(rb),
     )
+
+
+def _unpaused_next(rb) -> date:
+    return rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
+        else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
 
 
 async def _get_rb(rb_id: uuid.UUID, db: AsyncSession) -> CompanyRecurringBilling:
@@ -157,11 +166,13 @@ async def telephony_recurrence(db: AsyncSession, company_id: uuid.UUID, with_lin
 
 
 @router.get("/recurring-billing", response_model=list[RecurringBillingOut])
-async def list_recurring_billing(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(
-        select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines), selectinload(CompanyRecurringBilling.company))
-        .order_by(CompanyRecurringBilling.start_date)
-    )
+async def list_recurring_billing(company_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Toutes les factures periodiques (Ventes : le regroupement des ententes) ; ?company_id= : celles d'un client
+    (onglet Entente de sa fiche, TASK-005.26)."""
+    q = select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines), selectinload(CompanyRecurringBilling.company))
+    if company_id:
+        q = q.where(CompanyRecurringBilling.company_id == company_id)
+    result = await db.execute(q.order_by(CompanyRecurringBilling.start_date))
     return [_out(rb) for rb in result.scalars().all()]
 
 
@@ -218,6 +229,33 @@ async def update_recurring_billing(rb_id: uuid.UUID, payload: RecurringBillingUp
     return _out(await _get_rb(rb_id, db))
 
 
+class PauseIn(BaseModel):
+    pause_start: date
+    pause_end: date
+
+
+@router.put("/recurring-billing/{rb_id}/pause", response_model=RecurringBillingOut)
+async def set_pause(rb_id: uuid.UUID, payload: PauseIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-005.26 : pause de facturation (ex. 8 mois et 12 jours gratuits) -- aucun cycle qui commence dans la pause
+    n'est facture ; a la reprise, le cycle repart de cette date, meme rythme. Modifiable, annulable."""
+    rb = await _get_rb(rb_id, db)
+    if payload.pause_end <= payload.pause_start:
+        raise HTTPException(status_code=400, detail="La fin de la pause doit suivre son début")
+    if rb.last_invoice_date and payload.pause_start <= rb.last_invoice_date:
+        raise HTTPException(status_code=400, detail=f"Ce cycle est déjà facturé (dernière facture du {rb.last_invoice_date}) : la pause commence au plus tôt le {_unpaused_next(rb)}")
+    rb.pause_start, rb.pause_end = payload.pause_start, payload.pause_end
+    await db.commit()
+    return _out(await _get_rb(rb_id, db))
+
+
+@router.delete("/recurring-billing/{rb_id}/pause", response_model=RecurringBillingOut)
+async def clear_pause(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    rb = await _get_rb(rb_id, db)
+    rb.pause_start = rb.pause_end = None
+    await db.commit()
+    return _out(await _get_rb(rb_id, db))
+
+
 @router.post("/recurring-billing/{rb_id}/lines", response_model=LineOut, status_code=status.HTTP_201_CREATED)
 async def add_line(rb_id: uuid.UUID, payload: LineCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     rb = await _get_rb(rb_id, db)
@@ -247,7 +285,26 @@ def next_missing_cycle(rb) -> tuple[date, date]:
     # Derniere facture anterieure au debut du cycle : le cycle a ete deplace (reprise apres un echange, TASK-005.13)
     nxt = rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
         else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
+    if in_pause(rb, nxt):         # TASK-005.26 : rien pendant la pause, le cycle repart a la reprise
+        return _cycle_bounds(rb.pause_end, rb.frequency, rb.pause_end)
     return _cycle_bounds(rb.start_date, rb.frequency, nxt)
+
+
+def in_pause(rb, day: date) -> bool:
+    return bool(getattr(rb, "pause_start", None) and rb.pause_end and rb.pause_start <= day < rb.pause_end)
+
+
+def resume_after_pause(rb, today: date) -> bool:
+    """La pause est finie (pause_end <= aujourd'hui) et elle couvrait le prochain cycle : le cycle repart de la date de
+    reprise, meme rythme (comme apres un echange, TASK-005.13), et la pause est effacee. Retourne True si change."""
+    if not (rb.pause_start and rb.pause_end) or rb.pause_end > today:
+        return False
+    nxt = rb.start_date if not rb.last_invoice_date or rb.last_invoice_date < rb.start_date \
+        else _cycle_bounds(rb.start_date, rb.frequency, rb.last_invoice_date)[1]
+    if rb.pause_start <= nxt < rb.pause_end:
+        rb.start_date = rb.pause_end
+    rb.pause_start = rb.pause_end = None
+    return True
 
 
 class NothingToGenerate(Exception):
@@ -282,6 +339,7 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
             if barter_changed:
                 raise CycleCoveredByBarter(msg)
             raise NothingToGenerate(msg)
+    resume_after_pause(rb, clock.today())          # TASK-005.26
     cycle_start, cycle_end = next_missing_cycle(rb)
     if barter_changed and cycle_start > clock.today():
         await db.flush()

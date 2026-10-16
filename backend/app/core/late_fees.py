@@ -60,6 +60,7 @@ async def candidates(db, cfg: dict | None = None, today: date | None = None) -> 
     today = today or clock.today()
     rows = (await db.execute(select(Invoice).where(
         Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None), Invoice.barter_settlement.is_(False),
+        Invoice.company_id.not_in(select(Company.id).where(Company.no_late_fees.is_(True))),   # entente (TASK-005.26)
         Invoice.total > 0, Invoice.due_date <= today).order_by(Invoice.due_date, Invoice.number))).scalars().all()
     if not rows:
         return []

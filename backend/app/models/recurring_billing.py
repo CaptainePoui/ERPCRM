@@ -41,6 +41,9 @@ class CompanyRecurringBilling(Base):
     # reprise (le cycle repart de la) et ces deux champs redeviennent vides.
     barter_since: Mapped[date | None] = mapped_column(Date)
     barter_cursor: Mapped[date | None] = mapped_column(Date)
+    # TASK-005.26 : pause de facturation -- aucun cycle facture dans [pause_start, pause_end[, reprise a pause_end
+    pause_start: Mapped[date | None] = mapped_column(Date)
+    pause_end: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 

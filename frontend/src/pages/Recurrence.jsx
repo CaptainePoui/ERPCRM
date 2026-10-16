@@ -6,7 +6,64 @@ import { todayIso } from '../utils/date'
 
 const FREQ_LABELS = { hebdomadaire: 'Hebdomadaire', mensuel: 'Mensuelle', bimestriel: 'Bimestrielle', trimestriel: 'Trimestrielle', biannuel: 'Biannuelle', annuel: 'Annuelle' }
 
-export default function Recurrence() {
+// Pause de facturation (TASK-005.26) : debut + fin, ou debut + duree (mois et jours) -- l'un calcule l'autre
+function addPeriod(iso, months, days) {
+  const [y, m, d] = iso.split('-').map(Number)
+  const t = new Date(Date.UTC(y, m - 1 + (months || 0), 1))
+  const last = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate()
+  t.setUTCDate(Math.min(d, last) + (days || 0))
+  return t.toISOString().slice(0, 10)
+}
+function diffPeriod(a, b) {
+  let months = 0
+  while (addPeriod(a, months + 1, 0) <= b) months++
+  const base = addPeriod(a, months, 0)
+  return { months, days: Math.round((Date.parse(b) - Date.parse(base)) / 86400000) }
+}
+
+function PauseBox({ rb, onChanged }) {
+  const today = todayIso()
+  const [start, setStart] = useState(rb.pause_start || (rb.unpaused_next > today ? rb.unpaused_next : rb.unpaused_next))
+  const [end, setEnd] = useState(rb.pause_end || '')
+  const dur = start && end && end > start ? diffPeriod(start, end) : { months: '', days: '' }
+  const [err, setErr] = useState(null)
+  const setDur = (months, days) => setEnd(addPeriod(start, parseInt(months) || 0, parseInt(days) || 0))
+  async function save() {
+    setErr(null)
+    try { await api.put(`/v1/recurring-billing/${rb.id}/pause`, { pause_start: start, pause_end: end }); onChanged() }
+    catch (e) { setErr(e.response?.data?.detail || 'Pause impossible') }
+  }
+  async function clear() {
+    if (!confirm('Annuler la pause ? La facturation reprend au cycle normal.')) return
+    await api.delete(`/v1/recurring-billing/${rb.id}/pause`); onChanged()
+  }
+  const left = rb.pause_end ? Math.max(0, Math.round((Date.parse(rb.pause_end) - Date.parse(today)) / 86400000)) : 0
+  const inp = { padding: '4px 6px', fontSize: 13 }
+  return (
+    <div style={{ border: '1px dashed var(--c-border)', borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13 }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>Pause de facturation</div>
+      {rb.pause_start && (
+        <div style={{ color: '#D97706', marginBottom: 8 }}>
+          En pause du {rb.pause_start} au {rb.pause_end} — reprise le {rb.pause_end}{left > 0 ? ` (reste ${left} jour${left > 1 ? 's' : ''})` : ''}
+          <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 8px', marginLeft: 8 }} onClick={clear}>Annuler la pause</button>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label>Début <input type="date" style={inp} value={start} onChange={e => setStart(e.target.value)} /></label>
+        <label>Fin (reprise) <input type="date" style={inp} value={end} onChange={e => setEnd(e.target.value)} /></label>
+        <span style={{ color: 'var(--c-muted)' }}>ou durée</span>
+        <label><input type="number" min="0" style={{ ...inp, width: 60 }} value={dur.months} onChange={e => setDur(e.target.value, dur.days)} /> mois</label>
+        <label><input type="number" min="0" style={{ ...inp, width: 60 }} value={dur.days} onChange={e => setDur(dur.months, e.target.value)} /> jours</label>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '4px 12px' }} disabled={!start || !end || end <= start} onClick={save}>
+          {rb.pause_start ? 'Modifier la pause' : 'Mettre en pause'}</button>
+      </div>
+      <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 6 }}>Aucune facture pour les cycles qui commencent pendant la pause ; à la reprise, la facturation repart de cette date, au même rythme.</div>
+      {err && <div style={{ color: '#DC2626', marginTop: 6 }}>{err}</div>}
+    </div>
+  )
+}
+
+export default function Recurrence({ companyId = null }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState(null)
@@ -14,7 +71,7 @@ export default function Recurrence() {
 
   function load() {
     setLoading(true)
-    api.get('/v1/recurring-billing').then(r => setItems(r.data)).finally(() => setLoading(false))
+    api.get('/v1/recurring-billing', { params: companyId ? { company_id: companyId } : {} }).then(r => setItems(r.data)).finally(() => setLoading(false))
   }
   useEffect(() => { load() }, [])
 
@@ -24,7 +81,7 @@ export default function Recurrence() {
       const r = await api.post(`/v1/recurring-billing/${id}/generate-invoice`)
       load()
       if (r.data?.covered) alert(r.data.detail)   // cycle couvert par un echange (troc) : aucune facture
-      if (r.data?.invoice_id) navigate(`/invoices/${r.data.invoice_id}`)
+      if (r.data?.invoice_id) navigate(`/invoices/${r.data.invoice_id}`)   // redirige dans la fiche du client
     } catch (e) { alert(e.response?.data?.detail || 'Génération impossible') }
   }
 
@@ -49,6 +106,7 @@ export default function Recurrence() {
 
   return (
     <div>
+      {!companyId && <>
       <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: 'var(--c-text)' }}>Factures périodiques</h1>
       <p style={{ color: 'var(--c-muted)', fontSize: 14, marginTop: 8, marginBottom: 16 }}>
         Une compagnie peut avoir plusieurs factures périodiques (ex. une par succursale). Celle marquée
@@ -60,9 +118,10 @@ export default function Recurrence() {
         onText="Chaque cycle dû crée sa facture, émise mais « non transmise » : rien n'est envoyé au client tant que vous ne l'envoyez pas (filtre « Non transmises » dans Factures)."
         offText="Les factures se génèrent à la main (« Générer une facture maintenant » sur chaque récurrence)." />
       <input className="search-input" placeholder="Rechercher (client, nom, succursale)..." value={search} onChange={e => setSearch(e.target.value)} style={{ marginBottom: 16 }} />
+      </>}
 
       {loading ? <div className="loading">Chargement...</div> : items.length === 0 ? (
-        <div className="empty-tab">Aucune récurrence — active un tenant SIPV depuis une fiche compagnie pour en créer une.</div>
+        <div className="empty-tab">{companyId ? 'Aucune facture périodique pour ce client.' : 'Aucune récurrence — active un tenant SIPV depuis une fiche compagnie pour en créer une.'}</div>
       ) : (
         shown.map(rb => (
           <div key={rb.id} style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
@@ -71,12 +130,14 @@ export default function Recurrence() {
                 {rb.start_date} → {rb.end_date || '…'}
               </span>
               <div style={{ fontWeight: 700, fontSize: 15, flex: 1 }}>
-                {rb.company_name}
-                {rb.name && rb.name !== rb.company_name && <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}> · {rb.name}</span>}
+                {companyId ? (rb.name || rb.company_name) : <span style={{ color: 'var(--brand)' }} title="Ouvrir l'entente dans la fiche du client"
+                  onClick={e => { e.stopPropagation(); navigate(`/companies/${rb.company_id}?tab=entente`) }}>{rb.company_name}</span>}
+                {!companyId && rb.name && rb.name !== rb.company_name && <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}> · {rb.name}</span>}
                 {rb.site_label && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--c-faint)' }}> (succursale {rb.site_label})</span>}
                 {rb.is_telephony && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: '#2563EB', border: '1px solid #BFDBFE', background: 'var(--c-tint-blue)', borderRadius: 10, padding: '1px 7px' }}>Téléphonie</span>}
               </div>
               <span style={{ fontSize: 12, color: 'var(--c-muted)', whiteSpace: 'nowrap' }} title="Début du dernier cycle facturé">{rb.last_invoice_date ? `dernière : ${rb.last_invoice_date}` : 'jamais facturée'}</span>
+              {rb.pause_start && <span style={{ fontSize: 11, fontWeight: 600, color: '#D97706', border: '1px solid #D97706', borderRadius: 10, padding: '1px 7px' }} title={`Reprise le ${rb.pause_end}`}>En pause</span>}
               <span style={{ fontSize: 12, color: rb.is_active ? '#059669' : 'var(--c-faint)' }}>{rb.is_active ? 'Active' : 'Inactive'}</span>
               <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{FREQ_LABELS[rb.frequency] || rb.frequency}</span>
               <span style={{ fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap', color: rb.is_active && rb.current_cycle_start <= todayIso() && rb.lines.length ? '#D97706' : 'var(--c-muted)' }}
@@ -93,6 +154,7 @@ export default function Recurrence() {
                   Date de fin (optionnelle)
                   <input type="date" defaultValue={rb.end_date || ''} onBlur={e => { if ((e.target.value || null) !== (rb.end_date || null)) saveEndDate(rb, e.target.value) }} />
                 </label>
+                <PauseBox key={`${rb.pause_start}|${rb.pause_end}|${rb.unpaused_next}`} rb={rb} onChanged={load} />
                 {rb.lines.length === 0 ? (
                   <div style={{ fontSize: 13, color: 'var(--c-faint)', marginBottom: 10 }}>Aucune ligne pour le cycle actuel.</div>
                 ) : (

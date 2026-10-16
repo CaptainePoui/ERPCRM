@@ -80,6 +80,7 @@ def _build_company_out(company: Company) -> CompanyOut:
         sipv_enabled=company.sipv_enabled,
         sipv_tenant_id=company.sipv_tenant_id,
         is_owner=bool(company.is_owner),
+        no_late_fees=bool(company.no_late_fees),
         internal_manager_id=company.internal_manager_id,
         internal_manager=company.internal_manager,
         vendor_id=company.vendor_id,

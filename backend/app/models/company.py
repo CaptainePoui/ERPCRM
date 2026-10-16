@@ -24,6 +24,8 @@ class Company(Base):
     annual_revenue: Mapped[float | None] = mapped_column(Float)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # TASK-005.26 : entente -- la compagnie ne recoit jamais de frais de retard
+    no_late_fees: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # Compagnie du proprietaire (TASK-002.5) : une seule, celle qui possede le serveur -- jamais facturee ; ses coordonnees
     # sont imprimees sur les PDF (Administration -> Entreprise les modifie ici)
     is_owner: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

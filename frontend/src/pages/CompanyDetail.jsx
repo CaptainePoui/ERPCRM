@@ -4,6 +4,7 @@ import api, { getToken } from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import PaymentModal from '../components/PaymentModal'
 import InvoiceDetail from './InvoiceDetail'
+import Recurrence from './Recurrence'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
@@ -23,8 +24,8 @@ import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
-const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Échanges', 'Inventaire', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'echanges', 'inventaire', 'photos', 'journal']
+const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'entente', 'inventaire', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -354,6 +355,38 @@ function payState(t) {
 
 const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payées'], ['retard', 'En retard'], ['avoirs', 'Avoirs'], ['paiements', 'Paiements']]
 
+// Entente du client (TASK-005.26, remplace « Échanges ») : sans frais de retard, ses factures periodiques et leur pause ;
+// les anciens echanges (troc) restent consultables
+function EntenteTab({ company, onRefresh, showBarter }) {
+  const [saving, setSaving] = useState(false)
+  const [showOld, setShowOld] = useState(false)
+  async function toggleFees(v) {
+    setSaving(true)
+    try { await api.put(`/v1/companies/${company.id}`, { no_late_fees: v }); await onRefresh() } finally { setSaving(false) }
+  }
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="inv-section" style={{ padding: 16, border: '1px solid var(--c-border)', borderRadius: 10 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, cursor: 'pointer' }}>
+          <input type="checkbox" checked={!!company.no_late_fees} disabled={saving} onChange={e => toggleFees(e.target.checked)} />
+          <strong>Pas de frais de retard</strong>
+          <span style={{ color: 'var(--c-muted)', fontSize: 13 }}>— ce client ne reçoit jamais d'avis de frais de retard</span>
+        </label>
+      </div>
+      <div>
+        <div className="ifield-section-title" style={{ marginBottom: 10 }}>Factures périodiques</div>
+        <Recurrence companyId={company.id} />
+      </div>
+      {showBarter && (
+        <div>
+          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowOld(o => !o)}>{showOld ? '▾' : '▸'} Anciens échanges (troc)</button>
+          {showOld && <div style={{ marginTop: 10 }}><BarterTab companyId={company.id} companyName={company.name} /></div>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Paiements recus du client (TASK-002.9) : date, montant, factures payees, depot BNC, cheques -- clic = fiche du paiement
 function ClientPaymentsList({ companyId, onOpen }) {
   const [rows, setRows] = useState(null)
@@ -474,7 +507,7 @@ export default function CompanyDetail({ isNew }) {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
-  const initialTab = Math.max(0, TAB_SLUGS.indexOf(tabParam === 'cdr' ? 'telephonie' : tabParam))   // anciens liens ?tab=cdr
+  const initialTab = Math.max(0, TAB_SLUGS.indexOf(tabParam === 'cdr' ? 'telephonie' : tabParam === 'echanges' ? 'entente' : tabParam))   // anciens liens ?tab=cdr
   const [tab, setTabState] = useState(initialTab)
   function setTab(i) {
     setTabState(i)
@@ -482,7 +515,6 @@ export default function CompanyDetail({ isNew }) {
   }
   const slug = TAB_SLUGS[tab]
   const features = useFeatures()   // Echanges (troc) : onglet cache si l'option est decochee (Administration → Integrations)
-  useEffect(() => { if (slug === 'echanges' && !features.loading && !features.barter) setTab(0) }, [slug, features.loading, features.barter])
   const [txFilter, setTxFilter] = useState('')   // filtre de l'onglet Transactions (ouvert depuis la vue d'ensemble)
   // TASK-002.9 : facture et paiement ouverts DANS la fiche (?facture= / ?paiement=) -- on reste dans le client
   const openInvoiceId = searchParams.get('facture')
@@ -730,7 +762,7 @@ export default function CompanyDetail({ isNew }) {
               : <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter}
                   onOpenInvoice={i => setParam('facture', i)} onOpenPayment={p => setParam('paiement', p)} />)}
             {openPaymentId && <PaymentModal paymentId={openPaymentId} onClose={() => setParam('paiement', null)} />}
-            {slug === 'echanges' && features.barter && <BarterTab companyId={id} companyName={c.name} />}
+            {slug === 'entente' && <EntenteTab company={c} onRefresh={load} showBarter={features.barter} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
