@@ -38,6 +38,8 @@ class Invoice(Base):
     total: Mapped[Decimal] = mapped_column(Numeric(14, 2), default=Decimal("0.00"))
 
     # Recurrence
+    # TASK-005.26 : facture periodique d'origine (« factures enfants » de l'entente)
+    recurring_billing_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("company_recurring_billings.id", ondelete="SET NULL"), index=True)
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     recurrence_frequency: Mapped[str | None] = mapped_column(String(20))  # mensuel trimestriel annuel
     recurrence_next_date: Mapped[date | None] = mapped_column(Date)

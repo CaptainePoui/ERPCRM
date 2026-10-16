@@ -4,7 +4,7 @@ import api, { getToken } from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import PaymentModal from '../components/PaymentModal'
 import InvoiceDetail from './InvoiceDetail'
-import Recurrence from './Recurrence'
+import EntenteView from './entente/EntenteView'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
@@ -357,34 +357,14 @@ const TX_FILTERS = [['', 'Tout'], ['ouvertes', 'Non payées'], ['payees', 'Payé
 
 // Entente du client (TASK-005.26, remplace « Échanges ») : sans frais de retard, ses factures periodiques et leur pause ;
 // les anciens echanges (troc) restent consultables
-function EntenteTab({ company, onRefresh, showBarter }) {
-  const [saving, setSaving] = useState(false)
+function EntenteTab({ company, onRefresh, showBarter, onOpenInvoice }) {
   const [showOld, setShowOld] = useState(false)
-  async function toggleFees(v) {
-    setSaving(true)
-    try { await api.put(`/v1/companies/${company.id}`, { no_late_fees: v }); await onRefresh() } finally { setSaving(false) }
-  }
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-      <div className="inv-section" style={{ padding: 16, border: '1px solid var(--c-border)', borderRadius: 10 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, cursor: 'pointer' }}>
-          <input type="checkbox" checked={!!company.no_late_fees} disabled={saving} onChange={e => toggleFees(e.target.checked)} />
-          <strong>Pas de frais de retard</strong>
-          <span style={{ color: 'var(--c-muted)', fontSize: 13 }}>— ce client ne reçoit jamais d'avis de frais de retard</span>
-        </label>
-      </div>
-      <div>
-        <div className="ifield-section-title" style={{ marginBottom: 10 }}>Facture périodique</div>
-        <Recurrence companyId={company.id} />
-      </div>
-      {showBarter && (
-        <div>
-          <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowOld(o => !o)}>{showOld ? '▾' : '▸'} Anciens échanges (troc)</button>
-          {showOld && <div style={{ marginTop: 10 }}><BarterTab companyId={company.id} companyName={company.name} /></div>}
-        </div>
-      )}
-    </div>
-  )
+  const old = showBarter ? (
+    <div>
+      <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowOld(o => !o)}>{showOld ? '▾' : '▸'} Anciens échanges (troc)</button>
+      {showOld && <div style={{ marginTop: 10 }}><BarterTab companyId={company.id} companyName={company.name} /></div>}
+    </div>) : null
+  return <EntenteView company={company} onRefresh={onRefresh} onOpenInvoice={onOpenInvoice} oldExchanges={old} />
 }
 
 // Paiements recus du client (TASK-002.9) : date, montant, factures payees, depot BNC, cheques -- clic = fiche du paiement
@@ -762,7 +742,7 @@ export default function CompanyDetail({ isNew }) {
               : <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter}
                   onOpenInvoice={i => setParam('facture', i)} onOpenPayment={p => setParam('paiement', p)} />)}
             {openPaymentId && <PaymentModal paymentId={openPaymentId} onClose={() => setParam('paiement', null)} />}
-            {slug === 'entente' && <EntenteTab company={c} onRefresh={load} showBarter={features.barter} />}
+            {slug === 'entente' && <EntenteTab company={c} onRefresh={load} showBarter={features.barter} onOpenInvoice={i => { setTabState(TAB_SLUGS.indexOf('transactions')); setParam('facture', i) }} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}

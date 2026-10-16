@@ -96,6 +96,8 @@ class RecurringBillingOut(BaseModel):
     pause_start: date | None = None      # TASK-005.26
     pause_end: date | None = None
     unpaused_next: date | None = None     # prochain cycle sans la pause (debut propose d'une pause)
+    next_total: float = 0                 # montant de la prochaine facture, taxes comprises
+    terms_days: int | None = None         # conditions : jours entre la facture et son echeance (fin du cycle)
 
 
 class RecurringBillingCreate(BaseModel):
@@ -133,7 +135,16 @@ def _out(rb: CompanyRecurringBilling) -> RecurringBillingOut:
         lines=[LineOut.model_validate(l) for l in rb.lines],
         subtotal=round(sum(l.qty * l.unit_price for l in rb.lines), 2),
         pause_start=rb.pause_start, pause_end=rb.pause_end, unpaused_next=_unpaused_next(rb),
+        next_total=_next_total(rb), terms_days=(cycle_end - cycle_start).days,
     )
+
+
+def _next_total(rb) -> float:
+    sub = sum((_money(Decimal(str(l.qty)) * Decimal(str(l.unit_price))) for l in rb.lines), Decimal("0"))
+    co = rb.company
+    tps = _money(sub * Decimal("5") / 100) if co is None or co.is_taxable is not False else Decimal("0")
+    tvq = _money(sub * Decimal("9.975") / 100) if co is None or (co.is_taxable is not False and co.tvq_applicable is not False) else Decimal("0")
+    return float(sub + tps + tvq)
 
 
 def _unpaused_next(rb) -> date:
@@ -257,6 +268,40 @@ async def preview_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     finally:
         await db.rollback()           # apercu seulement : aucune facture, aucun numero consomme
     return {"pages": pdf_pages(pdf), "cycle_start": cycle_start, "cycle_end": cycle_end}
+
+
+@router.get("/recurring-billing/{rb_id}/invoices")
+async def recurring_children(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-005.26 : « toutes les factures enfants » -- les factures faites depuis cette facture periodique, avec leur solde."""
+    from app.api.v1.endpoints.payments import settled_amounts
+    invs = (await db.execute(select(Invoice).where(Invoice.recurring_billing_id == rb_id, Invoice.status.not_in(["brouillon"]))
+                             .order_by(Invoice.issue_date.desc(), Invoice.number.desc()))).scalars().all()
+    paid = await settled_amounts(db, [i.id for i in invs])
+    out, unpaid = [], Decimal("0")
+    for i in invs:
+        bal = Decimal("0") if i.status == "annulee" else max(Decimal("0"), Decimal(i.total) - (paid.get(i.id) or Decimal("0")))
+        unpaid += bal
+        out.append({"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "due_date": i.due_date,
+                    "total": float(i.total), "balance": float(bal), "status": i.status})
+    return {"invoices": out, "unpaid": float(unpaid)}
+
+
+class LineUpdate(BaseModel):
+    description: str | None = None
+    qty: float | None = None
+    unit_price: float | None = None
+
+
+@router.put("/recurring-billing/lines/{line_id}", response_model=LineOut)
+async def update_line(line_id: uuid.UUID, payload: LineUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    line = await db.get(RecurringBillingLine, line_id)
+    if not line:
+        raise HTTPException(status_code=404, detail="Ligne introuvable")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        if v is not None:
+            setattr(line, k, v)
+    await db.commit()
+    return line
 
 
 class PauseIn(BaseModel):
@@ -392,6 +437,7 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
         is_recurring=True,
         recurrence_frequency=rb.frequency,
         recurrence_next_date=cycle_end,
+        recurring_billing_id=rb.id,
     )
     if issue:
         inv.status, inv.transmission_status = "envoyee", "non_transmise"
