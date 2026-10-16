@@ -55,9 +55,9 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Tickets', 'Graphe de connaissance', 'Entreprise', 'Journal', 'Pastilles']
+const TABS = ['Utilisateurs', 'Portail client', 'Méthodes de paiement', 'Intégrations', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal', 'Pastilles']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'tickets', 'graphe-connaissance', 'entreprise', 'journal', 'pastilles']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'methodes-paiement', 'integrations', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal', 'pastilles']
 
 export default function Admin() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -66,7 +66,7 @@ export default function Admin() {
   // les effacent eux-memes une fois le message affiche, voir plus bas).
   const initialTab = searchParams.get('google_calendar') ? 3
     : searchParams.get('backup') ? 4
-    : Math.max(0, TAB_SLUGS.indexOf(searchParams.get('tab')))
+    : Math.max(0, TAB_SLUGS.indexOf(searchParams.get('tab') === 'tickets' ? 'configuration' : searchParams.get('tab')))
   const [tab, setTab] = useState(initialTab)
 
   // Persiste l'onglet actif dans l'URL -- sinon un refresh retombe toujours sur
@@ -94,7 +94,7 @@ export default function Admin() {
         {tab === 2 && <PaymentMethodsPanel />}
         {tab === 3 && <><OptionsPanel /><MailboxesPanel /><IntegrationsPanel /></>}
         {tab === 4 && <BackupPanel />}
-        {tab === 5 && <TicketsSettingsPanel />}
+        {tab === 5 && <><InvoiceSettingsPanel /><div style={{ height: 28 }} /><TicketsSettingsPanel /></>}
         {tab === 6 && <KnowledgeGraphViewer />}
         {tab === 7 && <CompanySettingsPanel />}
         {tab === 8 && <JournalPanel />}
@@ -105,6 +105,32 @@ export default function Admin() {
 }
 
 // ── Tickets (TASK-015.12) ────────────────────────────────────────────────────
+
+// Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
+// rassembler dans un onglet config générale ») -- factures : conditions de paiement
+function InvoiceSettingsPanel() {
+  const [days, setDays] = useState('')
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.get('/v1/settings').then(r => setDays(String(r.data.payment_terms_days))) }, [])
+  async function save() {
+    setSaving(true); setSaved(false)
+    try { await api.put('/v1/settings', { payment_terms_days: parseInt(days) }); setSaved(true) } finally { setSaving(false) }
+  }
+  return (
+    <div>
+      <div className="adm-panel-header"><span className="adm-count">Factures</span></div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
+        Conditions de paiement de toutes les factures, périodiques comprises : la facture est due ce nombre de jours après sa date. S'applique aux nouvelles factures ; celles déjà émises gardent leur échéance.
+      </p>
+      <div className="form-group" style={{ maxWidth: 260 }}>
+        <label>Conditions de paiement (jours net)</label>
+        <input type="number" min="0" max="365" value={days} onChange={e => { setDays(e.target.value); setSaved(false) }} />
+      </div>
+      <button className="btn-primary" onClick={save} disabled={saving || days === ''}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
+    </div>
+  )
+}
 
 function TicketsSettingsPanel() {
   const [threshold, setThreshold] = useState('')

@@ -18,6 +18,7 @@ from app.models.user import User
 from app.core.tracking import get_open_stats
 from app.core.email import send_invoice_email
 
+from app.api.v1.endpoints.settings import payment_terms_days
 router = APIRouter()
 
 
@@ -310,7 +311,7 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
         site_label_snapshot=site_label_snapshot,
         site_address_snapshot=site_address_snapshot,
         issue_date=payload.issue_date or today,
-        due_date=payload.due_date or (today + timedelta(days=30)),
+        due_date=payload.due_date or (today + timedelta(days=await payment_terms_days(db))),
         notes=payload.notes,
         apply_tps=payload.apply_tps if payload.apply_tps is not None else comp.is_taxable,
         apply_tvq=payload.apply_tvq if payload.apply_tvq is not None else comp.tvq_applicable,

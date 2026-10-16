@@ -31,6 +31,7 @@ from app.models.company import Company
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.user import User
 
+from app.api.v1.endpoints.settings import payment_terms_days
 router = APIRouter()
 
 FREQUENCIES = {
@@ -135,7 +136,7 @@ def _out(rb: CompanyRecurringBilling) -> RecurringBillingOut:
         lines=[LineOut.model_validate(l) for l in rb.lines],
         subtotal=round(sum(l.qty * l.unit_price for l in rb.lines), 2),
         pause_start=rb.pause_start, pause_end=rb.pause_end, unpaused_next=_unpaused_next(rb),
-        next_total=_next_total(rb), terms_days=(cycle_end - cycle_start).days,
+        next_total=_next_total(rb),
     )
 
 
@@ -184,7 +185,8 @@ async def list_recurring_billing(company_id: uuid.UUID | None = None, db: AsyncS
     if company_id:
         q = q.where(CompanyRecurringBilling.company_id == company_id)
     result = await db.execute(q.order_by(CompanyRecurringBilling.start_date))
-    return [_out(rb) for rb in result.scalars().all()]
+    terms = await payment_terms_days(db)
+    return [_out(rb).model_copy(update={"terms_days": terms}) for rb in result.scalars().all()]
 
 
 @router.get("/companies/{company_id}/recurring-billing", response_model=RecurringBillingOut | None)
@@ -249,7 +251,8 @@ async def preview_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     from app.api.v1.endpoints.invoices import _recalc
     rb = await _get_rb(rb_id, db)
     cycle_start, cycle_end = next_missing_cycle(rb)
-    inv = Invoice(number=f"P{uuid.uuid4().hex[:12]}", company_id=rb.company_id, issue_date=cycle_start, due_date=cycle_end,
+    inv = Invoice(number=f"P{uuid.uuid4().hex[:12]}", company_id=rb.company_id, issue_date=cycle_start,
+                  due_date=cycle_start + timedelta(days=await payment_terms_days(db)),
                   status="periodique", site_id=rb.site_id, site_label_snapshot=rb.site.label if rb.site else None,
                   is_recurring=True, recurrence_frequency=rb.frequency)
     db.add(inv)
@@ -434,7 +437,7 @@ async def create_recurring_invoice(db: AsyncSession, rb: CompanyRecurringBilling
         number=await _next_number(db),
         company_id=rb.company_id,
         issue_date=cycle_start,
-        due_date=cycle_end,
+        due_date=cycle_start + timedelta(days=await payment_terms_days(db)),
         notes=f"Généré depuis la facture périodique « {rb.name} »" if rb.name else "Généré depuis la récurrence téléphonique SIPV",
         site_id=rb.site_id,
         site_label_snapshot=rb.site.label if rb.site else None,

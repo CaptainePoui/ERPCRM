@@ -20,6 +20,9 @@ DEFAULTS = {
     # contre le chrono client-side laisse tourner par erreur, ex. onglet
     # oublie ouvert toute la nuit).
     "ticket_time_confirm_threshold_minutes": "30",
+    # Conditions de paiement des factures (jours apres la date de facture), Administration -> Configuration generale
+    # (Philippe, 2026-10-16 : « pour tout le monde c'est 30 jours net »)
+    "payment_terms_days": "30",
     # TASK-042 : mois de debut de l'exercice financier (1 = janvier ; Simple IP inc. = 7, 1er juillet au 30 juin)
     "fiscal_year_start_month": "1",
     # TASK-005.8 : fin de la derniere periode de taxes declaree (AAAA-MM-JJ, vide = aucune) --
@@ -57,6 +60,14 @@ async def get_setting(db: AsyncSession, key: str) -> str:
     return s.value if s else DEFAULTS.get(key, "")
 
 
+async def payment_terms_days(db: AsyncSession) -> int:
+    """Conditions de paiement generales : la facture est due N jours apres sa date (30 net par defaut)."""
+    try:
+        return int(await get_setting(db, "payment_terms_days"))
+    except ValueError:
+        return 30
+
+
 async def set_setting(db: AsyncSession, key: str, value: str):
     r = await db.execute(select(AppSetting).where(AppSetting.key == key))
     s = r.scalar_one_or_none()
@@ -77,6 +88,7 @@ async def require_barter(db: AsyncSession) -> None:
 
 
 class SettingsOut(BaseModel):
+    payment_terms_days: int = 30
     hourly_rate: float
     labour_round_minutes: int
     commission_rate: float
@@ -99,6 +111,7 @@ class SettingsOut(BaseModel):
 
 
 class SettingsIn(BaseModel):
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
     hourly_rate: float | None = None
     labour_round_minutes: int | None = None
     commission_rate: float | None = None
@@ -123,6 +136,7 @@ class SettingsIn(BaseModel):
 @router.get("", response_model=SettingsOut)
 async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     return SettingsOut(
+        payment_terms_days=await payment_terms_days(db),
         hourly_rate=float(await get_setting(db, "hourly_rate")),
         labour_round_minutes=int(await get_setting(db, "labour_round_minutes")),
         commission_rate=float(await get_setting(db, "commission_rate")),
@@ -154,6 +168,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         for item in r.scalars().all():
             item.price = payload.hourly_rate * (item.rate_multiplier or 1)
         await db.commit()
+    if payload.payment_terms_days is not None:
+        await set_setting(db, "payment_terms_days", str(payload.payment_terms_days))
     if payload.labour_round_minutes is not None:
         await set_setting(db, "labour_round_minutes", str(payload.labour_round_minutes))
     if payload.commission_rate is not None:
