@@ -35,26 +35,40 @@ export function spell(a, b) {
   return parts.length > 1 ? parts.slice(0, -1).join(', ') + ' et ' + parts[parts.length - 1] : (parts[0] || '0 jour')
 }
 function PauseModal({ rb, onClose, onSaved }) {
-  const start = rb.pause_start || todayIso()
+  // Tout se compte a partir d'aujourd'hui : rouverte apres quelques jours, la fenetre montre ce qui reste (Philippe)
+  const today = todayIso()
+  const base = rb.pause_start && rb.pause_start > today ? rb.pause_start : today
   const [mode, setMode] = useState('duree')
-  const [end, setEnd] = useState(rb.pause_end || addPeriod(start, 1, 0))
-  const d = end > start ? diffPeriod(start, end) : { months: 0, days: 0 }
+  const [end, setEnd] = useState(rb.pause_end && rb.pause_end > base ? rb.pause_end : base)
+  const d = end > base ? diffPeriod(base, end) : { months: 0, days: 0 }
   const y = Math.floor(d.months / 12), m = d.months % 12
-  const setDur = (yy, mm, dd) => setEnd(addPeriod(start, (parseInt(yy) || 0) * 12 + (parseInt(mm) || 0), parseInt(dd) || 0))
-  const shiftDays = Math.round((Date.parse(end) - Date.parse(start)) / 86400000)
-  const newNext = rb.unpaused_next ? addPeriod(rb.unpaused_next, 0, shiftDays) : null
+  const setDur = (yy, mm, dd) => setEnd(addPeriod(base, (parseInt(yy) || 0) * 12 + (parseInt(mm) || 0), parseInt(dd) || 0))
+  const days = Math.max(0, Math.round((Date.parse(end) - Date.parse(base)) / 86400000))
+  // Montant offert <-> duree : au prix de la facture periodique (taxes comprises) par jour de son cycle
+  const cycleDays = Math.max(1, Math.round((Date.parse(rb.current_cycle_end) - Date.parse(rb.current_cycle_start)) / 86400000))
+  const perDay = (rb.next_total || 0) / cycleDays
+  const amount = perDay > 0 ? (days * perDay).toFixed(2) : ''
+  const [amountText, setAmountText] = useState(null)       // pendant la saisie du montant
+  const setAmount = v => { setAmountText(v); const a = parseFloat(String(v).replace(',', '.')); setEnd(addPeriod(base, 0, perDay > 0 && a > 0 ? Math.round(a / perDay) : 0)) }
+  // jours deja ecoules de la pause : la prochaine facture garde ce qui restait avant la pause
+  const elapsed = rb.pause_start && rb.pause_start < base ? Math.round((Date.parse(base) - Date.parse(rb.pause_start)) / 86400000) : 0
+  const newNext = rb.unpaused_next ? addPeriod(rb.unpaused_next, 0, elapsed + days) : null
   const [err, setErr] = useState(null)
   async function save() {
     setErr(null)
-    try { await api.put(`/v1/recurring-billing/${rb.id}/pause`, { pause_start: start, pause_end: end }); onSaved() } catch (e) { setErr(errText(e)) }
+    try {
+      if (days === 0) await api.delete(`/v1/recurring-billing/${rb.id}/pause`)          // remis a 0 : plus de pause
+      else await api.put(`/v1/recurring-billing/${rb.id}/pause`, { pause_start: rb.pause_start || base, pause_end: end })
+      onSaved()
+    } catch (e) { setErr(errText(e)) }
   }
   const seg = on => ({ flex: 1, padding: '8px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: 13,
     background: on ? 'var(--brand)' : 'transparent', color: on ? '#fff' : 'var(--c-muted)' })
-  const field = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--c-muted)', fontWeight: 600, flex: 1 }
-  const inp = { padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', color: 'var(--c-text)', fontSize: 14 }
+  const field = { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--c-muted)', fontWeight: 600, flex: '1 1 0', minWidth: 0 }
+  const inp = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', color: 'var(--c-text)', fontSize: 14 }
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 480, maxWidth: '94vw', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="modal-box" style={{ width: 'min(560px, 94vw)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 16 }}>
         <div>
           <h3 className="modal-title" style={{ margin: 0 }}>Mettre la facturation en pause</h3>
           <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>La pause repousse le cycle : les jours qui restaient avant la prochaine facture restent après la pause.</div>
@@ -64,23 +78,26 @@ function PauseModal({ rb, onClose, onSaved }) {
           <button style={seg(mode === 'date')} onClick={() => setMode('date')}>Jusqu'à une date</button>
         </div>
         {mode === 'date' ? (
-          <label style={field}>Fin de la pause<input type="date" style={inp} value={end} min={start} onChange={e => setEnd(e.target.value)} /></label>
+          <label style={field}>Fin de la pause<input type="date" style={inp} value={end} min={base} onChange={e => { setAmountText(null); setEnd(e.target.value < base ? base : e.target.value) }} /></label>
         ) : (
           <div style={{ display: 'flex', gap: 12 }}>
-            <label style={field}>Années<input type="number" min="0" style={inp} value={y} onChange={e => setDur(e.target.value, m, d.days)} /></label>
-            <label style={field}>Mois<input type="number" min="0" style={inp} value={m} onChange={e => setDur(y, e.target.value, d.days)} /></label>
-            <label style={field}>Jours<input type="number" min="0" style={inp} value={d.days} onChange={e => setDur(y, m, e.target.value)} /></label>
+            <label style={field}>Années<input type="number" min="0" style={inp} value={y} onChange={e => { setAmountText(null); setDur(e.target.value, m, d.days) }} /></label>
+            <label style={field}>Mois<input type="number" min="0" style={inp} value={m} onChange={e => { setAmountText(null); setDur(y, e.target.value, d.days) }} /></label>
+            <label style={field}>Jours<input type="number" min="0" style={inp} value={d.days} onChange={e => { setAmountText(null); setDur(y, m, e.target.value) }} /></label>
           </div>
         )}
-        <div style={{ background: 'var(--c-tint-blue)', borderRadius: 10, padding: '12px 14px', fontSize: 14 }}>
-          {end > start
-            ? <><strong>{spell(start, end)} offerts</strong>{newNext ? <> — la prochaine facture passe du {rb.unpaused_next} au <strong>{newNext}</strong></> : null}</>
-            : 'Choisissez une durée ou une date de fin.'}
-        </div>
+        <label style={field}>Ou un montant offert ($) — au prix de sa facture périodique ({money(rb.next_total)} par {cycleDays} jours)
+          <input type="text" inputMode="decimal" style={inp} value={amountText ?? amount} placeholder="0.00" onChange={e => setAmount(e.target.value)} /></label>
+        {days > 0 && (
+          <div style={{ background: 'var(--c-tint-blue)', borderRadius: 10, padding: '12px 14px', fontSize: 14 }}>
+            <strong>{spell(base, end)} offerts</strong>{newNext ? <> — la prochaine facture passe du {rb.unpaused_next} au <strong>{newNext}</strong></> : null}
+          </div>
+        )}
         {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" disabled={!(end > start)} onClick={save}>{rb.pause_start ? 'Modifier la pause' : 'Mettre en pause'}</button>
+          <button className="btn-primary" disabled={!rb.pause_start && days === 0} onClick={save}>
+            {rb.pause_start ? (days === 0 ? 'Retirer la pause' : 'Modifier la pause') : 'Mettre en pause'}</button>
         </div>
       </div>
     </div>
