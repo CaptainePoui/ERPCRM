@@ -314,7 +314,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
           {editable && !isCredit && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
           {/* avoir en brouillon = creation en cours : « Annuler » l'arrete, rien ne reste (numero rendu), retour a la facture */}
           {editable && isCredit && inv.credit_of_id && <>
-            <button className="btn-secondary" onClick={cancelCredit}>Annuler</button>
+            <button className="btn-danger" onClick={async () => { if (await askConfirm("Supprimer ce brouillon d'avoir ?")) cancelCredit() }}>Supprimer</button>
             <button className="btn-secondary" onClick={() => go(inv.credit_of_id)} title="Garder cet avoir en brouillon et revenir à la facture">Créer un brouillon</button>
             <button className="btn-primary" onClick={confirmCredit} title="Créer l'avoir et l'appliquer à la facture">OK</button>
           </>}
