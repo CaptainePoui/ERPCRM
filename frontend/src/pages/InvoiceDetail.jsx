@@ -8,7 +8,7 @@ import useFeatures from '../hooks/useFeatures'
 import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 import PaymentModal from '../components/PaymentModal'
-import { askConfirm, showAlert } from '../components/Dialog'
+import { askConfirm, askChoice, showAlert } from '../components/Dialog'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
@@ -211,13 +211,28 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
     }
   }
 
+  // Avoir (Philippe, 2026-10-16) : Annuler = rien ; OK = avoir cree, emis et applique a cette facture ;
+  // Personnaliser = brouillon d'avoir a modifier (puis Annuler / Creer un brouillon / OK)
   async function createCredit() {
-    if (!await askConfirm('Créer un avoir (note de crédit) pour cette facture ?')) return
+    const choice = await askChoice('Créer un avoir (note de crédit) pour cette facture ?', [['cancel', 'Annuler'], ['custom', 'Personnaliser'], ['ok', 'OK']])
+    if (choice === 'cancel') return
     setActioning(true)
     try {
       const r = await api.post(`/v1/invoices/${id}/credit`)
-      go(r.data.id)
-    } finally { setActioning(false) }
+      if (choice === 'custom') { go(r.data.id); return }
+      await api.put(`/v1/invoices/${r.data.id}`, { status: 'envoyee' })     // emis -> applique a cette facture
+      const fresh = await api.get(`/v1/invoices/${id}`)
+      setInv(fresh.data)
+      setPayments((await api.get(`/v1/payments/invoice/${id}`)).data)
+    } catch (e) { showAlert(e.response?.data?.detail || "Création de l'avoir impossible") }
+    finally { setActioning(false) }
+  }
+
+  async function confirmCredit() {           // OK sur le brouillon d'avoir : emis + applique, retour a la facture
+    try {
+      await api.put(`/v1/invoices/${id}`, { status: 'envoyee' })
+      go(inv.credit_of_id)
+    } catch (e) { showAlert(e.response?.data?.detail || 'Émission impossible') }
   }
 
   async function generateNext() {
@@ -238,7 +253,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const isCredit = !!inv.credit_of_id
   const labels = isCredit ? CREDIT_STATUS_LABELS : STATUS_LABELS
   const s = inv.offered_at ? OFFERED : (labels[inv.status] || STATUS_LABELS.brouillon)
-  const transitions = (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
+  const transitions = (isCredit && inv.credit_of_id && inv.status === 'brouillon') ? [] : (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
   const canOffer = !isCredit && inv.status === 'brouillon'
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
@@ -298,7 +313,11 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
           {editable && !isCredit && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
           {/* avoir en brouillon = creation en cours : « Annuler » l'arrete, rien ne reste (numero rendu), retour a la facture */}
-          {editable && isCredit && <button className="btn-secondary" onClick={cancelCredit}>Annuler</button>}
+          {editable && isCredit && inv.credit_of_id && <>
+            <button className="btn-secondary" onClick={cancelCredit}>Annuler</button>
+            <button className="btn-secondary" onClick={() => go(inv.credit_of_id)} title="Garder cet avoir en brouillon et revenir à la facture">Créer un brouillon</button>
+            <button className="btn-primary" onClick={confirmCredit} title="Créer l'avoir et l'appliquer à la facture">OK</button>
+          </>}
         </div>
       </div>
 

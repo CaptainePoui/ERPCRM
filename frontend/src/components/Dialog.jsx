@@ -19,6 +19,12 @@ export function askConfirm(message, opts = {}) {
   return open({ kind: 'confirm', message, ...opts })
 }
 
+// Choix a plusieurs boutons : askChoice('message', [['cancel', 'Annuler'], ['custom', 'Personnaliser'], ['ok', 'OK']])
+// -> la cle du bouton clique ('cancel' avec Echap). Le dernier bouton est le bouton principal (Entree).
+export function askChoice(message, buttons, opts = {}) {
+  return open({ kind: 'choice', message, buttons, ...opts })
+}
+
 export function showAlert(message, opts = {}) {
   return open({ kind: 'alert', message: typeof message === 'string' ? message : String(message ?? ''), ...opts })
 }
@@ -44,7 +50,8 @@ export default function DialogHost() {
   }, [cur])
   function close(v) {
     if (!cur) return
-    cur.resolve(cur.kind === 'confirm' ? v : undefined)
+    if (cur.kind === 'choice') v = v === true ? cur.buttons[cur.buttons.length - 1][0] : v === false ? 'cancel' : v
+    cur.resolve(cur.kind === 'confirm' || cur.kind === 'choice' ? v : undefined)
     setItems(list => list.slice(1))
   }
   if (!cur) return null
@@ -57,8 +64,12 @@ export default function DialogHost() {
           {lines.map((l, i) => <div key={i} style={i === 0 && lines.length > 1 ? { fontWeight: 600 } : undefined}>{l || '\u00a0'}</div>)}
         </div>
         <div className="modal-actions" style={{ justifyContent: 'center' }}>
-          {cur.kind === 'confirm' && <button className="btn-secondary" onClick={() => close(false)}>{cur.cancelLabel || 'Annuler'}</button>}
-          <button autoFocus className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => close(true)}>{cur.okLabel || 'OK'}</button>
+          {cur.kind === 'choice' ? cur.buttons.map(([k, l], i) => (
+            <button key={k} autoFocus={i === cur.buttons.length - 1} className={i === cur.buttons.length - 1 ? 'btn-primary' : 'btn-secondary'} onClick={() => close(k)}>{l}</button>
+          )) : <>
+            {cur.kind === 'confirm' && <button className="btn-secondary" onClick={() => close(false)}>{cur.cancelLabel || 'Annuler'}</button>}
+            <button autoFocus className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => close(true)}>{cur.okLabel || 'OK'}</button>
+          </>}
         </div>
       </div>
     </div>
