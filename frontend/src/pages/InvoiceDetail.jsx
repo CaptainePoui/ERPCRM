@@ -259,13 +259,11 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const editable = inv.status === 'brouillon'
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
-  const canBarter = features.barter && !isCredit && !inv.late_fee_for_id && !['payee', 'annulee'].includes(inv.status)
   const canVoid = !editable && inv.status !== 'annulee' && !(inv.status === 'payee')
   const gearItems = [
     ...(canVoid ? [[isCredit ? "Annuler l'avoir" : 'Annuler la facture', async () => { if (await askConfirm(isCredit ? "Annuler cet avoir ? Il n'aura plus aucun effet." : 'Annuler cette facture ? Elle ne sera plus due.')) changeStatus('annulee') }]] : []),
     ...(canOffer ? [['Offrir au client', () => offer(true)]] : []),
     ...(inv.offered_at ? [["Annuler l'offre", () => offer(false)]] : []),
-    ...(canBarter ? [[inv.barter_settlement ? "Retirer de l'échange" : 'Régler en échange', () => saveField('barter_settlement', !inv.barter_settlement)]] : []),
   ]
 
   return (
@@ -277,7 +275,6 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
             <h1 className="page-title" style={{ marginBottom: 2 }}>
               {inv.credit_of_id ? 'Avoir ' : 'Facture '}{inv.number}
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
-              {features.barter && inv.barter_settlement && <span className="inv-recur-badge" style={{ background: 'var(--c-tint-green)', color: 'var(--c-on-green)', whiteSpace: 'nowrap' }}>Troc</span>}
               {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: 'var(--c-tint-red)', color: 'var(--c-on-red)', whiteSpace: 'nowrap' }}>Avis de retard</span>}
             </h1>
             <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>

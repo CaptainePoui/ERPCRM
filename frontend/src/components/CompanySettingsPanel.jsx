@@ -151,7 +151,7 @@ function LateFeesSection() {
       <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
         Un avis de retard par client : {cfg.late_fee_monthly_rate} % de tout son solde en retard (avis précédents compris) + frais de gestion,
         {' '}{cfg.late_fee_grace_days} jours après l'échéance, puis chaque {cfg.late_fee_interval_days} jours tant que c'est impayé. Sans taxes.
-        {features.barter && 'Jamais sur une facture marquée « À régler en troc ». '}Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
+        {'Jamais pour un client « pas de frais de retard » (onglet Entente). '}Les avis sont émis et envoyés par courriel au contact comptes payables / facturation (sinon le contact principal) ; sans courriel, l'avis reste non transmis.
       </p>
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
         {field('late_fee_monthly_rate', '% par mois')}
@@ -214,7 +214,7 @@ function BusinessSection() {
     <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Coordonnées de l'entreprise</h3>
       <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
-        Imprimées en haut de tous les PDF : factures, avoirs, devis et ententes d'échange. Vos numéros de TPS et de TVQ permettent à vos clients de réclamer les taxes qu'ils vous paient.
+        Imprimées en haut de tous les PDF : factures, avoirs et devis. Vos numéros de TPS et de TVQ permettent à vos clients de réclamer les taxes qu'ils vous paient.
         {f.company_id && <> Ce sont les informations de la fiche <Link to={`/companies/${f.company_id}`}>{saved?.name}</Link> (compagnie du propriétaire, jamais facturée) : une seule copie.</>}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 12 }}>
@@ -255,7 +255,7 @@ function TimezoneSection() {
     <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 8, color: 'var(--c-text)' }}>Fuseau horaire de l'entreprise</h3>
       <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
-        Sert à savoir quel jour on est : date des factures et des paiements, factures périodiques, échanges… Il est <b>{data.now}</b> selon ce fuseau.
+        Sert à savoir quel jour on est : date des factures et des paiements, factures périodiques… Il est <b>{data.now}</b> selon ce fuseau.
       </p>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
         <select value={value} onChange={e => setValue(e.target.value)} style={{ minWidth: 260 }}>

@@ -65,10 +65,10 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
               {items.length} facture{items.length > 1 ? 's' : ''}{open.length ? ` · reste ${fmtMoney(remaining)}` : ''}
               {!oneCompany && <span style={{ fontWeight: 400, color: 'var(--c-faint)' }}> · {companies.length} compagnies</span>}
             </span>
-            {features.barter && (
+            {false && (
               <button className="btn-secondary" style={btn} disabled={busy || !!why} title={why} onClick={openBarter}>Créer un échange</button>
             )}
-            {features.barter && flaggable.length > 0 && (
+            {false && flaggable.length > 0 && (
               <button className="btn-secondary" style={btn} disabled={busy} onClick={() => flag(!allFlagged)}>
                 {allFlagged ? 'Retirer « troc »' : 'Marquer « À régler en troc »'}
               </button>
@@ -133,7 +133,7 @@ function CreditModal({ invoices, onClose, onDone }) {
         <InvoiceList invoices={invoices} />
         <p style={{ fontSize: 13, color: C.muted, marginTop: 0 }}>
           Un avoir par facture, du montant de son reste ({fmtMoney(total)} en tout), appliqué aussitôt : la dette est effacée.
-          Les taxes de l'avoir suivent celles de la facture, ce qui baisse la TPS/TVQ à remettre. Pour une dette réglée en troc, utilisez plutôt « Créer un échange ».
+          Les taxes de l'avoir suivent celles de la facture, ce qui baisse la TPS/TVQ à remettre.
         </p>
         {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 8 }}>{error}</div>}
         <div className="modal-actions">
