@@ -403,13 +403,35 @@ async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: Asyn
     if inv.status != "annulee":
         inv.offered_at = None            # une facture offerte qui change de statut n'est plus offerte
     _recalc(inv)
-    if was_draft and inv.status != "brouillon" and inv.status != "annulee":
+    if was_draft and inv.status != "brouillon" and inv.status != "annulee" and inv.credit_of_id is not None:
+        # Philippe (2026-10-16) : un avoir cree depuis une facture s'applique tout seul a cette facture a l'emission
+        # (jusqu'a son solde) -- elle devient payee ; ce qui depasse reste un avoir ouvert du client
+        await db.flush()
+        await _apply_credit_to_origin(db, inv)
+    elif was_draft and inv.status != "brouillon" and inv.status != "annulee":
         await db.flush()
         from app.core.client_credit import on_issued
         await on_issued(db, inv)     # TASK-005.13 / 042.2 : l'echange (troc), puis le credit du client, paient la facture emise
     await db.commit()
     inv = await _get_inv(invoice_id, db)
     return await _build_out(inv, db)
+
+
+async def _apply_credit_to_origin(db: AsyncSession, credit: Invoice) -> None:
+    from app.models.client_payment import CreditAllocation
+    from app.api.v1.endpoints.payments import settled_amounts, _recalculate_invoice_status, recalc_credit_status
+    origin = await db.get(Invoice, credit.credit_of_id)
+    if not origin or origin.status in ("brouillon", "annulee"):
+        return
+    due = Decimal(origin.total) - ((await settled_amounts(db, [origin.id])).get(origin.id) or Decimal("0"))
+    used = (await db.execute(select(func.sum(CreditAllocation.amount)).where(CreditAllocation.credit_invoice_id == credit.id))).scalar() or Decimal("0")
+    amount = min(abs(Decimal(credit.total)) - Decimal(used), due)
+    if amount <= 0:
+        return
+    db.add(CreditAllocation(credit_invoice_id=credit.id, invoice_id=origin.id, amount=_money(amount), applied_at=clock.today()))
+    await db.flush()
+    await _recalculate_invoice_status(origin.id, db)
+    await recalc_credit_status(credit.id, db)
 
 
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
