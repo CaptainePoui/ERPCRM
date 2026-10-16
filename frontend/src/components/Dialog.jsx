@@ -53,16 +53,10 @@ export default function DialogHost() {
   return (
     <div className="modal-overlay" style={{ zIndex: 5000 }}>
       <div className="modal-box" role="dialog" aria-modal="true" style={{ width: 'min(460px, 92vw)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-          <div style={{ flex: '0 0 36px', height: 36, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 18,
-            background: danger ? 'rgba(220,38,38,.15)' : cur.kind === 'alert' ? 'rgba(37,99,235,.15)' : 'rgba(37,99,235,.15)', color: danger ? '#DC2626' : 'var(--brand)' }}>
-            {danger ? '!' : cur.kind === 'alert' ? 'i' : '?'}
-          </div>
-          <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--c-text)', paddingTop: 6 }}>
-            {lines.map((l, i) => <div key={i} style={i === 0 && lines.length > 1 ? { fontWeight: 600 } : undefined}>{l || ' '}</div>)}
-          </div>
+        <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--c-text)', textAlign: 'center' }}>
+          {lines.map((l, i) => <div key={i} style={i === 0 && lines.length > 1 ? { fontWeight: 600 } : undefined}>{l || '\u00a0'}</div>)}
         </div>
-        <div className="modal-actions">
+        <div className="modal-actions" style={{ justifyContent: 'center' }}>
           {cur.kind === 'confirm' && <button className="btn-secondary" onClick={() => close(false)}>{cur.cancelLabel || 'Annuler'}</button>}
           <button autoFocus className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => close(true)}>{cur.okLabel || 'OK'}</button>
         </div>
