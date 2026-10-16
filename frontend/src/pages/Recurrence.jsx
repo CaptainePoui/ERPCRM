@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import DocumentView from '../components/DocumentView'
 import AutoRecurringToggle from '../components/AutoRecurringToggle'
 import { todayIso } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
@@ -66,22 +67,18 @@ function PauseBox({ rb, onChanged }) {
 
 // La prochaine facture de la facture periodique, rendue comme une vraie facture (TASK-005.26) -- rien n'est enregistre
 function RecurringDocument({ rb }) {
-  const [pages, setPages] = useState(null)
+  const [doc, setDoc] = useState(null)
   const [err, setErr] = useState(false)
   const version = `${rb.subtotal}|${rb.current_cycle_start}|${rb.lines.length}|${rb.pause_end}`
   useEffect(() => {
     let alive = true
     setErr(false)
-    api.get(`/v1/recurring-billing/${rb.id}/preview`).then(r => alive && setPages(r.data.pages)).catch(() => alive && setErr(true))
+    api.get(`/v1/recurring-billing/${rb.id}/preview`).then(r => alive && setDoc(r.data)).catch(() => alive && setErr(true))
     return () => { alive = false }
   }, [rb.id, version])
   if (err) return <div style={{ color: 'var(--c-faint)', padding: 16 }}>Document non disponible.</div>
-  if (!pages) return <div className="loading">Chargement de la facture...</div>
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, background: 'var(--c-surface-2)', borderRadius: 8, padding: 16 }}>
-      {pages.map((src, n) => <img key={n} src={src} alt={`Page ${n + 1}`} style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 4, boxShadow: '0 4px 18px rgba(0,0,0,.25)' }} />)}
-    </div>
-  )
+  if (!doc) return <div className="loading">Chargement de la facture...</div>
+  return <DocumentView html={doc.html} pages={doc.pages} />
 }
 
 export default function Recurrence({ companyId = null }) {

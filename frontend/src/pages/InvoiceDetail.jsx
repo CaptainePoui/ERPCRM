@@ -8,6 +8,7 @@ import useFeatures from '../hooks/useFeatures'
 import { downloadFile } from '../utils/download'
 import HistoryButton from '../components/HistoryButton'
 import PaymentModal from '../components/PaymentModal'
+import DocumentView from '../components/DocumentView'
 import { askConfirm, askChoice, showAlert } from '../components/Dialog'
 
 const STATUS_LABELS = {
@@ -993,19 +994,15 @@ function AddLineModal({ catalogue, onClose, onSave }) {
 // Le document lui-meme, comme le recoit le client (original de l'ancien logiciel s'il existe, sinon le PDF d'ERPCRM) ;
 // recharge quand la facture change (version)
 function InvoiceDocument({ id, version }) {
-  const [pages, setPages] = useState(null)
+  const [doc, setDoc] = useState(null)
   const [err, setErr] = useState(false)
   useEffect(() => {
     let alive = true
     setErr(false)
-    api.get(`/v1/invoices/${id}/preview`).then(r => alive && setPages(r.data.pages)).catch(() => alive && setErr(true))
+    api.get(`/v1/invoices/${id}/preview`).then(r => alive && setDoc(r.data)).catch(() => alive && setErr(true))
     return () => { alive = false }
   }, [id, version])
   if (err) return <div style={{ color: 'var(--c-faint)', padding: 16 }}>Document non disponible.</div>
-  if (!pages) return <div className="loading">Chargement du document...</div>
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, background: 'var(--c-surface-2)', borderRadius: 8, padding: 16 }}>
-      {pages.map((src, n) => <img key={n} src={src} alt={`Page ${n + 1}`} style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 4, boxShadow: '0 4px 18px rgba(0,0,0,.25)' }} />)}
-    </div>
-  )
+  if (!doc) return <div className="loading">Chargement du document...</div>
+  return <DocumentView html={doc.html} pages={doc.pages} />
 }

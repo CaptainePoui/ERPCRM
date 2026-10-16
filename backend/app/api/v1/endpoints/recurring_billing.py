@@ -266,11 +266,12 @@ async def preview_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     inv = (await db.execute(select(Invoice).options(selectinload(Invoice.lines)).where(Invoice.id == inv.id))).scalar_one()
     _recalc(inv)
     await db.flush()
+    from app.core.invoice_pdf import invoice_html
     try:
-        pdf = await generate_invoice_pdf(inv.id, db)
+        html = await invoice_html(inv.id, db)
     finally:
         await db.rollback()           # apercu seulement : aucune facture, aucun numero consomme
-    return {"pages": pdf_pages(pdf), "cycle_start": cycle_start, "cycle_end": cycle_end}
+    return {"html": html, "cycle_start": cycle_start, "cycle_end": cycle_end}
 
 
 @router.get("/recurring-billing/{rb_id}/invoices")

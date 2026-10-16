@@ -176,7 +176,60 @@ def _money(v) -> str:
     return f"{d:.2f} $"          # Philippe : « montant normal Québec 1234.56 »
 
 
-async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
+_URI_CACHE: dict = {}
+_THUMBS = Path(__file__).resolve().parents[2] / "storage" / "preview_cache" / "thumbs"
+
+
+def _thumb(path: Path) -> Path:
+    """Image d'article reduite (96 px) pour la facture : les images du catalogue pesent jusqu'a 1 Mo pour une icone."""
+    if not path.is_file():
+        return path
+    out = _THUMBS / f"{path.stem}_{int(path.stat().st_mtime)}.png"
+    if not out.is_file():
+        try:
+            import cv2
+            img = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+            if img is None:
+                return path
+            h, w = img.shape[:2]
+            k = 96 / max(h, w)
+            if k < 1:
+                img = cv2.resize(img, (max(1, int(w * k)), max(1, int(h * k))), interpolation=cv2.INTER_AREA)
+            _THUMBS.mkdir(parents=True, exist_ok=True)
+            cv2.imwrite(str(out), img, [cv2.IMWRITE_PNG_COMPRESSION, 9])
+        except Exception:
+            return path
+    return out
+
+
+def _uri(path: Path, inline: bool) -> str:
+    """Fichier local : chemin file:// pour WeasyPrint, ou data: (mis en cache) pour l'affichage dans le navigateur."""
+    if not inline:
+        return path.as_uri()
+    key = (str(path), path.stat().st_mtime)
+    if key not in _URI_CACHE:
+        import base64, mimetypes
+        mime = {".woff2": "font/woff2"}.get(path.suffix.lower()) or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+        _URI_CACHE[key] = f"data:{mime};base64," + base64.b64encode(path.read_bytes()).decode()
+    return _URI_CACHE[key]
+
+
+# Affichage a l'ecran (2026-10-16, Philippe : « il y a un delai a l'ouverture… ce delai pourrait etre seulement quand on
+# clique PDF ») : la meme page HTML que le PDF, montree directement par le navigateur -- le PDF n'est fabrique qu'au clic
+_SCREEN_CSS = """
+html { background: #fff; }
+body { width: 8.5in; min-height: 11in; margin: 0 auto; padding: 14mm 14mm 10mm; box-sizing: border-box; display: flex; flex-direction: column; }
+.pagefoot { position: static; order: 99; margin-top: auto; padding-top: 24px; }
+.pagefoot .l1 .pg::after { content: ""; }
+"""
+
+
+async def invoice_html(invoice_id, db: AsyncSession) -> str:
+    """La facture en HTML autonome (polices et images incluses) pour l'affichage a l'ecran."""
+    return await generate_invoice_pdf(invoice_id, db, html_only=True)
+
+
+async def generate_invoice_pdf(invoice_id, db: AsyncSession, html_only: bool = False):
     """Genere le PDF d'une facture (presentation TASK-005.20). Retourne les bytes du PDF."""
     from weasyprint import HTML  # lazy import -- only loaded when needed
     from sqlalchemy.orm import selectinload
@@ -196,7 +249,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
     balance = Decimal("0") if is_credit or inv.status in ("brouillon", "annulee") and False else max(Decimal("0"), Decimal(str(inv.total)) - settled)
 
     logo = _BRAND / "invoice_logo.png"
-    seller = (f'<img src="{logo.as_uri()}">' if logo.is_file() else "") + f'<div class="name">{_esc(info["name"])}</div>'
+    seller = (f'<img src="{_uri(logo, html_only)}">' if logo.is_file() else "") + f'<div class="name">{_esc(info["name"])}</div>'
     seller += '<div class="tag">La solution est Simple IP</div>'
     seller += '<div class="addr">' + "<br>".join(_esc(x) for x in [*(info["address"] or "").split("\n"), info["phone"], info["email"]] if x) + "</div>"
 
@@ -233,9 +286,9 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
         img = ""
         url = (ln.catalogue_item.image_url if ln.catalogue_item and ln.catalogue_item.image_url else imgs.get(name.strip().lower()))
         if url:
-            f = _UPLOADS / url.lstrip("/")
+            f = _thumb(_UPLOADS / url.lstrip("/"))
             if f.is_file():
-                img = f'<img src="{f.as_uri()}">'
+                img = f'<img src="{_uri(f, html_only)}">'
         nt = '<div class="nt">Non taxable</div>' if ln.is_taxable is False else ""
         rows += (f'<tr><td class="n">{n}</td><td><div class="item">{img}<div><div class="t">{_esc(name)}</div>'
                  f'<div class="d">{_esc(desc.strip())}</div>{nt}</div></div></td>'
@@ -260,7 +313,11 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
         from app.core import late_fees
         terms_html = _esc(late_fees.terms_text(await late_fees.config(db)))
     footer = " · ".join(x for x in [f"TPS {info['tps']}" if info["tps"] else "", f"TVQ {info['tvq']}" if info["tvq"] else ""] if x)
-    css = _CSS2.replace("FONTS/", (_BRAND / "fonts").as_uri() + "/")
+    css = _CSS2
+    for w in ("400", "600", "700"):
+        css = css.replace(f"FONTS/Inter-{w}.woff2", _uri(_BRAND / "fonts" / f"Inter-{w}.woff2", html_only))
+    if html_only:
+        css += _SCREEN_CSS
     pagefoot = (f'<div class="pagefoot"><div class="l1"><span>{_esc(footer)}</span><span class="pg"></span></div>'
                 + (f'<div class="l2">{terms_html}</div>' if terms_html else "") + "</div>")
 
@@ -283,6 +340,8 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 <div class="sum"><table>{sums}</table></div>
 {notes}
 </body></html>"""
+    if html_only:
+        return html
     buf = io.BytesIO()
     HTML(string=html, base_url=str(_BRAND)).write_pdf(buf)
     return buf.getvalue()

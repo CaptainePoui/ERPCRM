@@ -783,9 +783,16 @@ async def _invoice_pdf_bytes(invoice_id, db) -> tuple:
 @router.get("/{invoice_id}/preview")
 async def preview_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Le document affiche dans la fiche de la facture : chaque page du PDF en image (fiable partout, cellulaire compris)."""
-    from app.core.pdf_preview import pdf_pages
-    _inv, pdf_bytes = await _invoice_pdf_bytes(invoice_id, db)
-    return {"pages": pdf_pages(pdf_bytes)}
+    from app.core.pdf_preview import cached_pdf_pages
+    from app.core.invoice_originals import original_bytes
+    from app.core.invoice_pdf import invoice_html
+    inv = await db.get(Invoice, invoice_id)
+    if not inv:
+        raise HTTPException(status_code=404, detail="Facture introuvable")
+    orig = original_bytes(inv)
+    if orig is not None:                       # document d'origine : images faites une fois
+        return {"pages": cached_pdf_pages(inv.original_pdf, orig)}
+    return {"html": await invoice_html(invoice_id, db)}   # facture ERPCRM : la page elle-meme, sans fabriquer de PDF
 
 
 @router.get("/{invoice_id}/pdf")
