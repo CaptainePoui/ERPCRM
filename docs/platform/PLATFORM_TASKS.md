@@ -811,6 +811,13 @@ depuis l'extérieur et le suivi ne fonctionne jamais.
 
 ---
 
+### TASK-006.5 [ ] Ticket refait autour d'une IA : conversation du tech (images, recherche de solutions) + beau ticket client avec le temps
+Date de demande : 2026-10-16 (Philippe, après la correction du temps : « c'est de la marde ton système de ticket à enregistrer… je ne veux plus des séparations limitantes, c'est un ticket pas un rapport d'avocat » ; « ne change rien pour l'instant, on va jaser » ; « je veux le coder… avec une IA que je créerais qui me permettrait de coller des images et de rechercher des solutions ; après il garde pour le tech l'échange au complet, mais crée un beau ticket pour le client avec le temps pris ; laisse faire les autres modèles, je ne les aime pas »)
+Date(s) de travail : —
+
+- Rien de changé pour l'instant (discussion). Constat : le système actuel oblige à « sauver une saisie de temps » par note ; le chrono du haut (temps déjà inscrit) ne se corrige pas — c'était ça à corriger (TASK-006 : correction de la durée d'une saisie ajoutée le 2026-10-16, pas la bonne chose).
+- Idée : côté tech, une conversation avec l'IA (coller des images / captures, chercher des solutions, garder tout l'échange) ; côté client, un ticket propre rédigé par l'IA (problème, ce qui a été fait, temps pris) ; un chrono par ticket, corrigeable.
+
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
 
