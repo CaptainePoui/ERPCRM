@@ -752,14 +752,9 @@ async def _invoice_pdf_bytes(invoice_id, db) -> tuple:
 @router.get("/{invoice_id}/preview")
 async def preview_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Le document affiche dans la fiche de la facture : chaque page du PDF en image (fiable partout, cellulaire compris)."""
-    import base64, subprocess, tempfile
-    from pathlib import Path
+    from app.core.pdf_preview import pdf_pages
     _inv, pdf_bytes = await _invoice_pdf_bytes(invoice_id, db)
-    with tempfile.TemporaryDirectory() as tmp:
-        (Path(tmp) / "f.pdf").write_bytes(pdf_bytes)
-        subprocess.run(["pdftoppm", "-r", "110", "-png", f"{tmp}/f.pdf", f"{tmp}/p"], check=True, capture_output=True)
-        pages = ["data:image/png;base64," + base64.b64encode(p.read_bytes()).decode() for p in sorted(Path(tmp).glob("p-*.png"))]
-    return {"pages": pages}
+    return {"pages": pdf_pages(pdf_bytes)}
 
 
 @router.get("/{invoice_id}/pdf")

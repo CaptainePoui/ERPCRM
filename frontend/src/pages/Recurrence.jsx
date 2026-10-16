@@ -63,6 +63,26 @@ function PauseBox({ rb, onChanged }) {
   )
 }
 
+// La prochaine facture de la facture periodique, rendue comme une vraie facture (TASK-005.26) -- rien n'est enregistre
+function RecurringDocument({ rb }) {
+  const [pages, setPages] = useState(null)
+  const [err, setErr] = useState(false)
+  const version = `${rb.subtotal}|${rb.current_cycle_start}|${rb.lines.length}|${rb.pause_end}`
+  useEffect(() => {
+    let alive = true
+    setErr(false)
+    api.get(`/v1/recurring-billing/${rb.id}/preview`).then(r => alive && setPages(r.data.pages)).catch(() => alive && setErr(true))
+    return () => { alive = false }
+  }, [rb.id, version])
+  if (err) return <div style={{ color: 'var(--c-faint)', padding: 16 }}>Document non disponible.</div>
+  if (!pages) return <div className="loading">Chargement de la facture...</div>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, background: 'var(--c-surface-2)', borderRadius: 8, padding: 16 }}>
+      {pages.map((src, n) => <img key={n} src={src} alt={`Page ${n + 1}`} style={{ width: '100%', maxWidth: 900, background: '#fff', borderRadius: 4, boxShadow: '0 4px 18px rgba(0,0,0,.25)' }} />)}
+    </div>
+  )
+}
+
 export default function Recurrence({ companyId = null }) {
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -123,9 +143,20 @@ export default function Recurrence({ companyId = null }) {
       {loading ? <div className="loading">Chargement...</div> : items.length === 0 ? (
         <div className="empty-tab">{companyId ? 'Aucune facture périodique pour ce client.' : 'Aucune récurrence — active un tenant SIPV depuis une fiche compagnie pour en créer une.'}</div>
       ) : (
-        shown.map(rb => (
+        shown.map(rb => companyId && expanded !== rb.id ? (
+          <div key={rb.id} style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+              {rb.pause_start && <span style={{ fontSize: 12, fontWeight: 600, color: '#D97706' }}>En pause jusqu'au {rb.pause_end}</span>}
+              {!rb.is_active && <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Inactive</span>}
+              <span style={{ flex: 1 }} />
+              <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setExpanded(rb.id)}>Modifier</button>
+            </div>
+            <RecurringDocument rb={rb} />
+          </div>
+        ) : (
           <div key={rb.id} style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }} onClick={() => setExpanded(expanded === rb.id ? null : rb.id)}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+              onClick={() => companyId ? setExpanded(expanded === rb.id ? null : rb.id) : navigate(`/companies/${rb.company_id}?tab=entente`)}>
               <span style={{ fontSize: 12, color: 'var(--c-text-2)', fontFamily: 'monospace', whiteSpace: 'nowrap' }} title="Date de début → date de fin">
                 {rb.start_date} → {rb.end_date || '…'}
               </span>
@@ -145,10 +176,10 @@ export default function Recurrence({ companyId = null }) {
                 prochaine : {rb.current_cycle_start}
               </span>
               <span style={{ fontWeight: 700, fontFamily: 'monospace', minWidth: 90, textAlign: 'right' }}>{fmt(rb.subtotal)}</span>
-              <span style={{ color: 'var(--c-faint)' }}>{(companyId || expanded === rb.id) ? '▾' : '▸'}</span>
+              <span style={{ color: 'var(--c-faint)' }}>{expanded === rb.id ? '▾' : '▸'}</span>
             </div>
 
-            {(companyId || expanded === rb.id) && (
+            {expanded === rb.id && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--c-surface-3)', paddingTop: 12 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--c-text-2)', marginBottom: 10 }}>
                   Date de fin (optionnelle)
@@ -183,7 +214,8 @@ export default function Recurrence({ companyId = null }) {
                   </table>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Départ : {rb.start_date}</span>
+                  <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Départ : {rb.start_date}
+                    {companyId && <button className="btn-secondary" style={{ fontSize: 12, marginLeft: 12 }} onClick={() => setExpanded(null)}>Terminé</button>}</span>
                   <button className="btn-primary" style={{ fontSize: 12, padding: '5px 12px' }}
                     disabled={rb.lines.length === 0} onClick={() => generateInvoice(rb.id)}>
                     Générer une facture maintenant

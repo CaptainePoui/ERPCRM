@@ -374,7 +374,7 @@ function EntenteTab({ company, onRefresh, showBarter }) {
         </label>
       </div>
       <div>
-        <div className="ifield-section-title" style={{ marginBottom: 10 }}>Factures périodiques</div>
+        <div className="ifield-section-title" style={{ marginBottom: 10 }}>Facture périodique</div>
         <Recurrence companyId={company.id} />
       </div>
       {showBarter && (

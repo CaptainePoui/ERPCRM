@@ -229,6 +229,36 @@ async def update_recurring_billing(rb_id: uuid.UUID, payload: RecurringBillingUp
     return _out(await _get_rb(rb_id, db))
 
 
+@router.get("/recurring-billing/{rb_id}/preview")
+async def preview_recurring(rb_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-005.26 (Philippe : « je veux la facture, c'est une facture qui est périodique, pas un résumé ») : la
+    prochaine facture de cette facture periodique, rendue comme une vraie facture -- rien n'est enregistre."""
+    from app.core.invoice_pdf import generate_invoice_pdf
+    from app.core.pdf_preview import pdf_pages
+    from app.api.v1.endpoints.invoices import _recalc
+    rb = await _get_rb(rb_id, db)
+    cycle_start, cycle_end = next_missing_cycle(rb)
+    inv = Invoice(number=f"P{uuid.uuid4().hex[:12]}", company_id=rb.company_id, issue_date=cycle_start, due_date=cycle_end,
+                  status="periodique", site_id=rb.site_id, site_label_snapshot=rb.site.label if rb.site else None,
+                  is_recurring=True, recurrence_frequency=rb.frequency)
+    db.add(inv)
+    await db.flush()
+    for n, line in enumerate(rb.lines):
+        db.add(InvoiceLine(invoice_id=inv.id, catalogue_item_id=line.catalogue_item_id,
+                           description=_dated_desc(line.description, cycle_start, cycle_end), qty=line.qty,
+                           unit_price=line.unit_price, sort_order=n,
+                           line_total=_money(Decimal(str(line.qty)) * Decimal(str(line.unit_price)))))
+    await db.flush()
+    inv = (await db.execute(select(Invoice).options(selectinload(Invoice.lines)).where(Invoice.id == inv.id))).scalar_one()
+    _recalc(inv)
+    await db.flush()
+    try:
+        pdf = await generate_invoice_pdf(inv.id, db)
+    finally:
+        await db.rollback()           # apercu seulement : aucune facture, aucun numero consomme
+    return {"pages": pdf_pages(pdf), "cycle_start": cycle_start, "cycle_end": cycle_end}
+
+
 class PauseIn(BaseModel):
     pause_start: date
     pause_end: date

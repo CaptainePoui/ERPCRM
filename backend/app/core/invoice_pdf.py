@@ -162,7 +162,8 @@ table.lines { width: 100%; border-collapse: collapse; }
 """
 
 _STATUS = {"payee": ("PAYÉE", "paid"), "en_retard": ("EN RETARD", "late"), "partiellement_payee": ("PARTIELLEMENT PAYÉE", "part"),
-           "brouillon": ("BROUILLON", "draft"), "annulee": ("ANNULÉE", "void"), "envoyee": ("À PAYER", "open")}
+           "brouillon": ("BROUILLON", "draft"), "annulee": ("ANNULÉE", "void"), "envoyee": ("À PAYER", "open"),
+           "periodique": ("PROCHAINE FACTURE", "open")}   # apercu d'une facture periodique (TASK-005.26)
 
 
 def _esc(s) -> str:
@@ -268,7 +269,7 @@ async def generate_invoice_pdf(invoice_id, db: AsyncSession) -> bytes:
 <div class="head">
 <div class="top">
   <div class="seller">{seller}</div>
-  <div class="doc"><h1>{doc_label}</h1><div class="num">N° {_esc(inv.number)}</div>
+  <div class="doc"><h1>{doc_label}</h1><div class="num">{"Facture périodique" if inv.status == "periodique" else "N° " + _esc(inv.number)}</div>
     <div><span class="pill {cls}">{label}</span></div>{due}</div>
 </div>
 <div class="meta">
