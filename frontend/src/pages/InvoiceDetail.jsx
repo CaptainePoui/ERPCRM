@@ -20,10 +20,10 @@ const STATUS_LABELS = {
 }
 
 const STATUS_TRANSITIONS = {
-  brouillon: ['envoyee', 'annulee'],
+  brouillon: ['envoyee'],
   // « brouillon » : refusé par le serveur si un paiement est confirmé ou si la période de taxes est déclarée (TASK-005.8)
-  envoyee:   ['brouillon', 'en_retard', 'annulee'],   // « payée » : seulement par un paiement (2026-10-15)
-  en_retard: ['brouillon', 'annulee'],
+  envoyee:   ['brouillon', 'en_retard'],   // « payée » : seulement par un paiement ; « annulée » : dans l'engrenage
+  en_retard: ['brouillon'],
   payee:     [],
   // Statut calcule par les paiements (TASK-005.4) : pas de transition manuelle
   partiellement_payee: [],
@@ -38,7 +38,7 @@ const CREDIT_STATUS_LABELS = {
   envoyee: { label: 'Ouvert', color: 'var(--brand)' },
   payee:   { label: 'Fermé',  color: '#059669' },
 }
-const CREDIT_TRANSITIONS = { brouillon: ['envoyee', 'annulee'], envoyee: ['brouillon', 'annulee'], payee: [], annulee: [] }
+const CREDIT_TRANSITIONS = { brouillon: ['envoyee'], envoyee: ['brouillon'], payee: [], annulee: [] }
 
 const PAYMENT_STATUS = {
   pending:    { label: 'En attente', color: '#2563EB' },
@@ -189,7 +189,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function deleteInvoice() {
-    if (!await askConfirm('Supprimer cette facture ?')) return
+    if (!await askConfirm(inv.credit_of_id ? 'Supprimer ce brouillon d\'avoir ? Rien ne sera créé.' : 'Supprimer ce brouillon de facture ?')) return
     await api.delete(`/v1/invoices/${id}`)
     back()
   }
@@ -239,7 +239,9 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const canCredit = !inv.credit_of_id && (inv.status === 'envoyee' || inv.status === 'payee' || inv.status === 'en_retard')
   const canGenerateNext = inv.is_recurring && inv.status === 'payee'
   const canBarter = features.barter && !isCredit && !inv.late_fee_for_id && !['payee', 'annulee'].includes(inv.status)
+  const canVoid = !editable && inv.status !== 'annulee' && !(inv.status === 'payee')
   const gearItems = [
+    ...(canVoid ? [[isCredit ? "Annuler l'avoir" : 'Annuler la facture', async () => { if (await askConfirm(isCredit ? "Annuler cet avoir ? Il n'aura plus aucun effet." : 'Annuler cette facture ? Elle ne sera plus due.')) changeStatus('annulee') }]] : []),
     ...(canOffer ? [['Offrir au client', () => offer(true)]] : []),
     ...(inv.offered_at ? [["Annuler l'offre", () => offer(false)]] : []),
     ...(canBarter ? [[inv.barter_settlement ? "Retirer de l'échange" : 'Régler en échange', () => saveField('barter_settlement', !inv.barter_settlement)]] : []),
@@ -289,7 +291,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
             </div>
           )}
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
-          {editable && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
+          {editable && <button className="btn-danger" onClick={deleteInvoice}>{isCredit ? "Supprimer l'avoir" : 'Supprimer'}</button>}
         </div>
       </div>
 

@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -419,6 +420,13 @@ async def delete_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_d
     # Pas de verrou de periode declaree ici (2026-10-07, Philippe : « s'ils sont en brouillon, ils ne faisaient pas
     # partie des taxes ou impots ») : un brouillon n'entre jamais dans les rapports de taxes ; une facture emise d'une
     # periode declaree ne peut toujours pas revenir en brouillon (_check_can_revert_to_draft), donc jamais etre supprimee.
+    # Supprimer le dernier avoir cree (brouillon) = « ne pas continuer » : son numero est rendu au compteur (2026-10-16)
+    if inv.credit_of_id is not None:
+        from sqlalchemy import text as _text
+        m = re.match(r"^CN-0*(\d+)$", inv.number or "")
+        if m:
+            await db.execute(_text("update document_counters set next_value = :n where key = 'credit' and next_value = :n + 1"),
+                             {"n": int(m.group(1))})
     await db.delete(inv)
     await db.commit()
 
