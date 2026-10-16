@@ -92,7 +92,7 @@ export default function Admin() {
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
         {tab === 2 && <PaymentMethodsPanel />}
-        {tab === 3 && <><OptionsPanel /><MailboxesPanel /><IntegrationsPanel /></>}
+        {tab === 3 && <><MailboxesPanel /><IntegrationsPanel /></>}   {/* option Echanges (troc) retiree : remplacee par les Ententes (TASK-005.26) */}
         {tab === 4 && <BackupPanel />}
         {tab === 5 && <><InvoiceSettingsPanel /><div style={{ height: 28 }} /><TicketsSettingsPanel /></>}
         {tab === 6 && <KnowledgeGraphViewer />}
