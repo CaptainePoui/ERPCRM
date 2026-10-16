@@ -145,10 +145,10 @@ export default function Recurrence({ companyId = null }) {
                 prochaine : {rb.current_cycle_start}
               </span>
               <span style={{ fontWeight: 700, fontFamily: 'monospace', minWidth: 90, textAlign: 'right' }}>{fmt(rb.subtotal)}</span>
-              <span style={{ color: 'var(--c-faint)' }}>{expanded === rb.id ? '▾' : '▸'}</span>
+              <span style={{ color: 'var(--c-faint)' }}>{(companyId || expanded === rb.id) ? '▾' : '▸'}</span>
             </div>
 
-            {expanded === rb.id && (
+            {(companyId || expanded === rb.id) && (
               <div style={{ marginTop: 14, borderTop: '1px solid var(--c-surface-3)', paddingTop: 12 }}>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--c-text-2)', marginBottom: 10 }}>
                   Date de fin (optionnelle)
