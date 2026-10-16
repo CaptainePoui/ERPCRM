@@ -188,6 +188,11 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
     setInv(r.data)
   }
 
+  async function cancelCredit() {
+    await api.delete(`/v1/invoices/${id}`)
+    inv.credit_of_id ? go(inv.credit_of_id) : back()
+  }
+
   async function deleteInvoice() {
     if (!await askConfirm(inv.credit_of_id ? 'Supprimer ce brouillon d\'avoir ? Rien ne sera créé.' : 'Supprimer ce brouillon de facture ?')) return
     await api.delete(`/v1/invoices/${id}`)
@@ -267,7 +272,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
           <span className="inv-badge" style={{ background: s.color, fontSize: 13, padding: '5px 12px' }}>{s.label}</span>
           {transitions.map(t => (
             <button key={t} className="btn-secondary" onClick={() => changeStatus(t)} style={{ fontSize: 12 }}>
-              → {isCredit && t === 'envoyee' ? 'Émettre' : STATUS_LABELS[t]?.label}
+              → {isCredit && t === 'envoyee' ? (inv.status === 'brouillon' ? "Créer l'avoir" : 'Émettre') : STATUS_LABELS[t]?.label}
             </button>
           ))}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
@@ -291,7 +296,9 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
             </div>
           )}
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
-          {editable && <button className="btn-danger" onClick={deleteInvoice}>{isCredit ? "Supprimer l'avoir" : 'Supprimer'}</button>}
+          {editable && !isCredit && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
+          {/* avoir en brouillon = creation en cours : « Annuler » l'arrete, rien ne reste (numero rendu), retour a la facture */}
+          {editable && isCredit && <button className="btn-secondary" onClick={cancelCredit}>Annuler</button>}
         </div>
       </div>
 
