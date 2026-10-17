@@ -27,7 +27,7 @@ router = APIRouter()
 TABLE_LABELS = {
     "companies": "Compagnie", "contacts": "Contact", "catalogue_items": "Article du catalogue", "invoices": "Facture",
     "invoice_lines": "Ligne de facture", "devis": "Devis", "devis_lines": "Ligne de devis", "tickets": "Ticket",
-    "ticket_entries": "Note de ticket", "tasks": "Tâche", "task_reminders": "Rappel de tâche", "client_payments": "Paiement reçu",
+    "ticket_entries": "Note de ticket", "ticket_messages": "Message de ticket", "ticket_attachments": "Image de ticket", "ticket_time_periods": "Période de chrono", "ticket_time_adjustments": "Correction du temps", "tasks": "Tâche", "task_reminders": "Rappel de tâche", "client_payments": "Paiement reçu",
     "payment_allocations": "Paiement appliqué à une facture", "payments": "Paiement", "credit_allocations": "Crédit appliqué",
     "bills": "Facture fournisseur", "bill_lines": "Ligne de facture fournisseur", "vendors": "Fournisseur",
     "vendor_payments": "Paiement effectué", "vendor_payment_allocations": "Paiement fournisseur appliqué",

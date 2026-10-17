@@ -1,6 +1,6 @@
 import uuid
-from datetime import datetime, date, timezone
-from sqlalchemy import String, Text, Float, Boolean, Date, DateTime, Integer, ForeignKey
+from datetime import datetime, timezone
+from sqlalchemy import String, Text, Boolean, DateTime, Integer, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -24,10 +24,14 @@ class Ticket(Base):
 
     invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True)
     is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Service facture, choisi une fois pour tout le ticket (TASK-006.5, 2026-10-17) -- plus de service par note.
+    catalogue_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("catalogue_items.id", ondelete="SET NULL"), nullable=True)
+    # Temps deja facture (secondes) : un ticket rouvert ne facture que le temps ajoute depuis.
+    invoiced_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    # Brouillon du message en cours, garde cote serveur (survit a un rechargement, suit l'appareil).
+    draft_message: Mapped[str | None] = mapped_column(Text)
 
-    # Lien vers le RDV Google Calendar qui a cree ce ticket automatiquement
-    # (TASK-015.15) -- remplace le lien equivalent qui vivait sur Task
-    # (TASK-026.5, superseded : un RDV cree desormais un ticket, pas une tache).
+    # Lien vers le RDV Google Calendar qui a cree ce ticket automatiquement (TASK-015.15).
     google_calendar_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     google_calendar_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
@@ -35,57 +39,80 @@ class Ticket(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    # ── Session chrono + brouillon de note (TASK-015.13) -- persiste cote
-    # serveur pour survivre a un refresh/changement d'appareil, et pour que
-    # deux appareils voient/continuent la MEME session. Chrono en cours si
-    # timer_start_at n'est pas NULL (elapsed = timer_base_seconds + (now -
-    # timer_start_at)) ; en pause sinon (elapsed = timer_base_seconds seul).
-    # Anchors ecrites UNIQUEMENT par le serveur (jamais un timestamp fourni
-    # par le client) pour eviter tout probleme de derive d'horloge entre
-    # appareils -- voir /timer/pause et /timer/resume dans tickets.py.
-    # Defaut None (en pause) -- le chrono ne represente pas l'age du ticket
-    # depuis sa creation, seulement le temps reellement passe a travailler
-    # dessus. Il demarre a la premiere ouverture de la page (frontend), pas a
-    # l'insertion en base -- sinon tout ecart entre creation et ouverture
-    # reelle (RDV planifie a l'avance, ticket cree pour un technicien qui ne
-    # l'ouvre que plus tard) est compte comme du temps travaille.
-    timer_start_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
-    timer_base_seconds: Mapped[int] = mapped_column(Integer, default=0)
-    last_note_marker_seconds: Mapped[int] = mapped_column(Integer, default=0)
-    draft_note_desc: Mapped[str | None] = mapped_column(Text)
-    draft_note_billable: Mapped[bool] = mapped_column(Boolean, default=False)
-    draft_note_catalogue_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("catalogue_items.id", ondelete="SET NULL"))
-
     company: Mapped["Company"] = relationship("Company")
     contact: Mapped["Contact | None"] = relationship("Contact")
     assigned_to: Mapped["User | None"] = relationship("User")
-    # ⚠️ Bug corrige : trie uniquement par worked_at (un DATE, pas datetime) laissait
-    # l'ordre indefini entre plusieurs entrees de la MEME journee -- une note tout
-    # juste enregistree pouvait se retrouver enfouie plutot qu'en haut/bas de facon
-    # previsible ("elle n'apparait pas de suite"). created_at (timestamp complet,
-    # toujours croissant a l'insertion) sert de departage.
-    entries: Mapped[list["TicketEntry"]] = relationship("TicketEntry", back_populates="ticket", cascade="all, delete-orphan", order_by="(TicketEntry.worked_at.desc(), TicketEntry.created_at.desc())")
+    catalogue_item: Mapped["CatalogueItem | None"] = relationship("CatalogueItem")
+    messages: Mapped[list["TicketMessage"]] = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketMessage.created_at")
+    periods: Mapped[list["TicketTimePeriod"]] = relationship("TicketTimePeriod", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketTimePeriod.started_at")
+    adjustments: Mapped[list["TicketTimeAdjustment"]] = relationship("TicketTimeAdjustment", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketTimeAdjustment.created_at")
 
 
-class TicketEntry(Base):
-    __tablename__ = "ticket_entries"
+class TicketMessage(Base):
+    """Un message de la conversation du ticket (TASK-006.5) : texte libre + images, horodate, sans temps attache.
+    author_kind : tech (utilisateur ERPCRM), client (reponse courriel), systeme (evenement)."""
+    __tablename__ = "ticket_messages"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-    catalogue_item_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("catalogue_items.id", ondelete="SET NULL"), nullable=True)
+    author_kind: Mapped[str] = mapped_column(String(20), default="tech")
+    body: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
-    description: Mapped[str] = mapped_column(String(500), nullable=False)
-    duration_minutes: Mapped[int] = mapped_column(Integer, default=0)
-    worked_at: Mapped[date] = mapped_column(Date, nullable=False)
-    is_billable: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Marque une fois incluse dans une facture -- permet de rouvrir un ticket deja
-    # facture et de facturer SEULEMENT le nouveau temps accumule depuis (une 2e
-    # facture distincte), sans jamais refacturer les memes minutes deux fois.
-    invoiced: Mapped[bool] = mapped_column(Boolean, default=False)
+    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="messages")
+    user: Mapped["User | None"] = relationship("User")
+    attachments: Mapped[list["TicketAttachment"]] = relationship("TicketAttachment", back_populates="message", cascade="all, delete-orphan", order_by="TicketAttachment.created_at")
 
+
+class TicketAttachment(Base):
+    """Image (ou fichier) collee dans un message ; fichier dans storage/ticket_attachments/<id>.<ext>."""
+    __tablename__ = "ticket_attachments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("ticket_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    original_name: Mapped[str | None] = mapped_column(String(255))
+    media_type: Mapped[str] = mapped_column(String(100), default="application/octet-stream")
+    size: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
-    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="entries")
+    message: Mapped["TicketMessage"] = relationship("TicketMessage", back_populates="attachments")
+
+
+class TicketTimePeriod(Base):
+    """Une periode de chrono d'un technicien sur un ticket (heures ecrites par le serveur seulement).
+    En cours tant que ended_at est NULL. Plusieurs tickets peuvent tourner en meme temps (choix du technicien)."""
+    __tablename__ = "ticket_time_periods"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Pourquoi elle s'est arretee : pause, fermeture, autre_ticket (pause choisie au demarrage d'un autre), attente_client
+    stop_source: Mapped[str | None] = mapped_column(String(30))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="periods")
     user: Mapped["User | None"] = relationship("User")
-    catalogue_item: Mapped["CatalogueItem | None"] = relationship("CatalogueItem")
+
+
+class TicketTimeAdjustment(Base):
+    """Trace de chaque correction du temps total (clic sur le chrono) ou de temps offert : avant/apres, qui, quand, pourquoi.
+    kind : correction (change le temps du ticket) | offert (temps retire de la facture, le temps travaille reste)."""
+    __tablename__ = "ticket_time_adjustments"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    kind: Mapped[str] = mapped_column(String(20), default="correction")
+    before_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    after_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    delta_seconds: Mapped[int] = mapped_column(Integer, default=0)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    ticket: Mapped["Ticket"] = relationship("Ticket", back_populates="adjustments")
+    user: Mapped["User | None"] = relationship("User")

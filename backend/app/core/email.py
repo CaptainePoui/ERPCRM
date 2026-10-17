@@ -164,15 +164,13 @@ _TICKET_CLOSE_TMPL = """\
 
     <div class="label">Détail des interventions</div>
     <table class="summary-table">
-      <thead><tr><th>Date</th><th>Technicien</th><th>Description</th><th>Durée</th><th>Fact.</th></tr></thead>
+      <thead><tr><th>Date</th><th>Technicien</th><th>Description</th></tr></thead>
       <tbody>
         {% for e in entries %}
         <tr>
           <td>{{ e.worked_at }}</td>
           <td>{{ e.tech }}</td>
-          <td>{{ e.description }}</td>
-          <td>{{ e.hours }}h{{ e.mins }}min</td>
-          <td>{{ '✓' if e.is_billable else '—' }}</td>
+          <td style="white-space: pre-wrap">{{ e.description }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -603,11 +601,7 @@ async def send_ticket_close_email(
         total_minutes=total_minutes,
         total_hours=total_minutes // 60,
         total_mins=total_minutes % 60,
-        entries=[{
-            **e,
-            "hours": e["duration_minutes"] // 60,
-            "mins": e["duration_minutes"] % 60,
-        } for e in entries],
+        entries=entries,       # messages du technicien (TASK-006.5 : plus de duree par ligne, un seul temps total)
     )
     html = _render(_TICKET_CLOSE_TMPL, ctx)
     # ⚠️ Bug corrige : le tag devait rester EXACTEMENT "[Ticket #XXXXXXXX]" pour que

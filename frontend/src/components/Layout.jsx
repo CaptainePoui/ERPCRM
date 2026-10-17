@@ -170,6 +170,42 @@ function initials(name) {
 
 const ROLE_LABELS = { admin: 'Administrateur', manager: 'Gestionnaire', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
 
+// Chronos de ticket qui tournent pour moi (TASK-006.5) : quitter un ticket ne l'arrête pas, on le voit donc ici
+function ActiveTimers() {
+  const [timers, setTimers] = useState([])
+  const [fetchedAt, setFetchedAt] = useState(Date.now())
+  const [, setTick] = useState(0)
+  const navigate = useNavigate()
+  const location = useLocation()
+  useEffect(() => {
+    const load = () => api.get('/v1/tickets/timers/active').then(r => { setTimers(r.data); setFetchedAt(Date.now()) }).catch(() => {})
+    load()
+    const iv = setInterval(load, 20000)
+    window.addEventListener('erpcrm-timers', load)
+    return () => { clearInterval(iv); window.removeEventListener('erpcrm-timers', load) }
+  }, [location.pathname])
+  useEffect(() => {
+    if (!timers.length) return
+    const iv = setInterval(() => setTick(x => x + 1), 1000)
+    return () => clearInterval(iv)
+  }, [timers.length])
+  if (!timers.length) return null
+  const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` }
+  const extra = Math.floor((Date.now() - fetchedAt) / 1000)
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 12 }}>
+      {timers.map(t => (
+        <button key={t.ticket_id} onClick={() => navigate(`/tickets/${t.ticket_id}`)} title={`${t.number} — ${t.title}`}
+          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 14, border: '1px solid #059669',
+                   background: 'var(--c-tint-green)', color: 'var(--c-on-green)', cursor: 'pointer', maxWidth: 260 }}>
+          <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(t.worked_seconds + extra)}</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.company_name}</span>
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
@@ -217,6 +253,7 @@ export default function Layout({ user, onLogout, children }) {
         <header className="layout-header">
           <button className="hamburger-btn" onClick={() => setSidebarOpen(o => !o)} aria-label="Menu">☰</button>
           <GlobalSearch />
+          <ActiveTimers />
           <div className="layout-user">
             <div className="user-text">
               <div className="user-name">{user.full_name}</div>

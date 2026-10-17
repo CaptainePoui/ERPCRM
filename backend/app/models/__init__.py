@@ -13,7 +13,7 @@ from app.models.catalogue import CatalogueItem
 from app.models.invoice import Invoice, InvoiceLine
 from app.models.payment import Payment, PaymentMethod
 from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation, PaymentDocument
-from app.models.ticket import Ticket, TicketEntry
+from app.models.ticket import Ticket, TicketMessage, TicketAttachment, TicketTimePeriod, TicketTimeAdjustment
 from app.models.maintenance import ClientAccess
 from app.models.equipment import Equipment
 from app.models.telephony import DID, Extension

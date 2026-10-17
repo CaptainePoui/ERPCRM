@@ -592,9 +592,15 @@ async def complete_task_with_time(
     task.updated_at = datetime.now(timezone.utc)
 
     if task.ticket_id and delta_seconds != 0:
-        ticket = await db.get(Ticket, task.ticket_id)
-        if ticket:
-            ticket.timer_base_seconds = max(0, ticket.timer_base_seconds + delta_seconds)
+        # Correction tracee du temps du ticket (TASK-006.5 : un seul temps, periodes + corrections)
+        from app.api.v1.endpoints.tickets import _get_ticket as _get_tk, _worked_seconds
+        from app.models.ticket import TicketTimeAdjustment
+        ticket = await _get_tk(task.ticket_id, db)
+        before = _worked_seconds(ticket)
+        after = max(0, before + delta_seconds)
+        db.add(TicketTimeAdjustment(ticket_id=ticket.id, user_id=current_user.id, kind="correction", before_seconds=before,
+                                    after_seconds=after, delta_seconds=after - before,
+                                    reason=f"Tâche « {task.title} » : temps confirmé {body.minutes} min"))
 
     await db.commit()
     return await _serialize(await _get_task(task.id, db), db)

@@ -1,7 +1,7 @@
 """
 IMAP poller: checks inbox every 30s -- boites qui ont la fonction « tickets » (Administration -> Integrations,
 TASK-047.1 ; avant : la seule boite IMAP_* de la configuration du serveur, reprise dans l'ecran au demarrage).
-- Subject matches [Ticket #XXXXXXXX] → adds entry to existing ticket
+- Subject matches [Ticket #XXXXXXXX] → adds a client message to the ticket's conversation (TASK-006.5)
 - Otherwise → finds contact by sender email → creates new ticket
 """
 import imaplib
@@ -18,7 +18,7 @@ from sqlalchemy.orm import selectinload
 from app.core import clock
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
-from app.models.ticket import Ticket, TicketEntry
+from app.models.ticket import Ticket, TicketMessage
 from app.models.contact import Contact
 from app.models.contact_company import ContactCompany
 
@@ -102,20 +102,11 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
         prefix = m.group(1).lower()
         result = await db.execute(
             select(Ticket)
-            .options(selectinload(Ticket.entries))
             .where(cast(Ticket.id, Text).ilike(f'{prefix}%'))
         )
         ticket = result.scalar_one_or_none()
         if ticket and body:
-            entry = TicketEntry(
-                ticket_id=ticket.id,
-                user_id=None,
-                description=f"[Réponse client] {body}",
-                duration_minutes=0,
-                worked_at=clock.today(),
-                is_billable=False,
-            )
-            db.add(entry)
+            db.add(TicketMessage(ticket_id=ticket.id, user_id=None, author_kind="client", body=body))
             # Une reponse client sur un ticket ferme/facture le reouvre (demande
             # explicite de l'utilisateur) -- le closed_at reste tel quel, seul le
             # statut change ; l'ancienne facture (le cas echeant) n'est pas touchee.

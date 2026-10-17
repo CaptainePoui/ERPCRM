@@ -150,7 +150,7 @@ export default function Tickets() {
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{t.contact_name || '—'}</td>
                     <td style={{ color: 'var(--c-muted)' }}>{t.assigned_name || '—'}</td>
                     <td><span className="tkt-badge" style={{ background: s.color }}>{s.label}</span></td>
-                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{fmtMins(t.total_minutes)}</td>
+                    <td style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums', color: t.running ? '#059669' : undefined }} title={t.running ? 'Chrono en cours' : ''}>{t.running ? '⏱ ' : ''}{fmtMins(t.total_minutes)}</td>
                     <td style={{ fontSize: 12, color: 'var(--c-muted)' }} title={t.open_count > 1 ? `Ouvert ${t.open_count} fois` : ''}>
                       {t.last_opened_at ? `👁 ${fmtOpened(t.last_opened_at)}` : '—'}
                     </td>
