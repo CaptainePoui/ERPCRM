@@ -817,6 +817,7 @@ Date(s) de travail : —
 
 - Rien de changé pour l'instant (discussion). Constat : le système actuel oblige à « sauver une saisie de temps » par note ; le chrono du haut (temps déjà inscrit) ne se corrige pas — c'était ça à corriger (TASK-006 : correction de la durée d'une saisie ajoutée le 2026-10-16, pas la bonne chose).
 - Idée : côté tech, une conversation avec l'IA (coller des images / captures, chercher des solutions, garder tout l'échange) ; côté client, un ticket propre rédigé par l'IA (problème, ce qui a été fait, temps pris) ; un chrono par ticket, corrigeable.
+- 2026-10-17 : l'IA s'appelle **Zéko** ; cahier des charges complet remis par Philippe (rédigé avec ChatGPT et Gemini) : `docs/platform/ZEKO_CAHIER_DES_CHARGES.md` (étapes 0 à 7, scénarios de réception, questions non tranchées). Futur serveur : RTX 3060 Ti 8 Go.
 
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
