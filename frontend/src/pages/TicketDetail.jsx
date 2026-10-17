@@ -6,6 +6,7 @@ import './Tickets.css'
 import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 import { askConfirm } from '../components/Dialog'
+import { askNotificationPermission } from '../components/ticketReminder'
 
 // TASK-006.5 étape 1 (2026-10-17) : le ticket = une conversation libre (texte + images, horodatée) et UN seul temps.
 // Le chrono est tenu par le serveur (périodes) ; il démarre au bouton Démarrer ou au début de l'écriture, jamais à
@@ -64,7 +65,7 @@ function parseDuration(txt) {
 
 const isClosed = t => ['ferme', 'facture'].includes(t?.status)
 
-const STOP_LABELS = { pause: 'pause', fermeture: 'fermeture du ticket', autre_ticket: 'pause au démarrage d’un autre ticket', attente_client: 'en attente du client' }
+const STOP_LABELS = { pause: 'pause', fermeture: 'fermeture du ticket', autre_ticket: 'pause au démarrage d’un autre ticket', attente_client: 'en attente du client', navigateur_ferme: 'aucun écran ouvert — pause à la dernière présence' }
 
 export default function TicketDetail() {
   const { id } = useParams()
@@ -342,7 +343,7 @@ export default function TicketDetail() {
           )}
           {!editTime && !closed && (ticket.my_running
             ? <button onClick={pauseTimer} style={{ ...btn, background: 'transparent', border: '1px solid #CBD5E1', color: '#CBD5E1' }}>⏸ Pause</button>
-            : <button onClick={() => { typingStartDeclinedRef.current = false; startTimer(false) }} style={{ ...btn, background: '#059669', border: 'none', color: '#fff' }}>▶ Démarrer</button>)}
+            : <button onClick={() => { typingStartDeclinedRef.current = false; askNotificationPermission(); startTimer(false) }} style={{ ...btn, background: '#059669', border: 'none', color: '#fff' }}>▶ Démarrer</button>)}
           {!editTime && othersRunning > 0 && <span style={{ fontSize: 12, color: '#4ADE80' }}>{othersRunning === 1 ? 'Le chrono d’un autre technicien tourne' : `${othersRunning} autres chronos tournent`}</span>}
           {!editTime && (
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 13 }}>

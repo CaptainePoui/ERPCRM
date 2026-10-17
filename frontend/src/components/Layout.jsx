@@ -6,6 +6,7 @@ import {
   IconClipboard, IconUsers, IconCheck, IconCalendar, IconServer, IconSettings, IconRefresh, IconBank, IconFlag, IconCart, IconMail, IconSearch,
 } from './Icons'
 import './Layout.css'
+import { playReminder, showNotification, fmtSince } from './ticketReminder'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
 // horizontaux en haut de la page (demande de Philippe, 2026-10-02). `match` = autres
@@ -170,39 +171,99 @@ function initials(name) {
 
 const ROLE_LABELS = { admin: 'Administrateur', manager: 'Gestionnaire', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
 
-// Chronos de ticket qui tournent pour moi (TASK-006.5) : quitter un ticket ne l'arrête pas, on le voit donc ici
+// Chronos de ticket qui tournent pour moi (TASK-006.5) : quitter un ticket ne l'arrête pas, on les voit donc ici.
+// Le battement (toutes les 30 s, sur toutes les pages) dit au serveur qu'un écran est ouvert : sans battement depuis
+// 5 min, le serveur met mes chronos en pause. Rappel toutes les N minutes (Admin › Configuration › Tickets).
+const REMINDED_KEY = 'erpcrm-ticket-reminded'
+function readReminded() { try { return JSON.parse(localStorage.getItem(REMINDED_KEY) || '{}') } catch { return {} } }
+function writeReminded(v) { try { localStorage.setItem(REMINDED_KEY, JSON.stringify(v)) } catch { /* sans stockage */ } }
+
 function ActiveTimers() {
   const [timers, setTimers] = useState([])
   const [fetchedAt, setFetchedAt] = useState(Date.now())
   const [, setTick] = useState(0)
+  const [cfg, setCfg] = useState(null)
+  const [toasts, setToasts] = useState([])
+  const remindedRef = useRef(null)
   const navigate = useNavigate()
-  const location = useLocation()
   useEffect(() => {
-    const load = () => api.get('/v1/tickets/timers/active').then(r => { setTimers(r.data); setFetchedAt(Date.now()) }).catch(() => {})
+    const beat = () => api.post('/v1/tickets/timers/heartbeat').then(r => { setTimers(r.data); setFetchedAt(Date.now()) }).catch(() => {})
+    beat()
+    const iv = setInterval(beat, 30000)
+    window.addEventListener('erpcrm-timers', beat)
+    return () => { clearInterval(iv); window.removeEventListener('erpcrm-timers', beat) }
+  }, [])
+  useEffect(() => {
+    const load = () => api.get('/v1/settings').then(r => setCfg({
+      minutes: r.data.ticket_reminder_minutes, sound: r.data.ticket_reminder_sound,
+      volume: r.data.ticket_reminder_volume, visual: r.data.ticket_reminder_visual,
+    })).catch(() => {})
     load()
-    const iv = setInterval(load, 20000)
-    window.addEventListener('erpcrm-timers', load)
-    return () => { clearInterval(iv); window.removeEventListener('erpcrm-timers', load) }
-  }, [location.pathname])
+    window.addEventListener('erpcrm-settings', load)
+    return () => window.removeEventListener('erpcrm-settings', load)
+  }, [])
   useEffect(() => {
     if (!timers.length) return
     const iv = setInterval(() => setTick(x => x + 1), 1000)
     return () => clearInterval(iv)
   }, [timers.length])
-  if (!timers.length) return null
-  const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` }
+
   const extra = Math.floor((Date.now() - fetchedAt) / 1000)
+
+  // Rappel : une fois par tranche de N minutes depuis le démarrage du chrono (retenu par chrono, survit au rechargement)
+  useEffect(() => {
+    if (!cfg || !cfg.minutes || !timers.length) return
+    const step = cfg.minutes * 60
+    const seen = remindedRef.current || (remindedRef.current = readReminded())
+    const keys = new Set()
+    let changed = false
+    for (const t of timers) {
+      const key = `${t.ticket_id}|${t.started_at}`
+      keys.add(key)
+      const k = Math.floor((t.running_seconds + extra) / step)
+      if (seen[key] === undefined) { seen[key] = k; changed = true; continue }   // ouverture de page : pas de rafale
+      if (k > seen[key]) {
+        seen[key] = k; changed = true
+        const since = fmtSince(t.running_seconds + extra)
+        setToasts(x => [...x.filter(y => y.ticket_id !== t.ticket_id), { ticket_id: t.ticket_id, number: t.number, company_name: t.company_name, since }])
+        if (cfg.sound) playReminder(cfg.volume)
+        if (cfg.visual) showNotification(`Ticket ${t.number} — ${t.company_name}`, `Chrono actif depuis ${since}`, () => navigate(`/tickets/${t.ticket_id}`))
+      }
+    }
+    for (const key of Object.keys(seen)) if (!keys.has(key)) { delete seen[key]; changed = true }
+    if (changed) writeReminded(seen)
+  })
+
+  const fmt = s => { s = Math.max(0, Math.floor(s)); return `${Math.floor(s / 3600)}:${String(Math.floor(s % 3600 / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}` }
   return (
-    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 12 }}>
-      {timers.map(t => (
-        <button key={t.ticket_id} onClick={() => navigate(`/tickets/${t.ticket_id}`)} title={`${t.number} — ${t.title}`}
-          style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 14, border: '1px solid #059669',
-                   background: 'var(--c-tint-green)', color: 'var(--c-on-green)', cursor: 'pointer', maxWidth: 260 }}>
-          <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(t.worked_seconds + extra)}</span>
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.company_name}</span>
-        </button>
-      ))}
-    </div>
+    <>
+      {timers.length > 0 && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 12 }}>
+          {timers.map(t => (
+            <button key={t.ticket_id} onClick={() => navigate(`/tickets/${t.ticket_id}`)} title={`${t.number} — ${t.title}`}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 14, border: '1px solid #059669',
+                       background: 'var(--c-tint-green)', color: 'var(--c-on-green)', cursor: 'pointer', maxWidth: 260 }}>
+              <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(t.worked_seconds + extra)}</span>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.company_name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {toasts.length > 0 && (
+        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1500, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {toasts.map(t => (
+            <div key={t.ticket_id} style={{ background: 'var(--c-surface)', border: '2px solid #059669', borderRadius: 10, padding: '12px 16px', width: 320, boxShadow: '0 6px 24px rgba(0,0,0,.25)' }}>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--c-text)' }}>Ticket {t.number} — {t.company_name}</div>
+              <div style={{ fontSize: 13, color: 'var(--c-text-2)', margin: '4px 0 10px' }}>Chrono actif depuis {t.since}</div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setToasts(x => x.filter(y => y.ticket_id !== t.ticket_id))}>OK</button>
+                <button className="btn-primary" style={{ fontSize: 12 }} onClick={() => { setToasts(x => x.filter(y => y.ticket_id !== t.ticket_id)); navigate(`/tickets/${t.ticket_id}`) }}>Ouvrir le ticket</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

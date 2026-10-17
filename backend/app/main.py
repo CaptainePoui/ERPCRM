@@ -27,6 +27,7 @@ from app.services.receipt_poller import run_receipt_poller
 from app.services.interac_poller import run_interac_poller
 from app.services.mail_sync import run_mail_sync
 from app.core.background_leader import run_as_leader
+from app.services.ticket_presence import run_presence_watcher
 
 
 @asynccontextmanager
@@ -39,7 +40,7 @@ async def lifespan(app: FastAPI):
     # Taches de fond : un seul des deux services (8010 / 8011) les fait tourner -- voir background_leader
     leader_task = asyncio.create_task(run_as_leader([
         run_poller, run_reminder_poller, run_backup_poller, run_cdr_report_poller, run_recurring_poller,
-        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync,
+        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher,
     ]))
     try:
         yield

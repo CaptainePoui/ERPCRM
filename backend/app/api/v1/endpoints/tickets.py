@@ -329,23 +329,39 @@ class ActiveTimer(BaseModel):
     title: str
     company_name: str
     started_at: datetime
-    worked_seconds: int
+    running_seconds: int        # depuis le demarrage de ce chrono (rappels « actif depuis X h Y »)
+    worked_seconds: int         # temps total du ticket
+
+
+async def _active_timers(db: AsyncSession, user: User) -> list[ActiveTimer]:
+    rows = (await db.execute(
+        select(TicketTimePeriod.ticket_id, TicketTimePeriod.started_at)
+        .where(TicketTimePeriod.user_id == user.id, TicketTimePeriod.ended_at.is_(None))
+        .order_by(TicketTimePeriod.started_at)
+    )).all()
+    out, now = [], _now()
+    for ticket_id, started_at in rows:
+        t = await _get_ticket(ticket_id, db)
+        out.append(ActiveTimer(ticket_id=t.id, number=_short(t), title=t.title, company_name=t.company.name,
+                               started_at=started_at, running_seconds=int((now - started_at).total_seconds()),
+                               worked_seconds=_worked_seconds(t, now)))
+    return out
 
 
 @router.get("/timers/active", response_model=list[ActiveTimer])
 async def my_active_timers(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Les chronos qui tournent pour le technicien connecte (fenetre « un autre ticket est actif », bandeau du haut)."""
-    rows = (await db.execute(
-        select(TicketTimePeriod.ticket_id, TicketTimePeriod.started_at)
-        .where(TicketTimePeriod.user_id == current_user.id, TicketTimePeriod.ended_at.is_(None))
-        .order_by(TicketTimePeriod.started_at)
-    )).all()
-    out = []
-    for ticket_id, started_at in rows:
-        t = await _get_ticket(ticket_id, db)
-        out.append(ActiveTimer(ticket_id=t.id, number=_short(t), title=t.title, company_name=t.company.name,
-                               started_at=started_at, worked_seconds=_worked_seconds(t)))
-    return out
+    """Les chronos qui tournent pour le technicien connecte (fenetre « un autre ticket est actif »)."""
+    return await _active_timers(db, current_user)
+
+
+@router.post("/timers/heartbeat", response_model=list[ActiveTimer])
+async def presence_heartbeat(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Battement d'un ecran ERPCRM ouvert (toutes les 30 s, onglet en arriere-plan compris) : tant qu'il arrive, les
+    chronos du technicien continuent ; voir services/ticket_presence.py. Repond ses chronos actifs (bandeau, rappels)."""
+    user = await db.get(User, current_user.id)
+    user.presence_at = _now()
+    await db.commit()
+    return await _active_timers(db, current_user)
 
 
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
@@ -461,6 +477,7 @@ async def start_timer(ticket_id: uuid.UUID, payload: TimerStart, db: AsyncSessio
             p.stop_source = "autre_ticket"
     if not any(p.ended_at is None and p.user_id == current_user.id for p in t.periods):
         db.add(TicketTimePeriod(ticket_id=t.id, user_id=current_user.id, started_at=_now()))
+    (await db.get(User, current_user.id)).presence_at = _now()
     if t.status in ("ouvert", "en_attente", "en_attente_client"):
         t.status = "en_cours"
     await db.commit()

@@ -15,11 +15,13 @@ DEFAULTS = {
     "labour_round_minutes": "15",
     "commission_rate": "10.0",
     "default_vendor_contact_id": "",
-    # TASK-015.12 : seuil (minutes) au-dela duquel TicketDetail demande une
-    # confirmation/correction du temps avant d'enregistrer une note (protege
-    # contre le chrono client-side laisse tourner par erreur, ex. onglet
-    # oublie ouvert toute la nuit).
-    "ticket_time_confirm_threshold_minutes": "30",
+    # Rappels de chrono de ticket actif (TASK-006.5, 2026-10-17 ; remplace le seuil de confirmation TASK-015.12) :
+    # toutes les N minutes (nombre libre, 0 = aucun rappel) « Ticket #X -- client -- actif depuis X h Y ».
+    # Le rappel n'arrete jamais le chrono.
+    "ticket_reminder_minutes": "30",
+    "ticket_reminder_sound": "true",
+    "ticket_reminder_volume": "60",       # 0 a 100
+    "ticket_reminder_visual": "true",     # notification du navigateur (en plus du message dans l'ecran)
     # Conditions de paiement des factures (jours apres la date de facture), Administration -> Configuration generale
     # (Philippe, 2026-10-16 : « pour tout le monde c'est 30 jours net »)
     "payment_terms_days": "30",
@@ -93,7 +95,10 @@ class SettingsOut(BaseModel):
     labour_round_minutes: int
     commission_rate: float
     default_vendor_contact_id: str
-    ticket_time_confirm_threshold_minutes: int
+    ticket_reminder_minutes: int
+    ticket_reminder_sound: bool
+    ticket_reminder_volume: int
+    ticket_reminder_visual: bool
     fiscal_year_start_month: int
     tax_lock_date: str
     tax_filing_frequency: str
@@ -116,7 +121,10 @@ class SettingsIn(BaseModel):
     labour_round_minutes: int | None = None
     commission_rate: float | None = None
     default_vendor_contact_id: str | None = None
-    ticket_time_confirm_threshold_minutes: int | None = None
+    ticket_reminder_minutes: int | None = Field(default=None, ge=0, le=1440)
+    ticket_reminder_sound: bool | None = None
+    ticket_reminder_volume: int | None = Field(default=None, ge=0, le=100)
+    ticket_reminder_visual: bool | None = None
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
     tax_lock_date: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
     tax_filing_frequency: str | None = Field(default=None, pattern=r"^(|mensuelle|trimestrielle|annuelle)$")
@@ -141,7 +149,10 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         labour_round_minutes=int(await get_setting(db, "labour_round_minutes")),
         commission_rate=float(await get_setting(db, "commission_rate")),
         default_vendor_contact_id=await get_setting(db, "default_vendor_contact_id"),
-        ticket_time_confirm_threshold_minutes=int(await get_setting(db, "ticket_time_confirm_threshold_minutes")),
+        ticket_reminder_minutes=int(await get_setting(db, "ticket_reminder_minutes")),
+        ticket_reminder_sound=(await get_setting(db, "ticket_reminder_sound")) == "true",
+        ticket_reminder_volume=int(await get_setting(db, "ticket_reminder_volume")),
+        ticket_reminder_visual=(await get_setting(db, "ticket_reminder_visual")) == "true",
         fiscal_year_start_month=int(await get_setting(db, "fiscal_year_start_month")),
         tax_lock_date=await get_setting(db, "tax_lock_date"),
         tax_filing_frequency=await get_setting(db, "tax_filing_frequency"),
@@ -176,8 +187,14 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "commission_rate", str(payload.commission_rate))
     if payload.default_vendor_contact_id is not None:
         await set_setting(db, "default_vendor_contact_id", payload.default_vendor_contact_id)
-    if payload.ticket_time_confirm_threshold_minutes is not None:
-        await set_setting(db, "ticket_time_confirm_threshold_minutes", str(payload.ticket_time_confirm_threshold_minutes))
+    if payload.ticket_reminder_minutes is not None:
+        await set_setting(db, "ticket_reminder_minutes", str(payload.ticket_reminder_minutes))
+    if payload.ticket_reminder_sound is not None:
+        await set_setting(db, "ticket_reminder_sound", "true" if payload.ticket_reminder_sound else "false")
+    if payload.ticket_reminder_volume is not None:
+        await set_setting(db, "ticket_reminder_volume", str(payload.ticket_reminder_volume))
+    if payload.ticket_reminder_visual is not None:
+        await set_setting(db, "ticket_reminder_visual", "true" if payload.ticket_reminder_visual else "false")
     if payload.fiscal_year_start_month is not None:
         await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
     if payload.tax_lock_date is not None:

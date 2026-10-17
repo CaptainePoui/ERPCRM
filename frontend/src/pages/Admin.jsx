@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
+import { playReminder, notificationState, askNotificationPermission, showNotification } from '../components/ticketReminder'
 import KnowledgeGraphViewer from '../components/KnowledgeGraphViewer'
 import './Admin.css'
 import { parseDay } from '../utils/date'
@@ -150,45 +151,68 @@ function InvoiceSettingsPanel() {
   )
 }
 
+// Rappels de chrono de ticket actif (TASK-006.5, 2026-10-17 ; remplace le seuil de confirmation du temps)
 function TicketsSettingsPanel() {
-  const [threshold, setThreshold] = useState('')
-  const [loading, setLoading] = useState(true)
+  const [f, setF] = useState(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [perm, setPerm] = useState(notificationState())
 
   useEffect(() => {
-    api.get('/v1/settings').then(r => {
-      setThreshold(String(r.data.ticket_time_confirm_threshold_minutes))
-      setLoading(false)
-    })
+    api.get('/v1/settings').then(r => setF({
+      minutes: String(r.data.ticket_reminder_minutes), sound: r.data.ticket_reminder_sound,
+      volume: r.data.ticket_reminder_volume, visual: r.data.ticket_reminder_visual,
+    }))
   }, [])
+  const set = (k, v) => { setF(x => ({ ...x, [k]: v })); setSaved(false) }
 
   async function save() {
-    setSaving(true)
-    setSaved(false)
+    setSaving(true); setSaved(false)
     try {
-      await api.put('/v1/settings', { ticket_time_confirm_threshold_minutes: parseInt(threshold) })
+      await api.put('/v1/settings', {
+        ticket_reminder_minutes: parseInt(f.minutes) || 0, ticket_reminder_sound: f.sound,
+        ticket_reminder_volume: f.volume, ticket_reminder_visual: f.visual,
+      })
+      window.dispatchEvent(new Event('erpcrm-settings'))
       setSaved(true)
     } finally { setSaving(false) }
   }
 
-  if (loading) return <div className="loading">Chargement...</div>
-
+  if (!f) return <div className="loading">Chargement...</div>
+  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 14 }
   return (
     <div>
-      <div className="adm-panel-header">
-        <span className="adm-count">Chrono des tickets</span>
-      </div>
+      <div className="adm-panel-header"><span className="adm-count">Rappels de chrono actif</span></div>
       <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 16 }}>
-        Au-delà de ce seuil de temps écoulé depuis la dernière note, une confirmation (avec possibilité de corriger le temps) est demandée avant d'enregistrer — protège contre le chrono laissé tourner par erreur (ex. onglet oublié ouvert). En dessous du seuil, la note s'enregistre directement sans interruption.
+        Tant qu'un chrono de ticket tourne, un rappel « Ticket #… — client — actif depuis X h Y » revient à cet intervalle. Le rappel n'arrête jamais le chrono.
+        Sans écran ERPCRM ouvert depuis 5 minutes (navigateur fermé), les chronos se mettent en pause à l'heure de la dernière présence.
       </p>
-      <div className="form-group" style={{ maxWidth: 260 }}>
-        <label>Seuil de confirmation (minutes)</label>
-        <input type="number" min="1" value={threshold} onChange={e => { setThreshold(e.target.value); setSaved(false) }} />
+      <div style={row}>
+        <span style={{ minWidth: 150 }}>Rappel toutes les</span>
+        <input type="number" min="0" value={f.minutes} onChange={e => set('minutes', e.target.value)} style={{ width: 90 }} />
+        <span>minutes</span>
+        <span style={{ color: 'var(--c-faint)', fontSize: 12 }}>0 = aucun rappel</span>
       </div>
-      <button className="btn-primary" onClick={save} disabled={saving || !threshold}>
-        {saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}
-      </button>
+      <div style={row}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 150, cursor: 'pointer' }}>
+          <input type="checkbox" checked={f.sound} onChange={e => set('sound', e.target.checked)} /> Son
+        </label>
+        <input type="range" min="0" max="100" value={f.volume} disabled={!f.sound} onChange={e => set('volume', parseInt(e.target.value))} style={{ width: 180 }} />
+        <span style={{ width: 40 }}>{f.volume} %</span>
+        <button className="btn-secondary" style={{ fontSize: 12 }} disabled={!f.sound} onClick={() => playReminder(f.volume)}>Écouter</button>
+      </div>
+      <div style={row}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 150, cursor: 'pointer' }}>
+          <input type="checkbox" checked={f.visual} onChange={e => set('visual', e.target.checked)} /> Notification
+        </label>
+        <span style={{ fontSize: 13, color: 'var(--c-muted)' }}>
+          {perm === 'granted' ? 'Autorisée dans ce navigateur' : perm === 'denied' ? 'Refusée dans ce navigateur (à changer dans les réglages du navigateur)' : perm === 'indisponible' ? 'Non disponible dans ce navigateur' : 'Pas encore autorisée'}
+        </span>
+        {perm === 'default' && <button className="btn-secondary" style={{ fontSize: 12 }} onClick={async () => setPerm(await askNotificationPermission())}>Autoriser</button>}
+        {perm === 'granted' && <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => showNotification('Ticket #ESSAI — Simple IP', 'Chrono actif depuis 30 min')}>Essayer</button>}
+      </div>
+      <p style={{ color: 'var(--c-faint)', fontSize: 12, marginBottom: 16 }}>Le message apparaît aussi dans l'écran ERPCRM. Le son ne joue qu'après un premier clic dans la page (règle des navigateurs).</p>
+      <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
     </div>
   )
 }

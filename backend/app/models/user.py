@@ -26,3 +26,6 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Derniere presence d'un ecran ERPCRM ouvert (battement toutes les 30 s, TASK-006.5) : sans presence depuis
+    # 5 min, ses chronos de ticket se mettent en pause a l'heure de cette derniere presence.
+    presence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
