@@ -24,7 +24,9 @@ INVOICE_STATUS_FR = {"envoyee": "à payer", "partiellement_payee": "partiellemen
 
 
 def ticket_no(t) -> str:
-    return f"#{t.number}" if t.number else f"#{str(t.id)[:8].upper()}"
+    if t.number:
+        return f"#{t.number}" if t.number[0].isdigit() else t.number
+    return f"#{str(t.id)[:8].upper()}"
 
 
 def _fn(name, desc, props=None, required=None):
@@ -44,7 +46,7 @@ TOOLS = [
         {"contact": {"type": "string", "description": "prénom et nom de la personne"}}, ["contact"]),
     _fn("tickets_client", "Tickets d'un client (récents d'abord) ; texte optionnel pour chercher dans leurs messages.",
         {**_CLIENT, "texte": {"type": "string"}}, ["client"]),
-    _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. 11000).",
+    _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. 11000 ou T-11001).",
         {"ticket": {"type": "string"}}, ["ticket"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
@@ -145,10 +147,11 @@ async def _run(name, args, db) -> str:
                      "entreprises": [{"client": x.company.name, "courriel": x.email, "principal": x.is_primary, "actif": x.is_active} for x in ccs]})
 
     if name == "lire_ticket":
-        ref = str(args.get("ticket") or "").strip().lstrip("#").lower()
+        ref = str(args.get("ticket") or "").strip().lstrip("#").upper()
         q = select(Ticket).options(selectinload(Ticket.company), selectinload(Ticket.messages).selectinload(TicketMessage.user),
                                    selectinload(Ticket.periods), selectinload(Ticket.adjustments))
-        q = q.where(Ticket.number == ref) if ref.isdigit() else q.where(cast(Ticket.id, Text).ilike(f"{ref}%"))
+        found = (await db.execute(q.where(func.upper(Ticket.number) == ref))).scalars().first()
+        q = q.where(Ticket.id == found.id) if found else q.where(cast(Ticket.id, Text).ilike(f"{ref.lower()}%"))
         t = (await db.execute(q)).scalars().first()
         if not t:
             return _out("ticket introuvable")

@@ -26,7 +26,7 @@ from app.models.contact_company import ContactCompany
 log = logging.getLogger("imap_poller")
 
 # Numero de ticket (11000…) ou, pour les courriels envoyes avant 2026-10-18, debut de l'identifiant (8 caracteres hex)
-_TICKET_RE = re.compile(r'\[Ticket #(\d{1,10}|[A-F0-9]{8})\]', re.IGNORECASE)
+_TICKET_RE = re.compile(r'\[Ticket #([A-Z]{0,6}-?\d{1,10}|[A-F0-9]{8})\]', re.IGNORECASE)
 _POLL_INTERVAL = 30  # seconds
 
 
@@ -101,10 +101,10 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
     # 1. Try to match existing ticket by reference in subject
     m = _TICKET_RE.search(subject)
     if m:
-        ref = m.group(1).lower()
-        cond = Ticket.number == ref if ref.isdigit() else cast(Ticket.id, Text).ilike(f'{ref}%')
-        result = await db.execute(select(Ticket).where(cond))
-        ticket = result.scalar_one_or_none()
+        ref = m.group(1).upper()
+        ticket = (await db.execute(select(Ticket).where(func.upper(Ticket.number) == ref))).scalars().first()
+        if not ticket and re.fullmatch(r"[A-F0-9]{8}", ref):     # courriel envoye avant les numeros de ticket
+            ticket = (await db.execute(select(Ticket).where(cast(Ticket.id, Text).ilike(f'{ref.lower()}%')))).scalars().first()
         if ticket and body:
             db.add(TicketMessage(ticket_id=ticket.id, user_id=None, author_kind="client", body=body))
             # Une reponse client sur un ticket ferme/facture le reouvre (demande

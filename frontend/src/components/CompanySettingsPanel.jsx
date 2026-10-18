@@ -38,7 +38,7 @@ export default function CompanySettingsPanel({ only = null }) {
   if (!settings) return <div style={{ padding: 40, color: 'var(--c-muted)' }}>Chargement...</div>
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 520px), 1fr))', columnGap: 20, alignItems: 'start', padding: '0 0 40px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 520px), 1fr))', columnGap: 20, alignItems: 'stretch', padding: '0 0 40px' }}>
       {msg && <div style={{ gridColumn: '1 / -1', background: 'var(--c-tint-green)', color: 'var(--c-on-green)', padding: '10px 16px', borderRadius: 8, marginBottom: 20, fontSize: 14 }}>{msg}</div>}
 
       {show('general') && <AppearanceSection />}
@@ -274,7 +274,9 @@ function NumberingSection() {
   const [msg, setMsg] = useState({})
   const load = () => api.get('/v1/settings/numbering').then(r => { setRows(r.data); setEdit(Object.fromEntries(r.data.map(x => [x.key, { prefix: x.prefix, next_value: x.next_value, padding: x.padding }]))) })
   useEffect(() => { load() }, [])
-  const preview = e => `${e.prefix.replace('{year}', new Date().getFullYear())}${String(e.next_value).padStart(Number(e.padding) || 0, '0')}`
+  const pad2 = n => String(n).padStart(2, '0')
+  const today = new Date()
+  const preview = e => `${e.prefix.replace('{year}', today.getFullYear()).replace('{month}', pad2(today.getMonth() + 1)).replace('{day}', pad2(today.getDate()))}${String(e.next_value).padStart(Number(e.padding) || 0, '0')}`
   async function save(key) {
     setMsg({ ...msg, [key]: '' })
     const e = edit[key]
@@ -286,37 +288,37 @@ function NumberingSection() {
   }
   if (!rows) return null
   return (
-    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
+    <div style={{ gridColumn: '1 / -1', background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 24 }}>
       <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 6, color: 'var(--c-text)' }}>Numérotation des documents</h3>
       <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 0, marginBottom: 16 }}>
         Chaque numéro n'est donné qu'une fois : supprimer ou annuler un document ne fait jamais reculer le compteur.
-        « {'{year}'} » dans le préfixe est remplacé par l'année en cours.
+        Dans le préfixe, « {'{year}'} », « {'{month}'} » et « {'{day}'} » sont remplacés par la date du jour (le numéro qui suit continue d'un jour à l'autre).
       </p>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', minWidth: 680, borderCollapse: 'collapse', fontSize: 13 }}>
-          <thead><tr style={{ background: 'var(--c-surface-2)' }}>
-            {['Document', 'Préfixe', 'Chiffres', 'Prochain numéro', 'Aperçu', ''].map(h => <th key={h} style={{ padding: '8px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--c-text-2)' }}>{h}</th>)}
-          </tr></thead>
-          <tbody>
-            {rows.map(x => {
-              const e = edit[x.key]
-              const changed = e.prefix !== x.prefix || Number(e.next_value) !== x.next_value || Number(e.padding) !== x.padding
-              return (
-                <tr key={x.key} style={{ borderTop: '1px solid var(--c-surface-3)' }}>
-                  <td style={{ padding: '8px 10px', fontWeight: 500 }}>{x.label}</td>
-                  <td style={{ padding: '8px 10px' }}><input value={e.prefix} style={{ width: 120 }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, prefix: ev.target.value } })} /></td>
-                  <td style={{ padding: '8px 10px' }}><input type="number" min="0" max="10" value={e.padding} style={{ width: 60 }} title="Nombre minimum de chiffres (0 = sans zéros devant)" onChange={ev => setEdit({ ...edit, [x.key]: { ...e, padding: ev.target.value } })} /></td>
-                  <td style={{ padding: '8px 10px' }}><input type="number" min={1} value={e.next_value} style={{ width: 110 }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, next_value: ev.target.value } })} /></td>
-                  <td style={{ padding: '8px 10px', fontFamily: 'monospace', fontWeight: 600 }}>{preview(e)}</td>
-                  <td style={{ padding: '8px 10px', whiteSpace: 'nowrap' }}>
-                    {changed && <button className="btn-primary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => save(x.key)}>Enregistrer</button>}
-                    {msg[x.key] && <span style={{ marginLeft: 8, fontSize: 12, color: msg[x.key] === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg[x.key]}</span>}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      {/* Rangées en grille : colonnes sur grand écran, repliées sur cellulaire (Admin.css .num-*), jamais de défilement horizontal */}
+      <div className="form-group" style={{ marginBottom: 0, fontSize: 13 }}>
+        <div className="num-row num-head">
+          {['Document', 'Préfixe', 'Chiffres', 'Prochain numéro', 'Aperçu', ''].map(h => <div key={h}>{h}</div>)}
+        </div>
+        {rows.map(x => {
+          const e = edit[x.key]
+          const changed = e.prefix !== x.prefix || Number(e.next_value) !== x.next_value || Number(e.padding) !== x.padding
+          return (
+            <div key={x.key} className="num-row">
+              <div className="num-label">{x.label}</div>
+              <label><span className="num-mini">Préfixe</span>
+                <input value={e.prefix} style={{ width: '100%' }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, prefix: ev.target.value } })} /></label>
+              <label><span className="num-mini">Chiffres</span>
+                <input type="number" min="0" max="10" value={e.padding} style={{ width: '100%' }} title="Nombre minimum de chiffres (0 = sans zéros devant)" onChange={ev => setEdit({ ...edit, [x.key]: { ...e, padding: ev.target.value } })} /></label>
+              <label><span className="num-mini">Prochain numéro</span>
+                <input type="number" min={1} value={e.next_value} style={{ width: '100%' }} onChange={ev => setEdit({ ...edit, [x.key]: { ...e, next_value: ev.target.value } })} /></label>
+              <div className="num-preview"><span className="num-mini">Aperçu</span>{preview(e)}</div>
+              <div style={{ whiteSpace: 'nowrap' }}>
+                {changed && <button className="btn-primary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => save(x.key)}>Enregistrer</button>}
+                {msg[x.key] && <span style={{ marginLeft: 8, fontSize: 12, color: msg[x.key] === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg[x.key]}</span>}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

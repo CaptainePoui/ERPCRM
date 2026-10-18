@@ -52,7 +52,10 @@ def _column(key: str):
 
 
 def render_prefix(prefix: str) -> str:
-    return prefix.replace("{year}", str(clock.today().year))
+    """{year}, {month}, {day} = date du jour (fuseau de l'entreprise) ; ex. « PAY-{year}-{month}-{day}- » -> PAY-2026-10-18-.
+    Le numero qui suit ne recommence pas chaque jour : le compteur continue (1800, 1801…)."""
+    d = clock.today()
+    return prefix.replace("{year}", str(d.year)).replace("{month}", f"{d.month:02d}").replace("{day}", f"{d.day:02d}")
 
 
 async def _highest(db: AsyncSession, key: str, prefix: str) -> int:

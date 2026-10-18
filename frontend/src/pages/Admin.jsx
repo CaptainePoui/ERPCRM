@@ -115,7 +115,7 @@ function ConfigPanel({ initial }) {
   const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
   return (
     <div>
-      <div className="filter-tabs" style={{ marginBottom: 18 }}>
+      <div className="filter-tabs" style={{ marginBottom: 18, flexWrap: 'wrap' }}>
         {CONFIG_TABS.map(([k, l]) => <button key={k} className={`filter-tab${sub === k ? ' active' : ''}`} onClick={() => setSub(k)}>{l}</button>)}
       </div>
       {sub === 'general' && <CompanySettingsPanel only="general" />}

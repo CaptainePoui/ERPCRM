@@ -172,7 +172,10 @@ def _now() -> datetime:
 
 
 def _short(t: Ticket) -> str:
-    return f"#{t.number}" if t.number else f"#{str(t.id)[:8].upper()}"
+    # « #11000 » pour un numero sans prefixe ; avec prefixe, le numero tel quel (« T-11001 »)
+    if t.number:
+        return f"#{t.number}" if t.number[0].isdigit() else t.number
+    return f"#{str(t.id)[:8].upper()}"
 
 
 async def _get_ticket(ticket_id: uuid.UUID, db: AsyncSession) -> Ticket:

@@ -239,13 +239,13 @@ function ActiveTimers() {
   return (
     <>
       {timers.length > 0 && (
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 12 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginLeft: 12, minWidth: 0 }}>
           {timers.map(t => (
             <button key={t.ticket_id} onClick={() => navigate(`/tickets/${t.ticket_id}`)} title={`${t.number} — ${t.title}`}
               style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, padding: '4px 10px', borderRadius: 14, border: '1px solid #059669',
                        background: 'var(--c-tint-green)', color: 'var(--c-on-green)', cursor: 'pointer', maxWidth: 260 }}>
               <span style={{ fontFamily: 'monospace', fontWeight: 700 }}>{fmt(t.worked_seconds + extra)}</span>
-              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.company_name}</span>
+              <span className="hide-phone" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.company_name}</span>
             </button>
           ))}
         </div>
@@ -322,7 +322,7 @@ export default function Layout({ user, onLogout, children }) {
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: '1px solid var(--brand)',
                        background: 'var(--brand-bg)', color: 'var(--brand)', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
               <span style={{ width: 22, height: 22, borderRadius: 11, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>Z</span>
-              Zéko
+              <span className="hide-phone">Zéko</span>
             </button>
             <div className="user-text">
               <div className="user-name">{user.full_name}</div>

@@ -243,3 +243,8 @@
 .group-tab { white-space: nowrap; padding: 10px 2px; font-size: 14px; font-weight: 600; color: var(--c-muted); text-decoration: none; border-bottom: 3px solid transparent; margin-bottom: -1px; transition: color .15s, border-color .15s; }
 .group-tab:hover { color: var(--c-text); }
 .group-tab.active { color: var(--brand); border-bottom-color: var(--brand); }
+
+/* Petits écrans : le bouton Zéko et les chronos actifs gardent seulement leur icône / leur temps (pas de débordement) */
+@media (max-width: 700px) {
+  .hide-phone { display: none; }
+}
