@@ -7,6 +7,7 @@ import {
 } from './Icons'
 import './Layout.css'
 import { playReminder, showNotification, fmtSince } from './ticketReminder'
+import ZekoPanel from './ZekoPanel'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
 // horizontaux en haut de la page (demande de Philippe, 2026-10-02). `match` = autres
@@ -269,6 +270,7 @@ function ActiveTimers() {
 
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [zekoOpen, setZekoOpen] = useState(false)
   const location = useLocation()
   const group = activeGroup(location.pathname)
 
@@ -316,6 +318,12 @@ export default function Layout({ user, onLogout, children }) {
           <GlobalSearch />
           <ActiveTimers />
           <div className="layout-user">
+            <button onClick={() => setZekoOpen(true)} title="Zéko — l'assistant d'ERPCRM"
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: '1px solid var(--brand)',
+                       background: 'var(--brand-bg)', color: 'var(--brand)', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+              <span style={{ width: 22, height: 22, borderRadius: 11, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>Z</span>
+              Zéko
+            </button>
             <div className="user-text">
               <div className="user-name">{user.full_name}</div>
               <div className="user-role">{ROLE_LABELS[user.role] || user.role}</div>
@@ -325,6 +333,7 @@ export default function Layout({ user, onLogout, children }) {
           </div>
         </header>
 
+        {zekoOpen && <ZekoPanel onClose={() => setZekoOpen(false)} />}
         <main className="layout-main">
           {group && <GroupTabs groupKey={group} path={location.pathname} />}
           {children}

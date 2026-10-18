@@ -94,7 +94,7 @@ export default function Admin() {
       <div className="adm-body">
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
-        {tab === 2 && <><MailboxesPanel /><IntegrationsPanel /></>}
+        {tab === 2 && <><ZekoSettingsPanel /><div style={{ height: 24 }} /><MailboxesPanel /><IntegrationsPanel /></>}
         {tab === 3 && <BackupPanel />}
         {tab === 4 && <ConfigPanel initial={OLD_TABS[searchParams.get('tab')] || searchParams.get('section')} />}
         {tab === 5 && <KnowledgeGraphViewer />}
@@ -261,6 +261,80 @@ const GOOGLE_CALLBACK_MESSAGES = {
   error: { text: "La connexion Google a été refusée ou annulée.", color: '#DC2626' },
   csrf: { text: "Échec de vérification de sécurité, veuillez réessayer.", color: '#DC2626' },
   no_refresh_token: { text: "Google n'a pas retourné de jeton — réessayez (déconnectez d'abord l'accès existant dans les paramètres de votre compte Google si le problème persiste).", color: '#DC2626' },
+}
+
+// Zéko, l'IA unique d'ERPCRM (TASK-006.5 étape 2) : un seul réglage pour la conversation ET les tâches de fond
+// (dépôts bancaires, reçus, Interac, signatures) ; journal de chaque appel.
+const ZEKO_PURPOSES = { conversation: 'Conversation', depot_bancaire: 'Dépôt bancaire', recu: 'Reçu', interac: 'Interac', signature: 'Signature de courriel' }
+function ZekoSettingsPanel() {
+  const [f, setF] = useState(null)
+  const [models, setModels] = useState([])
+  const [modelsErr, setModelsErr] = useState(null)
+  const [journal, setJournal] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  async function loadModels() {
+    setModelsErr(null)
+    try { setModels((await api.get('/v1/zeko/models')).data) } catch (e) { setModels([]); setModelsErr(e.response?.data?.detail || 'Modèle injoignable') }
+  }
+  useEffect(() => {
+    api.get('/v1/settings').then(r => setF({ enabled: r.data.zeko_enabled, url: r.data.zeko_url, tasks: r.data.zeko_model_tasks, chat: r.data.zeko_model_chat }))
+    loadModels()
+    api.get('/v1/zeko/journal?limit=15').then(r => setJournal(r.data)).catch(() => {})
+  }, [])
+  const set = (k, v) => { setF(x => ({ ...x, [k]: v })); setSaved(false) }
+  async function save() {
+    setSaving(true)
+    try {
+      const r = await api.put('/v1/settings', { zeko_enabled: f.enabled, zeko_url: f.url, zeko_model_tasks: f.tasks, zeko_model_chat: f.chat })
+      setF({ enabled: r.data.zeko_enabled, url: r.data.zeko_url, tasks: r.data.zeko_model_tasks, chat: r.data.zeko_model_chat })
+      setSaved(true)
+      loadModels()
+    } finally { setSaving(false) }
+  }
+  if (!f) return <div className="loading">Chargement...</div>
+  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12 }
+  const pick = (k) => (
+    <select value={f[k]} onChange={e => set(k, e.target.value)} style={{ minWidth: 220 }}>
+      {!models.includes(f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
+      {models.map(m => <option key={m} value={m}>{m}</option>)}
+    </select>
+  )
+  return (
+    <div>
+      <div className="adm-panel-header"><span className="adm-count">Zéko — l'IA d'ERPCRM</span></div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 14 }}>
+        Une seule IA pour tout : la conversation (bouton Zéko en haut et dans chaque ticket) et les tâches automatiques (dépôts bancaires, reçus, Interac, signatures de courriels).
+        Une conversation passe toujours avant les tâches automatiques. Zéko lit ERPCRM ; il ne modifie rien.
+      </p>
+      <label style={{ ...row, cursor: 'pointer' }}><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} /> Zéko activé</label>
+      <div style={row}><span style={{ minWidth: 170 }}>Adresse du modèle</span>
+        <input value={f.url} onChange={e => set('url', e.target.value)} placeholder="http://…:11434/v1" style={{ width: 340 }} />
+        {modelsErr ? <span style={{ color: '#DC2626', fontSize: 12 }}>{modelsErr}</span> : models.length > 0 && <span style={{ color: '#059669', fontSize: 12 }}>✓ joignable ({models.length} modèles)</span>}
+      </div>
+      <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('chat')}</div>
+      <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
+      <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
+      {journal.length > 0 && (
+        <div style={{ marginTop: 18 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Derniers appels</div>
+          <table className="tkt-entries-table" style={{ fontSize: 12 }}>
+            <tbody>
+              {journal.map((j, i) => (
+                <tr key={i}>
+                  <td>{new Date(j.created_at).toLocaleString('fr-CA')}</td>
+                  <td>{ZEKO_PURPOSES[j.purpose] || j.purpose}</td>
+                  <td style={{ color: j.status === 'ok' ? '#059669' : j.status === 'interrompu' ? '#D97706' : '#DC2626' }}>{j.status}</td>
+                  <td style={{ textAlign: 'right' }}>{(j.duration_ms / 1000).toFixed(0)} s</td>
+                  <td style={{ color: 'var(--c-muted)' }}>{j.error || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function IntegrationsPanel() {

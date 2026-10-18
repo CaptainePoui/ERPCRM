@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core import zeko
 from app.core.database import AsyncSessionLocal
 from app.core.receipt_reader import ReadError, extract_text, ai_extract, normalize, settle, check, to_json
 from app.models.purchases import ReceiptDocument, Expense, ExpenseCategory, Vendor
@@ -133,7 +134,7 @@ async def run_receipt_poller():
     await asyncio.sleep(60)
     while True:
         try:
-            if settings.LOCAL_AI_URL:
+            if await zeko.enabled():
                 while await process_one():
                     pass
         except Exception:

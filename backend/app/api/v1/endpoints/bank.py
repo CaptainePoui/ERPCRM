@@ -424,9 +424,9 @@ async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
 
 
 async def _queue_for_ai(db: AsyncSession, tx_ids: list) -> int:
-    """Depots encore non reconnus -> file de l'IA locale (services/bank_ai_poller.py)."""
-    from app.core.config import settings
-    if not settings.LOCAL_AI_URL:
+    """Depots encore non reconnus -> file de Zeko (services/bank_ai_poller.py)."""
+    from app.core import zeko
+    if not await zeko.enabled():
         return 0
     n = 0
     for tid in tx_ids:

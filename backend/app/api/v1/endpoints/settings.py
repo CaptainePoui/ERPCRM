@@ -53,6 +53,12 @@ DEFAULTS = {
     "audit_views_enabled": "false",
     # Apparence de l'ecran pour tout le monde (TASK-050) : jour (par defaut) | nuit
     "ui_theme": "jour",
+    # Zeko, l'IA unique (core/zeko.py, TASK-006.5 etape 2) : adresse du modele (API compatible OpenAI) et modeles ;
+    # vide = valeur de la configuration du serveur (LOCAL_AI_URL / LOCAL_AI_MODEL)
+    "zeko_enabled": "true",
+    "zeko_url": "",
+    "zeko_model_tasks": "",
+    "zeko_model_chat": "",
 }
 
 
@@ -113,6 +119,10 @@ class SettingsOut(BaseModel):
     late_fee_interval_days: int
     barter_enabled: bool
     ui_theme: str
+    zeko_enabled: bool = True
+    zeko_url: str = ""
+    zeko_model_tasks: str = ""
+    zeko_model_chat: str = ""
 
 
 class SettingsIn(BaseModel):
@@ -139,6 +149,16 @@ class SettingsIn(BaseModel):
     late_fee_interval_days: int | None = Field(default=None, ge=7, le=365)
     barter_enabled: bool | None = None
     ui_theme: str | None = Field(default=None, pattern=r"^(jour|nuit)$")
+    zeko_enabled: bool | None = None
+    zeko_url: str | None = None
+    zeko_model_tasks: str | None = None
+    zeko_model_chat: str | None = None
+
+
+async def _zeko_out() -> dict:
+    from app.core import zeko
+    c = await zeko.config(fresh=True)
+    return {"zeko_enabled": c["enabled"], "zeko_url": c["url"], "zeko_model_tasks": c["model_tasks"], "zeko_model_chat": c["model_chat"]}
 
 
 @router.get("", response_model=SettingsOut)
@@ -167,6 +187,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         late_fee_interval_days=int(await get_setting(db, "late_fee_interval_days")),
         barter_enabled=await barter_enabled(db),
         ui_theme=await get_setting(db, "ui_theme"),
+        **(await _zeko_out()),
     )
 
 
@@ -195,6 +216,15 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "ticket_reminder_volume", str(payload.ticket_reminder_volume))
     if payload.ticket_reminder_visual is not None:
         await set_setting(db, "ticket_reminder_visual", "true" if payload.ticket_reminder_visual else "false")
+    if payload.zeko_enabled is not None:
+        await set_setting(db, "zeko_enabled", "true" if payload.zeko_enabled else "false")
+    for k in ("zeko_url", "zeko_model_tasks", "zeko_model_chat"):
+        v = getattr(payload, k)
+        if v is not None:
+            await set_setting(db, k, v.strip())
+    if any(getattr(payload, k) is not None for k in ("zeko_enabled", "zeko_url", "zeko_model_tasks", "zeko_model_chat")):
+        from app.core import zeko
+        zeko.invalidate()
     if payload.fiscal_year_start_month is not None:
         await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
     if payload.tax_lock_date is not None:

@@ -21,6 +21,7 @@ from decimal import Decimal, InvalidOperation
 import httpx
 
 from app.core.config import settings
+from app.core import zeko
 
 async def load_config(db) -> dict:
     """Reglages de lecture (Administration -> Integrations) + les boites ou chercher : TOUTES les boites actives
@@ -118,12 +119,7 @@ async def ai_parse(subject: str, body: str) -> dict:
         "\"date\": str|null, \"message\": str|null, \"reference\": str|null}\n\n"
         f"Sujet : {subject}\n\n{body[:5000]}"
     )
-    async with httpx.AsyncClient(timeout=900) as client:
-        r = await client.post(f"{settings.LOCAL_AI_URL.rstrip('/')}/chat/completions", json={
-            "model": settings.LOCAL_AI_MODEL, "temperature": 0, "reasoning_effort": "low",
-            "messages": [{"role": "user", "content": prompt}]})
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
+    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="interac", timeout=900)
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ValueError("réponse de l'IA illisible")
@@ -175,7 +171,7 @@ async def match_notices(db) -> int:
         taken.add(tx.id)
         if tx.status == "unclassified" and not tx.company_id:
             tx.payee = nt.sender_name[:255]
-            tx.ai_status = "pending" if settings.LOCAL_AI_URL else None
+            tx.ai_status = "pending" if await zeko.enabled() else None
             tx.ai_company_id = tx.ai_confidence = tx.ai_note = None
         n += 1
     await db.flush()

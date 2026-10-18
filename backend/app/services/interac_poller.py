@@ -6,6 +6,7 @@ import logging
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core import zeko
 from app.core.database import AsyncSessionLocal
 from app.core import interac_mail as im
 from app.models.bank_account import InteracNotice
@@ -35,7 +36,7 @@ async def run_interac_once() -> dict:
             db.add(InteracNotice(**m))
         await db.commit()
     parsed = 0
-    if settings.LOCAL_AI_URL:
+    if await zeko.enabled():
         while True:
             async with AsyncSessionLocal() as db:
                 nt = (await db.execute(select(InteracNotice).where(InteracNotice.status == "pending")

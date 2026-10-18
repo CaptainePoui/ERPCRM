@@ -17,6 +17,7 @@ import httpx
 from sqlalchemy import func, select
 
 from app.core.config import settings
+from app.core import zeko
 
 log = logging.getLogger("mail_match")
 
@@ -145,7 +146,7 @@ async def classify(db, msg, own_domains: set[str], box_email: str) -> None:
     contact = await create_contact(db, company_id, addr, msg.from_name, box_email, msg.sent_at)
     msg.company_id, msg.contact_id, msg.classified_by = company_id, contact.id, "auto"
     msg.contact_created = True
-    msg.signature_status = "pending" if settings.LOCAL_AI_URL else None
+    msg.signature_status = "pending" if await zeko.enabled() else None
 
 
 async def read_signature(db, msg) -> None:
@@ -165,12 +166,7 @@ async def read_signature(db, msg) -> None:
         "\"telephone\": str|null, \"poste\": str|null, \"cellulaire\": str|null}\n\n"
         f"Expéditeur : {msg.from_name or ''} <{msg.from_email}>\n\n{text}"
     )
-    async with httpx.AsyncClient(timeout=900) as client:
-        r = await client.post(f"{settings.LOCAL_AI_URL.rstrip('/')}/chat/completions", json={
-            "model": settings.LOCAL_AI_MODEL, "temperature": 0, "reasoning_effort": "low",
-            "messages": [{"role": "user", "content": prompt}]})
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
+    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="signature", timeout=900)
     m = re.search(r"\{.*\}", content, re.S)
     x = json.loads(m.group(0)) if m else {}
     digits = re.sub(r"\D", "", text)

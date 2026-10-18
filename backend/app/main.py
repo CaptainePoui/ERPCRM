@@ -8,7 +8,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -84,6 +84,7 @@ app.include_router(invoices.router, prefix="/api/v1/invoices", tags=["invoices"]
 app.include_router(recurring_billing.router, prefix="/api/v1", tags=["recurring-billing"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(tickets.router, prefix="/api/v1/tickets", tags=["tickets"])
+app.include_router(zeko_router.router, prefix="/api/v1/zeko", tags=["zeko"])
 app.include_router(maintenance.router, prefix="/api/v1/maintenance", tags=["maintenance"])
 app.include_router(equipment.router, prefix="/api/v1/equipment", tags=["equipment"])
 app.include_router(telephony.router, prefix="/api/v1/telephony", tags=["telephony"])

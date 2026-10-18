@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.endpoints.auth import get_current_user
 from app.core import mail_match, mail_send, mail_store
 from app.core import mailboxes as mbx
+from app.core import zeko
 from app.core.database import get_db
 from app.models.company import Company
 from app.models.contact import Contact
@@ -309,7 +310,7 @@ async def classify(mid: uuid.UUID, p: ClassifyIn, db: AsyncSession = Depends(get
             c = await mail_match.create_contact(db, company_id, m.from_email, m.from_name, box.email, m.sent_at)
             contact_id = c.id
             m.contact_created = True
-            m.signature_status = "pending" if mail_match.settings.LOCAL_AI_URL else None
+            m.signature_status = "pending" if await zeko.enabled() else None
     m.company_id, m.contact_id = company_id, contact_id
     m.classified_by = "manual" if (company_id or contact_id) else None
     moved = 0

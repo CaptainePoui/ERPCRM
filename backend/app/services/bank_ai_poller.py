@@ -20,7 +20,7 @@ from decimal import Decimal
 import httpx
 from sqlalchemy import select
 
-from app.core import clock
+from app.core import clock, zeko
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.bank_matching import invoice_balances, OPEN_STATUSES, name_similarity, _tokens
@@ -99,23 +99,20 @@ def _parse(text: str) -> dict:
     return json.loads(m.group(0))
 
 
-async def _ask(client: httpx.AsyncClient, system: str, t: BankTransaction) -> dict:
+async def _ask(system: str, t: BankTransaction) -> dict:
     deposit = {"date": str(t.posted_date), "montant": f"{t.amount:.2f}", "description": t.description, "beneficiaire": t.payee or ""}
-    r = await client.post(f"{settings.LOCAL_AI_URL.rstrip('/')}/chat/completions", json={
-        "model": settings.LOCAL_AI_MODEL, "temperature": 0,
-        # Reflexion courte : ~90 jetons au lieu de plusieurs centaines, meme reponse sur les cas testes
-        # (PATIO DESIGN -> Construction Nationale, 90 %) ; c'est l'ecriture qui coute sur ce processeur.
-        "reasoning_effort": "low",
-        "messages": [{"role": "system", "content": system},
-                     {"role": "user", "content": "Dépôt à identifier : " + json.dumps(deposit, ensure_ascii=False)}]})
-    r.raise_for_status()
-    return _parse(r.json()["choices"][0]["message"]["content"])
+    # Par Zeko (core/zeko.py). Reflexion courte : ~90 jetons au lieu de plusieurs centaines, meme reponse sur les cas
+    # testes (PATIO DESIGN -> Construction Nationale, 90 %) ; c'est l'ecriture qui coute sur ce processeur.
+    content = await zeko.complete([{"role": "system", "content": system},
+                                   {"role": "user", "content": "Dépôt à identifier : " + json.dumps(deposit, ensure_ascii=False)}],
+                                  purpose="depot_bancaire", timeout=_TIMEOUT)
+    return _parse(content)
 
 
 async def run_bank_ai_once() -> int:
     """Traite les depots en attente : d'abord par les noms (instantane), puis l'IA, UN depot par
     appel (plus rapide et plus juste que des lots sur ce serveur sans carte graphique)."""
-    if not settings.LOCAL_AI_URL:
+    if not await zeko.enabled():
         return 0
     async with AsyncSessionLocal() as db:
         # Comparaison des noms sur TOUS les depots en attente (instantane), l'IA ensuite par paquets
@@ -139,20 +136,19 @@ async def run_bank_ai_once() -> int:
         await db.commit()
         rest = rest[:_BATCH]
         system = _system_prompt(clients, examples)
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            for t in rest:
-                started = time.monotonic()
-                try:
-                    a = await _ask(client, system, t)
-                except Exception as e:
-                    log.warning("IA locale indisponible ou reponse illisible (%s) -- nouvel essai au prochain passage", e)
-                    break
-                t.ai_company_id = by_name.get((a.get("client") or "").strip().lower())   # nom inconnu = pas de proposition
-                t.ai_confidence = int(a.get("certitude") or 0) if t.ai_company_id else None
-                t.ai_note = (a.get("raison") or "")[:500] or None
-                t.ai_status = "done"
-                await db.commit()
-                log.info("IA locale : depot du %s (%s $) analyse en %.0f s", t.posted_date, t.amount, time.monotonic() - started)
+        for t in rest:
+            started = time.monotonic()
+            try:
+                a = await _ask(system, t)
+            except Exception as e:
+                log.warning("IA locale indisponible ou reponse illisible (%s) -- nouvel essai au prochain passage", e)
+                break
+            t.ai_company_id = by_name.get((a.get("client") or "").strip().lower())   # nom inconnu = pas de proposition
+            t.ai_confidence = int(a.get("certitude") or 0) if t.ai_company_id else None
+            t.ai_note = (a.get("raison") or "")[:500] or None
+            t.ai_status = "done"
+            await db.commit()
+            log.info("IA locale : depot du %s (%s $) analyse en %.0f s", t.posted_date, t.amount, time.monotonic() - started)
         return len(txs) - len(rest) + sum(1 for t in rest if t.ai_status == "done")
 
 

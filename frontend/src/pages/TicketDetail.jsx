@@ -7,6 +7,7 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 import { askConfirm } from '../components/Dialog'
 import { askNotificationPermission } from '../components/ticketReminder'
+import ZekoPanel from '../components/ZekoPanel'
 
 // TASK-006.5 étape 1 (2026-10-17) : le ticket = une conversation libre (texte + images, horodatée) et UN seul temps.
 // Le chrono est tenu par le serveur (périodes) ; il démarre au bouton Démarrer ou au début de l'écriture, jamais à
@@ -86,6 +87,7 @@ export default function TicketDetail() {
   const [opens, setOpens] = useState([])
   const [opensLoading, setOpensLoading] = useState(false)
   const [showTimeLog, setShowTimeLog] = useState(false)
+  const [showZeko, setShowZeko] = useState(false)
 
   // ── Chrono : valeur du serveur + secondes écoulées depuis la réponse (jamais l'heure de l'appareil) ──
   const fetchedAtRef = useRef(Date.now())
@@ -312,6 +314,7 @@ export default function TicketDetail() {
             {closed
               ? <button className="btn-secondary" onClick={() => update({ status: 'ouvert' })} style={{ fontSize: 12 }}>↩ Ouvrir</button>
               : <button className="btn-primary" onClick={() => update({ status: 'ferme' })} style={{ fontSize: 12 }}>✓ Fermer</button>}
+            <button className="btn-secondary" onClick={() => setShowZeko(true)} style={{ fontSize: 12, borderColor: 'var(--brand)', color: 'var(--brand)', fontWeight: 700 }}>Zéko</button>
             <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
             <HistoryButton objectType="tickets" objectId={id} title={ticket.title} compact />
             {!closed && <button className="btn-danger" onClick={deleteTicket}>Supprimer</button>}
@@ -510,6 +513,7 @@ export default function TicketDetail() {
         </div>
       )}
 
+      {showZeko && <ZekoPanel ticketId={id} ticketLabel={ticket.number} onClose={() => setShowZeko(false)} />}
       {showDonner && <DonnerDuTempsModal onClose={() => setShowDonner(false)} onSave={donnerTemps} />}
       {showTaskModal && (
         <NewTaskModal

@@ -24,6 +24,7 @@ import httpx
 
 from app.core import clock
 from app.core.config import settings
+from app.core import zeko
 from app.models.purchases import LINE_CLASSES
 
 C = Decimal("0.01")
@@ -116,20 +117,15 @@ def _system_prompt(categories: list[str], vendors: list[str]) -> str:
 async def ai_extract(text: str, categories: list[str], vendors: list[str], filename: str = "", examples: list[dict] | None = None) -> dict:
     """examples : lectures deja validees (par le programme ou par Philippe) de factures du meme fournisseur --
     l'IA « apprend par l'exemple » la structure de ses factures (lignes, classes, compte)."""
-    if not settings.LOCAL_AI_URL:
-        raise ReadError("IA locale non configurée (LOCAL_AI_URL)")
+    if not await zeko.enabled():
+        raise ReadError("Zéko n'est pas configuré (Administration → Intégrations)")
     user = f"Nom du fichier (indice) : {filename}\n" if filename else ""
     for ex in (examples or [])[:2]:
         user += ("Exemple VALIDÉ d'une facture précédente du même fournisseur (même structure attendue ; les montants "
                  "changent, recopie ceux du nouveau reçu) :\n" + json.dumps(ex, ensure_ascii=False) + "\n")
     user += "Texte du reçu :\n" + compact(text)[:24000]
-    async with httpx.AsyncClient(timeout=1200) as client:
-        r = await client.post(f"{settings.LOCAL_AI_URL.rstrip('/')}/chat/completions", json={
-            "model": settings.LOCAL_AI_MODEL, "temperature": 0, "reasoning_effort": "low",
-            "messages": [{"role": "system", "content": _system_prompt(categories, vendors)},
-                         {"role": "user", "content": user}]})
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"]
+    content = await zeko.complete([{"role": "system", "content": _system_prompt(categories, vendors)},
+                                   {"role": "user", "content": user}], purpose="recu", timeout=1200)
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ReadError("Réponse de l'IA illisible")
