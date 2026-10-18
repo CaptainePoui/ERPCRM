@@ -31,6 +31,27 @@ class ZekoUnavailable(Exception):
     pass
 
 
+# Le modele ecrit des espaces typographiques (fine insecable U+202F, etc.) et des traits insecables que la police de
+# l'ecran ne dessine pas (« SimpleIPinc. » a l'ecran, espaces presentes au copier) -- remplaces a la sortie.
+_ODD = str.maketrans({"\u202f": " ", "\u00a0": " ", "\u2009": " ", "\u2007": " ", "\u2008": " ", "\u200a": " ",
+                      "\u2002": " ", "\u2003": " ", "\u205f": " ", "\u200b": "", "\u2011": "-", "\u2010": "-"})
+
+
+def clean(text: str) -> str:
+    return text.translate(_ODD)
+
+
+# IA externes possibles (toutes parlent le format OpenAI) : un seul branchement, le fournisseur se choisit a l'ecran.
+# Zeko local reste le chef ; l'IA externe ne recoit que des questions expurgees (core/zeko_redact.py).
+PROVIDERS = {
+    "gemini":   {"label": "Gemini (Google)", "url": "https://generativelanguage.googleapis.com/v1beta/openai", "model": "gemini-2.5-flash"},
+    "deepseek": {"label": "DeepSeek", "url": "https://api.deepseek.com/v1", "model": "deepseek-chat"},
+    "mistral":  {"label": "Mistral", "url": "https://api.mistral.ai/v1", "model": "mistral-small-latest"},
+    "openai":   {"label": "OpenAI", "url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
+    "autre":    {"label": "Autre (compatible OpenAI)", "url": "", "model": ""},
+}
+
+
 async def config(fresh: bool = False) -> dict:
     """Reglages de Zeko (ecran Administration), relus au plus toutes les 20 s."""
     if not fresh and _cache["cfg"] and time.monotonic() - _cache["at"] < _CACHE_TTL:
@@ -43,6 +64,23 @@ async def config(fresh: bool = False) -> dict:
             "url": url.rstrip("/"),
             "model_tasks": (await get_setting(db, "zeko_model_tasks")) or settings.LOCAL_AI_MODEL,
             "model_chat": (await get_setting(db, "zeko_model_chat")) or settings.LOCAL_AI_MODEL,
+        }
+        prov = (await get_setting(db, "zeko_ext_provider")) or "gemini"
+        preset = PROVIDERS.get(prov, PROVIDERS["autre"])
+        key_enc = await get_setting(db, "zeko_ext_key_enc")
+        key = ""
+        if key_enc:
+            try:
+                from app.core.crypto import decrypt
+                key = decrypt(key_enc)
+            except Exception:
+                log.warning("Cle de l'IA externe illisible")
+        cfg["ext"] = {
+            "provider": prov, "label": preset["label"],
+            "url": ((await get_setting(db, "zeko_ext_url")) or preset["url"]).rstrip("/"),
+            "model": (await get_setting(db, "zeko_ext_model")) or preset["model"],
+            "key": key,
+            "enabled": (await get_setting(db, "zeko_ext_enabled")) == "true" and bool(key),
         }
     _cache.update(at=time.monotonic(), cfg=cfg)
     return cfg
@@ -64,6 +102,45 @@ async def _journal(**kw) -> None:
             await db.commit()
     except Exception:
         log.exception("Journal Zeko")
+
+
+async def ask_external(question: str, *, user_id=None, conversation_id=None) -> tuple[str, str]:
+    """Pose une question TECHNIQUE a l'IA externe, apres expurgation locale. Retourne (reponse, question envoyee).
+    Leve ZekoUnavailable (non configuree, quota, panne) : Zeko continue alors seul."""
+    from app.core.zeko_redact import redact
+    cfg = (await config())["ext"]
+    if not cfg["enabled"]:
+        raise ZekoUnavailable("aucune IA externe n'est activée")
+    sent = await redact(question)
+    payload = {"model": cfg["model"], "temperature": 0.3, "messages": [
+        {"role": "system", "content": "Tu aides un technicien en téléphonie IP et informatique au Québec. Réponds en français, "
+                                      "concret et court. Les étiquettes entre crochets remplacent des données retirées."},
+        {"role": "user", "content": sent}]}
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=90) as client:
+            r = await client.post(f"{cfg['url']}/chat/completions", json=payload, headers={"Authorization": f"Bearer {cfg['key']}"})
+        if r.status_code == 429:
+            raise ZekoUnavailable(f"{cfg['label']} : quota atteint pour l'instant")
+        if r.status_code in (401, 403) or (r.status_code == 400 and "key" in r.text.lower()):
+            raise ZekoUnavailable(f"{cfg['label']} : clé refusée")
+        r.raise_for_status()
+        data = r.json()
+        answer = clean(data["choices"][0]["message"].get("content") or "")
+    except ZekoUnavailable as e:
+        await _journal(purpose="ia_externe", provider=cfg["provider"], model=cfg["model"], status="erreur", error=str(e),
+                       duration_ms=int((time.monotonic() - t0) * 1000), request_redacted=sent, user_id=user_id, conversation_id=conversation_id)
+        raise
+    except Exception as e:
+        await _journal(purpose="ia_externe", provider=cfg["provider"], model=cfg["model"], status="erreur", error=str(e)[:2000],
+                       duration_ms=int((time.monotonic() - t0) * 1000), request_redacted=sent, user_id=user_id, conversation_id=conversation_id)
+        raise ZekoUnavailable(f"{cfg['label']} ne répond pas")
+    usage = data.get("usage") or {}
+    await _journal(purpose="ia_externe", provider=cfg["provider"], model=cfg["model"], status="ok",
+                   duration_ms=int((time.monotonic() - t0) * 1000), prompt_tokens=usage.get("prompt_tokens"),
+                   completion_tokens=usage.get("completion_tokens"), request_redacted=sent, response=answer[:20000],
+                   user_id=user_id, conversation_id=conversation_id)
+    return answer, sent
 
 
 async def chat_active() -> bool:
@@ -125,7 +202,7 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
         usage = data.get("usage") or {}
         await _journal(purpose=purpose, model=payload["model"], status="ok", duration_ms=int((time.monotonic() - t0) * 1000),
                        prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"), user_id=user_id)
-        return data["choices"][0]["message"].get("content") or ""
+        return clean(data["choices"][0]["message"].get("content") or "")
     raise ZekoUnavailable("Zéko est resté occupé par des conversations ; nouvel essai plus tard")
 
 
@@ -168,7 +245,7 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
                             thinking_sent = True
                             yield ("pense", None)
                         if delta.get("content"):
-                            yield ("texte", delta["content"])
+                            yield ("texte", clean(delta["content"]))
                         for tc in delta.get("tool_calls") or []:
                             c = calls.setdefault(tc.get("index", 0), {"id": tc.get("id"), "name": "", "arguments": ""})
                             fn = tc.get("function") or {}

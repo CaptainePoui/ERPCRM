@@ -59,6 +59,12 @@ DEFAULTS = {
     "zeko_url": "",
     "zeko_model_tasks": "",
     "zeko_model_chat": "",
+    # IA externe d'appoint (etape 4) : eteinte au depart ; la cle est chiffree (jamais renvoyee a l'ecran)
+    "zeko_ext_enabled": "false",
+    "zeko_ext_provider": "gemini",
+    "zeko_ext_url": "",
+    "zeko_ext_model": "",
+    "zeko_ext_key_enc": "",
 }
 
 
@@ -123,6 +129,11 @@ class SettingsOut(BaseModel):
     zeko_url: str = ""
     zeko_model_tasks: str = ""
     zeko_model_chat: str = ""
+    zeko_ext_enabled: bool = False
+    zeko_ext_provider: str = "gemini"
+    zeko_ext_url: str = ""
+    zeko_ext_model: str = ""
+    zeko_ext_key_set: bool = False
 
 
 class SettingsIn(BaseModel):
@@ -153,12 +164,26 @@ class SettingsIn(BaseModel):
     zeko_url: str | None = None
     zeko_model_tasks: str | None = None
     zeko_model_chat: str | None = None
+    zeko_ext_enabled: bool | None = None
+    zeko_ext_provider: str | None = Field(default=None, pattern=r"^(gemini|deepseek|mistral|openai|autre)$")
+    zeko_ext_url: str | None = None
+    zeko_ext_model: str | None = None
+    zeko_ext_key: str | None = None          # vide = garder la cle actuelle ; « - » = l'effacer
 
 
 async def _zeko_out() -> dict:
     from app.core import zeko
     c = await zeko.config(fresh=True)
-    return {"zeko_enabled": c["enabled"], "zeko_url": c["url"], "zeko_model_tasks": c["model_tasks"], "zeko_model_chat": c["model_chat"]}
+    e = c["ext"]
+    return {"zeko_enabled": c["enabled"], "zeko_url": c["url"], "zeko_model_tasks": c["model_tasks"], "zeko_model_chat": c["model_chat"],
+            "zeko_ext_enabled": e["enabled"] or (await get_setting_raw("zeko_ext_enabled")) == "true", "zeko_ext_provider": e["provider"],
+            "zeko_ext_url": e["url"], "zeko_ext_model": e["model"], "zeko_ext_key_set": bool(e["key"])}
+
+
+async def get_setting_raw(key: str) -> str:
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        return await get_setting(db, key)
 
 
 @router.get("", response_model=SettingsOut)
@@ -222,7 +247,23 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         v = getattr(payload, k)
         if v is not None:
             await set_setting(db, k, v.strip())
-    if any(getattr(payload, k) is not None for k in ("zeko_enabled", "zeko_url", "zeko_model_tasks", "zeko_model_chat")):
+    if payload.zeko_ext_enabled is not None:
+        await set_setting(db, "zeko_ext_enabled", "true" if payload.zeko_ext_enabled else "false")
+    if payload.zeko_ext_provider is not None:
+        old = await get_setting(db, "zeko_ext_provider")
+        await set_setting(db, "zeko_ext_provider", payload.zeko_ext_provider)
+        if old and old != payload.zeko_ext_provider:      # autre fournisseur : adresse et modele par defaut du nouveau
+            await set_setting(db, "zeko_ext_url", "")
+            await set_setting(db, "zeko_ext_model", "")
+    for k in ("zeko_ext_url", "zeko_ext_model"):
+        v = getattr(payload, k)
+        if v is not None:
+            await set_setting(db, k, v.strip())
+    if payload.zeko_ext_key:
+        from app.core.crypto import encrypt
+        await set_setting(db, "zeko_ext_key_enc", "" if payload.zeko_ext_key.strip() == "-" else encrypt(payload.zeko_ext_key.strip()))
+    if any(getattr(payload, k) is not None for k in ("zeko_enabled", "zeko_url", "zeko_model_tasks", "zeko_model_chat", "zeko_ext_enabled",
+                                                   "zeko_ext_provider", "zeko_ext_url", "zeko_ext_model", "zeko_ext_key")):
         from app.core import zeko
         zeko.invalidate()
     if payload.fiscal_year_start_month is not None:

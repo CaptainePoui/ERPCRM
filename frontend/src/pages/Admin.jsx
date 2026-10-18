@@ -265,7 +265,92 @@ const GOOGLE_CALLBACK_MESSAGES = {
 
 // Zéko, l'IA unique d'ERPCRM (TASK-006.5 étape 2) : un seul réglage pour la conversation ET les tâches de fond
 // (dépôts bancaires, reçus, Interac, signatures) ; journal de chaque appel.
-const ZEKO_PURPOSES = { conversation: 'Conversation', depot_bancaire: 'Dépôt bancaire', recu: 'Reçu', interac: 'Interac', signature: 'Signature de courriel' }
+const ZEKO_PURPOSES = { ia_externe: 'IA externe', conversation: 'Conversation', depot_bancaire: 'Dépôt bancaire', recu: 'Reçu', interac: 'Interac', signature: 'Signature de courriel' }
+// IA externe d'appoint de Zéko (TASK-006.5 étape 4) : un seul branchement, fournisseur au choix. Zéko local reste le chef :
+// il ne lui envoie que des questions techniques, expurgées (noms, coordonnées, IP retirés) ; tout est gardé au journal.
+const EXT_NOTES = {
+  gemini: { key: 'https://aistudio.google.com/apikey', note: "Version gratuite : Google se sert de ce qui est envoyé pour améliorer ses produits et des employés peuvent le lire (d'où l'expurgation). Version payante : rien n'est réutilisé." },
+  deepseek: { key: 'https://platform.deepseek.com/api_keys', note: 'Payant (très bon marché). Serveurs en Chine.' },
+  mistral: { key: 'https://console.mistral.ai/api-keys', note: 'Entreprise française.' },
+  openai: { key: 'https://platform.openai.com/api-keys', note: 'Payant.' },
+  autre: { key: null, note: "Tout service compatible avec le format OpenAI : indiquer son adresse." },
+}
+function ExternalAiPanel() {
+  const [f, setF] = useState(null)
+  const [providers, setProviders] = useState([])
+  const [models, setModels] = useState([])
+  const [key, setKey] = useState('')
+  const [msg, setMsg] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const fromSettings = d => ({ enabled: d.zeko_ext_enabled, provider: d.zeko_ext_provider, url: d.zeko_ext_url, model: d.zeko_ext_model, keySet: d.zeko_ext_key_set })
+  async function loadModels() {
+    try { setModels((await api.get('/v1/zeko/external/models')).data) } catch { setModels([]) }
+  }
+  useEffect(() => {
+    api.get('/v1/settings').then(r => { setF(fromSettings(r.data)); if (r.data.zeko_ext_key_set) loadModels() })
+    api.get('/v1/zeko/external/providers').then(r => setProviders(r.data))
+  }, [])
+  async function save(extra = {}) {
+    setBusy(true); setMsg(null)
+    try {
+      const body = { zeko_ext_enabled: f.enabled, zeko_ext_provider: f.provider, zeko_ext_model: f.model, zeko_ext_url: f.provider === 'autre' ? f.url : '', ...extra }
+      if (key.trim()) body.zeko_ext_key = key.trim()
+      const r = await api.put('/v1/settings', body)
+      setF(fromSettings(r.data)); setKey('')
+      if (r.data.zeko_ext_key_set) loadModels()
+      setMsg({ ok: true, text: '✓ Enregistré' })
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.detail || 'Erreur' }) } finally { setBusy(false) }
+  }
+  async function test() {
+    setBusy(true); setMsg(null)
+    try {
+      const r = await api.post('/v1/zeko/external/test')
+      setMsg({ ok: true, text: `✓ Répond en ${r.data.secondes} s : « ${r.data.reponse} »` })
+    } catch (e) { setMsg({ ok: false, text: e.response?.data?.detail || 'Erreur' }) } finally { setBusy(false) }
+  }
+  if (!f) return null
+  const note = EXT_NOTES[f.provider] || EXT_NOTES.autre
+  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12, flexWrap: 'wrap' }
+  return (
+    <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: 'var(--c-text)' }}>IA externe d'appoint</div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 12 }}>
+        Zéko peut demander l'avis d'une IA plus puissante pour une question technique. Avant l'envoi, il retire les noms des clients et des personnes, les courriels, téléphones, adresses, codes postaux, IP et MAC.
+        Ce qui part et ce qui revient est gardé au journal. Si elle est en panne ou hors quota, Zéko continue seul.
+      </p>
+      <label style={{ ...row, cursor: 'pointer' }}><input type="checkbox" checked={f.enabled} onChange={e => setF(x => ({ ...x, enabled: e.target.checked }))} /> Utiliser une IA externe</label>
+      <div style={row}><span style={{ minWidth: 170 }}>Fournisseur</span>
+        <select value={f.provider} onChange={e => { setF(x => ({ ...x, provider: e.target.value, model: '', url: '' })); setModels([]) }} style={{ minWidth: 220 }}>
+          {providers.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </select>
+        <span style={{ fontSize: 12, color: 'var(--c-muted)', maxWidth: 640 }}>{note.note}</span>
+      </div>
+      {f.provider === 'autre' && (
+        <div style={row}><span style={{ minWidth: 170 }}>Adresse</span><input value={f.url} onChange={e => setF(x => ({ ...x, url: e.target.value }))} placeholder="https://…/v1" style={{ width: 340 }} /></div>
+      )}
+      <div style={row}><span style={{ minWidth: 170 }}>Clé d'accès</span>
+        <input type="password" value={key} onChange={e => setKey(e.target.value)} autoComplete="new-password"
+          placeholder={f.keySet ? 'Clé enregistrée — laisser vide pour la garder' : 'Coller la clé ici'} style={{ width: 340 }} />
+        {note.key && <a href={note.key} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>Obtenir une clé</a>}
+        {f.keySet && <button className="btn-secondary" style={{ fontSize: 12 }} disabled={busy} onClick={async () => { if (await askConfirm("Effacer la clé enregistrée ?")) save({ zeko_ext_key: '-', zeko_ext_enabled: false }) }}>Effacer la clé</button>}
+      </div>
+      <div style={row}><span style={{ minWidth: 170 }}>Modèle</span>
+        {models.length > 0
+          ? <select value={f.model} onChange={e => setF(x => ({ ...x, model: e.target.value }))} style={{ minWidth: 260 }}>
+              {!models.includes(f.model) && <option value={f.model}>{f.model || '—'}</option>}
+              {models.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          : <input value={f.model} onChange={e => setF(x => ({ ...x, model: e.target.value }))} placeholder="(modèle conseillé par défaut)" style={{ width: 260 }} />}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <button className="btn-primary" disabled={busy} onClick={() => save()}>{busy ? '...' : 'Enregistrer'}</button>
+        <button className="btn-secondary" disabled={busy || !f.keySet} onClick={test}>Essayer</button>
+        {msg && <span style={{ fontSize: 13, color: msg.ok ? '#059669' : '#DC2626' }}>{msg.text}</span>}
+      </div>
+    </div>
+  )
+}
+
 function ZekoSettingsPanel() {
   const [f, setF] = useState(null)
   const [models, setModels] = useState([])
@@ -315,6 +400,7 @@ function ZekoSettingsPanel() {
       <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('chat')}</div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
       <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
+      <ExternalAiPanel />
       {journal.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Derniers appels</div>

@@ -87,7 +87,8 @@ def _detail(c: ZekoConversation) -> ConversationDetail:
 @router.get("/status")
 async def status(_: User = Depends(get_current_user)):
     c = await zeko.config(fresh=True)
-    return {"enabled": c["enabled"], "model_chat": c["model_chat"], "model_tasks": c["model_tasks"], "busy": await zeko.chat_active()}
+    return {"enabled": c["enabled"], "model_chat": c["model_chat"], "model_tasks": c["model_tasks"], "busy": await zeko.chat_active(),
+            "external": c["ext"]["label"] if c["ext"]["enabled"] else None}
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
@@ -194,13 +195,19 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
                                f" chez Simple IP) ; ce n'est pas un client. Aujourd'hui : {clock.today().isoformat()}.")
             if ticket_id:
                 system += "\n\n" + await _ticket_context(s, ticket_id)
+            ext = (await zeko.config())["ext"]
+            if ext["enabled"]:
+                system += (f"\n\nTu peux demander l'avis de {ext['label']} (IA externe) pour une question technique générale que tu "
+                           f"ne maîtrises pas, ou si on te le demande. Les noms et coordonnées sont retirés automatiquement avant l'envoi. "
+                           f"Dis quand une information vient de {ext['label']}.")
+            tool_list = zeko_tools.TOOLS + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else [])
             messages = [{"role": "system", "content": system}] + _history(conv)
             partial = ""
             try:
                 for _round in range(_MAX_TOOL_ROUNDS + 1):
                     partial = ""
                     calls = None
-                    tools = zeko_tools.TOOLS if _round < _MAX_TOOL_ROUNDS else None
+                    tools = tool_list if _round < _MAX_TOOL_ROUNDS else None
                     async for kind, val in zeko.stream_chat(messages, tools=tools, user_id=user_id, conversation_id=cid):
                         if kind == "pense":
                             yield _sse({"type": "pense"})
@@ -221,12 +228,21 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
                     messages.append({"role": "assistant", "content": partial, "tool_calls": [
                         {"id": x["id"], "type": "function", "function": {"name": x["name"], "arguments": x["arguments"]}} for x in calls]})
                     for x in calls:
-                        yield _sse({"type": "outil", "nom": x["name"], "libelle": zeko_tools.LABELS.get(x["name"], x["name"])})
+                        external = x["name"] == "demander_ia_externe"
+                        label = f"demande à {ext['label']}" if external else zeko_tools.LABELS.get(x["name"], x["name"])
+                        yield _sse({"type": "outil", "nom": x["name"], "libelle": label})
                         try:
                             args = json.loads(x["arguments"] or "{}")
                         except ValueError:
                             args = {}
-                        result = await zeko_tools.run(x["name"], args, s)
+                        if external and ext["enabled"]:
+                            try:
+                                answer, _sent = await zeko.ask_external(str(args.get("question") or ""), user_id=user_id, conversation_id=cid)
+                                result = f"Réponse de {ext['label']} : {answer[:6000]}"
+                            except zeko.ZekoUnavailable as e:
+                                result = f"{ext['label']} indisponible ({e}) : réponds avec tes propres connaissances et dis-le."
+                        else:
+                            result = await zeko_tools.run(x["name"], args, s)
                         s.add(ZekoMessage(conversation_id=cid, role="tool", content=result, tool_call_id=x["id"], tool_name=x["name"]))
                         messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
                     await s.commit()
@@ -300,3 +316,43 @@ async def models(_: User = Depends(get_current_user)):
             return sorted(m["id"] for m in r.json().get("data", []))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Modèle injoignable : {str(e)[:200]}")
+
+
+@router.get("/external/providers")
+async def external_providers(_: User = Depends(get_current_user)):
+    return [{"id": k, **v} for k, v in zeko.PROVIDERS.items()]
+
+
+@router.get("/external/models")
+async def external_models(_: User = Depends(get_current_user)):
+    """Modeles offerts par l'IA externe configuree (avec sa cle)."""
+    import httpx
+    e = (await zeko.config(fresh=True))["ext"]
+    if not e["key"] or not e["url"]:
+        return []
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{e['url']}/models", headers={"Authorization": f"Bearer {e['key']}"})
+            r.raise_for_status()
+            return sorted(m["id"].removeprefix("models/") for m in r.json().get("data", []))
+    except Exception as ex:
+        raise HTTPException(status_code=502, detail=f"{e['label']} : liste des modèles indisponible ({str(ex)[:150]})")
+
+
+@router.post("/external/test")
+async def external_test(current_user: User = Depends(get_current_user)):
+    """Essai reel de l'IA externe (meme si la case n'est pas encore cochee, du moment qu'une cle est enregistree)."""
+    import httpx, time as _t
+    e = (await zeko.config(fresh=True))["ext"]
+    if not e["key"]:
+        raise HTTPException(status_code=400, detail="Aucune clé enregistrée")
+    t0 = _t.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(f"{e['url']}/chat/completions", headers={"Authorization": f"Bearer {e['key']}"},
+                                  json={"model": e["model"], "messages": [{"role": "user", "content": "Réponds seulement : OK"}]})
+        if r.status_code >= 400:
+            raise HTTPException(status_code=502, detail=f"{e['label']} a répondu {r.status_code} : {r.text[:200]}")
+        return {"ok": True, "reponse": r.json()["choices"][0]["message"].get("content", "")[:200], "secondes": round(_t.monotonic() - t0, 1)}
+    except httpx.HTTPError as ex:
+        raise HTTPException(status_code=502, detail=f"{e['label']} injoignable : {str(ex)[:150]}")

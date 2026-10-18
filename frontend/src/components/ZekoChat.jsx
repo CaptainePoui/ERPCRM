@@ -21,7 +21,11 @@ function inline(text, keyBase) {
   return parts
 }
 
+// Espaces typographiques du modèle (fine insécable…) invisibles dans la police de l'écran : espaces normales
+const ODD_SPACES = /[\u00a0\u2002\u2003\u2007-\u200a\u202f\u205f]/g
+
 export function ZekoText({ text }) {
+  text = (text || '').replace(ODD_SPACES, ' ').replace(/[\u2010\u2011]/g, '-').replace(/\u200b/g, '')
   const blocks = []
   let list = null
   ;(text || '').split('\n').forEach((line, n) => {
@@ -44,7 +48,7 @@ function fmtWhen(iso) {
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
 }
 
-const TOOL_LABELS = { chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
+const TOOL_LABELS = { demander_ia_externe: 'a demandé à l’IA externe', chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
                       lire_ticket: 'a lu un ticket', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
 
 export default function ZekoChat({ conversationId, onChanged, compact }) {
