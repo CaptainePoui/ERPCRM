@@ -147,7 +147,7 @@ async def _run(name, args, db) -> str:
             return _out("ticket introuvable")
         return _out({"numero": f"#{str(t.id)[:8].upper()}", "titre": t.title, "client": t.company.name, "statut": t.status,
                      "cree": t.created_at.date(), "demande": t.description, "temps_min": (await _ticket_secs(db, t)) // 60,
-                     "messages": [{"de": m.user.full_name if m.user else ("client" if m.author_kind == "client" else "?"),
+                     "messages": [{"de": m.user.full_name if m.user else {"client": "client", "zeko": "Zéko"}.get(m.author_kind, "?"),
                                    "le": m.created_at.strftime("%Y-%m-%d %H:%M"), "texte": m.body[:800]} for m in t.messages[-25:]]})
 
     comp = await _resolve_company(db, args.get("client"))

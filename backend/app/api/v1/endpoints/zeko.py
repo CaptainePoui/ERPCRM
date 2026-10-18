@@ -141,7 +141,7 @@ async def _ticket_context(db, ticket_id) -> str:
     if t.description:
         lines.append(f"Demande : {t.description[:600]}")
     msgs = [f"- {m.created_at.astimezone(clock.business_tz()).strftime('%m-%d %H:%M')} "
-            f"{m.user.full_name if m.user else ('client' if m.author_kind == 'client' else '?')} : {m.body[:400]}" for m in t.messages[-8:] if m.body]
+            f"{m.user.full_name if m.user else {'client': 'client', 'zeko': 'Zéko'}.get(m.author_kind, '?')} : {m.body[:400]}" for m in t.messages[-8:] if m.body]
     if msgs:
         lines.append("Derniers messages du ticket :\n" + "\n".join(msgs))
     return "\n".join(lines)
@@ -173,92 +173,77 @@ def _sse(ev: dict) -> str:
     return f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
 
-@router.post("/conversations/{cid}/messages")
-async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    text = payload.content.strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Message vide")
-    if not await zeko.enabled():
-        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Intégrations)")
-    c = await _get_conv(db, cid, current_user)
-    db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text))
-    if not c.title:
-        c.title = text[:80]
-    c.updated_at = _now()
-    await db.commit()
-    user_id, ticket_id = current_user.id, c.ticket_id
+async def _setup(user: User):
+    """Consigne de base (qui parle, date, IA externe) et outils disponibles."""
+    system = SYSTEM + (f" Tu parles avec {user.full_name} ({ROLES.get(str(getattr(user.role, 'value', user.role)), user.role)}"
+                       f" chez Simple IP) ; ce n'est pas un client. Aujourd'hui : {clock.today().isoformat()}.")
+    ext = (await zeko.config())["ext"]
+    if ext["enabled"]:
+        system += (f"\n\nTu peux demander l'avis de {ext['label']} (IA externe) pour une question technique générale que tu "
+                   f"ne maîtrises pas, ou si on te le demande. Les noms et coordonnées sont retirés automatiquement avant l'envoi. "
+                   f"Dis quand une information vient de {ext['label']}.")
+    return system, zeko_tools.TOOLS + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else []), ext
 
-    async def produce():
-        async with AsyncSessionLocal() as s:
-            conv = await _get_conv(s, cid, current_user)
-            system = SYSTEM + (f" Tu parles avec {current_user.full_name} ({ROLES.get(str(getattr(current_user.role, 'value', current_user.role)), current_user.role)}"
-                               f" chez Simple IP) ; ce n'est pas un client. Aujourd'hui : {clock.today().isoformat()}.")
-            if ticket_id:
-                system += "\n\n" + await _ticket_context(s, ticket_id)
-            ext = (await zeko.config())["ext"]
-            if ext["enabled"]:
-                system += (f"\n\nTu peux demander l'avis de {ext['label']} (IA externe) pour une question technique générale que tu "
-                           f"ne maîtrises pas, ou si on te le demande. Les noms et coordonnées sont retirés automatiquement avant l'envoi. "
-                           f"Dis quand une information vient de {ext['label']}.")
-            tool_list = zeko_tools.TOOLS + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else [])
-            messages = [{"role": "system", "content": system}] + _history(conv)
+
+async def _turn(s, messages, tool_list, ext, user_id, cid, save):
+    """Un tour de Zeko : flux du modele, outils (jusqu'a 5 tours), evenements SSE. save(role, content, **kw) garde
+    les etapes (conversation personnelle : tout ; ticket : seulement la reponse finale)."""
+    partial = ""
+    try:
+        for _round in range(_MAX_TOOL_ROUNDS + 1):
             partial = ""
-            try:
-                for _round in range(_MAX_TOOL_ROUNDS + 1):
-                    partial = ""
-                    calls = None
-                    tools = tool_list if _round < _MAX_TOOL_ROUNDS else None
-                    async for kind, val in zeko.stream_chat(messages, tools=tools, user_id=user_id, conversation_id=cid):
-                        if kind == "pense":
-                            yield _sse({"type": "pense"})
-                        elif kind == "texte":
-                            partial += val
-                            yield _sse({"type": "texte", "texte": val})
-                        elif kind == "outils":
-                            calls = val
-                    if not calls:
-                        s.add(ZekoMessage(conversation_id=cid, role="assistant", content=partial))
-                        await s.commit()
-                        partial = None
-                        yield _sse({"type": "fin"})
-                        return
-                    for x in calls:
-                        x["id"] = x.get("id") or f"call_{uuid.uuid4().hex[:8]}"
-                    s.add(ZekoMessage(conversation_id=cid, role="assistant", content=partial, tool_calls=json.dumps(calls, ensure_ascii=False)))
-                    messages.append({"role": "assistant", "content": partial, "tool_calls": [
-                        {"id": x["id"], "type": "function", "function": {"name": x["name"], "arguments": x["arguments"]}} for x in calls]})
-                    for x in calls:
-                        external = x["name"] == "demander_ia_externe"
-                        label = f"demande à {ext['label']}" if external else zeko_tools.LABELS.get(x["name"], x["name"])
-                        yield _sse({"type": "outil", "nom": x["name"], "libelle": label})
-                        try:
-                            args = json.loads(x["arguments"] or "{}")
-                        except ValueError:
-                            args = {}
-                        if external and ext["enabled"]:
-                            try:
-                                answer, _sent = await zeko.ask_external(str(args.get("question") or ""), user_id=user_id, conversation_id=cid)
-                                result = f"Réponse de {ext['label']} : {answer[:6000]}"
-                            except zeko.ZekoUnavailable as e:
-                                result = f"{ext['label']} indisponible ({e}) : réponds avec tes propres connaissances et dis-le."
-                        else:
-                            result = await zeko_tools.run(x["name"], args, s)
-                        s.add(ZekoMessage(conversation_id=cid, role="tool", content=result, tool_call_id=x["id"], tool_name=x["name"]))
-                        messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
-                    await s.commit()
-                    partial = None
-            except zeko.ZekoUnavailable as e:
-                yield _sse({"type": "erreur", "texte": str(e)})
-            except Exception as e:
-                yield _sse({"type": "erreur", "texte": f"Zéko n'a pas pu répondre : {str(e)[:200]}"})
-            finally:
-                if partial:                          # arrete en cours de route : garder ce qui etait ecrit
+            calls = None
+            tools = tool_list if _round < _MAX_TOOL_ROUNDS else None
+            async for kind, val in zeko.stream_chat(messages, tools=tools, user_id=user_id, conversation_id=cid):
+                if kind == "pense":
+                    yield _sse({"type": "pense"})
+                elif kind == "texte":
+                    partial += val
+                    yield _sse({"type": "texte", "texte": val})
+                elif kind == "outils":
+                    calls = val
+            if not calls:
+                await save("assistant", partial)
+                partial = None
+                yield _sse({"type": "fin"})
+                return
+            for x in calls:
+                x["id"] = x.get("id") or f"call_{uuid.uuid4().hex[:8]}"
+            await save("assistant", partial, tool_calls=json.dumps(calls, ensure_ascii=False))
+            messages.append({"role": "assistant", "content": partial, "tool_calls": [
+                {"id": x["id"], "type": "function", "function": {"name": x["name"], "arguments": x["arguments"]}} for x in calls]})
+            for x in calls:
+                external = x["name"] == "demander_ia_externe"
+                label = f"demande à {ext['label']}" if external else zeko_tools.LABELS.get(x["name"], x["name"])
+                yield _sse({"type": "outil", "nom": x["name"], "libelle": label})
+                try:
+                    args = json.loads(x["arguments"] or "{}")
+                except ValueError:
+                    args = {}
+                if external and ext["enabled"]:
                     try:
-                        s.add(ZekoMessage(conversation_id=cid, role="assistant", content=partial + " … (arrêté)"))
-                        await s.commit()
-                    except Exception:
-                        pass
+                        answer, _sent = await zeko.ask_external(str(args.get("question") or ""), user_id=user_id, conversation_id=cid)
+                        result = f"Réponse de {ext['label']} : {answer[:6000]}"
+                    except zeko.ZekoUnavailable as e:
+                        result = f"{ext['label']} indisponible ({e}) : réponds avec tes propres connaissances et dis-le."
+                else:
+                    result = await zeko_tools.run(x["name"], args, s)
+                await save("tool", result, tool_call_id=x["id"], tool_name=x["name"])
+                messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
+            partial = None
+    except zeko.ZekoUnavailable as e:
+        yield _sse({"type": "erreur", "texte": str(e)})
+    except Exception as e:
+        yield _sse({"type": "erreur", "texte": f"Zéko n'a pas pu répondre : {str(e)[:200]}"})
+    finally:
+        if partial:                          # arrete en cours de route : garder ce qui etait ecrit
+            try:
+                await save("assistant", partial + " … (arrêté)")
+            except Exception:
+                pass
 
+
+def _stream(produce):
     async def gen():
         # Sur processeur, le modele peut reflechir plus d'une minute avant le premier mot : sans rien envoyer, le
         # serveur web (et Cloudflare) coupent la connexion (504). On envoie tout de suite, puis toutes les 10 s, une
@@ -293,6 +278,39 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
                     pass
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/conversations/{cid}/messages")
+async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    text = payload.content.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Message vide")
+    if not await zeko.enabled():
+        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Intégrations)")
+    c = await _get_conv(db, cid, current_user)
+    db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text))
+    if not c.title:
+        c.title = text[:80]
+    c.updated_at = _now()
+    await db.commit()
+    user_id, ticket_id = current_user.id, c.ticket_id
+
+    async def produce():
+        async with AsyncSessionLocal() as s:
+            conv = await _get_conv(s, cid, current_user)
+            system, tool_list, ext = await _setup(current_user)
+            if ticket_id:
+                system += "\n\n" + await _ticket_context(s, ticket_id)
+            messages = [{"role": "system", "content": system}] + _history(conv)
+
+            async def save(role, content, **kw):
+                s.add(ZekoMessage(conversation_id=cid, role=role, content=content, **kw))
+                await s.commit()
+
+            async for chunk in _turn(s, messages, tool_list, ext, user_id, cid, save):
+                yield chunk
+
+    return _stream(produce)
 
 
 @router.get("/journal")
@@ -356,3 +374,59 @@ async def external_test(current_user: User = Depends(get_current_user)):
         return {"ok": True, "reponse": r.json()["choices"][0]["message"].get("content", "")[:200], "secondes": round(_t.monotonic() - t0, 1)}
     except httpx.HTTPError as ex:
         raise HTTPException(status_code=502, detail=f"{e['label']} injoignable : {str(ex)[:150]}")
+
+
+# ── Zeko dans le fil du ticket (TASK-006.5, 2026-10-18) ─────────────────────
+# Philippe : « je croyais que le champ de texte des tickets devait être Zéko aussi ». Le technicien ecrit dans le
+# ticket ; quand il demande quelque chose a Zeko, la reponse s'ajoute au fil (auteur « zeko »), interne seulement
+# (jamais dans le resume envoye au client). L'historique donne au modele = le fil du ticket lui-meme.
+
+def _ticket_history(t: Ticket) -> list[dict]:
+    out, size = [], 0
+    for m in reversed(t.messages):
+        att = f" [{len(m.attachments)} image(s) jointe(s)]" if m.attachments else ""
+        if m.author_kind == "zeko":
+            d = {"role": "assistant", "content": m.body}
+        elif m.author_kind == "client":
+            d = {"role": "user", "content": f"(Réponse du client par courriel) {m.body}{att}"}
+        else:
+            d = {"role": "user", "content": f"{m.user.full_name if m.user else 'Technicien'} : {m.body}{att}"}
+        size += len(d["content"])
+        if size > _HISTORY_CHARS and out:
+            break
+        out.append(d)
+    out.reverse()
+    return out
+
+
+@router.post("/tickets/{ticket_id}/reply")
+async def ticket_reply(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Zeko repond dans le fil du ticket au dernier message du technicien."""
+    if not await zeko.enabled():
+        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Intégrations)")
+    if not await db.get(Ticket, ticket_id):
+        raise HTTPException(status_code=404, detail="Ticket introuvable")
+    user_id = current_user.id
+
+    async def produce():
+        async with AsyncSessionLocal() as s:
+            t = (await s.execute(select(Ticket).options(
+                selectinload(Ticket.company), selectinload(Ticket.messages).selectinload(TicketMessage.user),
+                selectinload(Ticket.messages).selectinload(TicketMessage.attachments)).where(Ticket.id == ticket_id))).scalar_one()
+            system, tool_list, ext = await _setup(current_user)
+            system += (f"\n\nTu es dans le fil du ticket #{str(t.id)[:8].upper()} « {t.title} » du client {t.company.name} "
+                       f"(statut {t.status}). Le technicien y note son intervention ; réponds à son dernier message. "
+                       f"Ce fil est interne : le client ne voit pas tes réponses.")
+            if t.description:
+                system += f"\nDemande initiale : {t.description[:800]}"
+            messages = [{"role": "system", "content": system}] + _ticket_history(t)
+
+            async def save(role, content, **kw):
+                if role == "assistant" and content and not kw.get("tool_calls"):
+                    s.add(TicketMessage(ticket_id=ticket_id, user_id=None, author_kind="zeko", body=content))
+                    await s.commit()
+
+            async for chunk in _turn(s, messages, tool_list, ext, user_id, None, save):
+                yield chunk
+
+    return _stream(produce)

@@ -7,7 +7,7 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 import { askConfirm } from '../components/Dialog'
 import { askNotificationPermission } from '../components/ticketReminder'
-import ZekoPanel from '../components/ZekoPanel'
+import { ZekoText, streamZeko, zekoReducer } from '../components/ZekoChat'
 
 // TASK-006.5 étape 1 (2026-10-17) : le ticket = une conversation libre (texte + images, horodatée) et UN seul temps.
 // Le chrono est tenu par le serveur (périodes) ; il démarre au bouton Démarrer ou au début de l'écriture, jamais à
@@ -87,7 +87,8 @@ export default function TicketDetail() {
   const [opens, setOpens] = useState([])
   const [opensLoading, setOpensLoading] = useState(false)
   const [showTimeLog, setShowTimeLog] = useState(false)
-  const [showZeko, setShowZeko] = useState(false)
+  const [zekoLive, setZekoLive] = useState(null)      // réponse de Zéko en cours dans le fil
+  const zekoAbortRef = useRef(null)
 
   // ── Chrono : valeur du serveur + secondes écoulées depuis la réponse (jamais l'heure de l'appareil) ──
   const fetchedAtRef = useRef(Date.now())
@@ -199,11 +200,32 @@ export default function TicketDetail() {
       clearTimeout(draftSaveRef.current)
       typingStartDeclinedRef.current = false
       applyTicket(r.data)
+      // Zéko répond quand on lui demande quelque chose : une question (« ? ») ou son nom dans le message
+      if (/\?|z[ée]ko/i.test(draft)) askZeko()
     } catch (e) {
       setSumMsg(e.response?.data?.detail || 'Erreur à l’envoi du message')
       setTimeout(() => setSumMsg(''), 5000)
     } finally { setSending(false) }
   }
+
+  async function askZeko() {
+    const ctrl = new AbortController()
+    zekoAbortRef.current = ctrl
+    setZekoLive({ text: '', steps: [], thinking: true, error: null })
+    try {
+      await streamZeko(`/api/v1/zeko/tickets/${id}/reply`, null, ev => {
+        if (ev.type === 'erreur') setZekoLive(l => ({ ...l, error: ev.texte }))
+        else setZekoLive(l => zekoReducer(l, ev))
+      }, ctrl.signal)
+    } catch (e) {
+      if (e.name !== 'AbortError') { setSumMsg(e.message || 'Zéko n’a pas pu répondre'); setTimeout(() => setSumMsg(''), 6000) }
+    } finally {
+      zekoAbortRef.current = null
+      applyTicket((await api.get(`/v1/tickets/${id}`)).data)
+      setZekoLive(l => (l?.error ? l : null))
+    }
+  }
+  useEffect(() => () => zekoAbortRef.current?.abort(), [])
 
   async function updateMessage(mid, body) {
     applyTicket((await api.put(`/v1/tickets/${id}/messages/${mid}`, { body })).data)
@@ -314,7 +336,6 @@ export default function TicketDetail() {
             {closed
               ? <button className="btn-secondary" onClick={() => update({ status: 'ouvert' })} style={{ fontSize: 12 }}>↩ Ouvrir</button>
               : <button className="btn-primary" onClick={() => update({ status: 'ferme' })} style={{ fontSize: 12 }}>✓ Fermer</button>}
-            <button className="btn-secondary" onClick={() => setShowZeko(true)} style={{ fontSize: 12, borderColor: 'var(--brand)', color: 'var(--brand)', fontWeight: 700 }}>Zéko</button>
             <button className="btn-secondary" onClick={() => setShowTaskModal(true)} style={{ fontSize: 12 }}>+ Tâche</button>
             <HistoryButton objectType="tickets" objectId={id} title={ticket.title} compact />
             {!closed && <button className="btn-danger" onClick={deleteTicket}>Supprimer</button>}
@@ -461,13 +482,26 @@ export default function TicketDetail() {
             onDeleteAttachment={deleteAttachment} onSplit={m.author_kind === 'client' ? () => splitToNewTicket(m.id) : null} />
         ))}
         {!ticket.description && ticket.messages.length === 0 && <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucun message.</div>}
+        {zekoLive && (
+          <div style={{ alignSelf: 'flex-start', maxWidth: '82%', minWidth: 260, background: 'var(--c-surface)', border: '1px solid var(--brand)', borderRadius: 10, padding: '8px 12px' }}>
+            {zekoLive.steps.map((st, i) => <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)' }}>Zéko {st}…</div>)}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--c-muted)', marginBottom: 4 }}>
+              <strong style={{ color: 'var(--brand)' }}>Zéko</strong>
+              {!zekoLive.error && <button className="btn-secondary" style={{ fontSize: 11, padding: '1px 6px', marginLeft: 'auto' }} onClick={() => zekoAbortRef.current?.abort()}>Arrêter</button>}
+              {zekoLive.error && <button className="btn-secondary" style={{ fontSize: 11, padding: '1px 6px', marginLeft: 'auto' }} onClick={() => setZekoLive(null)}>OK</button>}
+            </div>
+            {zekoLive.error ? <div style={{ color: '#DC2626', fontSize: 13 }}>{zekoLive.error}</div>
+              : zekoLive.text ? <div style={{ fontSize: 14, lineHeight: 1.5 }}><ZekoText text={zekoLive.text} /></div>
+              : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Zéko réfléchit…</span>}
+          </div>
+        )}
 
         {!closed && (
           <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files) }}
             style={{ border: '1px solid var(--c-border-strong)', borderRadius: 10, padding: 10, marginTop: 6, background: 'var(--c-surface)' }}>
             <textarea rows={4} value={draft} onChange={e => onDraftChange(e.target.value)} onPaste={onPaste}
               onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendMessage() }}
-              placeholder="Écrivez librement… collez une capture d'écran avec Ctrl+V"
+              placeholder="Écrivez librement… collez une capture avec Ctrl+V. Une question (« ? ») ou « Zéko » dans le message : Zéko répond."
               style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5, background: 'transparent', color: 'var(--c-text)' }} />
             {files.length > 0 && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '6px 0' }}>
@@ -513,7 +547,6 @@ export default function TicketDetail() {
         </div>
       )}
 
-      {showZeko && <ZekoPanel ticketId={id} ticketLabel={ticket.number} onClose={() => setShowZeko(false)} />}
       {showDonner && <DonnerDuTempsModal onClose={() => setShowDonner(false)} onSave={donnerTemps} />}
       {showTaskModal && (
         <NewTaskModal
@@ -568,14 +601,16 @@ function MessageBubble({ m, readOnly, onSave, onDelete, onDeleteAttachment, onSp
   const [editing, setEditing] = useState(null)
   const [zoom, setZoom] = useState(null)
   const [hover, setHover] = useState(false)
-  const client = m.author_kind === 'client' || m.author_kind === 'demande'
-  const who = m.author_kind === 'demande' ? 'Demande' : m.author_kind === 'client' ? 'Client' : (m.author_name || 'Technicien')
+  const zeko = m.author_kind === 'zeko'
+  const client = m.author_kind === 'client' || m.author_kind === 'demande' || zeko
+  const who = zeko ? 'Zéko' : m.author_kind === 'demande' ? 'Demande' : m.author_kind === 'client' ? 'Client' : (m.author_name || 'Technicien')
   return (
     <div onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{ alignSelf: client ? 'flex-start' : 'flex-end', maxWidth: '82%', minWidth: 260,
-               background: client ? 'var(--c-surface-2)' : 'var(--brand-bg)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '8px 12px' }}>
+               background: zeko ? 'var(--c-surface)' : client ? 'var(--c-surface-2)' : 'var(--brand-bg)', border: `1px solid ${zeko ? 'var(--brand)' : 'var(--c-border)'}`, borderRadius: 10, padding: '8px 12px' }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: 'var(--c-muted)', marginBottom: 4 }}>
-        <strong style={{ color: 'var(--c-text-2)' }}>{who}</strong>
+        <strong style={{ color: zeko ? 'var(--brand)' : 'var(--c-text-2)' }}>{who}</strong>
+        {zeko && <span title="Les réponses de Zéko ne sont jamais montrées au client">· interne</span>}
         <span>{fmtWhen(m.created_at)}</span>
         {m.updated_at && m.updated_at.slice(0, 19) !== m.created_at.slice(0, 19) && <span title={`Modifié le ${fmtWhen(m.updated_at)}`}>(modifié)</span>}
         {!readOnly && hover && !editing && (
@@ -595,7 +630,9 @@ function MessageBubble({ m, readOnly, onSave, onDelete, onDeleteAttachment, onSp
             <button className="btn-primary" style={{ fontSize: 12 }} onClick={async () => { await onSave(editing); setEditing(null) }}>Enregistrer</button>
           </div>
         </div>
-      ) : m.body && <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--c-text)' }}>{m.body}</div>}
+      ) : m.body && (zeko
+        ? <div style={{ fontSize: 14, lineHeight: 1.5, wordBreak: 'break-word', color: 'var(--c-text)' }}><ZekoText text={m.body} /></div>
+        : <div style={{ fontSize: 14, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: 'var(--c-text)' }}>{m.body}</div>)}
       {m.attachments.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
           {m.attachments.map(a => <AttachmentView key={a.id} a={a} onZoom={setZoom} onDelete={!readOnly && hover ? onDeleteAttachment : null} />)}

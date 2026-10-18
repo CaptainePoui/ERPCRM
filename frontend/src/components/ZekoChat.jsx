@@ -43,6 +43,40 @@ export function ZekoText({ text }) {
     : <div key={i} style={{ margin: '3px 0' }}>{inline(b.p, i)}</div>)
 }
 
+// Lit une réponse de Zéko en flux (SSE) : onEvent reçoit {type: pense|texte|outil|erreur|fin, ...}
+export async function streamZeko(url, body, onEvent, signal) {
+  const r = await fetch(url, {
+    method: 'POST', signal,
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}))
+    throw new Error(d.detail || `Erreur ${r.status}`)
+  }
+  const reader = r.body.getReader()
+  const dec = new TextDecoder()
+  let buf = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buf += dec.decode(value, { stream: true })
+    let i
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const line = buf.slice(0, i).trim()
+      buf = buf.slice(i + 2)
+      if (line.startsWith('data: ')) onEvent(JSON.parse(line.slice(6)))
+    }
+  }
+}
+
+export function zekoReducer(l, ev) {
+  if (ev.type === 'texte') return { ...l, thinking: false, text: l.text + ev.texte }
+  if (ev.type === 'pense') return { ...l, thinking: true }
+  if (ev.type === 'outil') return { ...l, thinking: true, text: '', steps: [...l.steps, ev.libelle] }
+  return l
+}
+
 function fmtWhen(iso) {
   const d = new Date(iso)
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
@@ -79,34 +113,10 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
     const ctrl = new AbortController()
     abortRef.current = ctrl
     try {
-      const r = await fetch(`/api/v1/zeko/conversations/${conversationId}/messages`, {
-        method: 'POST', signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
-        body: JSON.stringify({ content: text }),
-      })
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}))
-        throw new Error(d.detail || `Erreur ${r.status}`)
-      }
-      const reader = r.body.getReader()
-      const dec = new TextDecoder()
-      let buf = ''
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        buf += dec.decode(value, { stream: true })
-        let i
-        while ((i = buf.indexOf('\n\n')) >= 0) {
-          const line = buf.slice(0, i).trim()
-          buf = buf.slice(i + 2)
-          if (!line.startsWith('data: ')) continue
-          const ev = JSON.parse(line.slice(6))
-          if (ev.type === 'texte') setLive(l => ({ ...l, thinking: false, text: l.text + ev.texte }))
-          else if (ev.type === 'pense') setLive(l => ({ ...l, thinking: true }))
-          else if (ev.type === 'outil') setLive(l => ({ ...l, thinking: true, text: '', steps: [...l.steps, ev.libelle] }))
-          else if (ev.type === 'erreur') setError(ev.texte)
-        }
-      }
+      await streamZeko(`/api/v1/zeko/conversations/${conversationId}/messages`, { content: text }, ev => {
+        if (ev.type === 'erreur') setError(ev.texte)
+        else setLive(l => zekoReducer(l, ev))
+      }, ctrl.signal)
     } catch (e) {
       if (e.name !== 'AbortError') setError(e.message || 'Zéko n’a pas pu répondre')
     } finally {
