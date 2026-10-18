@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core import clock
+from app.core.numbering import assign_ticket_number
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.models.ticket import Ticket, TicketMessage
@@ -24,7 +25,8 @@ from app.models.contact_company import ContactCompany
 
 log = logging.getLogger("imap_poller")
 
-_TICKET_RE = re.compile(r'\[Ticket #([A-F0-9]{8})\]', re.IGNORECASE)
+# Numero de ticket (11000…) ou, pour les courriels envoyes avant 2026-10-18, debut de l'identifiant (8 caracteres hex)
+_TICKET_RE = re.compile(r'\[Ticket #(\d{1,10}|[A-F0-9]{8})\]', re.IGNORECASE)
 _POLL_INTERVAL = 30  # seconds
 
 
@@ -99,11 +101,9 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
     # 1. Try to match existing ticket by reference in subject
     m = _TICKET_RE.search(subject)
     if m:
-        prefix = m.group(1).lower()
-        result = await db.execute(
-            select(Ticket)
-            .where(cast(Ticket.id, Text).ilike(f'{prefix}%'))
-        )
+        ref = m.group(1).lower()
+        cond = Ticket.number == ref if ref.isdigit() else cast(Ticket.id, Text).ilike(f'{ref}%')
+        result = await db.execute(select(Ticket).where(cond))
         ticket = result.scalar_one_or_none()
         if ticket and body:
             db.add(TicketMessage(ticket_id=ticket.id, user_id=None, author_kind="client", body=body))
@@ -145,6 +145,7 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
             status='ouvert',
         )
         db.add(ticket)
+        await assign_ticket_number(db, ticket)
         await db.commit()
         log.info("Created ticket from CC email of %s (company %s): %s", sender, cc.company_id, ticket_title)
         return
@@ -176,6 +177,7 @@ async def _process_email(db: AsyncSession, subject: str, sender: str | None, bod
         status='ouvert',
     )
     db.add(ticket)
+    await assign_ticket_number(db, ticket)
     await db.commit()
     log.info("Created ticket from email of %s: %s", sender, ticket_title)
 

@@ -313,7 +313,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
 # ── Numerotation des documents (2026-10-04) ──────────────────────────────────
 
 NUMBERING_LABELS = {"invoice": "Factures", "credit": "Avoirs (notes de crédit)", "devis": "Devis", "payment": "Références de paiement",
-                    "purchase_order": "Bons de commande", "ecom_order": "Commandes web"}
+                    "purchase_order": "Bons de commande", "ecom_order": "Commandes web",
+                    "ticket": "Tickets"}
 
 
 class NumberingIn(BaseModel):

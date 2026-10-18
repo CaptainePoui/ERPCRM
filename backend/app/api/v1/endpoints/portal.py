@@ -456,6 +456,8 @@ async def portal_create_ticket(body: dict, u: PortalUser = Depends(get_portal_us
         raise HTTPException(status_code=400, detail="Titre requis")
     t = Ticket(company_id=u.company_id, title=title, description=body.get("description"), priority="normal")
     db.add(t)
+    from app.core.numbering import assign_ticket_number
+    await assign_ticket_number(db, t)
     await db.commit()
     await db.refresh(t)
     return {"id": str(t.id), "title": t.title, "status": t.status}

@@ -25,6 +25,7 @@ DEFAULTS = {
     "payment": ("PAY-{year}-", 4),
     "purchase_order": ("BC-", 5),
     "ecom_order": ("WEB-", 5),
+    "ticket": ("", 0),             # tickets : 11000, 11001… (Philippe, 2026-10-18)
 }
 
 
@@ -44,6 +45,9 @@ def _column(key: str):
     if key == "ecom_order":
         from app.models.ecom import EcomOrder
         return EcomOrder.order_number
+    if key == "ticket":
+        from app.models.ticket import Ticket
+        return Ticket.number
     raise ValueError(key)
 
 
@@ -96,7 +100,7 @@ async def set_next_number(db: AsyncSession, key: str, prefix: str, next_value: i
     """Change le format ou le prochain numero. Refuse tout recul : avec le meme prefixe, le prochain
     numero ne peut pas etre plus petit que le compteur actuel ; avec un autre prefixe, il ne peut pas
     retomber sur un numero deja utilise avec ce prefixe."""
-    if next_value < 1 or not (0 <= padding <= 10) or not prefix or len(prefix) > 30:
+    if next_value < 1 or not (0 <= padding <= 10) or len(prefix) > 30 or (not prefix and key != "ticket"):
         raise HTTPException(status_code=400, detail="Format de numérotation invalide")
     c = await _counter(db, key)
     floor = await _highest(db, key, render_prefix(prefix)) + 1
@@ -106,3 +110,9 @@ async def set_next_number(db: AsyncSession, key: str, prefix: str, next_value: i
         raise HTTPException(status_code=400, detail=f"Le compteur ne peut pas reculer : prochain numéro minimum {floor}")
     c.prefix, c.next_value, c.padding = prefix, next_value, padding
     await db.flush()
+
+
+async def assign_ticket_number(db: AsyncSession, ticket) -> None:
+    """Donne son numero a un ticket qui n'en a pas encore (a appeler avant le commit de sa creation)."""
+    if not ticket.number:
+        ticket.number = await next_document_number(db, "ticket")

@@ -17,6 +17,14 @@ from app.models.telephony import DID, Extension
 from app.models.ticket import Ticket, TicketMessage, TicketTimePeriod, TicketTimeAdjustment
 
 _MAX = 3500
+# Statuts lisibles (jamais le code interne « en_cours » devant un technicien ou un client)
+STATUS_FR = {"ouvert": "ouvert", "en_cours": "en cours", "en_attente": "en attente", "en_attente_client": "en attente d'une réponse du client",
+             "facture": "facturé", "ferme": "fermé"}
+INVOICE_STATUS_FR = {"envoyee": "à payer", "partiellement_payee": "partiellement payée", "en_retard": "en retard"}
+
+
+def ticket_no(t) -> str:
+    return f"#{t.number}" if t.number else f"#{str(t.id)[:8].upper()}"
 
 
 def _fn(name, desc, props=None, required=None):
@@ -36,7 +44,7 @@ TOOLS = [
         {"contact": {"type": "string", "description": "prénom et nom de la personne"}}, ["contact"]),
     _fn("tickets_client", "Tickets d'un client (récents d'abord) ; texte optionnel pour chercher dans leurs messages.",
         {**_CLIENT, "texte": {"type": "string"}}, ["client"]),
-    _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. #1A2B3C4D).",
+    _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. 11000).",
         {"ticket": {"type": "string"}}, ["ticket"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
@@ -138,14 +146,13 @@ async def _run(name, args, db) -> str:
 
     if name == "lire_ticket":
         ref = str(args.get("ticket") or "").strip().lstrip("#").lower()
-        tid = _uuid(ref)
         q = select(Ticket).options(selectinload(Ticket.company), selectinload(Ticket.messages).selectinload(TicketMessage.user),
                                    selectinload(Ticket.periods), selectinload(Ticket.adjustments))
-        q = q.where(Ticket.id == tid) if tid else q.where(cast(Ticket.id, Text).ilike(f"{ref}%"))
+        q = q.where(Ticket.number == ref) if ref.isdigit() else q.where(cast(Ticket.id, Text).ilike(f"{ref}%"))
         t = (await db.execute(q)).scalars().first()
         if not t:
             return _out("ticket introuvable")
-        return _out({"numero": f"#{str(t.id)[:8].upper()}", "titre": t.title, "client": t.company.name, "statut": t.status,
+        return _out({"numero": ticket_no(t), "titre": t.title, "client": t.company.name, "statut": STATUS_FR.get(t.status, t.status),
                      "cree": t.created_at.date(), "demande": t.description, "temps_min": (await _ticket_secs(db, t)) // 60,
                      "messages": [{"de": m.user.full_name if m.user else {"client": "client", "zeko": "Zéko"}.get(m.author_kind, "?"),
                                    "le": m.created_at.strftime("%Y-%m-%d %H:%M"), "texte": m.body[:800]} for m in t.messages[-25:]]})
@@ -169,7 +176,7 @@ async def _run(name, args, db) -> str:
             "contacts": [{"nom": f"{c.contact.first_name} {c.contact.last_name}", "fonctions": [f.function.name for f in c.functions if f.function],
                           "courriel": c.email or c.contact.email, "tel": c.contact.phone, "poste": c.contact.extension,
                           "cell": c.contact.mobile, "principal": c.is_primary} for c in ccs],
-            "factures_impayees": [{"no": i.number, "date": i.issue_date, "total": float(i.total), "statut": i.status} for i in unpaid],
+            "factures_impayees": [{"no": i.number, "date": i.issue_date, "total": float(i.total), "statut": INVOICE_STATUS_FR.get(i.status, i.status)} for i in unpaid],
         })
 
     if name == "tickets_client":
@@ -181,7 +188,7 @@ async def _run(name, args, db) -> str:
             q = q.where(or_(Ticket.title.ilike(like), Ticket.description.ilike(like),
                             Ticket.id.in_(select(TicketMessage.ticket_id).where(TicketMessage.body.ilike(like)))))
         ts = (await db.execute(q.limit(12))).scalars().all()
-        return _out([{"numero": f"#{str(t.id)[:8].upper()}", "date": t.created_at.date(), "titre": t.title, "statut": t.status,
+        return _out([{"numero": ticket_no(t), "date": t.created_at.date(), "titre": t.title, "statut": STATUS_FR.get(t.status, t.status),
                       "temps_min": (await _ticket_secs(db, t)) // 60,
                       "dernier_message": (t.messages[-1].body[:200] if t.messages else (t.description or "")[:200])} for t in ts] or "aucun ticket")
 

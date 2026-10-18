@@ -13,6 +13,7 @@ from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.ticket import Ticket, TicketMessage, TicketAttachment, TicketTimePeriod, TicketTimeAdjustment
 from app.core import ticket_attachments
+from app.core.numbering import assign_ticket_number
 from app.models.company import Company
 from app.models.contact import Contact
 from app.models.contact_company import ContactCompany
@@ -171,7 +172,7 @@ def _now() -> datetime:
 
 
 def _short(t: Ticket) -> str:
-    return f"#{str(t.id)[:8].upper()}"
+    return f"#{t.number}" if t.number else f"#{str(t.id)[:8].upper()}"
 
 
 async def _get_ticket(ticket_id: uuid.UUID, db: AsyncSession) -> Ticket:
@@ -373,6 +374,7 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
         raise HTTPException(status_code=400, detail=f"Priorité invalide: {payload.priority}")
     t = Ticket(**payload.model_dump(), status="en_cours")
     db.add(t)
+    await assign_ticket_number(db, t)
     await db.commit()
     t = await _get_ticket(t.id, db)
     out = await _build_out(t, db, current_user)
@@ -385,6 +387,7 @@ async def create_ticket(payload: TicketCreate, db: AsyncSession = Depends(get_db
             signature=signature,
             to_email=contact_email,
             ticket_id=str(t.id),
+            ticket_number=t.number,
             ticket_title=t.title,
             company_name=t.company.name,
             contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
@@ -609,6 +612,7 @@ async def split_message_to_new_ticket(ticket_id: uuid.UUID, message_id: uuid.UUI
         status="ouvert",
     )
     db.add(new_ticket)
+    await assign_ticket_number(db, new_ticket)
     await db.flush()
     m.ticket_id = new_ticket.id
     _close_open_periods(t, "fermeture")
@@ -755,6 +759,7 @@ async def send_summary(
         signature=await for_user(db, current_user.id),      # TASK-007.1
         to_email=contact_email,
         ticket_id=str(t.id),
+        ticket_number=t.number,
         ticket_title=t.title,
         company_name=t.company.name,
         contact_name=f"{t.contact.first_name} {t.contact.last_name}",

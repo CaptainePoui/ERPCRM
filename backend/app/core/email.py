@@ -532,9 +532,10 @@ async def send_ticket_open_email(
     description: str | None,
     portal_url: str,
     signature: str | None = None,
+    ticket_number: str | None = None,
 ) -> bool:
     ctx = dict(
-        ticket_id_short=ticket_id[:8].upper(),
+        ticket_id_short=ticket_number or ticket_id[:8].upper(),
         ticket_title=ticket_title,
         company_name=company_name,
         contact_name=contact_name,
@@ -543,7 +544,7 @@ async def send_ticket_open_email(
         portal_url=portal_url,
     )
     html = _render(_TICKET_OPEN_TMPL, ctx)
-    subject = f"[Ticket #{ticket_id[:8].upper()}] Ticket ouvert — {ticket_title}"
+    subject = f"[Ticket #{ticket_number or ticket_id[:8].upper()}] Ticket ouvert — {ticket_title}"
     return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature, function="tickets")
 
 
@@ -560,9 +561,10 @@ async def send_ticket_entry_email(
     duration_minutes: int,
     is_billable: bool,
     total_minutes: int,
+    ticket_number: str | None = None,
 ) -> bool:
     ctx = dict(
-        ticket_id_short=ticket_id[:8].upper(),
+        ticket_id_short=ticket_number or ticket_id[:8].upper(),
         ticket_title=ticket_title,
         company_name=company_name,
         contact_name=contact_name,
@@ -579,7 +581,7 @@ async def send_ticket_entry_email(
         total_mins=total_minutes % 60,
     )
     html = _render(_TICKET_ENTRY_TMPL, ctx)
-    subject = f"[Ticket #{ticket_id[:8].upper()}] Mise à jour — {ticket_title}"
+    subject = f"[Ticket #{ticket_number or ticket_id[:8].upper()}] Mise à jour — {ticket_title}"
     return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, function="tickets")
 
 
@@ -592,9 +594,10 @@ async def send_ticket_close_email(
     total_minutes: int,
     entries: list[dict],
     signature: str | None = None,
+    ticket_number: str | None = None,
 ) -> bool:
     ctx = dict(
-        ticket_id_short=ticket_id[:8].upper(),
+        ticket_id_short=ticket_number or ticket_id[:8].upper(),
         ticket_title=ticket_title,
         company_name=company_name,
         contact_name=contact_name,
@@ -608,7 +611,7 @@ async def send_ticket_close_email(
     # imap_poller.py (regex \[Ticket #([A-F0-9]{8})\]) puisse reconnaitre une reponse
     # du client -- "[Ticket fermé #...]" ne matchait jamais, brisant la reouverture
     # automatique par reponse courriel sur un ticket ferme/facture.
-    subject = f"[Ticket #{ticket_id[:8].upper()}] {ticket_title} — Résumé"
+    subject = f"[Ticket #{ticket_number or ticket_id[:8].upper()}] {ticket_title} — Résumé"
     return await _send(to_email, subject, html, tracking_entity_type="ticket", tracking_entity_id=ticket_id, signature=signature, function="tickets")
 
 

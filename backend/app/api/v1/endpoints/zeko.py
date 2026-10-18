@@ -136,8 +136,8 @@ async def _ticket_context(db, ticket_id) -> str:
                           .where(Ticket.id == ticket_id))).scalar_one_or_none()
     if not t:
         return ""
-    lines = [f"Cette conversation porte sur le ticket #{str(t.id)[:8].upper()} « {t.title} » du client {t.company.name}, "
-             f"statut {t.status}."]
+    lines = [f"Cette conversation porte sur le ticket {zeko_tools.ticket_no(t)} « {t.title} » du client {t.company.name}, "
+             f"statut {zeko_tools.STATUS_FR.get(t.status, t.status)}."]
     if t.description:
         lines.append(f"Demande : {t.description[:600]}")
     msgs = [f"- {m.created_at.astimezone(clock.business_tz()).strftime('%m-%d %H:%M')} "
@@ -414,8 +414,8 @@ async def ticket_reply(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db),
                 selectinload(Ticket.company), selectinload(Ticket.messages).selectinload(TicketMessage.user),
                 selectinload(Ticket.messages).selectinload(TicketMessage.attachments)).where(Ticket.id == ticket_id))).scalar_one()
             system, tool_list, ext = await _setup(current_user)
-            system += (f"\n\nTu es dans le fil du ticket #{str(t.id)[:8].upper()} « {t.title} » du client {t.company.name} "
-                       f"(statut {t.status}). Le technicien y note son intervention ; réponds à son dernier message. "
+            system += (f"\n\nTu es dans le fil du ticket {zeko_tools.ticket_no(t)} « {t.title} » du client {t.company.name} "
+                       f"(statut {zeko_tools.STATUS_FR.get(t.status, t.status)}). Le technicien y note son intervention ; réponds à son dernier message. "
                        f"Ce fil est interne : le client ne voit pas tes réponses.")
             if t.description:
                 system += f"\nDemande initiale : {t.description[:800]}"

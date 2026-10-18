@@ -198,6 +198,8 @@ async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(g
             google_calendar_id="primary",
         )
         db.add(ticket)
+        from app.core.numbering import assign_ticket_number
+        await assign_ticket_number(db, ticket)
         await db.flush()
         ticket_id = ticket.id
 
