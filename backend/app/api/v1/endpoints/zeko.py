@@ -1,6 +1,7 @@
 """Conversation avec Zeko (TASK-006.5 etape 2, 2026-10-18) : bouton du haut (conversations personnelles) et ticket
 (une conversation par ticket, partagee par les techniciens, jamais montree au client). Reponse en flux (SSE) :
 le texte apparait mot par mot ; Zeko lit ERPCRM avec ses outils (core/zeko_tools.py), sans rien modifier."""
+import asyncio
 import json
 import uuid
 from datetime import datetime, timezone
@@ -184,7 +185,7 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
     await db.commit()
     user_id, ticket_id = current_user.id, c.ticket_id
 
-    async def gen():
+    async def produce():
         async with AsyncSessionLocal() as s:
             conv = await _get_conv(s, cid, current_user)
             system = SYSTEM + f" Aujourd'hui : {clock.today().isoformat()}."
@@ -238,6 +239,39 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
                         await s.commit()
                     except Exception:
                         pass
+
+    async def gen():
+        # Sur processeur, le modele peut reflechir plus d'une minute avant le premier mot : sans rien envoyer, le
+        # serveur web (et Cloudflare) coupent la connexion (504). On envoie tout de suite, puis toutes les 10 s, une
+        # ligne de commentaire SSE (ignoree par l'ecran) tant que Zeko n'a rien a dire.
+        yield ": ouvert\n\n"
+        q: asyncio.Queue = asyncio.Queue()
+
+        async def pump():
+            try:
+                async for chunk in produce():
+                    await q.put(chunk)
+            finally:
+                await q.put(None)
+
+        task = asyncio.create_task(pump())
+        try:
+            while True:
+                try:
+                    item = await asyncio.wait_for(q.get(), timeout=10)
+                except asyncio.TimeoutError:
+                    yield ": attente\n\n"
+                    continue
+                if item is None:
+                    break
+                yield item
+        finally:
+            if not task.done():                      # l'ecran a ferme la connexion (Arreter) : couper Zeko
+                task.cancel()
+                try:
+                    await task
+                except BaseException:
+                    pass
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 

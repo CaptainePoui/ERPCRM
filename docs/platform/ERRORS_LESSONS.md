@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-006.5 — Zéko : erreur 504 au premier vrai essai de Philippe
+
+**Date** : 2026-10-18
+
+**On croyait** : que la conversation avec Zéko était vérifiée, après des essais réussis en local (`localhost:8010`, Playwright sur `localhost:3010`).
+
+**Preuve** : Philippe, par https://portail.simpleip.tel : « je lui ai dit que je faisais un test et il m'a donné une erreur 504 ». Journal nginx : `upstream timed out … while reading response header from upstream` sur `POST /api/v1/zeko/conversations/…/messages`, 60 s après la demande.
+
+**Cause réelle** : sur processeur, le modèle réfléchit parfois plus d'une minute avant son premier mot ; le flux n'envoyait rien avant ce mot. Le chemin réel (Cloudflare → nginx → vite → backend) coupe une réponse muette au bout de 60 s ; les essais en local ne passaient pas par nginx ni par Cloudflare.
+
+**Correction** : le flux envoie tout de suite une ligne de commentaire SSE, puis toutes les 10 s tant que Zéko n'a rien écrit ; nginx : `location /api/v1/zeko/` sans tampon, attente 1800 s (copie de l'ancien fichier : `backups/nginx_portail.simpleip.tel_avant_zeko_20261018`). Vérifié par l'adresse publique : premier octet à 0 s, réponse complète à 38 s.
+
+**Leçon (à ne pas refaire)** : une fonction longue ou en flux se teste par le chemin réel de Philippe (adresse publique, Cloudflare + nginx), pas seulement en local ; toute réponse qui peut rester muette plus de 30 s doit envoyer un signe de vie.
+
+---
+
 ## TASK-051 — Ordre de redémarrage envoyé au mauvais domaine
 
 **Date** : 2026-10-10
