@@ -44,7 +44,7 @@ function fmtWhen(iso) {
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
 }
 
-const TOOL_LABELS = { chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', tickets_client: 'a lu les tickets du client',
+const TOOL_LABELS = { chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
                       lire_ticket: 'a lu un ticket', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
 
 export default function ZekoChat({ conversationId, onChanged, compact }) {

@@ -26,15 +26,17 @@ _MAX_TOOL_ROUNDS = 5
 _HISTORY_CHARS = 9000
 
 SYSTEM = (
-    "Tu es Zéko, l'assistant intégré à ERPCRM de Simple IP (téléphonie IP et informatique, Québec). Tu aides les "
-    "techniciens à dépanner et à retrouver l'information. Réponds en français, court, clair et concret. "
-    "Tes outils LISENT les données d'ERPCRM ; tu ne peux rien modifier. N'invente jamais un fait sur un client, un "
-    "équipement ou un ticket : vérifie avec un outil ; si l'information n'y est pas, dis-le. Sépare ce qui est confirmé "
-    "dans ERPCRM de tes hypothèses. Pour un client, utilise d'abord chercher pour obtenir son id, puis l'outil qui contient "
-    "l'information (fiche_client pour les contacts, téléphones, postes, adresses et factures impayées). Ne dis jamais "
-    "qu'une information manque sans avoir ouvert l'outil qui la contient. Ici, « poste » veut dire le poste téléphonique "
-    "(extension)."
+    "Tu es Zéko, l'assistant intégré à ERPCRM de Simple IP (téléphonie IP et informatique, Québec). Tu aides l'équipe "
+    "de Simple IP à dépanner et à retrouver l'information. Réponds en français, court, clair et concret, comme un collègue. "
+    "Tu peux consulter les données d'ERPCRM ; tu ne peux rien modifier. N'invente jamais un fait sur un client, un "
+    "équipement ou un ticket : consulte d'abord ; si l'information n'y est pas, dis-le simplement. Sépare ce qui est "
+    "confirmé dans ERPCRM de tes hypothèses. Désigne toujours les clients et les personnes par leur nom. Ne montre jamais "
+    "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
+    "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Avant de dire qu'une information "
+    "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
+    "client). Ici, « poste » veut dire le poste téléphonique (extension)."
 )
+ROLES = {"admin": "administrateur", "manager": "gestionnaire", "tech": "technicien", "billing": "facturation", "readonly": "lecture seule"}
 
 
 class ConversationOut(BaseModel):
@@ -133,8 +135,8 @@ async def _ticket_context(db, ticket_id) -> str:
                           .where(Ticket.id == ticket_id))).scalar_one_or_none()
     if not t:
         return ""
-    lines = [f"Cette conversation porte sur le ticket #{str(t.id)[:8].upper()} « {t.title} » du client {t.company.name} "
-             f"(client_id {t.company_id}), statut {t.status}."]
+    lines = [f"Cette conversation porte sur le ticket #{str(t.id)[:8].upper()} « {t.title} » du client {t.company.name}, "
+             f"statut {t.status}."]
     if t.description:
         lines.append(f"Demande : {t.description[:600]}")
     msgs = [f"- {m.created_at.astimezone(clock.business_tz()).strftime('%m-%d %H:%M')} "
@@ -188,7 +190,8 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
     async def produce():
         async with AsyncSessionLocal() as s:
             conv = await _get_conv(s, cid, current_user)
-            system = SYSTEM + f" Aujourd'hui : {clock.today().isoformat()}."
+            system = SYSTEM + (f" Tu parles avec {current_user.full_name} ({ROLES.get(str(getattr(current_user.role, 'value', current_user.role)), current_user.role)}"
+                               f" chez Simple IP) ; ce n'est pas un client. Aujourd'hui : {clock.today().isoformat()}.")
             if ticket_id:
                 system += "\n\n" + await _ticket_context(s, ticket_id)
             messages = [{"role": "system", "content": system}] + _history(conv)

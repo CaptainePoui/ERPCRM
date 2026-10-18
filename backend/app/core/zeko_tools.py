@@ -24,20 +24,26 @@ def _fn(name, desc, props=None, required=None):
         "type": "object", "properties": props or {}, "required": required or []}}}
 
 
-_ID = {"client_id": {"type": "string", "description": "id du client (donné par chercher)"}}
+# Les outils prennent des NOMS, jamais des identifiants : Zeko ne voit aucun id interne, il ne peut donc jamais en
+# montrer un (Philippe, 2026-10-18 : « les ID client c'est pour ERPCRM, pas pour les techs ni les clients »).
+_CLIENT = {"client": {"type": "string", "description": "nom du client (entreprise)"}}
 TOOLS = [
-    _fn("chercher", "Trouve des clients, contacts, factures ou paiements par nom, numéro de compte, numéro ou montant.",
+    _fn("chercher", "Trouve des clients, contacts, factures ou paiements par nom, numéro de facture, téléphone, courriel ou montant.",
         {"texte": {"type": "string"}}, ["texte"]),
-    _fn("fiche_client", "Fiche d'un client : coordonnées, adresses, contacts, compagnie mère, factures impayées.", _ID, ["client_id"]),
+    _fn("fiche_client", "Fiche d'un client : coordonnées, adresses, contacts (postes, téléphones, courriels), compagnie mère, factures impayées.",
+        _CLIENT, ["client"]),
+    _fn("fiche_contact", "Fiche d'une personne : ses coordonnées et les entreprises où elle travaille.",
+        {"contact": {"type": "string", "description": "prénom et nom de la personne"}}, ["contact"]),
     _fn("tickets_client", "Tickets d'un client (récents d'abord) ; texte optionnel pour chercher dans leurs messages.",
-        {**_ID, "texte": {"type": "string"}}, ["client_id"]),
-    _fn("lire_ticket", "Messages complets d'un ticket (id ou numéro comme #1A2B3C4D).",
+        {**_CLIENT, "texte": {"type": "string"}}, ["client"]),
+    _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. #1A2B3C4D).",
         {"ticket": {"type": "string"}}, ["ticket"]),
-    _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _ID, ["client_id"]),
-    _fn("telephonie", "Numéros (DID) et postes téléphoniques d'un client.", _ID, ["client_id"]),
+    _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
+    _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
 ]
-LABELS = {"chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "tickets_client": "lit les tickets du client",
-          "lire_ticket": "lit un ticket", "equipements": "lit les équipements", "telephonie": "lit la téléphonie"}
+LABELS = {"chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
+          "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
+          "telephonie": "lit la téléphonie"}
 
 
 def _out(x) -> str:
@@ -57,6 +63,46 @@ async def _ticket_secs(db, t: Ticket) -> int:
     return _worked_seconds(t)
 
 
+async def _companies_of_contact(db, contact_id) -> list[str]:
+    rows = (await db.execute(select(Company.name).join(ContactCompany, ContactCompany.company_id == Company.id)
+                             .where(ContactCompany.contact_id == contact_id))).scalars().all()
+    return list(rows)
+
+
+async def _resolve_company(db, name):
+    """Nom -> client : nom exact (sans accents ni casse), sinon la recherche tolerante d'ERPCRM ; plusieurs = demander."""
+    name = str(name or "").strip()
+    if not name:
+        return "précise le nom du client"
+    exact = (await db.execute(select(Company).where(func.lower(func.unaccent(Company.name)) == func.lower(func.unaccent(name))))).scalars().all()
+    if len(exact) == 1:
+        return exact[0]
+    from app.api.v1.endpoints.search import search
+    res = [r for r in await search(q=name, db=db, _=None) if r.type == "company"]
+    if len(res) == 1:
+        return await db.get(Company, res[0].id)
+    if not res:
+        return f"aucun client ne correspond à « {name} »"
+    return {"plusieurs_clients": [r.label for r in res]}
+
+
+async def _resolve_contact(db, name):
+    name = str(name or "").strip()
+    if not name:
+        return "précise le nom de la personne"
+    full = func.lower(func.unaccent(func.concat(Contact.first_name, " ", Contact.last_name)))
+    exact = (await db.execute(select(Contact).where(full == func.lower(func.unaccent(name))))).scalars().all()
+    if len(exact) == 1:
+        return exact[0]
+    from app.api.v1.endpoints.search import search
+    res = [r for r in await search(q=name, db=db, _=None) if r.type == "contact"]
+    if len(res) == 1:
+        return await db.get(Contact, res[0].id)
+    if not res:
+        return f"aucune personne ne correspond à « {name} »"
+    return {"plusieurs_personnes": [f"{r.label} ({', '.join(await _companies_of_contact(db, r.id)) or 'sans entreprise'})" for r in res]}
+
+
 async def run(name: str, args: dict, db) -> str:
     try:
         return await _run(name, args or {}, db)
@@ -68,8 +114,24 @@ async def _run(name, args, db) -> str:
     if name == "chercher":
         from app.api.v1.endpoints.search import search
         res = await search(q=str(args.get("texte") or "").strip() or "?", db=db, _=None)
-        return _out([{"type": r.type, "id": str(r.company_id or r.id) if r.type in ("invoice", "payment") else str(r.id),
-                      "nom": r.label, "detail": r.sub} for r in res][:10] or "aucun résultat")
+        out = []
+        for r in res[:10]:
+            item = {"type": {"company": "client", "contact": "personne", "invoice": "facture", "payment": "paiement"}.get(r.type, r.type),
+                    "nom": r.label, "detail": r.sub}
+            if r.type == "contact":
+                item["entreprises"] = await _companies_of_contact(db, r.id)
+            out.append(item)
+        return _out(out or "aucun résultat")
+
+    if name == "fiche_contact":
+        c = await _resolve_contact(db, args.get("contact"))
+        if not isinstance(c, Contact):
+            return _out(c)
+        ccs = (await db.execute(select(ContactCompany).options(selectinload(ContactCompany.company))
+                                .where(ContactCompany.contact_id == c.id))).scalars().all()
+        return _out({"nom": f"{c.first_name} {c.last_name}", "courriel": c.email, "tel": c.phone, "poste": c.extension,
+                     "cell": c.mobile, "actif": c.is_active, "notes": (c.notes_internal or "")[:300] or None,
+                     "entreprises": [{"client": x.company.name, "courriel": x.email, "principal": x.is_primary, "actif": x.is_active} for x in ccs]})
 
     if name == "lire_ticket":
         ref = str(args.get("ticket") or "").strip().lstrip("#").lower()
@@ -85,10 +147,9 @@ async def _run(name, args, db) -> str:
                      "messages": [{"de": m.user.full_name if m.user else ("client" if m.author_kind == "client" else "?"),
                                    "le": m.created_at.strftime("%Y-%m-%d %H:%M"), "texte": m.body[:800]} for m in t.messages[-25:]]})
 
-    cid = _uuid(args.get("client_id"))
-    comp = await db.get(Company, cid) if cid else None
-    if not comp:
-        return _out("client introuvable : utilise d'abord chercher pour obtenir son id")
+    comp = await _resolve_company(db, args.get("client"))
+    if not isinstance(comp, Company):
+        return _out(comp)
 
     if name == "fiche_client":
         ent = (await db.execute(select(Entity).options(selectinload(Entity.addresses)).where(Entity.id == comp.id))).scalar_one_or_none()
