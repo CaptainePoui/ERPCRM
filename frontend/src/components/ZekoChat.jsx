@@ -54,6 +54,7 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
   const endRef = useRef(null)
+  const inputRef = useRef(null)
 
   async function load() {
     if (!conversationId) return
@@ -62,6 +63,8 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
   useEffect(() => { setConv(null); setLive(null); setError(null); load() }, [conversationId])
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [conv?.messages?.length, live?.text, live?.steps?.length])
   useEffect(() => () => abortRef.current?.abort(), [])
+  // Le curseur reste dans la boîte d'écriture : à l'ouverture, après l'envoi et après la réponse (Philippe, 2026-10-18)
+  useEffect(() => { if (conv && !live) inputRef.current?.focus() }, [conv?.id, live])
 
   async function send() {
     const text = draft.trim()
@@ -152,8 +155,8 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
         <div ref={endRef} />
       </div>
       <div style={{ borderTop: '1px solid var(--c-border)', padding: 8, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-        <textarea rows={compact ? 2 : 3} value={draft} onChange={e => setDraft(e.target.value)} disabled={!!live}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() } }}
+        <textarea ref={inputRef} rows={compact ? 2 : 3} value={draft} onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!live) send() } }}
           placeholder="Écrire à Zéko… (Entrée pour envoyer, Maj+Entrée pour une ligne)"
           style={{ flex: 1, resize: 'none', fontSize: 14, padding: 8, borderRadius: 8, border: '1px solid var(--c-border-strong)', background: 'var(--c-surface)', color: 'var(--c-text)' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
