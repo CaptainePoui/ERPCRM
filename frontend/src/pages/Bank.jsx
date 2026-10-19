@@ -502,8 +502,16 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ width: 620, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto' }}>
-        <h3 className="modal-title">Relevés bancaires</h3>
+      <div className="modal-box" style={{ width: 620, maxWidth: '95vw', maxHeight: '90vh', overflowY: 'auto', paddingTop: 0 }}>
+        {/* Boutons en haut et toujours visibles : la liste des relevés importés peut être longue (Philippe, 2026-10-19) */}
+        <div style={{ position: 'sticky', top: 0, zIndex: 2, background: 'var(--c-surface)', display: 'flex', alignItems: 'center', gap: 8,
+                      flexWrap: 'wrap', padding: '18px 0 12px', borderBottom: `1px solid ${C.border}`, marginBottom: 12 }}>
+          <h3 className="modal-title" style={{ margin: 0, marginRight: 'auto' }}>Relevés bancaires</h3>
+          <button className="btn-secondary" onClick={onClose}>Fermer</button>
+          <button className="btn-primary" disabled={busy || !preview || preview.rows_new === 0} onClick={doImport}>
+            {busy ? '...' : preview ? `Importer ${preview.rows_new} transaction${preview.rows_new > 1 ? 's' : ''}` : 'Importer'}
+          </button>
+        </div>
         <div className="form-group">
           <label>Compte</label>
           <select value={accountId} onChange={e => { setAccountId(e.target.value); if (file) analyze(file, e.target.value) }} disabled={accounts.length === 0}>
@@ -574,12 +582,6 @@ export function StatementsModal({ accounts, initialAccountId, onClose, onImporte
             </table>
           )}
 
-        <div className="modal-actions">
-          <button className="btn-secondary" onClick={onClose}>Fermer</button>
-          <button className="btn-primary" disabled={busy || !preview || preview.rows_new === 0} onClick={doImport}>
-            {busy ? '...' : preview ? `Importer ${preview.rows_new} transaction${preview.rows_new > 1 ? 's' : ''}` : 'Importer'}
-          </button>
-        </div>
       </div>
     </div>
   )
