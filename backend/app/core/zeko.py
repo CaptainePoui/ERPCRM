@@ -208,7 +208,7 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
 
 async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, purpose: str = "conversation",
                       user_id=None, conversation_id=None):
-    """Conversation en flux. Produit des evenements : ("pense", None) pendant la reflexion, ("texte", morceau),
+    """Conversation en flux. Produit des evenements : ("pense", morceau de reflexion), ("texte", morceau),
     puis ("outils", [appels]) ou ("fin", None). Tient le verrou de priorite pendant toute la generation."""
     cfg = await config()
     if not cfg["enabled"]:
@@ -225,7 +225,6 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
     try:
         await lock_conn.execute(text("SELECT pg_advisory_lock_shared(:k)"), {"k": CHAT_LOCK})
         await lock_conn.commit()
-        thinking_sent = False
         async with httpx.AsyncClient(timeout=httpx.Timeout(1800, connect=10)) as client:
             async with client.stream("POST", f"{cfg['url']}/chat/completions", json=payload) as r:
                 if r.status_code >= 400:
@@ -241,9 +240,8 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
                         usage = d["usage"]
                     for ch in d.get("choices") or []:
                         delta = ch.get("delta") or {}
-                        if delta.get("reasoning") and not thinking_sent:
-                            thinking_sent = True
-                            yield ("pense", None)
+                        if delta.get("reasoning"):            # reflexion du modele : montree en direct, puis effacee
+                            yield ("pense", clean(delta["reasoning"]))
                         if delta.get("content"):
                             yield ("texte", clean(delta["content"]))
                         for tc in delta.get("tool_calls") or []:

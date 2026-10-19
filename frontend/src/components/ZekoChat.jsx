@@ -70,12 +70,45 @@ export async function streamZeko(url, body, onEvent, signal) {
   }
 }
 
+// Réflexion de Zéko montrée en direct (« éphémère ») : effacée dès qu'il consulte un outil ou commence sa réponse
 export function zekoReducer(l, ev) {
-  if (ev.type === 'texte') return { ...l, thinking: false, text: l.text + ev.texte }
-  if (ev.type === 'pense') return { ...l, thinking: true }
-  if (ev.type === 'outil') return { ...l, thinking: true, text: '', steps: [...l.steps, ev.libelle] }
+  if (ev.type === 'texte') return { ...l, thinking: false, reasoning: '', text: l.text + ev.texte }
+  if (ev.type === 'pense') return { ...l, thinking: true, reasoning: ((l.reasoning || '') + (ev.texte || '')).slice(-400) }
+  if (ev.type === 'outil') return { ...l, thinking: true, reasoning: '', text: '', steps: [...l.steps, ev.libelle] }
   return l
 }
+
+export function ZekoThinking({ live }) {
+  if (live.text) return null
+  return (
+    <div style={{ color: 'var(--c-faint)', fontSize: 12, fontStyle: 'italic', lineHeight: 1.45, whiteSpace: 'pre-wrap' }}>
+      {live.reasoning ? `Zéko réfléchit : …${live.reasoning.replace(/\s+/g, ' ').slice(-260)}` : 'Zéko réfléchit…'}
+    </div>
+  )
+}
+
+// Touche Entrée : envoie (Maj+Entrée = nouvelle ligne) par défaut, ou nouvelle ligne (Ctrl+Entrée = envoyer) ; choix retenu
+const ENTER_KEY = 'erpcrm-entree-envoie'
+export function useEnterSends() {
+  const [v, setV] = useState(() => { try { return localStorage.getItem(ENTER_KEY) !== 'non' } catch { return true } })
+  const set = x => { setV(x); try { localStorage.setItem(ENTER_KEY, x ? 'oui' : 'non') } catch { /* sans stockage */ } }
+  return [v, set]
+}
+export function isSendKey(e, enterSends) {
+  if (e.key !== 'Enter') return false
+  return enterSends ? !e.shiftKey && !e.ctrlKey && !e.metaKey : (e.ctrlKey || e.metaKey)
+}
+export function EnterToggle({ value, onChange }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, color: 'var(--c-muted)', cursor: 'pointer', userSelect: 'none' }}
+      title={value ? 'Entrée envoie ; Maj+Entrée passe une ligne' : 'Entrée passe une ligne ; Ctrl+Entrée envoie'}>
+      <input type="checkbox" checked={value} onChange={e => onChange(e.target.checked)} />
+      Entrée envoie {value ? '(Maj+Entrée : ligne)' : '(Ctrl+Entrée envoie)'}
+    </label>
+  )
+}
+
+export const BUSY_RING = { boxShadow: '0 0 0 2px #DC2626', borderColor: '#DC2626' }
 
 function fmtWhen(iso) {
   const d = new Date(iso)
@@ -93,6 +126,7 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
   const abortRef = useRef(null)
   const endRef = useRef(null)
   const inputRef = useRef(null)
+  const [enterSends, setEnterSends] = useEnterSends()
 
   async function load() {
     if (!conversationId) return
@@ -161,22 +195,25 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
             {live.steps.map((s, i) => <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)', paddingLeft: 4 }}>Zéko {s}…</div>)}
             <div style={bubble(false)}>
               <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 2 }}>Zéko</div>
-              {live.text ? <ZekoText text={live.text} /> : <span style={{ color: 'var(--c-faint)' }}>{live.thinking ? 'Zéko réfléchit…' : '…'}</span>}
+              {live.text ? <ZekoText text={live.text} /> : <ZekoThinking live={live} />}
             </div>
           </>
         )}
         {error && <div style={{ color: '#DC2626', fontSize: 13 }}>{error}</div>}
         <div ref={endRef} />
       </div>
-      <div style={{ borderTop: '1px solid var(--c-border)', padding: 8, display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+      <div style={{ borderTop: '1px solid var(--c-border)', padding: '8px 8px 2px' }}>
+        <EnterToggle value={enterSends} onChange={setEnterSends} />
+      </div>
+      <div style={{ padding: '4px 8px 8px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <textarea ref={inputRef} rows={compact ? 2 : 3} value={draft} onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!live) send() } }}
-          placeholder="Écrire à Zéko… (Entrée pour envoyer, Maj+Entrée pour une ligne)"
+          onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!live) send() } }}
+          placeholder="Écrire à Zéko…"
           style={{ flex: 1, resize: 'none', fontSize: 14, padding: 8, borderRadius: 8, border: '1px solid var(--c-border-strong)', background: 'var(--c-surface)', color: 'var(--c-text)' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {live
-            ? <button className="btn-secondary" onClick={() => abortRef.current?.abort()}>Arrêter</button>
-            : <button className="btn-primary" onClick={send} disabled={!draft.trim()}>Envoyer</button>}
+          <button className="btn-primary" onClick={send} disabled={!!live || !draft.trim()} style={live ? BUSY_RING : undefined}
+            title={live ? 'Zéko réfléchit — vous pourrez envoyer quand il aura fini' : undefined}>Envoyer</button>
+          {live && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => abortRef.current?.abort()}>Arrêter</button>}
           {!live && conv.messages.length > 0 && !conv.ticket_id && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={remove}>Supprimer</button>}
         </div>
       </div>

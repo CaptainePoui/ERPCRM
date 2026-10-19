@@ -7,7 +7,7 @@ import { parseDay } from '../utils/date'
 import HistoryButton from '../components/HistoryButton'
 import { askConfirm } from '../components/Dialog'
 import { askNotificationPermission } from '../components/ticketReminder'
-import { ZekoText, streamZeko, zekoReducer } from '../components/ZekoChat'
+import { ZekoText, streamZeko, zekoReducer, ZekoThinking, useEnterSends, isSendKey, EnterToggle, BUSY_RING } from '../components/ZekoChat'
 
 // TASK-006.5 étape 1 (2026-10-17) : le ticket = une conversation libre (texte + images, horodatée) et UN seul temps.
 // Le chrono est tenu par le serveur (périodes) ; il démarre au bouton Démarrer ou au début de l'écriture, jamais à
@@ -64,6 +64,13 @@ function parseDuration(txt) {
   return null
 }
 
+// Message adressé à Zéko : « ? », son nom, ou une demande (« donne », « trouve », « quoi »…) — Philippe, 2026-10-19
+const ASK_WORDS = /\b(quoi|comment|pourquoi|combien|est-ce|peux-tu|pourrais-tu|sais-tu|connais-tu)\b/i
+const ASK_START = /^\s*(donne|trouve|cherche|montre|liste|dis-moi|explique|v[ée]rifie|regarde|aide|calcule|r[ée]sume)/i
+function wantsZeko(text) {
+  return /\?|z[ée]ko/i.test(text) || ASK_WORDS.test(text) || ASK_START.test(text)
+}
+
 const isClosed = t => ['ferme', 'facture'].includes(t?.status)
 
 const STOP_LABELS = { pause: 'pause', fermeture: 'fermeture du ticket', autre_ticket: 'pause au démarrage d’un autre ticket', attente_client: 'en attente du client', navigateur_ferme: 'aucun écran ouvert — pause à la dernière présence' }
@@ -89,6 +96,7 @@ export default function TicketDetail() {
   const [showTimeLog, setShowTimeLog] = useState(false)
   const [zekoLive, setZekoLive] = useState(null)      // réponse de Zéko en cours dans le fil
   const zekoAbortRef = useRef(null)
+  const [enterSends, setEnterSends] = useEnterSends()
 
   // ── Chrono : valeur du serveur + secondes écoulées depuis la réponse (jamais l'heure de l'appareil) ──
   const fetchedAtRef = useRef(Date.now())
@@ -200,8 +208,9 @@ export default function TicketDetail() {
       clearTimeout(draftSaveRef.current)
       typingStartDeclinedRef.current = false
       applyTicket(r.data)
-      // Zéko répond quand on lui demande quelque chose : une question (« ? ») ou son nom dans le message
-      if (/\?|z[ée]ko/i.test(draft)) askZeko()
+      // Zéko répond quand on lui parle : question, son nom, une demande, ou la suite d'un échange avec lui
+      const lastBefore = ticket.messages[ticket.messages.length - 1]
+      if (wantsZeko(draft) || lastBefore?.author_kind === 'zeko') askZeko()
     } catch (e) {
       setSumMsg(e.response?.data?.detail || 'Erreur à l’envoi du message')
       setTimeout(() => setSumMsg(''), 5000)
@@ -308,6 +317,7 @@ export default function TicketDetail() {
   const s = STATUS_LABELS[ticket.status] || STATUS_LABELS.ouvert
   const quickTransitions = QUICK_TRANSITIONS[ticket.status] || []
   const closed = isClosed(ticket)
+  const zekoBusy = !!zekoLive && !zekoLive.error
   void tick
   const liveSecs = ticket.worked_seconds + ticket.open_periods * Math.floor((Date.now() - fetchedAtRef.current) / 1000)
   const othersRunning = ticket.open_periods - (ticket.my_running ? 1 : 0)
@@ -479,7 +489,8 @@ export default function TicketDetail() {
         {ticket.description && <MessageBubble m={{ id: 'desc', author_kind: 'demande', body: ticket.description, created_at: ticket.created_at, attachments: [] }} readOnly />}
         {ticket.messages.map(m => (
           <MessageBubble key={m.id} m={m} readOnly={closed} onSave={body => updateMessage(m.id, body)} onDelete={() => deleteMessage(m.id)}
-            onDeleteAttachment={deleteAttachment} onSplit={m.author_kind === 'client' ? () => splitToNewTicket(m.id) : null} />
+            onDeleteAttachment={deleteAttachment} onSplit={m.author_kind === 'client' ? () => splitToNewTicket(m.id) : null}
+            onAskZeko={!closed && !zekoLive && m.author_kind === 'tech' && m.id === ticket.messages[ticket.messages.length - 1]?.id ? askZeko : null} />
         ))}
         {!ticket.description && ticket.messages.length === 0 && <div style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucun message.</div>}
         {zekoLive && (
@@ -492,7 +503,7 @@ export default function TicketDetail() {
             </div>
             {zekoLive.error ? <div style={{ color: '#DC2626', fontSize: 13 }}>{zekoLive.error}</div>
               : zekoLive.text ? <div style={{ fontSize: 14, lineHeight: 1.5 }}><ZekoText text={zekoLive.text} /></div>
-              : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Zéko réfléchit…</span>}
+              : <ZekoThinking live={zekoLive} />}
           </div>
         )}
 
@@ -500,7 +511,7 @@ export default function TicketDetail() {
           <div onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); addFiles(e.dataTransfer.files) }}
             style={{ border: '1px solid var(--c-border-strong)', borderRadius: 10, padding: 10, marginTop: 6, background: 'var(--c-surface)' }}>
             <textarea rows={4} value={draft} onChange={e => onDraftChange(e.target.value)} onPaste={onPaste}
-              onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) sendMessage() }}
+              onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!zekoBusy) sendMessage() } }}
               placeholder="Écrivez librement… collez une capture avec Ctrl+V. Une question (« ? ») ou « Zéko » dans le message : Zéko répond."
               style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5, background: 'transparent', color: 'var(--c-text)' }} />
             {files.length > 0 && (
@@ -519,8 +530,10 @@ export default function TicketDetail() {
                 📎 Image
                 <input type="file" multiple accept="image/*,application/pdf,.txt,.log" style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
               </label>
-              <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Ctrl+Entrée pour envoyer</span>
-              <button className="btn-primary" onClick={sendMessage} disabled={sending || (!draft.trim() && !files.length)} style={{ marginLeft: 'auto', fontSize: 13 }}>
+              <EnterToggle value={enterSends} onChange={setEnterSends} />
+              <button className="btn-primary" onClick={sendMessage} disabled={sending || zekoBusy || (!draft.trim() && !files.length)}
+                title={zekoBusy ? 'Zéko réfléchit — vous pourrez envoyer quand il aura fini' : undefined}
+                style={{ marginLeft: 'auto', fontSize: 13, ...(zekoBusy ? BUSY_RING : {}) }}>
                 {sending ? '...' : 'Envoyer'}
               </button>
             </div>
@@ -597,7 +610,7 @@ function AttachmentView({ a, onZoom, onDelete }) {
   )
 }
 
-function MessageBubble({ m, readOnly, onSave, onDelete, onDeleteAttachment, onSplit }) {
+function MessageBubble({ m, readOnly, onSave, onDelete, onDeleteAttachment, onSplit, onAskZeko }) {
   const [editing, setEditing] = useState(null)
   const [zoom, setZoom] = useState(null)
   const [hover, setHover] = useState(false)
@@ -616,6 +629,7 @@ function MessageBubble({ m, readOnly, onSave, onDelete, onDeleteAttachment, onSp
         {!readOnly && hover && !editing && (
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
             {onSplit && <button className="btn-secondary" style={{ fontSize: 11, padding: '1px 6px' }} title="Déplacer vers un nouveau ticket (dossier différent)" onClick={onSplit}>↗ Nouveau ticket</button>}
+            {onAskZeko && <button className="btn-secondary" style={{ fontSize: 11, padding: '1px 6px', color: 'var(--brand)', borderColor: 'var(--brand)' }} onClick={onAskZeko}>Zéko, réponds</button>}
             <button className="btn-secondary" style={{ fontSize: 11, padding: '1px 6px' }} onClick={() => setEditing(m.body)}>Modifier</button>
             <button className="inv-del-btn" title="Supprimer le message" onClick={onDelete}>✕</button>
           </span>

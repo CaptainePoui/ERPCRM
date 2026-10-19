@@ -34,7 +34,7 @@ SYSTEM = (
     "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
     "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Avant de dire qu'une information "
     "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
-    "client). Ici, « poste » veut dire le poste téléphonique (extension)."
+    "client). Ici, « poste » veut dire le poste téléphonique (extension). Réfléchis en français."
 )
 ROLES = {"admin": "administrateur", "manager": "gestionnaire", "tech": "technicien", "billing": "facturation", "readonly": "lecture seule"}
 
@@ -196,7 +196,7 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save):
             tools = tool_list if _round < _MAX_TOOL_ROUNDS else None
             async for kind, val in zeko.stream_chat(messages, tools=tools, user_id=user_id, conversation_id=cid):
                 if kind == "pense":
-                    yield _sse({"type": "pense"})
+                    yield _sse({"type": "pense", "texte": val or ""})
                 elif kind == "texte":
                     partial += val
                     yield _sse({"type": "texte", "texte": val})
