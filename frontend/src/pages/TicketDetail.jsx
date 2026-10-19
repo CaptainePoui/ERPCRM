@@ -64,13 +64,6 @@ function parseDuration(txt) {
   return null
 }
 
-// Message adressé à Zéko : « ? », son nom, ou une demande (« donne », « trouve », « quoi »…) — Philippe, 2026-10-19
-const ASK_WORDS = /\b(quoi|comment|pourquoi|combien|est-ce|peux-tu|pourrais-tu|sais-tu|connais-tu)\b/i
-const ASK_START = /^\s*(donne|trouve|cherche|montre|liste|dis-moi|explique|v[ée]rifie|regarde|aide|calcule|r[ée]sume)/i
-function wantsZeko(text) {
-  return /\?|z[ée]ko/i.test(text) || ASK_WORDS.test(text) || ASK_START.test(text)
-}
-
 const isClosed = t => ['ferme', 'facture'].includes(t?.status)
 
 const STOP_LABELS = { pause: 'pause', fermeture: 'fermeture du ticket', autre_ticket: 'pause au démarrage d’un autre ticket', attente_client: 'en attente du client', navigateur_ferme: 'aucun écran ouvert — pause à la dernière présence' }
@@ -208,9 +201,9 @@ export default function TicketDetail() {
       clearTimeout(draftSaveRef.current)
       typingStartDeclinedRef.current = false
       applyTicket(r.data)
-      // Zéko répond quand on lui parle : question, son nom, une demande, ou la suite d'un échange avec lui
-      const lastBefore = ticket.messages[ticket.messages.length - 1]
-      if (wantsZeko(draft) || lastBefore?.author_kind === 'zeko') askZeko()
+      // Zéko répond à chaque message du technicien (Philippe, 2026-10-19 : « fais-le répondre à tout ») ;
+      // une simple note reçoit une courte phrase, une question une vraie réponse (consigne côté serveur)
+      askZeko()
     } catch (e) {
       setSumMsg(e.response?.data?.detail || 'Erreur à l’envoi du message')
       setTimeout(() => setSumMsg(''), 5000)
@@ -512,7 +505,7 @@ export default function TicketDetail() {
             style={{ border: '1px solid var(--c-border-strong)', borderRadius: 10, padding: 10, marginTop: 6, background: 'var(--c-surface)' }}>
             <textarea rows={4} value={draft} onChange={e => onDraftChange(e.target.value)} onPaste={onPaste}
               onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!zekoBusy) sendMessage() } }}
-              placeholder="Écrivez librement… collez une capture avec Ctrl+V. Une question (« ? ») ou « Zéko » dans le message : Zéko répond."
+              placeholder="Écrivez librement… collez une capture avec Ctrl+V. Zéko répond à chaque message."
               style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5, background: 'transparent', color: 'var(--c-text)' }} />
             {files.length > 0 && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '6px 0' }}>

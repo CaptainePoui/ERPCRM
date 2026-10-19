@@ -416,6 +416,9 @@ async def ticket_reply(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db),
             system, tool_list, ext = await _setup(current_user)
             system += (f"\n\nTu es dans le fil du ticket {zeko_tools.ticket_no(t)} « {t.title} » du client {t.company.name} "
                        f"(statut {zeko_tools.STATUS_FR.get(t.status, t.status)}). Le technicien y note son intervention ; réponds à son dernier message. "
+                       f"Si c'est une simple note (ce qu'il fait, où il en est), réponds en UNE courte phrase naturelle, sans consulter "
+                       f"d'outil (ex. « Parfait, tu es arrivé chez le client. »), avec au besoin une seule suggestion utile. "
+                       f"Si c'est une question ou une demande, réponds vraiment, en consultant ERPCRM au besoin. "
                        f"Ce fil est interne : le client ne voit pas tes réponses.")
             if t.description:
                 system += f"\nDemande initiale : {t.description[:800]}"
