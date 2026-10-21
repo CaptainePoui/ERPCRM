@@ -59,3 +59,20 @@ class ZekoInvocation(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("zeko_conversations.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
+
+
+class ZekoRule(Base):
+    """Ce que Zeko a appris (TASK-006.5 etape 3, 2026-10-21), seulement apres le « oui » de l'utilisateur. Range dans
+    ERPCRM (visible, modifiable, supprimable dans l'Administration), jamais seulement dans la memoire de l'IA.
+    kind : avis_paiement (ex. « Mc Crystal envoie un PDF Releve des depots directs depuis n.gendron@... »), autre."""
+    __tablename__ = "zeko_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    kind: Mapped[str] = mapped_column(String(30), nullable=False, default="autre")
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True)
+    sender_email: Mapped[str | None] = mapped_column(String(255))
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

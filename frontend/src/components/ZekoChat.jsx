@@ -115,7 +115,7 @@ function fmtWhen(iso) {
   return d.toLocaleDateString('fr-CA') + ' ' + d.toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
 }
 
-const TOOL_LABELS = { demander_ia_externe: 'a demandé à l’IA externe', chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
+const TOOL_LABELS = { chercher_courriels: 'a cherché dans les courriels', lire_courriel: 'a lu un courriel et ses pièces jointes', transactions_banque: 'a lu le relevé bancaire', regles_apprises: 'a relu ce qu’il a appris', retenir: 'a retenu pour la suite', paiements_carte: 'a lu les reçus de carte', demander_ia_externe: 'a demandé à l’IA externe', chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
                       lire_ticket: 'a lu un ticket', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
 
 export default function ZekoChat({ conversationId, onChanged, compact }) {

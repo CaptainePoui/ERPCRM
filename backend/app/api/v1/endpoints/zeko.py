@@ -36,7 +36,10 @@ SYSTEM = (
     "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
     "client). Ici, « poste » veut dire le poste téléphonique (extension). Un dépôt « ELAVON MRCH SVC » est un paiement par carte : "
     "son client et sa facture se trouvent dans les reçus de carte des courriels (paiements_carte), jamais dans le nom du "
-    "bénéficiaire. N'affirme jamais qu'un paiement règle une facture si les montants ne le permettent pas : "
+    "bénéficiaire. Pour savoir ce qu'un dépôt paie, cherche aussi l'avis de paiement dans les courriels "
+    "(chercher_courriels puis lire_courriel : les PDF joints donnent souvent les numéros de factures). Quand tu as compris "
+    "comment un client t'avise de ses paiements, propose : « Je retiens que… ? » et n'appelle retenir qu'après un oui. "
+    "Tu ne modifies jamais une transaction : tu proposes. N'affirme jamais qu'un paiement règle une facture si les montants ne le permettent pas : "
     "rapporte les chiffres et le « constat » donnés par l'outil, et dis ce qui reste à vérifier. Réfléchis en français."
 )
 ROLES = {"admin": "administrateur", "manager": "gestionnaire", "tech": "technicien", "billing": "facturation", "readonly": "lecture seule"}
@@ -230,7 +233,7 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save):
                     except zeko.ZekoUnavailable as e:
                         result = f"{ext['label']} indisponible ({e}) : réponds avec tes propres connaissances et dis-le."
                 else:
-                    result = await zeko_tools.run(x["name"], args, s)
+                    result = await zeko_tools.run(x["name"], args, s, user_id)
                 await save("tool", result, tool_call_id=x["id"], tool_name=x["name"])
                 messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
             partial = None
@@ -436,3 +439,44 @@ async def ticket_reply(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db),
                 yield chunk
 
     return _stream(produce)
+
+
+# ── Ce que Zeko a appris (TASK-006.5 etape 3) : visible, modifiable, supprimable ─────────────────────────────
+
+class RuleIn(BaseModel):
+    description: str | None = None
+    is_active: bool | None = None
+
+
+@router.get("/rules")
+async def list_rules(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoRule
+    from app.models.company import Company
+    rows = (await db.execute(select(ZekoRule, Company.name, User.full_name).outerjoin(Company, Company.id == ZekoRule.company_id)
+                             .outerjoin(User, User.id == ZekoRule.created_by).order_by(ZekoRule.created_at.desc()))).all()
+    return [{"id": str(r.id), "kind": r.kind, "company_name": c, "company_id": str(r.company_id) if r.company_id else None,
+             "sender_email": r.sender_email, "description": r.description, "is_active": r.is_active, "created_by": u,
+             "created_at": r.created_at} for r, c, u in rows]
+
+
+@router.put("/rules/{rid}")
+async def update_rule(rid: uuid.UUID, payload: RuleIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoRule
+    r = await db.get(ZekoRule, rid)
+    if not r:
+        raise HTTPException(status_code=404, detail="Introuvable")
+    if payload.description is not None and payload.description.strip():
+        r.description = payload.description.strip()[:2000]
+    if payload.is_active is not None:
+        r.is_active = payload.is_active
+    await db.commit()
+    return {"ok": True}
+
+
+@router.delete("/rules/{rid}", status_code=204)
+async def delete_rule(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoRule
+    r = await db.get(ZekoRule, rid)
+    if r:
+        await db.delete(r)
+        await db.commit()

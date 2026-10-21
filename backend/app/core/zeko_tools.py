@@ -51,13 +51,35 @@ TOOLS = [
     _fn("paiements_carte", "Reçus de paiement par carte (Elavon / Authorize.Net, lus dans les courriels) : à consulter pour tout "
         "dépôt ELAVON MRCH SVC. Filtre optionnel par montant ou par client.",
         {"montant": {"type": "number"}, "client": {"type": "string", "description": "nom du client"}}),
+    _fn("chercher_courriels", "Cherche des courriels reçus ou envoyés, dans toutes les boîtes permises : par client, par texte "
+        "(sujet, contenu, expéditeur), par montant (ex. 212.08, cherché aussi dans les PDF joints) et par période (un avis de "
+        "paiement arrive souvent quelques jours AVANT le dépôt : la période est élargie toute seule). Donne une référence "
+        "lisible pour lire_courriel.",
+        {"client": {"type": "string"}, "texte": {"type": "string"}, "montant": {"type": "number"},
+         "depuis": {"type": "string", "description": "AAAA-MM-JJ"}, "jusqua": {"type": "string", "description": "AAAA-MM-JJ"}}),
+    _fn("lire_courriel", "Lit un courriel trouvé par chercher_courriels (sa référence « date heure expéditeur ») : texte, et "
+        "texte des pièces jointes (PDF, et images lues par reconnaissance de texte).",
+        {"reference": {"type": "string"}}, ["reference"]),
+    _fn("transactions_banque", "Dépôts et retraits du relevé bancaire : par client, montant ou période ; dit s'ils sont "
+        "associés (et à quoi) ou non classés.",
+        {"client": {"type": "string"}, "montant": {"type": "number"}, "depuis": {"type": "string"}, "jusqua": {"type": "string"},
+         "non_classees": {"type": "boolean"}}),
+    _fn("regles_apprises", "Ce que Zéko a déjà appris (avec l'accord de l'utilisateur) : avis de paiement des clients, etc.",
+        {"client": {"type": "string"}}),
+    _fn("retenir", "Retient une chose apprise pour les prochaines fois (ex. « Mc Crystal envoie ses avis de paiement en PDF "
+        "Relevé des dépôts directs depuis n.gendron@mc-crystal.com, avec les numéros de factures »). À appeler SEULEMENT "
+        "après que l'utilisateur a répondu oui à ta question « Je retiens que… ? ».",
+        {"client": {"type": "string"}, "expediteur": {"type": "string"}, "quoi": {"type": "string"},
+         "genre": {"type": "string", "description": "avis_paiement ou autre"}}, ["quoi"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
 ]
 EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus puissante sur une question TECHNIQUE générale "
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
-LABELS = {"paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
+LABELS = {"chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
+          "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite",
+          "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
           "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
           "telephonie": "lit la téléphonie"}
 
@@ -119,14 +141,195 @@ async def _resolve_contact(db, name):
     return {"plusieurs_personnes": [f"{r.label} ({', '.join(await _companies_of_contact(db, r.id)) or 'sans entreprise'})" for r in res]}
 
 
-async def run(name: str, args: dict, db) -> str:
+async def run(name: str, args: dict, db, user_id=None) -> str:
     try:
-        return await _run(name, args or {}, db)
+        return await _run(name, args or {}, db, user_id)
     except Exception as e:
         return _out({"erreur": str(e)[:300]})
 
 
-async def _run(name, args, db) -> str:
+def _day(v):
+    from datetime import date
+    try:
+        return date.fromisoformat(str(v)[:10]) if v else None
+    except ValueError:
+        return None
+
+
+def _mail_ref(m) -> str:
+    """Reference lisible d'un courriel (jamais un identifiant) : « 2026-10-15 18:45 n.gendron@mc-crystal.com »."""
+    from app.core import clock
+    when = m.sent_at.astimezone(clock.business_tz()).strftime("%Y-%m-%d %H:%M") if m.sent_at else "?"
+    return f"{when} {m.from_email or ''}".strip()
+
+
+def _attachment_text(name: str, ctype: str, data: bytes) -> str:
+    """Texte d'une piece jointe : PDF (pdftotext ; si vide, lecture des pages en image), image (tesseract fra+eng)."""
+    import subprocess, tempfile, os
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "f")
+        open(path, "wb").write(data)
+        try:
+            if ctype == "application/pdf" or name.lower().endswith(".pdf"):
+                txt = subprocess.run(["pdftotext", "-layout", path, "-"], capture_output=True, text=True, timeout=60).stdout
+                if txt.strip():
+                    return txt
+                subprocess.run(["pdftoppm", "-r", "200", "-png", "-l", "3", path, os.path.join(tmp, "p")], timeout=120)
+                pages = sorted(x for x in os.listdir(tmp) if x.startswith("p"))
+                return "\n".join(subprocess.run(["tesseract", os.path.join(tmp, pg), "-", "-l", "fra+eng"], capture_output=True,
+                                                text=True, timeout=120).stdout for pg in pages)
+            if ctype.startswith("image/"):
+                return subprocess.run(["tesseract", path, "-", "-l", "fra+eng"], capture_output=True, text=True, timeout=120).stdout
+        except Exception as e:
+            return f"(lecture impossible : {e})"
+    return "(type de fichier non lu)"
+
+
+async def _run(name, args, db, user_id=None) -> str:
+    if name in ("chercher_courriels", "lire_courriel"):
+        from sqlalchemy import and_
+        from datetime import datetime, time, timezone
+        from app.models.mailbox import MailMessage, Mailbox
+        from app.models.user import User
+        from app.api.v1.endpoints.mail import _visible
+        user = await db.get(User, user_id) if user_id else None
+        if not user:
+            return _out("courriels non disponibles ici")
+        base = select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user))
+        if name == "chercher_courriels":
+            q = base
+            if args.get("client"):
+                comp = await _resolve_company(db, args["client"])
+                if not isinstance(comp, Company):
+                    return _out(comp)
+                q = q.where(MailMessage.company_id == comp.id)
+            if args.get("texte"):
+                like = f"%{str(args['texte']).strip()}%"
+                q = q.where(or_(MailMessage.subject.ilike(like), MailMessage.body_text.ilike(like), MailMessage.from_email.ilike(like),
+                                MailMessage.from_name.ilike(like)))
+            d1, d2 = _day(args.get("depuis")), _day(args.get("jusqua"))
+            if args.get("montant") not in (None, "") and (d1 or d2):
+                # un avis de paiement arrive souvent AVANT le depot (Mc Crystal : avis le 15, depot le 19) : periode elargie
+                from datetime import timedelta as _td
+                d1, d2 = (d1 or d2) - _td(days=10), (d2 or d1) + _td(days=3)
+            if d1:
+                q = q.where(MailMessage.sent_at >= datetime.combine(d1, time.min, timezone.utc))
+            if d2:
+                q = q.where(MailMessage.sent_at <= datetime.combine(d2, time.max, timezone.utc))
+            rows = (await db.execute(q.order_by(MailMessage.sent_at.desc()).limit(60))).scalars().all()
+            if args.get("montant") not in (None, ""):
+                a = f"{float(args['montant']):.2f}"
+                forms = {a, a.replace(".", ","), a.replace(".", " ")}
+                from app.core import mail_store
+                hits, where = [], {}
+                for m in rows[:40]:
+                    blob = f"{m.subject or ''} {m.body_text or ''}"
+                    if any(f in blob for f in forms):
+                        hits.append(m); where[m.id] = "dans le courriel"
+                        continue
+                    for at in (m.attachments or [])[:3]:          # le montant n'est souvent que dans le PDF joint
+                        if not str(at.get("filename", "")).lower().endswith(".pdf"):
+                            continue
+                        try:
+                            fname, ctype, data = mail_store.attachment(m.stored_path, at.get("i"))
+                            if any(f in _attachment_text(fname, ctype or "", data) for f in forms):
+                                hits.append(m); where[m.id] = f"dans la pièce jointe {fname}"
+                                break
+                        except Exception:
+                            continue
+                rows = hits
+            where = locals().get("where", {})
+            return _out([{"reference": _mail_ref(m), "de": m.from_name or m.from_email, "sujet": m.subject,
+                          **({"montant_trouve": where[m.id]} if m.id in where else {}),
+                          "sens": "reçu" if m.direction == "in" else "envoyé", "pieces_jointes": [a.get("filename") for a in (m.attachments or [])],
+                          "debut": (m.body_text or "")[:160]} for m in rows[:15]] or "aucun courriel trouvé")
+        ref = str(args.get("reference") or "").strip()
+        parts = ref.split()
+        if len(parts) < 3:
+            return _out("référence incomplète : utilise celle donnée par chercher_courriels")
+        from app.core import clock
+        local = datetime.fromisoformat(f"{parts[0]} {parts[1]}").replace(tzinfo=clock.business_tz())
+        sender = parts[2]
+        cands = (await db.execute(base.where(MailMessage.from_email == sender,
+                                             MailMessage.sent_at >= local.astimezone(timezone.utc).replace(second=0),
+                                             MailMessage.sent_at < local.astimezone(timezone.utc).replace(second=0) + __import__("datetime").timedelta(minutes=1))
+                                  )).scalars().all()
+        if not cands:
+            return _out("courriel introuvable avec cette référence")
+        m = cands[0]
+        from pathlib import Path
+        from app.core import mail_store
+        pieces = []
+        for a in (m.attachments or [])[:5]:
+            try:
+                fname, ctype, data = mail_store.attachment(m.stored_path, a.get("i"))
+                pieces.append({"nom": fname, "texte": _attachment_text(fname, ctype or "", data)[:3000]})
+            except Exception as e:
+                pieces.append({"nom": a.get("filename"), "texte": f"(lecture impossible : {e})"})
+        out = {"reference": _mail_ref(m), "de": f"{m.from_name or ''} <{m.from_email}>", "sujet": m.subject,
+               "texte": (m.body_text or "")[:2500], "pieces_jointes": pieces}
+        if m.company_id and m.direction == "in":
+            from app.models.zeko import ZekoRule
+            known = (await db.execute(select(ZekoRule.id).where(ZekoRule.sender_email == (m.from_email or "").lower()))).first()
+            if not known:
+                comp = await db.get(Company, m.company_id)
+                out["a_proposer"] = (f"Si ce courriel t'a servi (ex. avis de paiement), termine ta réponse en demandant : « Je retiens que "
+                                     f"{comp.name} envoie ce genre d'avis depuis {m.from_email} ({m.subject or 'sans sujet'}"
+                                     + (f", pièce jointe {pieces[0]['nom']}" if pieces else "") + ") ? » — n'appelle retenir qu'après un oui.")
+        return _out(out)
+
+    if name == "transactions_banque":
+        from datetime import timedelta
+        from app.models.bank_account import BankTransaction
+        q = select(BankTransaction).order_by(BankTransaction.posted_date.desc())
+        if args.get("client"):
+            comp = await _resolve_company(db, args["client"])
+            if not isinstance(comp, Company):
+                return _out(comp)
+            q = q.where(BankTransaction.company_id == comp.id)
+        if args.get("montant") not in (None, ""):
+            v = round(float(args["montant"]), 2)
+            q = q.where(or_(BankTransaction.amount == v, BankTransaction.amount == -v))
+        d1, d2 = _day(args.get("depuis")), _day(args.get("jusqua"))
+        if d1:
+            q = q.where(BankTransaction.posted_date >= d1)
+        if d2:
+            q = q.where(BankTransaction.posted_date <= d2)
+        if args.get("non_classees"):
+            q = q.where(BankTransaction.status == "unclassified")
+        rows = (await db.execute(q.limit(25))).scalars().all()
+        from app.api.v1.endpoints.bank import _tx_out_bulk
+        outs = await _tx_out_bulk(rows, db)
+        etat = {"matched": "associée", "unclassified": "non classée", "excluded": "exclue"}
+        return _out([{"date": o.posted_date, "montant": o.amount, "libelle": o.description, "beneficiaire": o.payee,
+                      "etat": etat.get(o.status, o.status), "client": o.company_name, "fournisseur": o.vendor_name,
+                      "factures": o.invoice_numbers or None, "explication": o.withdrawal_label} for o in outs] or "aucune transaction")
+
+    if name in ("regles_apprises", "retenir"):
+        from app.models.zeko import ZekoRule
+        comp = None
+        if args.get("client"):
+            comp = await _resolve_company(db, args["client"])
+            if not isinstance(comp, Company):
+                return _out(comp)
+        if name == "regles_apprises":
+            q = select(ZekoRule).where(ZekoRule.is_active.is_(True))
+            if comp:
+                q = q.where(ZekoRule.company_id == comp.id)
+            rules = (await db.execute(q.order_by(ZekoRule.created_at.desc()).limit(30))).scalars().all()
+            ids = {r.company_id for r in rules if r.company_id}
+            names = dict((await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()) if ids else {}
+            return _out([{"client": names.get(r.company_id), "expediteur": r.sender_email, "genre": r.kind, "appris": r.description,
+                          "le": r.created_at.date()} for r in rules] or "rien d'appris encore")
+        quoi = str(args.get("quoi") or "").strip()
+        if not quoi:
+            return _out("rien à retenir")
+        genre = str(args.get("genre") or "autre")
+        db.add(ZekoRule(kind=genre if genre in ("avis_paiement", "autre") else "autre", company_id=comp.id if comp else None,
+                        sender_email=(str(args.get("expediteur") or "").strip().lower() or None), description=quoi[:2000], created_by=user_id))
+        await db.commit()
+        return _out("retenu (visible dans Administration › Intégrations › Zéko › Ce que Zéko a appris)")
+
     if name == "chercher":
         from app.api.v1.endpoints.search import search
         res = await search(q=str(args.get("texte") or "").strip() or "?", db=db, _=None)

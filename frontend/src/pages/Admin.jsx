@@ -266,6 +266,49 @@ const GOOGLE_CALLBACK_MESSAGES = {
 // Zéko, l'IA unique d'ERPCRM (TASK-006.5 étape 2) : un seul réglage pour la conversation ET les tâches de fond
 // (dépôts bancaires, reçus, Interac, signatures) ; journal de chaque appel.
 const ZEKO_PURPOSES = { ia_externe: 'IA externe', conversation: 'Conversation', depot_bancaire: 'Dépôt bancaire', recu: 'Reçu', interac: 'Interac', signature: 'Signature de courriel' }
+// Ce que Zéko a appris (TASK-006.5 étape 3) : retenu seulement après un « oui » ; modifiable, désactivable, supprimable
+function ZekoRulesPanel() {
+  const [rules, setRules] = useState(null)
+  const [edit, setEdit] = useState(null)
+  const load = () => api.get('/v1/zeko/rules').then(r => setRules(r.data)).catch(() => setRules([]))
+  useEffect(() => { load() }, [])
+  async function save(r, fields) { await api.put(`/v1/zeko/rules/${r.id}`, fields); setEdit(null); load() }
+  async function remove(r) { if (await askConfirm('Faire oublier ceci à Zéko ?')) { await api.delete(`/v1/zeko/rules/${r.id}`); load() } }
+  if (!rules) return null
+  return (
+    <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
+      <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: 'var(--c-text)' }}>Ce que Zéko a appris</div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 10 }}>
+        Zéko ne retient quelque chose qu'après votre « oui » dans une conversation. Ce qui est ici sert à l'aider les prochaines fois (ex. comment un client avise de ses paiements).
+      </p>
+      {rules.length === 0 && <div style={{ fontSize: 13, color: 'var(--c-faint)' }}>Rien d'appris pour l'instant.</div>}
+      {rules.map(r => (
+        <div key={r.id} style={{ border: '1px solid var(--c-border)', borderRadius: 8, padding: '8px 12px', marginBottom: 8, opacity: r.is_active ? 1 : 0.55 }}>
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 4 }}>
+            {r.company_name || 'Général'}{r.sender_email ? ` · ${r.sender_email}` : ''} · {new Date(r.created_at).toLocaleDateString('fr-CA')}{r.created_by ? ` · confirmé par ${r.created_by}` : ''}
+          </div>
+          {edit?.id === r.id
+            ? <div className="form-group" style={{ marginBottom: 0 }}>
+                <textarea rows={3} value={edit.text} onChange={e => setEdit({ ...edit, text: e.target.value })} style={{ width: '100%' }} />
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEdit(null)}>Annuler</button>
+                  <button className="btn-primary" style={{ fontSize: 12 }} onClick={() => save(r, { description: edit.text })}>Enregistrer</button>
+                </div>
+              </div>
+            : <div style={{ fontSize: 14, color: 'var(--c-text)', whiteSpace: 'pre-wrap' }}>{r.description}</div>}
+          {edit?.id !== r.id && (
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setEdit({ id: r.id, text: r.description })}>Modifier</button>
+              <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => save(r, { is_active: !r.is_active })}>{r.is_active ? 'Mettre de côté' : 'Réactiver'}</button>
+              <button className="btn-secondary" style={{ fontSize: 12, color: '#DC2626' }} onClick={() => remove(r)}>Oublier</button>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // IA externe d'appoint de Zéko (TASK-006.5 étape 4) : un seul branchement, fournisseur au choix. Zéko local reste le chef :
 // il ne lui envoie que des questions techniques, expurgées (noms, coordonnées, IP retirés) ; tout est gardé au journal.
 const EXT_NOTES = {
@@ -401,6 +444,7 @@ function ZekoSettingsPanel() {
       <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
       <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
       <ExternalAiPanel />
+      <ZekoRulesPanel />
       {journal.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Derniers appels</div>

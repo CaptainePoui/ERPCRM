@@ -925,9 +925,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ <EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
-                      {t.status === 'unclassified' && <button type="button" title="Retirer ce dépôt du client"
-                        onClick={async e => { e.stopPropagation(); if (await removeClient(t)) await onChanged() }}
-                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12, marginLeft: 4 }}>✕</button>}
+
                       {sugOf(t) && <span style={{ color: C.muted }}> · {sugOf(t).kind === 'payment' ? `paiement ${SOURCE_LABEL[sugOf(t).source] || ''} (${sugOf(t).invoice_numbers.join(', ')})`
                         : sugOf(t).kind === 'credit' ? `aucune facture ouverte : ${fmtMoney(sugOf(t).credit)} en crédit du client`
                         : `${sugOf(t).allocations?.length > 1 ? 'factures' : 'facture'} ${sugOf(t).number}${sugOf(t).oldest_first ? ' (la plus vieille d\'abord)' : ''}${sugOf(t).credit > 0 ? ` + ${fmtMoney(sugOf(t).credit)} en crédit` : ''}`}</span>}
