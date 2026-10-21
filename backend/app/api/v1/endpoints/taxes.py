@@ -171,7 +171,7 @@ async def period_report(start: date, end: date, db: AsyncSession = Depends(get_d
     return {
         "start": start, "end": end, "state": _state(start, end, lock, clock.today()),
         "summary": await _summary(db, start, end),
-        "invoices": [{"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "company_name": i.company.name,
+        "invoices": [{"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "company_name": i.company.name, "company_id": str(i.company_id),
                       "status": i.status, "is_credit": i.credit_of_id is not None, "subtotal": float(i.subtotal),
                       "tps": float(i.tps_amount), "tvq": float(i.tvq_amount), "total": float(i.total)} for i in invs],
         "purchases": await _purchase_list(db, start, end),

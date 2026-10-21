@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useBack } from '../../components/navTrail'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
@@ -116,6 +117,7 @@ export function PurchaseBillDetail() {
   const { id } = useParams()
   const isNew = id === 'new'
   const navigate = useNavigate()
+  const goBack = useBack('/purchases/bills')
   const [params] = useSearchParams()
   const refs = useRefs()
   const [bill, setBill] = useState(null)
@@ -161,7 +163,7 @@ export function PurchaseBillDetail() {
     <div className="page">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={() => navigate('/purchases/bills')} style={{ padding: '6px 12px' }}>← Retour</button>
+          <button className="btn-secondary" onClick={goBack} style={{ padding: '6px 12px' }}>← Retour</button>
           <div>
             <h1 className="page-title" style={{ marginBottom: 2 }}>{isNew ? 'Nouvelle facture fournisseur' : `Facture ${bill.bill_number || ''} — ${bill.vendor_name}`}</h1>
             {!isNew && <p className="page-sub" style={{ color: sc, fontWeight: 600 }}>{sl}{bill.balance > 0 ? ` · ${fmtMoney(bill.balance)} à payer` : ''}</p>}

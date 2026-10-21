@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { useBack } from '../components/navTrail'
+import EntityLink from '../components/EntityLink'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
@@ -71,6 +73,7 @@ const STOP_LABELS = { pause: 'pause', fermeture: 'fermeture du ticket', autre_ti
 export default function TicketDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const goBack = useBack('/tickets')
   const [ticket, setTicket] = useState(null)
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState([])
@@ -323,10 +326,10 @@ export default function TicketDetail() {
       <div className="tkt-sticky-header">
         <div className="page-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <button className="btn-secondary" onClick={() => navigate('/tickets')} style={{ padding: '6px 12px' }}>← Retour</button>
+            <button className="btn-secondary" onClick={goBack} style={{ padding: '6px 12px' }}>← Retour</button>
             <div>
               <h1 className="page-title" style={{ marginBottom: 2 }}>{ticket.title}</h1>
-              <p className="page-sub">{ticket.number} · {ticket.company_name}{ticket.contact_name ? ` · ${ticket.contact_name}` : ''}</p>
+              <p className="page-sub">{ticket.number} · <EntityLink kind="company" id={ticket.company_id}>{ticket.company_name}</EntityLink>{ticket.contact_name && <> · <EntityLink kind="contact" id={ticket.contact_id}>{ticket.contact_name}</EntityLink></>}</p>
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -418,11 +421,11 @@ export default function TicketDetail() {
 
       <div className="tkt-detail-grid">
         <div className="tkt-section">
-          <div className="tkt-info-row"><span>Compagnie</span><strong>{ticket.company_name}</strong></div>
+          <div className="tkt-info-row"><span>Compagnie</span><strong><EntityLink kind="company" id={ticket.company_id}>{ticket.company_name}</EntityLink></strong></div>
           {ticket.contact_name && (
             <div className="tkt-info-row">
               <span>Contact</span>
-              <strong>{ticket.contact_name}{ticket.contact_email && <span style={{ color: 'var(--c-muted)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{ticket.contact_email}</span>}</strong>
+              <strong><EntityLink kind="contact" id={ticket.contact_id}>{ticket.contact_name}</EntityLink>{ticket.contact_email && <span style={{ color: 'var(--c-muted)', fontWeight: 400, fontSize: 12, marginLeft: 6 }}>{ticket.contact_email}</span>}</strong>
             </div>
           )}
           <div className="tkt-info-row"><span>Assigné</span><strong>{ticket.assigned_name || '—'}</strong></div>

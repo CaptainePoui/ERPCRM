@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import EntityLink, { InvoiceLinks } from '../components/EntityLink'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
@@ -705,12 +706,12 @@ function TransactionModal({ txId, onClose, onChanged }) {
           {deposit ? (
             <>
               {d.company_name && <div style={{ fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span>→ <strong>{d.company_name}</strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</span>
+                <span>→ <strong><EntityLink kind="company" id={d.company_id}>{d.company_name}</EntityLink></strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</span>
                 {d.status !== 'matched' && <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px', color: C.red }}
                   onClick={() => run(async () => { await removeClient(d) })}>Retirer ce dépôt du client</button>}
               </div>}
               {!d.company_id && d.ai_status === 'done' && d.ai_company_id && (
-                <div style={{ fontSize: 13, color: '#6D28D9', marginBottom: 6 }}>IA propose : <strong>{d.ai_company_name}</strong> ({d.ai_confidence} %){d.ai_note ? ` — ${d.ai_note}` : ''}
+                <div style={{ fontSize: 13, color: '#6D28D9', marginBottom: 6 }}>IA propose : <strong><EntityLink kind="company" id={d.ai_company_id}>{d.ai_company_name}</EntityLink></strong> ({d.ai_confidence} %){d.ai_note ? ` — ${d.ai_note}` : ''}
                   <button className="btn-primary" style={{ padding: '2px 10px', fontSize: 12, marginLeft: 8 }} onClick={() => run(() => api.put(`/v1/bank/transactions/${d.id}/company`, { company_id: d.ai_company_id, remember: true }))}>Accepter</button></div>
               )}
               {d.status !== 'matched' && <Autocomplete items={companies} value={d.company_id ? { id: d.company_id, label: d.company_name } : null}
@@ -916,13 +917,13 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                   {!t.company_id && t.ai_status === 'done' && (
                     <div style={{ fontSize: 12, marginTop: 2, color: '#6D28D9' }}>
                       {t.ai_company_id
-                        ? <>IA propose : <strong>{t.ai_company_name}</strong> ({t.ai_confidence} %){t.ai_note ? ` — ${t.ai_note}` : ''}</>
+                        ? <>IA propose : <strong><EntityLink kind="company" id={t.ai_company_id}>{t.ai_company_name}</EntityLink></strong> ({t.ai_confidence} %){t.ai_note ? ` — ${t.ai_note}` : ''}</>
                         : <>IA : aucun client probable{t.ai_note ? ` — ${t.ai_note}` : ''}</>}
                     </div>
                   )}
                   {t.company_id && (
                     <div style={{ fontSize: 12, marginTop: 2 }}>
-                      <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
+                      <span style={{ color: C.green, fontWeight: 600 }}>→ <EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
                       {t.status === 'unclassified' && <button type="button" title="Retirer ce dépôt du client"
                         onClick={async e => { e.stopPropagation(); if (await removeClient(t)) await onChanged() }}
@@ -1006,12 +1007,12 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
                 <td style={{ padding: '10px 8px', whiteSpace: 'nowrap' }}>{fmtD(t.posted_date)}</td>
                 <td style={{ padding: '10px 8px' }}>{t.reference || ''}</td>
                 <td style={{ padding: '10px 8px' }}>{t.amount > 0
-                  ? <>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : {t.company_name}</div></>
+                  ? <>Paiement de client<div style={{ fontSize: 12, color: C.muted }}>Client : <EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></div></>
                   : <>{t.withdrawal_label || 'Retrait'}</>}</td>
                 <td style={{ padding: '10px 8px', color: C.red }}>Mis en correspondance{t.auto_matched && <div style={{ fontSize: 11, color: C.muted }}>automatiquement (sûre)</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount > 0 ? fmtMoney(t.amount) : ''}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}>{t.amount < 0 ? fmtMoney(-t.amount) : ''}</td>
-                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{t.lost_invoice ? `Facture perdue${t.lost_invoice_number ? ` #${t.lost_invoice_number}` : ''}` : (t.invoice_numbers || []).join(', ')}{t.credit_left > 0.004 && <div style={{ color: '#D97706' }}>{fmtMoney(t.credit_left)} en crédit du client</div>}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'right', fontSize: 12 }}>{t.lost_invoice ? `Facture perdue${t.lost_invoice_number ? ` #${t.lost_invoice_number}` : ''}` : <InvoiceLinks invoices={t.invoices} empty="" />}{t.credit_left > 0.004 && <div style={{ color: '#D97706' }}>{fmtMoney(t.credit_left)} en crédit du client</div>}</td>
                 <td style={{ padding: '10px 8px', textAlign: 'right' }}><button type="button" onClick={e => { e.stopPropagation(); unmatch(t) }} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12 }}>Annuler</button></td>
               </tr>
             ))}

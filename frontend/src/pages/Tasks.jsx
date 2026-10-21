@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import EntityLink from '../components/EntityLink'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
 import Autocomplete from '../components/Autocomplete'
@@ -529,7 +530,7 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
               🎫 {task.ticket_title || 'Ticket lié'}
             </a>
           )}
-          {task.company_name && <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>{task.company_name}</span>}
+          {task.company_name && <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}><EntityLink kind="company" id={task.company_id}>{task.company_name}</EntityLink></span>}
           {task.assigned_name && <span style={{ fontSize: 11, color: 'var(--c-muted)', background: 'var(--c-surface-3)', padding: '2px 7px', borderRadius: 10 }}>👤 {task.assigned_name}</span>}
         </div>
       )}
@@ -749,9 +750,9 @@ function TaskDetail({ task, onClose, onUpdated, onDeleted, onSelect }) {
             {(task.ticket_title || task.invoice_number || task.contact_name) && (
               <div style={{ borderTop: '1px solid var(--c-border)', paddingTop: 14, marginBottom: 16 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--c-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Liens</div>
-                {task.contact_name && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>👤 {task.contact_name}</div>}
-                {task.ticket_title && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🎫 {task.ticket_title}</div>}
-                {task.invoice_number && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🧾 {task.invoice_number}</div>}
+                {task.contact_name && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>👤 <EntityLink kind="contact" id={task.contact_id}>{task.contact_name}</EntityLink></div>}
+                {task.ticket_title && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🎫 <EntityLink kind="ticket" id={task.ticket_id}>{task.ticket_title}</EntityLink></div>}
+                {task.invoice_number && <div style={{ fontSize: 13, color: 'var(--c-text-2)', marginBottom: 4 }}>🧾 <EntityLink kind="invoice" id={task.invoice_id}>{task.invoice_number}</EntityLink></div>}
               </div>
             )}
 
@@ -1026,7 +1027,7 @@ function ListView({ tasks, onToggle, onSelect }) {
               <input type="checkbox" checked={t.completed} onChange={() => onToggle(t)} onClick={e => e.stopPropagation()} style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
               <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
               {t.due_time && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.due_time}</span>}
-              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.company_name}</span>}
+              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}><EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></span>}
               <PriorityBadge value={t.priority} />
               <StatusBadge value={t.status} />
             </div>
@@ -1040,7 +1041,7 @@ function ListView({ tasks, onToggle, onSelect }) {
             <div key={t.id} onClick={() => onSelect(t)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', marginBottom: 6, cursor: 'pointer', background: t.completed ? 'var(--c-surface-2)' : 'var(--c-surface)' }}>
               <input type="checkbox" checked={t.completed} onChange={() => onToggle(t)} onClick={e => e.stopPropagation()} style={{ width: 15, height: 15, accentColor: 'var(--brand)', cursor: 'pointer' }} />
               <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: t.completed ? 'var(--c-faint)' : 'var(--c-text)', textDecoration: t.completed ? 'line-through' : 'none' }}>{t.title}</span>
-              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{t.company_name}</span>}
+              {t.company_name && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}><EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></span>}
               <PriorityBadge value={t.priority} />
               <StatusBadge value={t.status} />
             </div>

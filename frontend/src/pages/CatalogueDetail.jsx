@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useBack } from '../components/navTrail'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './CatalogueDetail.css'
@@ -54,6 +55,7 @@ function InlineField({ label, value, onSave, type = 'text', multiline, options }
 export default function CatalogueDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const goBack = useBack('/catalogue')
   const [item, setItem] = useState(null)
   const [loading, setLoading] = useState(true)
   const [drag, setDrag] = useState(false)
@@ -90,7 +92,7 @@ export default function CatalogueDetail() {
     <div className="page">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={() => navigate('/catalogue')} style={{ padding: '6px 12px' }}>← Retour</button>
+          <button className="btn-secondary" onClick={goBack} style={{ padding: '6px 12px' }}>← Retour</button>
           <div>
             <h1 className="page-title" style={{ marginBottom: 2 }}>{item.name}</h1>
             <p className="page-sub">

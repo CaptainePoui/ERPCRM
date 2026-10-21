@@ -144,3 +144,31 @@ async def change_password(payload: PasswordChange, db: AsyncSession = Depends(ge
     user.hashed_password = hash_password(new)
     await db.commit()
     return {"ok": True}
+
+
+
+# ── Chemin de navigation (TASK-054, 2026-10-21) ───────────────────────────────
+# Philippe : « le bouton back nous ramène où on était (mettre un système de mémoire à l'extérieur du browser pour y
+# avoir accès même après un refresh) ». L'ecran envoie ses derniers ecrans visites ; on les garde ici.
+
+class NavTrailIO(BaseModel):
+    trail: list[dict] = []
+
+
+@router.get("/me/nav-trail", response_model=NavTrailIO)
+async def get_nav_trail(current_user: User = Depends(get_current_user)):
+    import json
+    try:
+        return NavTrailIO(trail=json.loads(current_user.nav_trail or "[]"))
+    except ValueError:
+        return NavTrailIO()
+
+
+@router.put("/me/nav-trail", response_model=NavTrailIO)
+async def put_nav_trail(payload: NavTrailIO, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    import json
+    trail = [{"path": str(x.get("path", ""))[:500]} for x in payload.trail if str(x.get("path", "")).startswith("/")][-50:]
+    user = await db.get(User, current_user.id)
+    user.nav_trail = json.dumps(trail)
+    await db.commit()
+    return NavTrailIO(trail=trail)

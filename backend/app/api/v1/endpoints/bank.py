@@ -84,6 +84,7 @@ class TransactionOut(BaseModel):
     payment_created: bool = False
     matched_at: datetime | None = None
     invoice_numbers: list[str] = []
+    invoices: list[dict] = []       # {id, number} : liens vers les factures (TASK-054)
     credit_left: float = 0          # partie du depot encore en credit au dossier du client (2026-10-08)
     lost_invoice: bool = False      # paiement d'une facture perdue de l'ancien logiciel (TASK-005.24)
     lost_invoice_number: str | None = None
@@ -517,9 +518,9 @@ async def _tx_out_bulk(txs: list[BankTransaction], db: AsyncSession) -> list[Tra
     payments: dict = {}
     spread: dict = {}
     if pay_ids:
-        for pid, num in (await db.execute(select(PaymentAllocation.payment_id, Invoice.number).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
-                                          .where(PaymentAllocation.payment_id.in_(pay_ids)).order_by(Invoice.number))).all():
-            numbers.setdefault(pid, []).append(num)
+        for pid, num, iid in (await db.execute(select(PaymentAllocation.payment_id, Invoice.number, Invoice.id).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+                                               .where(PaymentAllocation.payment_id.in_(pay_ids)).order_by(Invoice.number))).all():
+            numbers.setdefault(pid, []).append((num, iid))
         payments = {p.id: p for p in (await db.execute(select(ClientPayment).where(ClientPayment.id.in_(pay_ids)))).scalars().all()}
         spread = dict((await db.execute(select(PaymentAllocation.payment_id, func.sum(PaymentAllocation.amount_allocated))
                                         .where(PaymentAllocation.payment_id.in_(pay_ids)).group_by(PaymentAllocation.payment_id))).all())
@@ -538,7 +539,8 @@ async def _tx_out_bulk(txs: list[BankTransaction], db: AsyncSession) -> list[Tra
         if t.ai_company_id:
             o.ai_company_name = companies.get(t.ai_company_id)
         if t.client_payment_id:
-            o.invoice_numbers = numbers.get(t.client_payment_id, [])
+            o.invoice_numbers = [n for n, _ in numbers.get(t.client_payment_id, [])]
+            o.invoices = [{"id": str(i), "number": n} for n, i in numbers.get(t.client_payment_id, [])]
             cp = payments.get(t.client_payment_id)
             if cp and cp.lost_invoice:
                 o.lost_invoice, o.lost_invoice_number = True, cp.lost_invoice_number
@@ -590,10 +592,12 @@ async def _tx_out(t: BankTransaction, db: AsyncSession, with_suggestion: bool = 
         c = await db.get(Company, t.ai_company_id)
         out.ai_company_name = c.name if c else None
     if t.client_payment_id:
-        out.invoice_numbers = list((await db.execute(
-            select(Invoice.number).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
+        refs = (await db.execute(
+            select(Invoice.number, Invoice.id).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
             .where(PaymentAllocation.payment_id == t.client_payment_id).order_by(Invoice.number)
-        )).scalars().all())
+        )).all()
+        out.invoice_numbers = [n for n, _ in refs]
+        out.invoices = [{"id": str(i), "number": n} for n, i in refs]
         cp = await db.get(ClientPayment, t.client_payment_id)
         spread = (await db.execute(select(func.sum(PaymentAllocation.amount_allocated))
                                    .where(PaymentAllocation.payment_id == t.client_payment_id))).scalar() or 0

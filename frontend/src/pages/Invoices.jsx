@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from '../components/EntityLink'
 import useRowSelection from '../hooks/useRowSelection'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { useNavigate } from 'react-router-dom'
@@ -136,7 +137,7 @@ export default function Invoices({ creditsOnly = false }) {
                     <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(inv.id)} onChange={e => sel.toggle(inv.id, e.nativeEvent)} /></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.issue_date)}</td>
                     <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
-                    <td>{inv.company_name}{inv.site_label_snapshot && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{inv.site_label_snapshot}</div>}</td>
+                    <td><EntityLink kind="company" id={inv.company_id}>{inv.company_name}</EntityLink>{inv.site_label_snapshot && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{inv.site_label_snapshot}</div>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <span className="inv-badge" style={{ background: s.color }}>{s.label}</span>
                       {inv.transmission_status === 'non_transmise' && inv.status !== 'brouillon' && (

@@ -110,6 +110,7 @@ class TicketListItem(BaseModel):
     number: str
     company_id: uuid.UUID
     company_name: str
+    contact_id: uuid.UUID | None = None
     contact_name: str | None
     assigned_name: str | None
     title: str
@@ -314,7 +315,7 @@ async def list_tickets(
     open_stats = await get_open_stats(db, "ticket", [t.id for t in tickets])
     now = _now()
     return [TicketListItem(
-        id=t.id, number=_short(t), company_id=t.company_id, company_name=t.company.name,
+        id=t.id, number=_short(t), company_id=t.company_id, company_name=t.company.name, contact_id=t.contact_id,
         contact_name=f"{t.contact.first_name} {t.contact.last_name}" if t.contact else None,
         assigned_name=t.assigned_to.full_name if t.assigned_to else None,
         title=t.title, priority=t.priority, status=t.status,

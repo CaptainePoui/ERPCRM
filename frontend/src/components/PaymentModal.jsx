@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from './EntityLink'
 import api from '../services/api'
 import Autocomplete from './Autocomplete'
 import { C, EMPTY, fmtDate, fmtMoney } from '../pages/Bank'
@@ -55,13 +56,13 @@ export default function PaymentModal({ paymentId, onClose, onChanged }) {
     <div className="modal-overlay">
       <div className="modal-box" style={{ width: 760, maxWidth: '96vw', maxHeight: '94vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
         {!d ? <div className="loading">Chargement...</div> : <>
-          <h3 className="modal-title" style={{ margin: 0 }}>Paiement de {fmtMoney(d.amount)} — {d.company_name}</h3>
+          <h3 className="modal-title" style={{ margin: 0 }}>Paiement de {fmtMoney(d.amount)} — <EntityLink kind="company" id={d.company_id}>{d.company_name}</EntityLink></h3>
           <div style={box}>
             {row('Reçu le', fmtD(d.received_at))}
             {row('Mode', d.method_name)}
             {row('Paie', d.lost_invoice
               ? <span><strong>Facture perdue (ancien logiciel){d.lost_invoice_number ? ` #${d.lost_invoice_number}` : ''}</strong> — document non conservé, rien en crédit, aucun effet sur les taxes</span>
-              : (d.allocations.map(a => `${a.number} (${fmtMoney(a.amount)})`).join(', ') || 'Aucune facture'))}
+              : (d.allocations.length ? d.allocations.map((a, k) => <span key={a.invoice_id}>{k ? ', ' : ''}<EntityLink kind="invoice" id={a.invoice_id}>{a.number}</EntityLink> ({fmtMoney(a.amount)})</span>) : 'Aucune facture'))}
             {row('Dépôt bancaire', d.bank && `${fmtD(d.bank.posted_date)} · ${d.bank.description}${d.bank.payee ? ` — ${d.bank.payee}` : ''} · ${fmtMoney(d.bank.amount)}`)}
             {row('Note', d.notes)}
             {d.lost_invoice && !edit && (

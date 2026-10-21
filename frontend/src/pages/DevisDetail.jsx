@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react'
+import { useBack } from '../components/navTrail'
+import EntityLink from '../components/EntityLink'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import './Invoices.css'
@@ -35,6 +37,7 @@ function fmtOpened(iso) {
 export default function DevisDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const goBack = useBack('/devis')
   const [d, setD] = useState(null)
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState([])
@@ -100,10 +103,10 @@ export default function DevisDetail() {
     <div className="page">
       <div className="page-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button className="btn-secondary" onClick={() => navigate('/devis')} style={{ padding: '6px 12px' }}>← Retour</button>
+          <button className="btn-secondary" onClick={goBack} style={{ padding: '6px 12px' }}>← Retour</button>
           <div>
             <h1 className="page-title" style={{ marginBottom: 2 }}>Devis {d.number}</h1>
-            <p className="page-sub">{d.company_name}</p>
+            <p className="page-sub"><EntityLink kind="company" id={d.company_id}>{d.company_name}</EntityLink></p>
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>

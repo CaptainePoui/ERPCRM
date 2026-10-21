@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink, { InvoiceLinks } from '../components/EntityLink'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
@@ -69,9 +70,9 @@ export function SalesPayments() {
                 return (
                   <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => navigate(`/companies/${p.company_id}?tab=transactions&paiement=${p.id}`)}>
                     <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(p.received_at)}</td>
-                    <td style={td}><span style={{ color: C.link }}>{p.company_name}</span></td>
+                    <td style={td}><EntityLink kind="company" id={p.company_id}>{p.company_name}</EntityLink></td>
                     <td style={{ ...td, fontSize: 12 }}>
-                      {p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : (p.invoice_numbers.join(', ') || EMPTY)}
+                      {p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : <InvoiceLinks invoices={p.invoices} empty={EMPTY} />}
                       {p.document_count > 0 && <span title="Chèque attaché" style={{ marginLeft: 6, color: C.muted }}>· {p.document_count} chèque{p.document_count > 1 ? 's' : ''}</span>}
                     </td>
                     <td style={td}>{p.method_name}{p.reference ? <div style={{ fontSize: 12, color: C.muted }}>{p.reference}</div> : null}</td>

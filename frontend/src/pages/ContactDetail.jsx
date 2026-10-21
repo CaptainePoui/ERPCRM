@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
+import { useBack } from '../components/navTrail'
 import MailBrowser from '../components/MailBrowser'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
@@ -313,6 +314,7 @@ const CONTACT_TABS = ['Général', 'CDR', 'Courriels', 'Provisionnement']
 export default function ContactDetail({ isNew }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const goBack = useBack('/contacts')
   const [searchParams] = useSearchParams()
   const fromCompanyId = searchParams.get('fromCompanyId')
   const fromCompanyName = searchParams.get('fromCompanyName')
@@ -724,12 +726,12 @@ export default function ContactDetail({ isNew }) {
             const companyName = fromCompanyName || primary?.company_name
             return companyId ? (
               <>
-                <button className="back-btn" onClick={() => navigate(`/companies/${companyId}${fromTab ? `?tab=${fromTab}` : ''}`)}>← {companyName || 'Compagnie'}</button>
+                <button className="back-btn" onClick={goBack}>← Retour</button>
                 <span className="breadcrumb-sep">›</span>
                 <button className="back-btn" onClick={() => navigate(`/companies/${companyId}?tab=contacts`)}>Contact</button>
               </>
             ) : (
-              <button className="back-btn" onClick={() => navigate('/contacts')}>← Contacts</button>
+              <button className="back-btn" onClick={goBack}>← Retour</button>
             )
           })()}
           <span className="breadcrumb-sep">›</span>

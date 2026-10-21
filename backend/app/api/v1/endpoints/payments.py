@@ -213,16 +213,19 @@ async def list_all_payments(company_id: uuid.UUID | None = None, db: AsyncSessio
         q = q.where(ClientPayment.company_id == company_id)
     rows = (await db.execute(q.order_by(ClientPayment.received_at.desc().nulls_first(), ClientPayment.created_at.desc()))).all()
     nums: dict = {}
-    for pid, num in (await db.execute(
-        select(PaymentAllocation.payment_id, Invoice.number).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+    refs: dict = {}         # n° et id de chaque facture payee : liens vers la facture (TASK-054)
+    for pid, num, iid in (await db.execute(
+        select(PaymentAllocation.payment_id, Invoice.number, Invoice.id).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
     )).all():
         nums.setdefault(pid, []).append(num)
+        refs.setdefault(pid, []).append({"id": str(iid), "number": num})
     banked = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None)))).scalars().all())
     docs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).group_by(PaymentDocument.payment_id))).all())
     return [{
         "id": str(cp.id), "company_id": str(cp.company_id), "company_name": name, "amount": float(cp.amount),
         "status": cp.status, "source": cp.source, "method_name": cp.method_name, "reference": cp.reference,
         "received_at": cp.received_at, "created_at": cp.created_at, "invoice_numbers": sorted(nums.get(cp.id, [])),
+        "invoices": sorted(refs.get(cp.id, []), key=lambda x: x["number"]),
         "bank_matched": cp.id in banked,
         "lost_invoice": cp.lost_invoice, "lost_invoice_number": cp.lost_invoice_number, "document_count": docs.get(cp.id, 0),
     } for cp, name in rows]

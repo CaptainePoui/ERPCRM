@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from '../components/EntityLink'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { contrastText } from '../utils/color'
@@ -55,7 +56,7 @@ export default function Contacts() {
                   <td>{c.phone || c.mobile || '—'}</td>
                   <td>
                     {c.companies.map(co => (
-                      <div key={co.company_id} className="company-legal">{co.company_name}</div>
+                      <div key={co.company_id} className="company-legal"><EntityLink kind="company" id={co.company_id}>{co.company_name}</EntityLink></div>
                     ))}
                     {c.companies.length === 0 && <span style={{color:'var(--c-faint)'}}>—</span>}
                   </td>

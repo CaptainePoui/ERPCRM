@@ -8,6 +8,7 @@ import {
 import './Layout.css'
 import { playReminder, showNotification, fmtSince } from './ticketReminder'
 import ZekoPanel from './ZekoPanel'
+import { useNavTrail } from './navTrail'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
 // horizontaux en haut de la page (demande de Philippe, 2026-10-02). `match` = autres
@@ -272,6 +273,7 @@ export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [zekoOpen, setZekoOpen] = useState(false)
   const location = useLocation()
+  useNavTrail()
   const group = activeGroup(location.pathname)
 
   useEffect(() => {

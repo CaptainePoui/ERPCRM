@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import EntityLink from '../components/EntityLink'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewTaskModal from '../components/NewTaskModal'
@@ -277,7 +278,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               {inv.is_recurring && <span className="inv-recur-badge">Récurrente</span>}
               {inv.late_fee_for_id && <span className="inv-recur-badge" style={{ background: 'var(--c-tint-red)', color: 'var(--c-on-red)', whiteSpace: 'nowrap' }}>Avis de retard</span>}
             </h1>
-            <p className="page-sub">{inv.company_name}{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
+            <p className="page-sub"><EntityLink kind="company" id={inv.company_id}>{inv.company_name}</EntityLink>{inv.site_label_snapshot ? ` — ${inv.site_label_snapshot}` : ''}</p>
             {inv.site_address_snapshot && <p className="page-sub" style={{ fontSize: 12, color: 'var(--c-faint)', marginTop: 0 }}>{inv.site_address_snapshot}</p>}
           </div>
         </div>

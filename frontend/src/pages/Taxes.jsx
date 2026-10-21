@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from '../components/EntityLink'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
@@ -195,8 +196,8 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
                     {report.invoices.map(i => (
                       <tr key={i.id} onClick={() => navigate(`/invoices/${i.id}`)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }}>
                         <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(i.issue_date)}</td>
-                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{i.is_credit ? '[Avoir] ' : ''}{i.number}</td>
-                        <td style={td}>{i.company_name}</td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{i.is_credit ? '[Avoir] ' : ''}<EntityLink kind="invoice" id={i.id}>{i.number}</EntityLink></td>
+                        <td style={td}><EntityLink kind="company" id={i.company_id}>{i.company_name}</EntityLink></td>
                         <td style={tdR}>{fmtMoney(i.subtotal)}</td><td style={tdR}>{fmtMoney(i.tps)}</td>
                         <td style={tdR}>{fmtMoney(i.tvq)}</td><td style={tdR}>{fmtMoney(i.total)}</td>
                       </tr>

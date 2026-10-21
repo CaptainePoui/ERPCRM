@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from '../components/EntityLink'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewDevisModal from '../components/NewDevisModal'
@@ -98,7 +99,7 @@ export default function Devis() {
                 return (
                   <tr key={d.id} className="inv-row" onClick={() => navigate(`/devis/${d.id}`)}>
                     <td className="inv-number">{d.number}{d.invoice_id ? ' ✓' : ''}</td>
-                    <td>{d.company_name}</td>
+                    <td><EntityLink kind="company" id={d.company_id}>{d.company_name}</EntityLink></td>
                     <td><span className="inv-badge" style={{ background: s.color }}>{s.label}</span></td>
                     <td>{fmtDate(d.issue_date)}</td>
                     <td>{fmtDate(d.valid_until)}</td>

@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-054 — Six écrans plantés quelques minutes : import oublié, invisible au build
+
+**Date** : 2026-10-21
+
+**On croyait** : que le bouton Retour était branché sur les fiches compagnie, contact, ticket, devis, article et facture fournisseur, puisque `vite build` passait sans erreur.
+
+**Preuve** : test Playwright sur la fiche compagnie : « ReferenceError: useBack is not defined » (page d'erreur de React Router) ; même défaut sur les 6 fiches.
+
+**Cause réelle** : le script d'édition n'ajoutait l'import que si « useBack » était déjà présent dans le fichier ; or l'appel `useBack()` a été inséré à l'étape suivante. Le build Vite ne vérifie pas les noms non définis (pas d'ESLint installé dans le projet).
+
+**Correction** : imports ajoutés aux 6 fichiers ; vérification que chaque fichier qui utilise `useBack`, `EntityLink` ou `InvoiceLinks` les importe ; les 16 écrans touchés ouverts dans le navigateur sans erreur.
+
+**Leçon (à ne pas refaire)** : un build qui passe ne prouve pas qu'un écran s'ouvre ; après une modification touchant plusieurs écrans, ouvrir chacun dans Playwright et relever les erreurs de la console (test « fumée ») avant de conclure. Envisager d'installer ESLint (règle no-undef) pour attraper ce cas au build.
+
+---
+
 ## TASK-042.10 — Boutons qui débordent de leur fenêtre (erreur répétée)
 
 **Date** : 2026-10-21

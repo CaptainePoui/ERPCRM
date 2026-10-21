@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import EntityLink from '../components/EntityLink'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import NewTicketModal from '../components/NewTicketModal'
@@ -146,7 +147,7 @@ export default function Tickets() {
                   <tr key={t.id} className="tkt-row" onClick={() => navigate(`/tickets/${t.id}`)}>
                     <td><span className="tkt-badge" style={{ background: p.color }}>{p.label}</span></td>
                     <td className="tkt-title">{t.title}</td>
-                    <td>{t.company_name}</td>
+                    <td><EntityLink kind="company" id={t.company_id}>{t.company_name}</EntityLink></td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{t.contact_name || '—'}</td>
                     <td style={{ color: 'var(--c-muted)' }}>{t.assigned_name || '—'}</td>
                     <td><span className="tkt-badge" style={{ background: s.color }}>{s.label}</span></td>

@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, Fragment } from 'react'
+import { useBack } from '../components/navTrail'
+import EntityLink, { InvoiceLinks } from '../components/EntityLink'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
 import Autocomplete from '../components/Autocomplete'
@@ -380,7 +382,7 @@ function ClientPaymentsList({ companyId, onOpen }) {
         {rows.map(p => (
           <tr key={p.id} className="cd-tx-row" onClick={() => onOpen(p.id)} style={p.status === 'confirmed' ? undefined : { color: 'var(--c-faint)' }}>
             <td style={{ whiteSpace: 'nowrap' }}>{fmtD(p.received_at)}</td>
-            <td style={{ fontWeight: 600 }}>{p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : (p.invoice_numbers.join(', ') || 'Aucune facture')}</td>
+            <td style={{ fontWeight: 600 }}>{p.lost_invoice ? `Facture perdue (ancien logiciel)${p.lost_invoice_number ? ` #${p.lost_invoice_number}` : ''}` : <InvoiceLinks invoices={p.invoices} empty="Aucune facture" />}</td>
             <td>{p.method_name}</td>
             <td style={{ fontSize: 12, color: 'var(--c-muted)' }}>{SRC[p.source] || p.source}{p.bank_matched ? ' · vu en banque' : ''}{p.status !== 'confirmed' ? ` · ${p.status}` : ''}</td>
             <td>{p.document_count > 0 ? <span className="cd-tx-badge" style={{ color: '#2563EB', borderColor: '#2563EB' }}>{p.document_count > 1 ? `${p.document_count} pièces` : 'Chèque'}</span> : ''}</td>
@@ -485,6 +487,7 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
 export default function CompanyDetail({ isNew }) {
   const { id } = useParams()
   const navigate = useNavigate()
+  const goBack = useBack('/companies')
   const [searchParams, setSearchParams] = useSearchParams()
   const tabParam = searchParams.get('tab')
   const initialTab = Math.max(0, TAB_SLUGS.indexOf(tabParam === 'cdr' ? 'telephonie' : tabParam === 'echanges' ? 'entente' : tabParam))   // anciens liens ?tab=cdr
@@ -571,7 +574,7 @@ export default function CompanyDetail({ isNew }) {
     <div className="detail-page">
       <div className="detail-header">
         <div className="detail-breadcrumb">
-          <button className="back-btn" onClick={() => navigate('/companies')}>← Compagnies</button>
+          <button className="back-btn" onClick={goBack}>← Retour</button>
           {!isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">{c?.name || ''}</span>{c && <ParentBadge companyId={id} />}{c?.is_owner && <span title="Compagnie du propriétaire : jamais facturée ; ses coordonnées sont celles des PDF (Administration → Entreprise)" style={{ marginLeft: 10, fontSize: 11, fontWeight: 800, letterSpacing: '0.05em', textTransform: 'uppercase', background: 'var(--brand-bg)', color: 'var(--brand)', borderRadius: 20, padding: '3px 10px' }}>Propriétaire</span>}</>}
           {isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">Nouvelle compagnie</span></>}
         </div>
@@ -1487,7 +1490,7 @@ function TachesTab({ companyId, companyName, onShowTask }) {
                 <div style={{ fontSize: 12, color: overdue ? '#DC2626' : 'var(--c-faint)', marginTop: 4, display: 'flex', gap: 12 }}>
                   {t.due_date && <span>{overdue ? '⚠ ' : ''}Prévu : {new Date(t.due_date + 'T12:00:00').toLocaleDateString('fr-CA')}{t.due_time ? ` ${t.due_time}` : ''}</span>}
                   {t.assigned_name && <span>👤 {t.assigned_name}</span>}
-                  {t.contact_name && <span>· {t.contact_name}</span>}
+                  {t.contact_name && <span>· <EntityLink kind="contact" id={t.contact_id}>{t.contact_name}</EntityLink></span>}
                   {t.ticket_title && <span>🎫 {t.ticket_title}</span>}
                 </div>
                 {t.subtasks?.length > 0 && (
