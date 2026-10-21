@@ -65,6 +65,8 @@ DEFAULTS = {
     "zeko_ext_url": "",
     "zeko_ext_model": "",
     "zeko_ext_key_enc": "",
+    # Boites ou Zeko cherche les avis de paiement des clients (TASK-042.13), separees par des virgules
+    "zeko_scan_boxes": "facturation@simpleip.tel",
 }
 
 

@@ -480,3 +480,105 @@ async def delete_rule(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: Use
     if r:
         await db.delete(r)
         await db.commit()
+
+
+
+# ── Propositions de Zeko : avis de paiement trouves dans les courriels (TASK-042.13) ─────────────────────────
+
+@router.get("/proposals")
+async def list_proposals(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoProposal, ZekoMailScan
+    from app.models.mailbox import MailMessage, Mailbox
+    from app.models.bank_account import BankTransaction
+    from app.models.company import Company
+    from app.core import zeko_payments as zp
+    rows = (await db.execute(select(ZekoProposal, MailMessage, BankTransaction, Company.name)
+                             .outerjoin(MailMessage, MailMessage.id == ZekoProposal.mail_message_id)
+                             .outerjoin(BankTransaction, BankTransaction.id == ZekoProposal.bank_transaction_id)
+                             .outerjoin(Company, Company.id == ZekoProposal.company_id)
+                             .where(ZekoProposal.status.in_(("proposee", "a_corriger", "sans_depot")))
+                             .order_by(ZekoProposal.paid_on.desc().nulls_last()))).all()
+    bx = await zp.boxes(db)
+    base = select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(
+        func.lower(Mailbox.email).in_(bx), MailMessage.direction == "in",
+        func.lower(func.coalesce(MailMessage.from_email, "")).not_in(zp.SKIP_SENDERS))
+    total = (await db.execute(base)).scalar_one()
+    done = (await db.execute(base.where(MailMessage.id.in_(select(ZekoMailScan.mail_message_id))))).scalar_one()
+    found = (await db.execute(select(func.count()).select_from(ZekoMailScan).where(ZekoMailScan.result == "paiement"))).scalar_one()
+    return {"boxes": bx, "scanned": done, "total": total, "notices": found, "items": [{
+        "id": str(p.id), "status": p.status, "amount": p.amount, "company_id": str(p.company_id) if p.company_id else None, "company_name": c,
+        "allocations": json.loads(p.allocations or "[]"), "explanation": p.explanation, "evidence": p.evidence,
+        "mail": {"from": m.from_email, "name": m.from_name, "subject": m.subject, "date": m.sent_at, "id": str(m.id)} if m else None,
+        "deposit": {"id": str(t.id), "date": t.posted_date, "amount": float(t.amount), "payee": t.payee, "status": t.status,
+                    "account_id": str(t.account_id)} if t else None,
+    } for p, m, t, c in rows]}
+
+
+async def _accept(db, p, user_id) -> str | None:
+    """Accepte une proposition : tout est revérifié au moment d'accepter. Retourne une erreur, ou None."""
+    from app.models.bank_account import BankTransaction
+    from app.models.invoice import Invoice
+    from app.core.bank_matching import invoice_balances
+    from app.api.v1.endpoints import bank
+    from decimal import Decimal
+    if p.status != "proposee":
+        return "Cette proposition n'est pas prête"
+    tx = await db.get(BankTransaction, p.bank_transaction_id) if p.bank_transaction_id else None
+    if not tx or tx.status != "unclassified":
+        return "Le dépôt n'est plus libre"
+    allocs = json.loads(p.allocations or "[]")
+    settled = await invoice_balances(db, [uuid.UUID(a["invoice_id"]) for a in allocs])
+    for a in allocs:
+        inv = await db.get(Invoice, uuid.UUID(a["invoice_id"]))
+        if not inv or Decimal(str(a["amount"])) > Decimal(inv.total) - Decimal(settled.get(inv.id, 0)) + Decimal("0.004"):
+            return f"{a['number']} n'a plus assez de solde"
+    if abs(sum(float(a["amount"]) for a in allocs) - float(tx.amount)) > 0.004:
+        return "Les montants ne concordent plus avec le dépôt"
+    await bank.match_transaction(tx.id, bank.MatchIn(allocations=[bank.AllocIn(invoice_id=uuid.UUID(a["invoice_id"]), amount=float(a["amount"])) for a in allocs],
+                                                     remember_payee=False), db, None)
+    p.status, p.decided_by, p.decided_at = "acceptee", user_id, datetime.now(timezone.utc)
+    await db.commit()
+    return None
+
+
+@router.post("/proposals/{pid}/accept")
+async def accept_proposal(pid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoProposal
+    p = await db.get(ZekoProposal, pid)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposition introuvable")
+    err = await _accept(db, p, current_user.id)
+    if err:
+        raise HTTPException(status_code=400, detail=err)
+    return {"ok": True}
+
+
+@router.post("/proposals/accept-all")
+async def accept_all(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoProposal
+    ok, errors = 0, []
+    for p in (await db.execute(select(ZekoProposal).where(ZekoProposal.status == "proposee"))).scalars().all():
+        err = await _accept(db, p, current_user.id)
+        if err:
+            await db.rollback()
+            errors.append(err)
+        else:
+            ok += 1
+    return {"accepted": ok, "errors": errors}
+
+
+@router.post("/proposals/{pid}/refuse")
+async def refuse_proposal(pid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.models.zeko import ZekoProposal
+    p = await db.get(ZekoProposal, pid)
+    if not p:
+        raise HTTPException(status_code=404, detail="Proposition introuvable")
+    p.status, p.decided_by, p.decided_at = "refusee", current_user.id, datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/proposals/recheck")
+async def recheck_proposals(_: User = Depends(get_current_user)):
+    from app.core import zeko_payments as zp
+    return {"changed": await zp.recheck_all()}

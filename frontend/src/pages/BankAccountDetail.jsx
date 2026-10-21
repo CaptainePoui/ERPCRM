@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import EntityLink, { InvoiceLinks } from '../components/EntityLink'
+import ZekoProposals from '../components/ZekoProposals'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
@@ -779,6 +780,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [page, setPage] = useState(0)
   const [desc, setDesc] = useState(true)
   const [selected, setSelected] = useState(new Set())
+  const reset = () => { setPage(0); setSelected(new Set()) }   // changement d'onglet : page 1, rien de sélectionné
   const [detail, setDetail] = useState(null)      // fiche de la transaction cliquee
   const [payeeTx, setPayeeTx] = useState(null)
   const [busy, setBusy] = useState(false)
@@ -846,6 +848,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
         <div className="filter-tabs">
           <button className={`filter-tab${sub === 'all' && !excluded ? ' active' : ''}`} onClick={() => { setSub('all'); setExcluded(false); reset() }}>Tout ({unclassified.length})</button>
           <button className={`filter-tab${sub === 'recognized' && !excluded ? ' active' : ''}`} onClick={() => { setSub('recognized'); setExcluded(false); reset() }}>Reconnu ({recognized.length})</button>
+          <button className={`filter-tab${sub === 'zeko' && !excluded ? ' active' : ''}`} onClick={() => { setSub('zeko'); setExcluded(false); reset() }}>Propositions de Zéko</button>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 12, color: C.faint }} title="À l'import, quand vous acceptez une proposition, et toutes les 10 minutes">Correspondances sûres associées automatiquement</span>
@@ -855,6 +858,8 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
         </div>
       </div>
 
+      {sub === 'zeko' && !excluded && <ZekoProposals onChanged={onChanged} />}
+      {(sub !== 'zeko' || excluded) && <>
       {(multi || sel.length > 0) && (
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--c-tint-blue)', borderRadius: 8, padding: '8px 12px', marginBottom: 10, fontSize: 13, flexWrap: 'wrap' }}>
           <span>{sel.length} sélectionnée{sel.length > 1 ? 's' : ''}</span>
@@ -959,6 +964,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
       <Pagination perPage={perPage} setPerPage={setPerPage} page={page} setPage={setPage} total={rows.length} />
       {detail && <TransactionModal txId={detail} onClose={() => setDetail(null)} onChanged={onChanged} />}
       {payeeTx && <PayeeModal tx={payeeTx} onClose={() => setPayeeTx(null)} onDone={async () => { setPayeeTx(null); await onChanged() }} />}
+      </>}
     </div>
   )
 }
