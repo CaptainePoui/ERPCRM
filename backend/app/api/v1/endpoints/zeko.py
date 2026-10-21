@@ -36,7 +36,8 @@ SYSTEM = (
     "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
     "client). Ici, « poste » veut dire le poste téléphonique (extension). Un dépôt « ELAVON MRCH SVC » est un paiement par carte : "
     "son client et sa facture se trouvent dans les reçus de carte des courriels (paiements_carte), jamais dans le nom du "
-    "bénéficiaire. Réfléchis en français."
+    "bénéficiaire. N'affirme jamais qu'un paiement règle une facture si les montants ne le permettent pas : "
+    "rapporte les chiffres et le « constat » donnés par l'outil, et dis ce qui reste à vérifier. Réfléchis en français."
 )
 ROLES = {"admin": "administrateur", "manager": "gestionnaire", "tech": "technicien", "billing": "facturation", "readonly": "lecture seule"}
 

@@ -173,12 +173,37 @@ async def _run(name, args, db) -> str:
         rows = (await db.execute(q.limit(20))).scalars().all()
         etat = {"matched": "dépôt associé par Zéko", "linked": "dépôt déjà associé à cette facture", "a_verifier": "à vérifier",
                 "parsed": "en attente du dépôt", "failed": "refusé ou illisible"}
+        from app.models.invoice import Invoice
+        from app.models.client_payment import ClientPayment, PaymentAllocation
         out = []
         for r in rows:
             tx = await db.get(BankTransaction, r.bank_transaction_id) if r.bank_transaction_id else None
-            out.append({"date": r.paid_at, "client": r.company_name, "facture": r.invoice_number, "montant": float(r.amount or 0),
-                        "carte": r.card, "etat": etat.get(r.status, r.status), "raison": r.note,
-                        "depot": f"{tx.posted_date} {float(tx.amount):.2f} $" if tx else None})
+            item = {"date": r.paid_at, "client": r.company_name, "facture": r.invoice_number, "montant_du_recu": float(r.amount or 0),
+                    "carte": r.card, "etat": etat.get(r.status, r.status), "raison": r.note,
+                    "depot": f"{tx.posted_date} {float(tx.amount):.2f} $" if tx else None}
+            inv = await db.get(Invoice, r.invoice_id) if r.invoice_id else None
+            if inv:
+                # Les chiffres de la facture, pour que Zeko ne conclue jamais plus que ce qu'ils disent (2026-10-21 :
+                # « ce paiement a réglé le solde » alors qu'un recu de 2,23 $ ne peut pas regler une facture de 55,01 $)
+                pays = (await db.execute(select(ClientPayment, PaymentAllocation.amount_allocated).join(
+                    PaymentAllocation, PaymentAllocation.payment_id == ClientPayment.id).where(PaymentAllocation.invoice_id == inv.id))).all()
+                deposited = set((await db.execute(select(BankTransaction.client_payment_id).where(
+                    BankTransaction.client_payment_id.in_([p.id for p, _ in pays] or [None])))).scalars().all())
+                total, paid = float(inv.total), sum(float(a) for _, a in pays)
+                no_bank = sum(float(a) for p, a in pays if p.id not in deposited and not p.lost_invoice)
+                item["facture_total"], item["deja_paye_sur_la_facture"], item["reste_a_payer"] = total, round(paid, 2), round(total - paid, 2)
+                if no_bank:
+                    item["paye_sans_depot_bancaire"] = round(no_bank, 2)
+                if r.status == "matched" or r.status == "linked":
+                    item["constat"] = f"Ce reçu de {r.amount:.2f} $ est l'argent reçu pour cette facture de {total:.2f} $."
+                elif float(r.amount or 0) < total:
+                    item["constat"] = (f"Ce reçu ne paie que {r.amount:.2f} $ d'une facture de {total:.2f} $. "
+                                       + (f"La facture est déjà marquée payée ({paid:.2f} $), dont {no_bank:.2f} $ sans aucun dépôt à la banque : "
+                                          f"écart non expliqué, à vérifier." if paid >= total and no_bank else
+                                          f"Il reste {total - paid:.2f} $ à payer."))
+                else:
+                    item["constat"] = f"Reçu de {r.amount:.2f} $ sur une facture de {total:.2f} $ : {etat.get(r.status, r.status)}."
+            out.append(item)
         return _out(out or "aucun reçu de carte correspondant")
 
     comp = await _resolve_company(db, args.get("client"))
