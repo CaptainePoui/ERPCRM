@@ -4454,6 +4454,15 @@ Questions ouvertes à trancher avant design (aucune réponse supposée) :
 - Que devient le fichier local SIPV après export (conservé, supprimé après
   X jours, jamais touché) ?
 
+2026-10-21 — Ajout de Philippe : « une place où marquer le nombre de jours,
+mois, années à garder les fichiers pour ne pas saturer le Dropbox, OneDrive ou
+Google Drive du client ». Durée de conservation réglable (jours / mois /
+années) : les enregistrements plus vieux que cette durée sont retirés du nuage
+du client. Contexte : Philippe ne veut pas garder les enregistrements chez lui
+(voir TASK-053, stockage du P720) ; la copie locale n'est qu'une mémoire
+tampon le temps de l'envoi. À trancher au design : réglage par client (tenant)
+seulement, ou aussi par poste/groupe ; « aucune limite » permis ou non.
+
 ---
 
 ## TASK-035 [ERPCRM] [~] Backup cloud automatique de notre propre infra (ERPCRM + SIPV, pas client) -- réglages Admin
