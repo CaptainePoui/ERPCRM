@@ -109,6 +109,29 @@ async def _ask(system: str, t: BankTransaction) -> dict:
     return _parse(content)
 
 
+async def _from_card_receipt(db, t: BankTransaction) -> None:
+    """Depot Elavon : client et facture donnes par le recu de carte (core/card_receipts.py) ; sans recu, on le dit."""
+    from app.core import card_receipts
+    from app.models.bank_account import CardReceipt
+    await card_receipts.scan(db)
+    r = (await db.execute(select(CardReceipt).where(CardReceipt.bank_transaction_id == t.id))).scalars().first()
+    if not r:
+        cands = (await db.execute(select(CardReceipt).where(
+            CardReceipt.amount == t.amount, CardReceipt.bank_transaction_id.is_(None),
+            CardReceipt.paid_at >= t.posted_date - timedelta(days=5), CardReceipt.paid_at <= t.posted_date))).scalars().all()
+        r = cands[0] if len(cands) == 1 else None
+    inv = await db.get(Invoice, r.invoice_id) if r and r.invoice_id else None
+    t.ai_status = "done"
+    if inv:
+        t.ai_company_id, t.ai_confidence = inv.company_id, 95
+        t.ai_note = (f"Reçu de paiement par carte dans les courriels ({r.paid_at}) : {r.company_name or ''}, facture "
+                     f"{r.invoice_number}, {r.amount:.2f} $" + (f" — {r.note}" if r.note else ""))[:500]
+    else:
+        t.ai_company_id = t.ai_confidence = None
+        t.ai_note = ("Paiement par carte (Elavon) : aucun reçu « Merchant Email Receipt » de ce montant dans les courriels"
+                     if not r else f"Reçu de carte trouvé ({r.company_name}, {r.invoice_number}) mais facture introuvable dans ERPCRM")
+
+
 async def run_bank_ai_once() -> int:
     """Traite les depots en attente : d'abord par les noms (instantane), puis l'IA, UN depot par
     appel (plus rapide et plus juste que des lots sur ce serveur sans carte graphique)."""
@@ -126,6 +149,12 @@ async def run_bank_ai_once() -> int:
         by_name = {n.strip().lower(): cid for cid, n in companies}
         rest = []
         for t in txs:
+            # Depot Elavon (paiement par carte) : le nom « ELAVON MRCH SVC » ne dit rien du client -- Zeko va lire le
+            # recu « Merchant Email Receipt » dans les courriels (Philippe, 2026-10-21 : « quand c'est Elavon, qu'il
+            # aille chercher l'info dans les courriels »), jamais de devinette sur le nom
+            if t.amount > 0 and "elavon" in f"{t.description} {t.payee or ''}".lower():
+                await _from_card_receipt(db, t)
+                continue
             m = _name_match(t, companies)
             if m:
                 score, cid, name = m

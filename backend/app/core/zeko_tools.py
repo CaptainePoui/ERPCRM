@@ -48,13 +48,16 @@ TOOLS = [
         {**_CLIENT, "texte": {"type": "string"}}, ["client"]),
     _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. 11000 ou T-11001).",
         {"ticket": {"type": "string"}}, ["ticket"]),
+    _fn("paiements_carte", "Reçus de paiement par carte (Elavon / Authorize.Net, lus dans les courriels) : à consulter pour tout "
+        "dépôt ELAVON MRCH SVC. Filtre optionnel par montant ou par client.",
+        {"montant": {"type": "number"}, "client": {"type": "string", "description": "nom du client"}}),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
 ]
 EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus puissante sur une question TECHNIQUE générale "
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
-LABELS = {"demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
+LABELS = {"paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
           "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
           "telephonie": "lit la téléphonie"}
 
@@ -159,6 +162,24 @@ async def _run(name, args, db) -> str:
                      "cree": t.created_at.date(), "demande": t.description, "temps_min": (await _ticket_secs(db, t)) // 60,
                      "messages": [{"de": m.user.full_name if m.user else {"client": "client", "zeko": "Zéko"}.get(m.author_kind, "?"),
                                    "le": m.created_at.strftime("%Y-%m-%d %H:%M"), "texte": m.body[:800]} for m in t.messages[-25:]]})
+
+    if name == "paiements_carte":
+        from app.models.bank_account import CardReceipt, BankTransaction
+        q = select(CardReceipt).order_by(CardReceipt.paid_at.desc())
+        if args.get("montant") not in (None, ""):
+            q = q.where(CardReceipt.amount == round(float(args["montant"]), 2))
+        if args.get("client"):
+            q = q.where(CardReceipt.company_name.ilike(f"%{str(args['client']).strip()}%"))
+        rows = (await db.execute(q.limit(20))).scalars().all()
+        etat = {"matched": "dépôt associé par Zéko", "linked": "dépôt déjà associé à cette facture", "a_verifier": "à vérifier",
+                "parsed": "en attente du dépôt", "failed": "refusé ou illisible"}
+        out = []
+        for r in rows:
+            tx = await db.get(BankTransaction, r.bank_transaction_id) if r.bank_transaction_id else None
+            out.append({"date": r.paid_at, "client": r.company_name, "facture": r.invoice_number, "montant": float(r.amount or 0),
+                        "carte": r.card, "etat": etat.get(r.status, r.status), "raison": r.note,
+                        "depot": f"{tx.posted_date} {float(tx.amount):.2f} $" if tx else None})
+        return _out(out or "aucun reçu de carte correspondant")
 
     comp = await _resolve_company(db, args.get("client"))
     if not isinstance(comp, Company):

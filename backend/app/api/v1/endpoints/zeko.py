@@ -34,7 +34,9 @@ SYSTEM = (
     "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
     "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Avant de dire qu'une information "
     "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
-    "client). Ici, « poste » veut dire le poste téléphonique (extension). Réfléchis en français."
+    "client). Ici, « poste » veut dire le poste téléphonique (extension). Un dépôt « ELAVON MRCH SVC » est un paiement par carte : "
+    "son client et sa facture se trouvent dans les reçus de carte des courriels (paiements_carte), jamais dans le nom du "
+    "bénéficiaire. Réfléchis en français."
 )
 ROLES = {"admin": "administrateur", "manager": "gestionnaire", "tech": "technicien", "billing": "facturation", "readonly": "lecture seule"}
 
