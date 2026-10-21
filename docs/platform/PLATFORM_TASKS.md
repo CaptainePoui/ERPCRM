@@ -6434,3 +6434,14 @@ Date(s) de travail : 2026-10-16
 - Existant : `/v1/search` (compagnies, contacts ; ilike + unaccent). À faire : comparaison sans espaces, tirets, apostrophes ni accents (« dastou » trouve « D'Astous Auto ») ; numéros de facture ; montants (1234.56 = 1234,56) ; résultats ouverts dans la fiche du client (TASK-002.9).
 - Fait (2026-10-16) : `search.py` — noms comparés sans accents, espaces, tirets, apostrophes ni ponctuation (`regexp_replace(unaccent(lower(...)))`), compagnies (nom, nom légal, n° de compte), contacts (prénom + nom collés, courriel, téléphones) ; si aucune compagnie, ressemblance (difflib, ≥ 0,66, en Python — pas d'extension pg_trgm) pour les fautes de frappe ; factures par numéro (« 112183 », « 1372 ») ou par montant ; paiements par montant ; montants « 131.65 », « 131,65 », « 1 103,65 », « $1,234.56 » équivalents. Facture / paiement trouvés ouverts dans la fiche du client. Essais : « dastou », « d astous » → D Astous Auto ; « physoteque », « physotheque » → Physotech ; « jacquescartier » → Résidence Jacques-Cartier ; « 131,65 » → factures Hamak ; « 1 103,65 » → paiement Domaine des Cascades.
 
+
+
+## TASK-053 [PLATFORM] [ ] Migration des serveurs vers le Lenovo ThinkStation P720 (DashV16, ERPCRM, SIPV) ; Z620 en sauvegarde + Plex
+Date de demande : 2026-10-21 (Philippe, document « Migration des serveurs — DashV16, ERPCRM et SIPV » : P720 128 Go chez Jean-François Lane / Nanotech ; Z620 repris à 48 Go DDR3 pour sauvegardes, Plex et secours ; « inventaire et recommandation seulement, ne déplace aucune VM, ne supprime rien, ne modifie aucun stockage »)
+Date(s) de travail : 2026-10-21
+
+- Étape 1 (inventaire, lecture seule) mesuré depuis la VM ERPCRM :
+  - VM ERPCRM (192.168.1.9) : 12 vCPU, 45 Go RAM, disque virtuel 256 Go dont 134 Go utilisés. Base `erpcrm` 50 Mo ; fichiers ERPCRM 1,3 Go (storage 225 Mo, surtout des imports d'octobre) ; sauvegardes 812 Mo ; modèles IA Ollama 22 Go (gpt-oss:20b, qwen3:14b, nomic-embed-text) ; Docker : Graphiti/Neo4j (0,5 Go de données), « voicebox » (cache 25 Go), images 62 Go dont 60 Go récupérables et cache de construction 51 Go dont 41 Go récupérables (rien supprimé).
+  - VM SIPV (192.168.1.55, `sipv-lab`) : 4 vCPU, 15 Go RAM, disque virtuel 256 Go dont 21 Go utilisés ; bases ~55 Mo (sipv, fusionpbx, freeswitch, sipv_test) ; enregistrements 52 Mo (pas encore de vraies lignes).
+  - Non visible depuis une VM : disques physiques du Z620, Hyper-V et ses VHDX, VM DashV16 → scripts en lecture seule préparés : `docs/platform/migration/inventaire_z620.ps1` (Windows, administrateur) et `inventaire_vm_linux.sh` (DashV16).
+- Étape 2 (à faire) : recommandation d'achat (NVMe/SATA/HDD, redondance, réutilisation des disques, Proxmox ou Hyper-V) une fois les résultats des scripts reçus.
