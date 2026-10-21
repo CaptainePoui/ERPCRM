@@ -136,3 +136,25 @@ class InteracNotice(Base):
     error: Mapped[str | None] = mapped_column(Text)
     bank_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_transactions.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+
+class CardReceipt(Base):
+    """Recu de paiement par carte « Merchant Email Receipt » (Authorize.Net / Elavon), lu dans les courriels deja
+    synchronises (TASK-042.11, 2026-10-21) : donne le n° de facture et l'entreprise du depot « ELAVON MRCH SVC »."""
+    __tablename__ = "card_receipts"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mail_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_messages.id", ondelete="CASCADE"), nullable=False, unique=True)
+    paid_at: Mapped[date | None] = mapped_column(Date)
+    invoice_number: Mapped[str | None] = mapped_column(String(50))
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(14, 2))
+    company_name: Mapped[str | None] = mapped_column(String(255))
+    card: Mapped[str | None] = mapped_column(String(50))
+    transaction_ref: Mapped[str | None] = mapped_column(String(50))
+    # parsed | matched (depot associe a la facture) | linked (depot deja associe a cette facture) | a_verifier | failed
+    status: Mapped[str] = mapped_column(String(12), nullable=False, default="parsed")
+    note: Mapped[str | None] = mapped_column(Text)
+    bank_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_transactions.id", ondelete="SET NULL"))
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

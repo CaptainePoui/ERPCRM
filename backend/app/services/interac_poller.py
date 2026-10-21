@@ -64,4 +64,9 @@ async def run_interac_poller():
             await run_interac_once()
         except Exception:
             log.exception("Lecture des avis Interac echouee")
+        try:        # recus de paiement par carte (TASK-042.11) : deja dans Courriels, lus au meme rythme
+            from app.core import card_receipts
+            await card_receipts.run_once()
+        except Exception:
+            log.exception("Lecture des recus de carte echouee")
         await asyncio.sleep(_POLL_INTERVAL)
