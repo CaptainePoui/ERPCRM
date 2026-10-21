@@ -384,6 +384,31 @@ def _match_body(sug: dict) -> "MatchIn":
     return MatchIn(allocations=[AllocIn(invoice_id=a["invoice_id"], amount=a["amount"]) for a in allocs])
 
 
+def _desc_key(desc: str | None) -> str:
+    """Libelle du releve sans chiffres ni ponctuation (« FACTURATION MENSUELLE 09/2026 » -> « facturation mensuelle »)."""
+    return re.sub(r"\s+", " ", re.sub(r"[0-9#/.\-]+", " ", (desc or "").lower())).strip()
+
+
+async def _expense_by_example(db: AsyncSession, tx: BankTransaction) -> "NewExpenseIn | None":
+    """Classement automatique d'un retrait reconnu (Philippe, 2026-10-21 : « classe automatiquement ce qui est sûr ») :
+    sur seulement si ce fournisseur, avec ce meme libelle de releve, a deja AU MOINS 3 retraits classes en depense, et
+    tous de la meme facon (meme compte de depense, meme mode et meme code de taxes). On recopie alors ce traitement.
+    Le gouvernement, les paiements de factures fournisseurs et les historiques melanges ne passent jamais ici."""
+    from app.models.purchases import Expense
+    if not tx.vendor_id or tx.vendor_source == "name":
+        return None
+    key = _desc_key(tx.description)
+    rows = (await db.execute(select(BankTransaction.description, Expense).join(Expense, Expense.id == BankTransaction.expense_id)
+                             .where(BankTransaction.vendor_id == tx.vendor_id, BankTransaction.status == "matched",
+                                    BankTransaction.amount < 0).order_by(Expense.expense_date.desc()))).all()
+    same = [e for d, e in rows if _desc_key(d) == key]
+    if len(same) < 3 or len({(e.category_id, e.tax_mode, e.tax_code) for e in same}) != 1 or not same[0].category_id:
+        return None
+    e = same[0]
+    return NewExpenseIn(vendor_id=tx.vendor_id, category_id=e.category_id, tax_mode=e.tax_mode, tax_code=e.tax_code,
+                        description=(tx.description or "")[:255])
+
+
 async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
     """Associe les depots dont la suggestion est unique et exacte (compagnie reconnue par une regle
     ou attribuee, ET un seul paiement en attente ou une seule facture ouverte au solde exact).
@@ -395,10 +420,14 @@ async def _auto_associate(db: AsyncSession, tx_ids: list) -> int:
             continue
         if tx.amount < 0:
             sug = await bm.best_exact_withdrawal(db, tx)
-            if not sug:
+            body = _withdrawal_body(sug) if sug else None
+            if not body:
+                ex = await _expense_by_example(db, tx)
+                body = WithdrawalMatchIn(new_expense=ex, remember_payee=False) if ex else None
+            if not body:
                 continue
             try:
-                await match_withdrawal(tx.id, _withdrawal_body(sug), db)
+                await match_withdrawal(tx.id, body, db)
             except HTTPException:
                 await db.rollback()
                 continue
