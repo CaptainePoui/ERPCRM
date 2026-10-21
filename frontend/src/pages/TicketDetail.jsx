@@ -508,7 +508,7 @@ export default function TicketDetail() {
             style={{ border: '1px solid var(--c-border-strong)', borderRadius: 10, padding: 10, marginTop: 6, background: 'var(--c-surface)' }}>
             <textarea rows={4} value={draft} onChange={e => onDraftChange(e.target.value)} onPaste={onPaste}
               onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!zekoBusy) sendMessage() } }}
-              placeholder="Écrivez librement… collez une capture avec Ctrl+V. Zéko répond à chaque message."
+              placeholder="Écrivez librement… (photo, image ou capture collée avec Ctrl+V). Zéko répond à chaque message."
               style={{ width: '100%', border: 'none', outline: 'none', fontSize: 14, resize: 'vertical', boxSizing: 'border-box', lineHeight: 1.5, background: 'transparent', color: 'var(--c-text)' }} />
             {files.length > 0 && (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', margin: '6px 0' }}>
@@ -521,7 +521,13 @@ export default function TicketDetail() {
                 ))}
               </div>
             )}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              {/* Cellulaire (Philippe, 2026-10-21) : « Photo » ouvre directement l'appareil photo ; « Image » choisit
+                  dans la galerie ou les fichiers. Sur ordinateur, « Photo » ouvre simplement le choix de fichier. */}
+              <label className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}>
+                📷 Photo
+                <input type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = '' }} />
+              </label>
               <label className="btn-secondary" style={{ fontSize: 12, padding: '4px 10px', cursor: 'pointer' }}>
                 📎 Image
                 <input type="file" multiple accept="image/*,application/pdf,.txt,.log" style={{ display: 'none' }} onChange={e => { addFiles(e.target.files); e.target.value = '' }} />

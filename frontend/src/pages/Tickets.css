@@ -40,3 +40,8 @@
 /* Chrono */
 .tkt-chrono { background: var(--c-surface-2); border: 1px solid var(--c-border); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .tkt-chrono-display { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: 2px; }
+
+/* Cellulaire : l'en-tête du ticket (titre, boutons, chrono) défile avec la page au lieu de cacher la moitié de l'écran */
+@media (max-width: 700px) {
+  .tkt-sticky-header { position: static; }
+}

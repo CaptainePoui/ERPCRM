@@ -52,6 +52,8 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : une fonction longue ou en flux se teste par le chemin réel de Philippe (adresse publique, Cloudflare + nginx), pas seulement en local ; toute réponse qui peut rester muette plus de 30 s doit envoyer un signe de vie.
 
+
+**2026-10-21 — Test sur un ticket de Philippe (même tâche)** : pour vérifier le bouton « Photo » sur cellulaire, le test a choisi une image dans le ticket T-11000 de Philippe ; choisir une photo démarre le chrono → 18 s ajoutées à son ticket (chrono remis en pause par l'écran, aucune correction faite à la main). Leçon : un test qui agit (photo, message, chrono) se fait sur un ticket d'essai créé pour l'occasion ou dans une transaction annulée, jamais sur un document de Philippe ; et vérifier d'abord quels effets secondaires une action déclenche (ici : démarrage du chrono).
 ---
 
 ## TASK-051 — Ordre de redémarrage envoyé au mauvais domaine
