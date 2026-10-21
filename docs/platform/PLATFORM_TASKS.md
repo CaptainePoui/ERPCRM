@@ -183,6 +183,13 @@ Date(s) de travail : 2026-10-15
 - Fait (2026-10-15) : facture ouverte DANS la fiche (onglet Transactions, `?facture=<id>` — Retour du navigateur fonctionne, « ← Transactions » garde le filtre) ; `InvoiceDetail` intégrable (embedded) ; toute ouverture par `/invoices/:id` (Ventes > Factures, taxes, troc, devis, récurrence…) redirige vers la fiche du client ; filtre « Paiements » dans Transactions (`GET /payments?company_id=` : factures payées, origine, vu en banque, chèque) ; paiement ouvert dans la fiche (`?paiement=<id>`) ; Ventes > Paiements reçus amène dans la fiche du client. « + Encaisser » retiré de la section des paiements → menu « ⋯ » de la facture, seulement s'il reste un solde, avec confirmation (Philippe : « très mauvaise place, beaucoup trop accessible »). Vérifié à l'écran (1920) : PAD → facture 1372 dans la fiche, retour, liste des paiements, `/invoices/<id>` redirigé.
 - 2026-10-15 (Philippe a cliqué « → Payée » sur INV-000109, Physotech, en retard : « je n'accepte pas d'argent… impossible de le payer autrement qu'en le payant… offert et échange dans un engrenage discret ») : INV-000109 remise « en retard » (aucun paiement n'avait été créé) ; « payée / partiellement payée » refusé à la main par le serveur (`PUT /invoices/{id}` → 400) et retiré des transitions de l'écran ; « Encaisser à la main » retiré ; engrenage ⚙ discret : Offrir au client / Annuler l'offre / Régler en échange — Retirer de l'échange (la case « À régler en troc » quitte les Informations).
 
+
+### TASK-002.10 [x] Fiche compagnie › Général : retrait de « Facturé / Payé de l'exercice »
+Date de demande : 2026-10-21 (Philippe, sur Audacie : « dans le général des compagnies je n'ai pas besoin de ça… ça c'est des infos pour fiscalité : Facturé 2026-2027 1 220,01 $, Payé 1 260,01 $ · net des avoirs »)
+Date(s) de travail : 2026-10-21
+
+- `CompanyDetail.jsx` (FinanceOverview) : carte « Facturé AAAA-AAAA / Payé » retirée ; restent Solde dû, En retard, Avoirs disponibles, Crédit du client, Dernier paiement. Rien d'autre ajouté ailleurs (les totaux de l'exercice restent calculés par l'API `/companies/{id}/finance`). Vérifié (Playwright, Audacie) : carte absente, aucune erreur.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le

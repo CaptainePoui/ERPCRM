@@ -300,7 +300,6 @@ function FinanceOverview({ companyId, onOpen }) {
       {sub && <div className="cd-fin-sub">{sub}</div>}
     </div>
   )
-  const fy = new Date(f.fiscal_year_start + 'T00:00:00').getFullYear()
   return (
     <div className="cd-fin-row">
       {card('Solde dû', money(f.balance_due), f.balance_due > 0 ? 'Voir les factures ouvertes' : 'Rien à recevoir',
@@ -312,7 +311,7 @@ function FinanceOverview({ companyId, onOpen }) {
         { color: '#D97706', onClick: () => onOpen('avoirs') })}
       {f.payment_credit > 0 && card('Crédit du client', money(f.payment_credit), 'Reçu en trop : paiera sa prochaine facture',
         { color: '#D97706' })}
-      {card(`Facturé ${fy}-${fy + 1}`, money(f.billed_fiscal_year), `Payé : ${money(f.paid_fiscal_year)} · net des avoirs`)}
+      {/* « Facturé / Payé de l'exercice » retiré de la fiche (Philippe, 2026-10-21 : « ça c'est des infos pour fiscalité ») */}
       {card('Dernier paiement', f.last_payment ? money(f.last_payment.amount) : '—',
         f.last_payment ? `${fmtD(f.last_payment.date)} · ${f.last_payment.method}` : 'Aucun paiement')}
     </div>
