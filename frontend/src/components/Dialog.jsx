@@ -63,7 +63,7 @@ export default function DialogHost() {
         <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--c-text)', textAlign: 'center' }}>
           {lines.map((l, i) => <div key={i} style={i === 0 && lines.length > 1 ? { fontWeight: 600 } : undefined}>{l || '\u00a0'}</div>)}
         </div>
-        <div className="modal-actions" style={{ justifyContent: 'center' }}>
+        <div className="modal-actions" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
           {cur.kind === 'choice' ? cur.buttons.map(([k, l], i) => (
             <button key={k} autoFocus={i === cur.buttons.length - 1} className={i === cur.buttons.length - 1 ? 'btn-primary' : 'btn-secondary'} onClick={() => close(k)}>{l}</button>
           )) : <>

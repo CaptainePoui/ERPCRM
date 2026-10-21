@@ -10,7 +10,7 @@ import {
   ACCOUNT_TYPES, C, EMPTY, fmtDate, fmtMoney,
   Dropdown, MenuItem, Indicator, BankChart, AccountModal, StatementsModal,
 } from './Bank'
-import { askConfirm } from '../components/Dialog'
+import { askConfirm, askChoice } from '../components/Dialog'
 
 // Fiche d'un compte de l'onglet Banque (TASK-042) -- interface et options.
 // Aucune source de transactions n'est branchee : tableaux et montants vides.
@@ -654,6 +654,21 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
 
 // Fiche d'une transaction (clic sur la ligne -- Philippe, 2026-10-07) : toutes ses infos, client ou
 // fournisseur modifiable, ce qui est lie (annulable), suggestions avec pertinence, actions.
+// Retirer le client attribué à un dépôt par erreur (Philippe, 2026-10-21 : « je n'ai pas l'option de désassocier ») ;
+// au choix, oublier aussi la règle du bénéficiaire pour que les prochains dépôts ne reviennent pas à ce client.
+async function removeClient(t) {
+  // Bouton principal (Entrée) = le moins large : ce dépôt seulement
+  const buttons = [['cancel', 'Annuler']]
+  if (t.payee) buttons.push(['forget', `Tous les dépôts « ${t.payee} »`])
+  buttons.push(['here', 'Ce dépôt seulement'])
+  const choice = await askChoice(t.payee
+    ? `Retirer ${t.company_name} de ce dépôt de ${fmtMoney(t.amount)} ?\n« Tous les dépôts » oublie aussi la règle : les autres dépôts de ${t.payee} ne seront plus attribués à ${t.company_name.replace(/\.$/, '')}.`
+    : `Retirer ${t.company_name} de ce dépôt de ${fmtMoney(t.amount)} ?`, buttons)
+  if (choice !== 'here' && choice !== 'forget') return false
+  await api.put(`/v1/bank/transactions/${t.id}/company`, { company_id: null, remember: false, forget: choice === 'forget' })
+  return true
+}
+
 function TransactionModal({ txId, onClose, onChanged }) {
   const companies = useCompanies()
   const refs = useRefs()
@@ -688,7 +703,11 @@ function TransactionModal({ txId, onClose, onChanged }) {
           <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>{deposit ? 'Client' : 'Fournisseur'}</div>
           {deposit ? (
             <>
-              {d.company_name && <div style={{ fontSize: 13, marginBottom: 6 }}>→ <strong>{d.company_name}</strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</div>}
+              {d.company_name && <div style={{ fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span>→ <strong>{d.company_name}</strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</span>
+                {d.status !== 'matched' && <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px', color: C.red }}
+                  onClick={() => run(async () => { await removeClient(d) })}>Retirer le client</button>}
+              </div>}
               {!d.company_id && d.ai_status === 'done' && d.ai_company_id && (
                 <div style={{ fontSize: 13, color: '#6D28D9', marginBottom: 6 }}>IA propose : <strong>{d.ai_company_name}</strong> ({d.ai_confidence} %){d.ai_note ? ` — ${d.ai_note}` : ''}
                   <button className="btn-primary" style={{ padding: '2px 10px', fontSize: 12, marginLeft: 8 }} onClick={() => run(() => api.put(`/v1/bank/transactions/${d.id}/company`, { company_id: d.ai_company_id, remember: true }))}>Accepter</button></div>
@@ -890,6 +909,9 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
+                      {t.status === 'unclassified' && <button type="button" title="Retirer ce client du dépôt"
+                        onClick={async e => { e.stopPropagation(); if (await removeClient(t)) await onChanged() }}
+                        style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12, marginLeft: 4 }}>✕</button>}
                       {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})`
                         : t.suggestion.kind === 'credit' ? `aucune facture ouverte : ${fmtMoney(t.suggestion.credit)} en crédit du client`
                         : `${t.suggestion.allocations?.length > 1 ? 'factures' : 'facture'} ${t.suggestion.number}${t.suggestion.oldest_first ? ' (la plus vieille d\'abord)' : ''}${t.suggestion.credit > 0 ? ` + ${fmtMoney(t.suggestion.credit)} en crédit` : ''}`}</span>}

@@ -6036,6 +6036,16 @@ Date(s) de travail : 2026-10-19
 
 - `Bank.jsx` (StatementsModal) : titre, Fermer et Importer dans un en-tête collé en haut de la fenêtre, toujours visible pendant qu'on fait défiler la liste des relevés importés ; plus de boutons au bas. Vérifié (Playwright 1920) : fenêtre défilée jusqu'au dernier relevé, boutons encore visibles en haut.
 
+
+### TASK-042.10 [x] Banque : retirer le client attribué à un dépôt par erreur
+Date de demande : 2026-10-21 (Philippe : « j'ai associé le 2,23 avec HB Architecture inc. mais je n'ai pas l'option de désassocier si je me suis trompé, un bouton serait cool »)
+Date(s) de travail : 2026-10-21
+
+- Fiche du dépôt : « Retirer le client » à côté du client attribué ; liste des transactions non classées : petit ✕ après « → client ». Choix : « Ce dépôt seulement » (bouton principal) ou « Tous les dépôts « bénéficiaire » » : oublie aussi la règle bénéficiaire → client (`PUT /bank/transactions/{id}/company` avec `forget`, `_forget_company_rule` : le fournisseur retenu pour les retraits du même bénéficiaire est gardé ; les autres dépôts reconnus par cette règle redeviennent sans client). Une transaction déjà associée à un paiement garde « Annuler l'association ».
+- Fenêtres de choix (`Dialog.jsx`) : les boutons passent à la ligne au lieu de déborder de la boîte.
+- Constat signalé à Philippe : la règle « ELAVON MRCH SVC → HB Architectes inc. » (créée le 2026-10-07) attribue à HB tous les dépôts d'Elavon (1 642,57 $, 968,35 $, 1 596,35 $…) ; Elavon est un service de paiement par carte, donc probablement pas toujours HB. Rien n'a été retiré : décision de Philippe.
+- Vérifié (Playwright) : ✕ dans la liste, bouton dans la fiche, fenêtre de choix lisible ; logique de la règle essayée dans une transaction annulée (règle gardée pour le fournisseur, client retiré).
+
 ### TASK-042.2 [x] Dépôt d'un relevé dans la page : doublons, associations sûres, IA locale
 Date de demande : 2026-10-05 (Philippe : « j'aimerais avoir mon IA locale qui gère un fichier importé, pour commencer ; ce serait une sécurité si les autres connexions se perdent » ; « j'ai besoin qu'elle analyse ce qui est, enlève les doublons et associe ce qu'elle est sûre, une place dans la page »)
 Date(s) de travail : 2026-10-05, 2026-10-06, 2026-10-07, 2026-10-08

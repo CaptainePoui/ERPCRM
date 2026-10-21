@@ -125,6 +125,7 @@ class CompanyAssignIn(BaseModel):
     company_id: uuid.UUID | None = None
     remember: bool = True
     auto_match: bool = True     # « Accepter » va jusqu'au bout : associe aussitot si c'est sur
+    forget: bool = False        # retrait du client (company_id vide) : oublier aussi la regle de ce beneficiaire
 
 
 class RuleUpdate(BaseModel):
@@ -551,6 +552,24 @@ async def _get_tx(tx_id: uuid.UUID, db: AsyncSession) -> BankTransaction:
     return tx
 
 
+async def _forget_company_rule(db: AsyncSession, payee: str, company_id: uuid.UUID) -> None:
+    """Desassociation par erreur (Philippe, 2026-10-21) : la regle « beneficiaire -> ce client » est oubliee (le fournisseur
+    retenu pour les retraits du meme beneficiaire reste), et les autres depots reconnus par elle redeviennent sans client."""
+    key = bm.payee_key(payee)
+    rule = (await db.execute(select(BankPayeeRule).where(BankPayeeRule.payee_key == key))).scalar_one_or_none()
+    if not rule or rule.company_id != company_id:
+        return
+    if rule.vendor_id or rule.category_id:
+        rule.company_id = None
+    else:
+        await db.delete(rule)
+    for t in (await db.execute(select(BankTransaction).where(
+            BankTransaction.status == "unclassified", BankTransaction.company_source == "rule",
+            BankTransaction.company_id == company_id))).scalars().all():
+        if bm.payee_key(t.payee) == key:
+            t.company_id, t.company_source = None, None
+
+
 async def _remember(db: AsyncSession, payee: str | None, company_id: uuid.UUID) -> None:
     """Mode 3 : cree ou met a jour la regle beneficiaire -> compagnie, puis l'applique."""
     key = bm.payee_key(payee)
@@ -762,6 +781,9 @@ async def set_transaction_company(tx_id: uuid.UUID, payload: CompanyAssignIn, db
         raise HTTPException(status_code=400, detail="Annulez d'abord l'association")
     if payload.company_id and not await db.get(Company, payload.company_id):
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    old_company = tx.company_id
+    if not payload.company_id and payload.forget and old_company and tx.payee:
+        await _forget_company_rule(db, tx.payee, old_company)
     tx.company_id = payload.company_id
     tx.company_source = "manual" if payload.company_id else None
     if payload.company_id and tx.ai_company_id == payload.company_id:
