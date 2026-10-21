@@ -26,7 +26,7 @@ const ALL_FILTERS = [
   { value: 'manual',      label: 'Ajoutées manuellement' },
 ]
 
-const PER_PAGE = [50, 100, 200]
+const PER_PAGE = [25, 50, 100, 200]   // 25 par défaut : on n'affiche (et ne calcule) que ce qu'on voit (2026-10-21)
 
 const th = { padding: '10px 8px', fontWeight: 600, whiteSpace: 'nowrap' }
 
@@ -661,9 +661,10 @@ async function removeClient(t) {
   const buttons = [['cancel', 'Annuler']]
   if (t.payee) buttons.push(['forget', `Tous les dépôts « ${t.payee} »`])
   buttons.push(['here', 'Ce dépôt seulement'])
+  const who = t.company_name.replace(/\.$/, '')
   const choice = await askChoice(t.payee
-    ? `Retirer ${t.company_name} de ce dépôt de ${fmtMoney(t.amount)} ?\n« Tous les dépôts » oublie aussi la règle : les autres dépôts de ${t.payee} ne seront plus attribués à ${t.company_name.replace(/\.$/, '')}.`
-    : `Retirer ${t.company_name} de ce dépôt de ${fmtMoney(t.amount)} ?`, buttons)
+    ? `Retirer ce dépôt de ${fmtMoney(t.amount)} de ${who} ?\n« Tous les dépôts » : les autres dépôts de ${t.payee} ne seront plus attribués à ${who} non plus.`
+    : `Retirer ce dépôt de ${fmtMoney(t.amount)} de ${who} ?`, buttons)
   if (choice !== 'here' && choice !== 'forget') return false
   await api.put(`/v1/bank/transactions/${t.id}/company`, { company_id: null, remember: false, forget: choice === 'forget' })
   return true
@@ -706,7 +707,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
               {d.company_name && <div style={{ fontSize: 13, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                 <span>→ <strong>{d.company_name}</strong>{d.company_source === 'rule' ? ' (reconnu par une règle)' : ''}</span>
                 {d.status !== 'matched' && <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px', color: C.red }}
-                  onClick={() => run(async () => { await removeClient(d) })}>Retirer le client</button>}
+                  onClick={() => run(async () => { await removeClient(d) })}>Retirer ce dépôt du client</button>}
               </div>}
               {!d.company_id && d.ai_status === 'done' && d.ai_company_id && (
                 <div style={{ fontSize: 13, color: '#6D28D9', marginBottom: 6 }}>IA propose : <strong>{d.ai_company_name}</strong> ({d.ai_confidence} %){d.ai_note ? ` — ${d.ai_note}` : ''}
@@ -773,7 +774,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
   const [multi, setMulti] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [perPage, setPerPage] = useState(200)
+  const [perPage, setPerPage] = useState(25)
   const [page, setPage] = useState(0)
   const [desc, setDesc] = useState(true)
   const [selected, setSelected] = useState(new Set())
@@ -790,6 +791,20 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
     .filter(t => !q || [t.description, t.payee, t.reference, t.company_name, String(Math.abs(t.amount))].some(v => (v || '').toLowerCase().includes(q)))
     .sort((a, b) => (desc ? -1 : 1) * a.posted_date.localeCompare(b.posted_date))
   const pageRows = rows.slice(page * perPage, (page + 1) * perPage)
+  // Suggestions sûres seulement pour les lignes affichées (la liste arrive sans elles, beaucoup plus vite)
+  const [suggs, setSuggs] = useState({})
+  useEffect(() => { setSuggs({}) }, [transactions])
+  const pageKey = pageRows.map(t => t.id).join(',')
+  useEffect(() => {
+    const need = pageRows.filter(t => t.status === 'unclassified' && (t.amount < 0 || t.company_id) && !(t.id in suggs)).map(t => t.id)
+    if (!need.length) return
+    let live = true
+    api.post('/v1/bank/transactions/suggestions', { ids: need })
+      .then(r => live && setSuggs(s => ({ ...s, ...Object.fromEntries(need.map(id => [id, r.data[id] ?? null])) })))
+      .catch(() => {})
+    return () => { live = false }
+  }, [pageKey, transactions])
+  const sugOf = t => suggs[t.id] ?? t.suggestion
   const allChecked = pageRows.length > 0 && pageRows.every(t => selected.has(t.id))
   const sel = [...selected].filter(id => base.some(t => t.id === id))
   // TASK-046 : case, Ctrl+clic (une a la fois) ou Maj+clic (tout entre la derniere ligne ciblee et celle-ci)
@@ -885,11 +900,11 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                         : <span style={{ color: C.green, fontWeight: 600 }}>→ {t.vendor_name}<span style={{ color: C.faint, fontWeight: 400 }}>{t.vendor_source === 'rule' ? ' (reconnu)' : ''}</span></span>}
                     </div>
                   )}
-                  {t.amount < 0 && t.suggestion && (
+                  {t.amount < 0 && sugOf(t) && (
                     <div style={{ fontSize: 12, color: C.muted }}>
-                      {t.suggestion.kind === 'expense' ? `dépense déjà enregistrée du ${fmtD(t.suggestion.date)} (${t.suggestion.category_name || 'sans compte'})`
-                        : t.suggestion.kind === 'vendor_payment' ? `paiement fournisseur déjà enregistré du ${fmtD(t.suggestion.date)}`
-                        : `factures ${t.suggestion.bill_numbers.join(', ')} (la plus vieille d'abord)`}
+                      {sugOf(t).kind === 'expense' ? `dépense déjà enregistrée du ${fmtD(sugOf(t).date)} (${sugOf(t).category_name || 'sans compte'})`
+                        : sugOf(t).kind === 'vendor_payment' ? `paiement fournisseur déjà enregistré du ${fmtD(sugOf(t).date)}`
+                        : `factures ${sugOf(t).bill_numbers.join(', ')} (la plus vieille d'abord)`}
                     </div>
                   )}
                   {!t.company_id && t.ai_status === 'pending' && (
@@ -909,12 +924,12 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, marginTop: 2 }}>
                       <span style={{ color: C.green, fontWeight: 600 }}>→ {t.company_name}</span>
                       <span style={{ color: C.faint }}>{t.company_source === 'rule' ? ' (reconnu)' : ''}</span>
-                      {t.status === 'unclassified' && <button type="button" title="Retirer ce client du dépôt"
+                      {t.status === 'unclassified' && <button type="button" title="Retirer ce dépôt du client"
                         onClick={async e => { e.stopPropagation(); if (await removeClient(t)) await onChanged() }}
                         style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 12, marginLeft: 4 }}>✕</button>}
-                      {t.suggestion && <span style={{ color: C.muted }}> · {t.suggestion.kind === 'payment' ? `paiement ${SOURCE_LABEL[t.suggestion.source] || ''} (${t.suggestion.invoice_numbers.join(', ')})`
-                        : t.suggestion.kind === 'credit' ? `aucune facture ouverte : ${fmtMoney(t.suggestion.credit)} en crédit du client`
-                        : `${t.suggestion.allocations?.length > 1 ? 'factures' : 'facture'} ${t.suggestion.number}${t.suggestion.oldest_first ? ' (la plus vieille d\'abord)' : ''}${t.suggestion.credit > 0 ? ` + ${fmtMoney(t.suggestion.credit)} en crédit` : ''}`}</span>}
+                      {sugOf(t) && <span style={{ color: C.muted }}> · {sugOf(t).kind === 'payment' ? `paiement ${SOURCE_LABEL[sugOf(t).source] || ''} (${sugOf(t).invoice_numbers.join(', ')})`
+                        : sugOf(t).kind === 'credit' ? `aucune facture ouverte : ${fmtMoney(sugOf(t).credit)} en crédit du client`
+                        : `${sugOf(t).allocations?.length > 1 ? 'factures' : 'facture'} ${sugOf(t).number}${sugOf(t).oldest_first ? ' (la plus vieille d\'abord)' : ''}${sugOf(t).credit > 0 ? ` + ${fmtMoney(sugOf(t).credit)} en crédit` : ''}`}</span>}
                     </div>
                   )}
                 </td>
@@ -953,7 +968,7 @@ function AllTransactionsTab({ transactions, filter, onChanged }) {
   const [detail, setDetail] = useState(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [perPage, setPerPage] = useState(200)
+  const [perPage, setPerPage] = useState(25)
   const [page, setPage] = useState(0)
   const q = search.trim().toLowerCase()
   // « Dans ERPCRM » : les lignes de banque associees a un paiement client

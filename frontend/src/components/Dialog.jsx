@@ -59,13 +59,14 @@ export default function DialogHost() {
   const lines = String(cur.message).split('\n')
   return (
     <div className="modal-overlay" style={{ zIndex: 5000 }}>
-      <div className="modal-box" role="dialog" aria-modal="true" style={{ width: 'min(460px, 92vw)', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--c-text)', textAlign: 'center' }}>
+      {/* Largeur : au moins 460 px, et assez large pour que les boutons tiennent sur une ligne (jusqu'à 92 % de l'écran) */}
+      <div className="modal-box" role="dialog" aria-modal="true" style={{ width: 'max-content', minWidth: 'min(460px, 92vw)', maxWidth: '92vw', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ fontSize: 15, lineHeight: 1.5, color: 'var(--c-text)', textAlign: 'center', maxWidth: 560, alignSelf: 'center' }}>
           {lines.map((l, i) => <div key={i} style={i === 0 && lines.length > 1 ? { fontWeight: 600 } : undefined}>{l || '\u00a0'}</div>)}
         </div>
         <div className="modal-actions" style={{ justifyContent: 'center', flexWrap: 'wrap' }}>
           {cur.kind === 'choice' ? cur.buttons.map(([k, l], i) => (
-            <button key={k} autoFocus={i === cur.buttons.length - 1} className={i === cur.buttons.length - 1 ? 'btn-primary' : 'btn-secondary'} onClick={() => close(k)}>{l}</button>
+            <button key={k} autoFocus={i === cur.buttons.length - 1} className={i === cur.buttons.length - 1 ? 'btn-primary' : 'btn-secondary'} style={{ whiteSpace: 'nowrap' }} onClick={() => close(k)}>{l}</button>
           )) : <>
             {cur.kind === 'confirm' && <button className="btn-secondary" onClick={() => close(false)}>{cur.cancelLabel || 'Annuler'}</button>}
             <button autoFocus className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => close(true)}>{cur.okLabel || 'OK'}</button>

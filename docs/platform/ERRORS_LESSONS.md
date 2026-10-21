@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-042.10 — Boutons qui débordent de leur fenêtre (erreur répétée)
+
+**Date** : 2026-10-21
+
+**On croyait** : que la fenêtre de choix « Retirer… » était correcte, après une première correction (boutons qui passent à la ligne).
+
+**Preuve** : Philippe : « la boîte pour retirer le dépôt n'est pas assez large pour tes boutons (tu fais souvent cette erreur) ». La fenêtre avait une largeur fixe (460 px) et des libellés longs (« Retirer et oublier pour « ELAVON MRCH SVC » ») : boutons hors de la boîte, puis empilés.
+
+**Cause réelle** : largeur de fenêtre fixée sans regarder la longueur réelle des boutons ; capture d'écran regardée sans mesurer si chaque bouton était à l'intérieur.
+
+**Correction** : `Dialog.jsx` s'élargit à son contenu (min 460 px, max 92 % de l'écran), boutons sur une ligne ; libellés raccourcis. Vérification mesurée (positions des boutons dans la fenêtre), pas seulement à l'œil.
+
+**Leçon (à ne pas refaire)** : toute fenêtre, carte ou barre de boutons se vérifie en mesurant que chaque bouton est entièrement dans son contenant (Playwright : boundingBox), à 1920 et sur cellulaire ; préférer des libellés courts et une largeur qui suit le contenu plutôt qu'une largeur fixe.
+
+---
+
 ## TASK-006.5 — Zéko : erreur 504 au premier vrai essai de Philippe
 
 **Date** : 2026-10-18
