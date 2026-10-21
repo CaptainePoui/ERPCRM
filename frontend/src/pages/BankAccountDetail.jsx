@@ -743,7 +743,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
               {d.linked.kind === 'expense' && <>Dépense du {fmtD(d.linked.date)} · {d.linked.category || 'sans compte'}{d.linked.vendor ? ` · ${d.linked.vendor}` : ''} · {fmtMoney(d.linked.amount)} (TPS {fmtMoney(d.linked.tps)}, TVQ {fmtMoney(d.linked.tvq)}){d.linked.created_by_link ? ' — créée par l\'association' : ''}</>}
               {d.linked.kind === 'vendor_payment' && <>Paiement fournisseur du {fmtD(d.linked.date)} · {d.linked.payee} · {fmtMoney(d.linked.amount)}</>}
               {d.linked.kind === 'government' && <>Versement — {d.linked.type}, période du {fmtD(d.linked.period_start)} au {fmtD(d.linked.period_end)} · paie le dû {fmtMoney(d.linked.applied)}{d.linked.tps || d.linked.tvq ? ` (TPS ${fmtMoney(d.linked.tps)}, TVQ ${fmtMoney(d.linked.tvq)})` : ''}{d.linked.penalty > 0 && <strong style={{ color: C.red }}> · pénalités et intérêts {fmtMoney(d.linked.penalty)}</strong>}</>}
-              {(d.linked.items || []).map(i => <div key={i.id} style={{ color: C.muted }}>• {i.number || 'facture'} du {fmtD(i.date)}{i.vendor ? ` · ${i.vendor}` : ''} : {fmtMoney(i.amount)}</div>)}
+              {(d.linked.items || []).map(i => <div key={i.id} style={{ color: C.muted }}>• {i.number || 'facture'} du {fmtD(i.date)}{i.vendor ? ` · ${i.vendor}` : ''} : {fmtMoney(i.amount)}{i.total != null && Math.abs(i.total - i.amount) > 0.004 ? ` payés ici, sur une facture de ${fmtMoney(i.total)}` : ''}</div>)}
             </div>
           </div>
         )}

@@ -76,3 +76,34 @@ class ZekoRule(Base):
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class ZekoMailScan(Base):
+    """Courriel deja examine par Zeko pour y trouver un avis de paiement (TASK-042.13) : jamais relu deux fois."""
+    __tablename__ = "zeko_mail_scans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mail_message_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_messages.id", ondelete="CASCADE"), nullable=False, unique=True)
+    result: Mapped[str] = mapped_column(String(20), nullable=False)      # paiement | pas_un_paiement | erreur
+    extracted: Mapped[str | None] = mapped_column(Text)                  # ce que Zeko a lu (JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ZekoProposal(Base):
+    """Proposition de Zeko : ce depot paie ces factures, preuve a l'appui (un courriel). Philippe accepte ou refuse ;
+    Zeko ne touche jamais seul a une transaction. status : proposee | a_corriger | sans_depot | deja_associe | acceptee | refusee"""
+    __tablename__ = "zeko_proposals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mail_message_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_messages.id", ondelete="SET NULL"), index=True)
+    bank_transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bank_transactions.id", ondelete="SET NULL"), index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(15), nullable=False, index=True)
+    amount: Mapped[float | None] = mapped_column()
+    paid_on: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    allocations: Mapped[str | None] = mapped_column(Text)               # JSON [{invoice_id, number, amount}]
+    explanation: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[str | None] = mapped_column(Text)                  # extrait du courriel / de la piece jointe
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

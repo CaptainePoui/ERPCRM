@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-044 — Répartition d'un paiement différente de ce qui avait été convenu en conversation
+
+**Date** : 2026-10-15 (erreur), 2026-10-21 (vue par Philippe)
+
+**On croyait** : que répartir les deux remboursements de carte « les plus vieilles factures d'abord » sur les 3 factures ScopServ était juste, puisque les totaux concordaient.
+
+**Preuve** : Philippe, devant « 292,66 $ » sur la fiche du retrait : « ça n'a pas d'allure, on l'avait même noté qu'un était 2 factures et l'autre la 3e ». En conversation le 15 octobre : 2 666,09 $ = #36405 + #36687 (sans TVQ).
+
+**Cause réelle** : la règle générique (plus vieilles d'abord) a remplacé la répartition expliquée à Philippe ; le montant global concordait, ce qui a masqué l'écart.
+
+**Correction** : paiements re-répartis comme convenu (voir PLATFORM_TASKS TASK-044) ; l'écran montre maintenant « payés ici, sur une facture de … ».
+
+**Leçon (à ne pas refaire)** : quand une répartition a été décidée ou expliquée en conversation, l'inscrire telle quelle ; une règle automatique ne remplace jamais une répartition déjà convenue avec Philippe. Un total qui concorde ne prouve pas que la répartition est la bonne.
+
+---
+
 ## TASK-054 — Six écrans plantés quelques minutes : import oublié, invisible au build
 
 **Date** : 2026-10-21

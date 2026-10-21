@@ -1164,7 +1164,8 @@ async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db
             out["linked"] = {"kind": "vendor_payment", "created_by_link": tx.payment_created, "date": p.payment_date, "amount": float(p.amount),
                              "payee": p.vendor.name if p.vendor else p.payee_label,
                              "items": [{"id": str(a.bill_id), "number": bills[a.bill_id].bill_number, "date": bills[a.bill_id].bill_date,
-                                        "vendor": bills[a.bill_id].vendor.name, "amount": float(a.amount)} for a in p.allocations if a.bill_id in bills]}
+                                        "vendor": bills[a.bill_id].vendor.name, "total": float(bills[a.bill_id].total),
+                                        "amount": float(a.amount)} for a in p.allocations if a.bill_id in bills]}
     if tx.status == "unclassified":
         if tx.amount > 0:
             sg = await bm.suggestions(db, tx)
