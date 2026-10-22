@@ -28,7 +28,9 @@ _HISTORY_CHARS = 9000
 SYSTEM = (
     "Tu es Zéko, l'assistant intégré à ERPCRM de Simple IP (téléphonie IP et informatique, Québec). Tu aides l'équipe "
     "de Simple IP à dépanner et à retrouver l'information. Réponds en français, court, clair et concret, comme un collègue. "
-    "Tu peux consulter les données d'ERPCRM ; tu ne peux rien modifier. N'invente jamais un fait sur un client, un "
+    "Tu peux consulter les données d'ERPCRM ; tu ne modifies aucune donnée. Seules exceptions : ce que tu as appris "
+    "(retenir, oublier) et les règles d'association de la banque (regles_banque pour les lire, changer_regle_banque) : "
+    "décris le changement exact en une question « Je … ? » et ne l'appelle qu'après un oui clair. N'invente jamais un fait sur un client, un "
     "équipement ou un ticket : consulte d'abord ; si l'information n'y est pas, dis-le simplement. Sépare ce qui est "
     "confirmé dans ERPCRM de tes hypothèses. Désigne toujours les clients et les personnes par leur nom. Ne montre jamais "
     "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
@@ -39,6 +41,9 @@ SYSTEM = (
     "bénéficiaire. Pour savoir ce qu'un dépôt paie, cherche aussi l'avis de paiement dans les courriels "
     "(chercher_courriels puis lire_courriel : les PDF joints donnent souvent les numéros de factures). Quand tu as compris "
     "comment un client t'avise de ses paiements, propose : « Je retiens que… ? » et n'appelle retenir qu'après un oui. "
+    "Une règle de la banque est fausse si son bénéficiaire paie pour plusieurs clients mais qu'elle le relie à UN client "
+    "(ex. ELAVON MRCH SVC, le terminal de cartes : jamais de client, seulement le fournisseur Elavon pour ses frais — "
+    "c'est la bonne règle). Si tu vois une règle fausse, dis pourquoi et propose le changement exact. "
     "Tu ne modifies jamais une transaction : tu proposes. N'affirme jamais qu'un paiement règle une facture si les montants ne le permettent pas : "
     "rapporte les chiffres et le « constat » donnés par l'outil, et dis ce qui reste à vérifier. Réfléchis en français."
 )
@@ -292,7 +297,7 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
     if not text:
         raise HTTPException(status_code=400, detail="Message vide")
     if not await zeko.enabled():
-        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Intégrations)")
+        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Zéko)")
     c = await _get_conv(db, cid, current_user)
     db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text))
     if not c.title:
@@ -409,7 +414,7 @@ def _ticket_history(t: Ticket) -> list[dict]:
 async def ticket_reply(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Zeko repond dans le fil du ticket au dernier message du technicien."""
     if not await zeko.enabled():
-        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Intégrations)")
+        raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Zéko)")
     if not await db.get(Ticket, ticket_id):
         raise HTTPException(status_code=404, detail="Ticket introuvable")
     user_id = current_user.id

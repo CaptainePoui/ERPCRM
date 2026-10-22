@@ -668,22 +668,37 @@ async def _get_tx(tx_id: uuid.UUID, db: AsyncSession) -> BankTransaction:
     return tx
 
 
-async def _forget_company_rule(db: AsyncSession, payee: str, company_id: uuid.UUID) -> None:
-    """Desassociation par erreur (Philippe, 2026-10-21) : la regle « beneficiaire -> ce client » est oubliee (le fournisseur
-    retenu pour les retraits du meme beneficiaire reste), et les autres depots reconnus par elle redeviennent sans client."""
-    key = bm.payee_key(payee)
-    rule = (await db.execute(select(BankPayeeRule).where(BankPayeeRule.payee_key == key))).scalar_one_or_none()
-    if not rule or rule.company_id != company_id:
-        return
+async def rule_forget_client(db: AsyncSession, rule: BankPayeeRule) -> None:
+    """Retire le client d'une regle (le fournisseur et la categorie des retraits restent) ; les depots non classes
+    qu'elle reconnaissait redeviennent sans client (2026-10-22 : « ELAVON MRCH SVC -> HB Architectes » etait faux)."""
+    old = rule.company_id
     if rule.vendor_id or rule.category_id:
         rule.company_id = None
     else:
         await db.delete(rule)
+    if old:
+        for t in (await db.execute(select(BankTransaction).where(
+                BankTransaction.status == "unclassified", BankTransaction.company_source == "rule",
+                BankTransaction.company_id == old))).scalars().all():
+            if bm.payee_key(t.payee) == rule.payee_key:
+                t.company_id, t.company_source = None, None
+
+
+async def rule_delete(db: AsyncSession, rule: BankPayeeRule) -> None:
+    """Supprime la regle ; les lignes non classees reconnues par elle redeviennent sans compagnie."""
     for t in (await db.execute(select(BankTransaction).where(
-            BankTransaction.status == "unclassified", BankTransaction.company_source == "rule",
-            BankTransaction.company_id == company_id))).scalars().all():
-        if bm.payee_key(t.payee) == key:
+        BankTransaction.status == "unclassified", BankTransaction.company_source == "rule"))).scalars().all():
+        if bm.payee_key(t.payee) == rule.payee_key:
             t.company_id, t.company_source = None, None
+    await db.delete(rule)
+
+
+async def _forget_company_rule(db: AsyncSession, payee: str, company_id: uuid.UUID) -> None:
+    """Desassociation par erreur (Philippe, 2026-10-21) : la regle « beneficiaire -> ce client » est oubliee (le fournisseur
+    retenu pour les retraits du meme beneficiaire reste), et les autres depots reconnus par elle redeviennent sans client."""
+    rule = (await db.execute(select(BankPayeeRule).where(BankPayeeRule.payee_key == bm.payee_key(payee)))).scalar_one_or_none()
+    if rule and rule.company_id == company_id:
+        await rule_forget_client(db, rule)
 
 
 async def _remember(db: AsyncSession, payee: str | None, company_id: uuid.UUID) -> None:
@@ -1290,17 +1305,23 @@ async def update_rule(rule_id: uuid.UUID, payload: RuleUpdate, db: AsyncSession 
     return {"ok": True}
 
 
+@router.post("/rules/{rule_id}/forget-client")
+async def forget_rule_client(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    rule = await db.get(BankPayeeRule, rule_id)
+    if not rule:
+        raise HTTPException(status_code=404, detail="Règle introuvable")
+    await rule_forget_client(db, rule)
+    await db.commit()
+    return {"ok": True}
+
+
 @router.delete("/rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_rule(rule_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Supprime la regle ; les lignes non classees reconnues par elle redeviennent sans compagnie."""
     rule = await db.get(BankPayeeRule, rule_id)
     if not rule:
         raise HTTPException(status_code=404, detail="Règle introuvable")
-    for t in (await db.execute(select(BankTransaction).where(
-        BankTransaction.status == "unclassified", BankTransaction.company_source == "rule"))).scalars().all():
-        if bm.payee_key(t.payee) == rule.payee_key:
-            t.company_id, t.company_source = None, None
-    await db.delete(rule)
+    await rule_delete(db, rule)
     await db.commit()
 
 

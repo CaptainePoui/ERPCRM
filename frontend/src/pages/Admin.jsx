@@ -11,6 +11,8 @@ import CompanySettingsPanel from '../components/CompanySettingsPanel'
 import JournalPanel from '../components/JournalPanel'
 import PastillesPanel from '../components/PastillesPanel'
 import { askConfirm } from '../components/Dialog'
+import BankRulesPanel from '../components/BankRulesPanel'
+import ZekoProposals from '../components/ZekoProposals'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
 const ROLE_LABELS = { admin: 'Admin', manager: 'Gérant', tech: 'Technicien', billing: 'Facturation', readonly: 'Lecture seule' }
@@ -56,9 +58,9 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Intégrations', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal']
+const TABS = ['Utilisateurs', 'Portail client', 'Intégrations', 'Zéko', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'integrations', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'integrations', 'zeko', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal']
 // anciens onglets regroupes dans Configuration generale (2026-10-16)
 const OLD_TABS = { tickets: 'tickets', 'methodes-paiement': 'paiements', pastilles: 'pastilles' }
 
@@ -68,7 +70,7 @@ export default function Admin() {
   // doivent atterrir sur le bon onglet meme sans ?tab= (IntegrationsPanel/BackupPanel
   // les effacent eux-memes une fois le message affiche, voir plus bas).
   const initialTab = searchParams.get('google_calendar') ? 2
-    : searchParams.get('backup') ? 3
+    : searchParams.get('backup') ? 4
     : Math.max(0, TAB_SLUGS.indexOf(OLD_TABS[searchParams.get('tab')] ? 'configuration' : searchParams.get('tab')))
   const [tab, setTab] = useState(initialTab)
 
@@ -94,12 +96,13 @@ export default function Admin() {
       <div className="adm-body">
         {tab === 0 && <UsersPanel />}
         {tab === 1 && <PortalUsersPanel />}
-        {tab === 2 && <><ZekoSettingsPanel /><div style={{ height: 24 }} /><MailboxesPanel /><IntegrationsPanel /></>}
-        {tab === 3 && <BackupPanel />}
-        {tab === 4 && <ConfigPanel initial={OLD_TABS[searchParams.get('tab')] || searchParams.get('section')} />}
-        {tab === 5 && <KnowledgeGraphViewer />}
-        {tab === 6 && <CompanySettingsPanel only="entreprise" />}
-        {tab === 7 && <JournalPanel />}
+        {tab === 2 && <><MailboxesPanel /><IntegrationsPanel /></>}
+        {tab === 3 && <ZekoAdmin initial={searchParams.get('section')} />}
+        {tab === 4 && <BackupPanel />}
+        {tab === 5 && <ConfigPanel initial={OLD_TABS[searchParams.get('tab')] || searchParams.get('section')} />}
+        {tab === 6 && <KnowledgeGraphViewer />}
+        {tab === 7 && <CompanySettingsPanel only="entreprise" />}
+        {tab === 8 && <JournalPanel />}
       </div>
     </div>
   )
@@ -276,7 +279,7 @@ function ZekoRulesPanel() {
   async function remove(r) { if (await askConfirm('Faire oublier ceci à Zéko ?')) { await api.delete(`/v1/zeko/rules/${r.id}`); load() } }
   if (!rules) return null
   return (
-    <div style={{ marginTop: 22, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
+    <div>
       <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6, color: 'var(--c-text)' }}>Ce que Zéko a appris</div>
       <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 10 }}>
         Zéko ne retient quelque chose qu'après votre « oui » dans une conversation. Ce qui est ici sert à l'aider les prochaines fois (ex. comment un client avise de ses paiements).
@@ -394,6 +397,24 @@ function ExternalAiPanel() {
   )
 }
 
+// Onglet Zeko (2026-10-22, Philippe : « dans admin j'aimerais un onglet Zéko, entre autres avec les associations de
+// paiement, les règles qu'il a ») : reglages, ce qu'il a appris, regles de la banque, propositions de paiement.
+const ZEKO_TABS = [['reglages', 'Réglages'], ['appris', 'Ce que Zéko a appris'], ['regles-banque', 'Règles de la banque'], ['propositions', 'Propositions de paiement']]
+function ZekoAdmin({ initial }) {
+  const [sub, setSub] = useState(ZEKO_TABS.some(([k]) => k === initial) ? initial : 'reglages')
+  return (
+    <div>
+      <div className="filter-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
+        {ZEKO_TABS.map(([k, l]) => <button key={k} className={`filter-tab${sub === k ? ' active' : ''}`} onClick={() => setSub(k)}>{l}</button>)}
+      </div>
+      {sub === 'reglages' && <ZekoSettingsPanel />}
+      {sub === 'appris' && <ZekoRulesPanel />}
+      {sub === 'regles-banque' && <BankRulesPanel />}
+      {sub === 'propositions' && <ZekoProposals />}
+    </div>
+  )
+}
+
 function ZekoSettingsPanel() {
   const [f, setF] = useState(null)
   const [models, setModels] = useState([])
@@ -421,9 +442,9 @@ function ZekoSettingsPanel() {
     } finally { setSaving(false) }
   }
   if (!f) return <div className="loading">Chargement...</div>
-  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12 }
+  const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12, flexWrap: 'wrap' }
   const pick = (k) => (
-    <select value={f[k]} onChange={e => set(k, e.target.value)} style={{ minWidth: 220 }}>
+    <select value={f[k]} onChange={e => set(k, e.target.value)} style={{ minWidth: 220, maxWidth: '100%' }}>
       {!models.includes(f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
       {models.map(m => <option key={m} value={m}>{m}</option>)}
     </select>
@@ -437,14 +458,13 @@ function ZekoSettingsPanel() {
       </p>
       <label style={{ ...row, cursor: 'pointer' }}><input type="checkbox" checked={f.enabled} onChange={e => set('enabled', e.target.checked)} /> Zéko activé</label>
       <div style={row}><span style={{ minWidth: 170 }}>Adresse du modèle</span>
-        <input value={f.url} onChange={e => set('url', e.target.value)} placeholder="http://…:11434/v1" style={{ width: 340 }} />
+        <input value={f.url} onChange={e => set('url', e.target.value)} placeholder="http://…:11434/v1" style={{ width: 340, maxWidth: '100%' }} />
         {modelsErr ? <span style={{ color: '#DC2626', fontSize: 12 }}>{modelsErr}</span> : models.length > 0 && <span style={{ color: '#059669', fontSize: 12 }}>✓ joignable ({models.length} modèles)</span>}
       </div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('chat')}</div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
       <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
       <ExternalAiPanel />
-      <ZekoRulesPanel />
       {journal.length > 0 && (
         <div style={{ marginTop: 18 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', marginBottom: 6 }}>Derniers appels</div>

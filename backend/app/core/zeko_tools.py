@@ -1,5 +1,6 @@
-"""Outils de LECTURE de Zeko (TASK-006.5 etape 2, 2026-10-18) : Zeko consulte les donnees d'ERPCRM, il ne modifie
-rien (les actions viendront a l'etape 6, avec permissions et confirmation). Reponses courtes : sur ce processeur,
+"""Outils de Zeko (TASK-006.5 etape 2, 2026-10-18) : Zeko consulte les donnees d'ERPCRM. Il ne modifie aucune donnee
+d'affaires ; seuls ce qu'il a appris et les regles d'association de la banque se changent, apres un « oui » et pour un
+administrateur ou un gestionnaire (TASK-006.6, 2026-10-22). Reponses courtes : sur ce processeur,
 chaque mot lu par le modele coute du temps."""
 import json
 import uuid
@@ -71,6 +72,18 @@ TOOLS = [
         "après que l'utilisateur a répondu oui à ta question « Je retiens que… ? ».",
         {"client": {"type": "string"}, "expediteur": {"type": "string"}, "quoi": {"type": "string"},
          "genre": {"type": "string", "description": "avis_paiement ou autre"}}, ["quoi"]),
+    _fn("oublier", "Fait oublier à Zéko une chose apprise (texte qui la décrit, ou le client). À appeler SEULEMENT après que "
+        "l'utilisateur a répondu oui à ta question « J'oublie que… ? ».",
+        {"quoi": {"type": "string", "description": "mots de ce qui a été appris"}, "client": {"type": "string"}}),
+    _fn("regles_banque", "Règles d'association de la banque : quel bénéficiaire du relevé est reconnu comme quel client (dépôts) "
+        "ou quel fournisseur (retraits), et combien de lignes elles touchent. Filtre optionnel par bénéficiaire ou par client.",
+        {"beneficiaire": {"type": "string"}, "client": {"type": "string"}}),
+    _fn("changer_regle_banque", "Change une règle d'association de la banque : « retirer_client » (le bénéficiaire n'est plus "
+        "reconnu comme ce client ; le fournisseur des retraits reste), « supprimer » (toute la règle) ou « associer_client » "
+        "(ce bénéficiaire = ce client). Ne touche aucune transaction déjà associée. À appeler SEULEMENT après que "
+        "l'utilisateur a répondu oui à ta question « Je … ? » qui décrit le changement exact.",
+        {"beneficiaire": {"type": "string"}, "action": {"type": "string", "enum": ["retirer_client", "supprimer", "associer_client"]},
+         "client": {"type": "string", "description": "pour associer_client"}}, ["beneficiaire", "action"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
 ]
@@ -78,7 +91,8 @@ EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
 LABELS = {"chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
-          "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite",
+          "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite", "oublier": "oublie ce qui était appris",
+          "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
           "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
           "telephonie": "lit la téléphonie"}
@@ -139,6 +153,13 @@ async def _resolve_contact(db, name):
     if not res:
         return f"aucune personne ne correspond à « {name} »"
     return {"plusieurs_personnes": [f"{r.label} ({', '.join(await _companies_of_contact(db, r.id)) or 'sans entreprise'})" for r in res]}
+
+
+async def _can_change(db, user_id) -> bool:
+    """Changer ce que Zeko sait ou une regle de la banque : administrateur ou gestionnaire seulement."""
+    from app.models.user import User, UserRole
+    u = await db.get(User, user_id) if user_id else None
+    return bool(u and u.role in (UserRole.admin, UserRole.manager))
 
 
 async def run(name: str, args: dict, db, user_id=None) -> str:
@@ -328,7 +349,87 @@ async def _run(name, args, db, user_id=None) -> str:
         db.add(ZekoRule(kind=genre if genre in ("avis_paiement", "autre") else "autre", company_id=comp.id if comp else None,
                         sender_email=(str(args.get("expediteur") or "").strip().lower() or None), description=quoi[:2000], created_by=user_id))
         await db.commit()
-        return _out("retenu (visible dans Administration › Intégrations › Zéko › Ce que Zéko a appris)")
+        return _out("retenu (visible dans Administration › Zéko › Ce que Zéko a appris)")
+
+    if name == "oublier":
+        from app.models.zeko import ZekoRule
+        if not await _can_change(db, user_id):
+            return _out("refusé : seuls un administrateur ou un gestionnaire peuvent faire oublier quelque chose à Zéko")
+        q = select(ZekoRule)
+        if args.get("client"):
+            comp = await _resolve_company(db, args["client"])
+            if not isinstance(comp, Company):
+                return _out(comp)
+            q = q.where(ZekoRule.company_id == comp.id)
+        quoi = str(args.get("quoi") or "").strip()
+        rules = (await db.execute(q)).scalars().all()
+        if quoi:
+            mots = [m for m in quoi.lower().split() if len(m) > 2]
+            rules = [r for r in rules if all(m in r.description.lower() for m in mots)] or \
+                    [r for r in rules if quoi.lower() in r.description.lower()]
+        if len(rules) != 1:
+            return _out({"constat": "aucune chose apprise ne correspond" if not rules else "plusieurs correspondent : précise",
+                         "candidats": [r.description[:160] for r in rules[:8]]})
+        txt = rules[0].description
+        await db.delete(rules[0])
+        await db.commit()
+        return _out(f"oublié : {txt[:200]}")
+
+    if name in ("regles_banque", "changer_regle_banque"):
+        from app.models.bank_account import BankPayeeRule
+        from app.core import bank_matching as bm
+        from app.api.v1.endpoints import bank
+        rules = (await db.execute(select(BankPayeeRule).order_by(BankPayeeRule.payee_label))).scalars().all()
+        ids = {r.company_id for r in rules if r.company_id}
+        names = dict((await db.execute(select(Company.id, Company.name).where(Company.id.in_(ids)))).all()) if ids else {}
+        from app.models.purchases import Vendor
+        vids = {r.vendor_id for r in rules if r.vendor_id}
+        vnames = dict((await db.execute(select(Vendor.id, Vendor.name).where(Vendor.id.in_(vids)))).all()) if vids else {}
+        ben = str(args.get("beneficiaire") or "").strip()
+        if name == "regles_banque":
+            if ben:
+                rules = [r for r in rules if bm.payee_key(ben) in r.payee_key or ben.lower() in r.payee_label.lower()]
+            if args.get("client"):
+                comp = await _resolve_company(db, args["client"])
+                if not isinstance(comp, Company):
+                    return _out(comp)
+                rules = [r for r in rules if r.company_id == comp.id]
+            return _out([{"beneficiaire": r.payee_label, "client": names.get(r.company_id), "fournisseur": vnames.get(r.vendor_id),
+                          "depuis": r.created_at.date()} for r in rules[:40]] or "aucune règle")
+        if not await _can_change(db, user_id):
+            return _out("refusé : seuls un administrateur ou un gestionnaire peuvent changer une règle de la banque")
+        action = str(args.get("action") or "")
+        key = bm.payee_key(ben)
+        match = [r for r in rules if r.payee_key == key] or [r for r in rules if key and key in r.payee_key]
+        if action == "associer_client":
+            comp = await _resolve_company(db, args.get("client"))
+            if not isinstance(comp, Company):
+                return _out(comp)
+            if len(match) > 1:
+                return _out({"constat": "plusieurs bénéficiaires correspondent : précise", "candidats": [r.payee_label for r in match]})
+            label = match[0].payee_label if match else ben
+            if not key:
+                return _out("précise le bénéficiaire tel qu'il apparaît sur le relevé")
+            await bank._remember(db, label, comp.id)
+            await db.commit()
+            return _out(f"règle : « {label} » = {comp.name} (les dépôts non classés de ce bénéficiaire sont maintenant reconnus)")
+        if len(match) != 1:
+            return _out({"constat": "aucune règle pour ce bénéficiaire" if not match else "plusieurs règles correspondent : précise",
+                         "candidats": [r.payee_label for r in match]})
+        r = match[0]
+        if action == "retirer_client":
+            if not r.company_id:
+                return _out(f"la règle « {r.payee_label} » n'a déjà aucun client")
+            who = names.get(r.company_id)
+            await bank.rule_forget_client(db, r)
+            await db.commit()
+            return _out(f"« {r.payee_label} » n'est plus reconnu comme {who}" + (" (le fournisseur des retraits reste)" if r.vendor_id else ""))
+        if action == "supprimer":
+            label = r.payee_label
+            await bank.rule_delete(db, r)
+            await db.commit()
+            return _out(f"règle « {label} » supprimée (les associations déjà faites restent)")
+        return _out("action inconnue : retirer_client, supprimer ou associer_client")
 
     if name == "chercher":
         from app.api.v1.endpoints.search import search
