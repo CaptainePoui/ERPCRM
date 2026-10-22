@@ -138,6 +138,15 @@ async def run_recurring_once() -> dict:
         sales_on = (await get_setting(db, "recurring_auto_sales")) == "true"
     out = {"purchases": await _purchases() if purchases_on else None,
            "sales": await _sales() if sales_on else None}
+    # Commissions des vendeurs (TASK-007.2) : apres les ventes, sur les paiements de clients arrives depuis
+    from app.core import commissions
+    async with AsyncSessionLocal() as db:
+        try:
+            await commissions.sync(db)
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            log.exception("Commissions des vendeurs : mise a jour echouee")
     # Avis de frais de retard (TASK-005.14) : apres les ventes du jour ; ne fait rien tant que c'est eteint
     from app.core import late_fees
     async with AsyncSessionLocal() as db:

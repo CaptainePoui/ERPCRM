@@ -2,12 +2,32 @@ import { useState, useEffect } from 'react'
 import api from '../services/api'
 import Autocomplete from '../components/Autocomplete'
 import SignatureEditor from '../components/SignatureEditor'
-import { askConfirm, showAlert } from '../components/Dialog'
+import SalesRepsPanel from '../components/SalesRepsPanel'
+import { useSearchParams } from 'react-router-dom'
+import { askConfirm } from '../components/Dialog'
 
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n) }
 
+// Deux onglets (TASK-007.2, 2026-10-22) : Employes, et Vendeurs (chacun son module de commission)
 export default function Employees() {
+  const [params, setParams] = useSearchParams()
+  const tab = params.get('tab') === 'vendeurs' ? 'vendeurs' : 'employes'
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>👷 Employés</h2>
+        <div className="filter-tabs" style={{ marginBottom: 0 }}>
+          <button className={`filter-tab${tab === 'employes' ? ' active' : ''}`} onClick={() => setParams({}, { replace: true })}>Employés</button>
+          <button className={`filter-tab${tab === 'vendeurs' ? ' active' : ''}`} onClick={() => setParams({ tab: 'vendeurs' }, { replace: true })}>Vendeurs</button>
+        </div>
+      </div>
+      {tab === 'employes' ? <EmployeesTab /> : <SalesRepsPanel />}
+    </div>
+  )
+}
+
+function EmployeesTab() {
   const [employees, setEmployees] = useState([])
   const [payments, setPayments] = useState([])
   const [contacts, setContacts] = useState([])
@@ -72,8 +92,7 @@ export default function Employees() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <h2 style={{ fontSize: 22, fontWeight: 700 }}>👷 Employés</h2>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
         <button className="btn-primary" onClick={() => setShowAdd(true)}>+ Ajouter un employé</button>
       </div>
 
@@ -81,8 +100,8 @@ export default function Employees() {
       <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, marginBottom: 24 }}>
         {employees.length === 0 && <div style={{ padding: 32, textAlign: 'center', color: 'var(--c-faint)' }}>Aucun employé.</div>}
         {employees.map(e => (
-          <div key={e.contact_id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 20px', borderBottom: '1px solid var(--c-surface-3)' }}>
-            <div style={{ flex: 1 }}>
+          <div key={e.contact_id} style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', padding: '14px 20px', borderBottom: '1px solid var(--c-surface-3)' }}>
+            <div style={{ flex: '1 1 180px', minWidth: 0 }}>
               <div style={{ fontWeight: 600, fontSize: 15 }}>{e.first_name} {e.last_name}</div>
               {e.email && <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>{e.email}</div>}
             </div>
@@ -145,8 +164,6 @@ export default function Employees() {
         </div>
       )}
 
-      <CommissionsSection />
-
       {/* ── Modal ajouter employé ── */}
       {showAdd && (
         <div className="modal-overlay">
@@ -191,81 +208,6 @@ export default function Employees() {
             </div>
           </div>
         </div>
-      )}
-    </div>
-  )
-}
-
-// Commissions vendeurs (deplacees de l'engrenage, TASK-014.3, 2026-10-09) : le % et le rapport au meme endroit.
-function CommissionsSection() {
-  const [rate, setRate] = useState('')
-  const [saved, setSaved] = useState('')
-  const [msg, setMsg] = useState('')
-  const [year, setYear] = useState(new Date().getFullYear())
-  const [month, setMonth] = useState(new Date().getMonth() + 1)
-  const [rows, setRows] = useState(null)
-  useEffect(() => { api.get('/v1/settings').then(r => { setRate(String(r.data.commission_rate)); setSaved(String(r.data.commission_rate)) }) }, [])
-
-  async function saveRate() {
-    setMsg('')
-    try {
-      const r = await api.put('/v1/settings', { commission_rate: parseFloat(rate) })
-      setRate(String(r.data.commission_rate)); setSaved(String(r.data.commission_rate)); setMsg('Enregistré')
-    } catch (e) { setMsg(e.response?.data?.detail?.[0]?.msg || e.response?.data?.detail || 'Refusé') }
-  }
-
-  return (
-    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginTop: 20 }}>
-      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 16, color: 'var(--c-text)' }}>Commissions vendeurs</h3>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 16 }}>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label>Commission vendeur (%)</label>
-          <input type="number" step="0.1" value={rate} onChange={e => setRate(e.target.value)} style={{ width: 80 }} />
-        </div>
-        <button className="btn-primary" onClick={saveRate} disabled={rate === '' || rate === saved}>Sauvegarder</button>
-        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
-      </div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label>Année</label>
-          <input type="number" value={year} onChange={e => setYear(+e.target.value)} style={{ width: 90 }} />
-        </div>
-        <div className="form-group" style={{ marginBottom: 0 }}>
-          <label>Mois</label>
-          <select value={month} onChange={e => setMonth(+e.target.value)}>
-            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-          </select>
-        </div>
-        <button className="btn-secondary" onClick={() => api.get(`/v1/employees/commissions?year=${year}&month=${month}`).then(r => setRows(r.data))}>Générer le rapport</button>
-      </div>
-      {rows !== null && (
-        rows.length === 0
-          ? <div style={{ marginTop: 16, color: 'var(--c-faint)', fontSize: 14 }}>Aucune commission pour cette période.</div>
-          : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 16 }}>
-              <thead>
-                <tr style={{ background: 'var(--c-surface-2)' }}>
-                  {['Vendeur', 'Facturation clients', `Commission (${saved}%)`, ''].map(h => (
-                    <th key={h} style={{ padding: '8px 12px', textAlign: h === 'Vendeur' ? 'left' : 'right', fontWeight: 600, color: 'var(--c-text-2)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((c, i) => (
-                  <tr key={i} style={{ borderTop: '1px solid var(--c-surface-3)' }}>
-                    <td style={{ padding: '8px 12px', fontWeight: 500 }}>{c.first_name} {c.last_name}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: 'var(--c-muted)' }}>{fmt(c.invoiced_total)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color: '#059669' }}>{fmt(c.commission_amount)}</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                      <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => showAlert(`Commission à payer: ${fmt(c.commission_amount)} à ${c.first_name} ${c.last_name}`)}>
-                        Payer
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
       )}
     </div>
   )
