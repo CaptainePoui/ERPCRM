@@ -65,8 +65,8 @@ async def scan(db) -> int:
                         card=x["card"], transaction_ref=x["transaction_ref"])
         if not x["approved"]:
             r.status, r.note = "failed", "Paiement refusé ou non approuvé"
-        elif not (x["invoice_number"] and x["amount"]):
-            r.status, r.note = "failed", "Reçu illisible (facture ou montant manquant)"
+        elif not x["amount"]:       # sans n° de facture, on cherche ses factures (TASK-042.14)
+            r.status, r.note = "failed", "Reçu sans montant (vérification de carte à 0 $)"
         db.add(r)
         n += 1
     await db.flush()
@@ -82,6 +82,33 @@ def invoice_numbers(text: str, main: str | None) -> list[str]:
         if n.upper() not in nums:
             nums.append(n.upper())
     return nums
+
+
+async def guess_invoices(db, r, text: str) -> tuple[list[str], str | None]:
+    """Recu sans n° de facture (Philippe 2026-10-22 : « s'il n'y a pas de # de facture on cherche une ou une
+    association de factures ») : le client par son nom exact ou par le courriel du recu (un seul), puis la seule
+    facon exacte de payer le montant avec ses plus vieilles factures ouvertes (meme regle que les depots)."""
+    from app.models.company import Company
+    from app.models.contact import Contact
+    from app.models.contact_company import ContactCompany
+    from app.core.company_tree import family_ids
+    from app.core.bank_matching import exact_options
+    text = re.sub(r"<[^>]+>", "\n", text or "")
+    ids = set()
+    if r.company_name:
+        ids = set((await db.execute(select(Company.id).where(
+            func.lower(func.trim(Company.name)) == r.company_name.strip().lower()))).scalars().all())
+    mail = (_field(text, "E-Mail") or "").lower()
+    if not ids and "@" in mail:
+        ids = set((await db.execute(select(ContactCompany.company_id).join(Contact, Contact.id == ContactCompany.contact_id).where(
+            (func.lower(Contact.email) == mail) | (func.lower(ContactCompany.email) == mail)))).scalars().all())
+    if len(ids) != 1:
+        return [], ("Reçu sans n° de facture : client introuvable" if not ids else "Reçu sans n° de facture : plusieurs clients possibles")
+    options, _f, _r = await exact_options(db, await family_ids(db, next(iter(ids))), Decimal(r.amount), r.paid_at)
+    if len(options) != 1:
+        return [], ("Reçu sans n° de facture : aucune facture ou combinaison de factures ne fait ce montant" if not options
+                    else "Reçu sans n° de facture : plusieurs combinaisons de factures font ce montant")
+    return [i.number for i, _b in next(iter(options.values()))], None
 
 
 def _subsets(items: list, target: Decimal, limit: int = 16) -> list[tuple]:
@@ -177,7 +204,12 @@ async def match(db) -> int:
     pending = (await db.execute(select(CardReceipt, MailMessage).join(MailMessage, MailMessage.id == CardReceipt.mail_message_id)
                                 .where(CardReceipt.status.in_(("parsed", "a_verifier")), CardReceipt.amount > 0))).all()
     nums = {r.id: invoice_numbers(m.body_text or m.body_html or "", r.invoice_number) for r, m in pending}
-    recs = [r for r, _ in pending]
+    for r, m in pending:
+        if not nums[r.id]:
+            nums[r.id], why = await guess_invoices(db, r, m.body_text or m.body_html or "")
+            if why:
+                r.status, r.note = "a_verifier", why
+    recs = [r for r, _ in pending if nums[r.id]]
     if not recs:
         return 0
     lo = min(r.paid_at for r in recs)

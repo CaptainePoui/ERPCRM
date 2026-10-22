@@ -201,6 +201,38 @@ async def suggestions(db: AsyncSession, tx: BankTransaction, limit: int = 8) -> 
     return out
 
 
+async def exact_options(db: AsyncSession, fam_ids, amount: Decimal, day: date) -> tuple[dict, list, list]:
+    """Regle de Philippe (2026-10-06/08) : facons EXACTES de payer `amount` avec les plus vieilles factures ouvertes de
+    la famille du client (j plus vieilles qui n'ont rien recu + k plus vieux restes, ou le reste d'une seule facture).
+    Sert aux depots (best_exact) et aux recus de carte sans n° de facture (card_receipts, TASK-042.14)."""
+    open_invs = (await db.execute(select(Invoice).where(
+        Invoice.company_id.in_(fam_ids), Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
+        Invoice.issue_date <= day + timedelta(days=10)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
+    paid = await invoice_balances(db, [i.id for i in open_invs])
+    fresh, rests = [], []
+    for inv in open_invs:
+        already = paid.get(inv.id) or Decimal("0")
+        bal = inv.total - already
+        if bal <= 0:
+            continue
+        if already <= 0:
+            fresh.append((inv, bal))
+        else:
+            rests.append((inv, bal))
+    options = {}
+    for j in range(min(len(fresh), 12) + 1):
+        for k in range(min(len(rests), 12) + 1):
+            if j + k == 0:
+                continue
+            combo = fresh[:j] + rests[:k]
+            if sum((b for _i, b in combo), Decimal("0")) == amount:
+                options[tuple(sorted(str(i.id) for i, _b in combo))] = combo
+    for i, b in rests:                      # client qui paie le reste d'une facture precise
+        if b == amount:
+            options[(str(i.id),)] = [(i, b)]
+    return options, fresh, rests
+
+
 async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     """Suggestion sure pour « Valider » dans l'onglet Reconnu (et l'association automatique) : un seul paiement a
     lier, sinon la repartition du depot sur les factures de la compagnie reconnue (+ credit). None si ambigu."""
@@ -238,32 +270,8 @@ async def best_exact(db: AsyncSession, tx: BankTransaction) -> dict | None:
     # des factures deja payees en partie, les plus vieux d'abord -- restes « a regler en troc » compris (Philippe :
     # « la mention troc c'est juste pour ne pas recevoir de facture de retard et identifier une dette »). Sur si le depot egale exactement : les j plus vieilles factures + les k plus vieux restes, ou le
     # reste d'une seule facture ; une seule possibilite -> associe, plusieurs -> suggestion seulement.
-    open_invs = (await db.execute(select(Invoice).where(
-        Invoice.company_id.in_(fam_ids), Invoice.status.in_(OPEN_STATUSES), Invoice.credit_of_id.is_(None),
-        Invoice.issue_date <= tx.posted_date + timedelta(days=10)).order_by(Invoice.issue_date, Invoice.number))).scalars().all()
-    paid = await invoice_balances(db, [i.id for i in open_invs])
     amount = Decimal(tx.amount)
-    fresh, rests = [], []
-    for inv in open_invs:
-        already = paid.get(inv.id) or Decimal("0")
-        bal = inv.total - already
-        if bal <= 0:
-            continue
-        if already <= 0:
-            fresh.append((inv, bal))
-        else:
-            rests.append((inv, bal))
-    options = {}
-    for j in range(min(len(fresh), 12) + 1):
-        for k in range(min(len(rests), 12) + 1):
-            if j + k == 0:
-                continue
-            combo = fresh[:j] + rests[:k]
-            if sum((b for _i, b in combo), Decimal("0")) == amount:
-                options[tuple(sorted(str(i.id) for i, _b in combo))] = combo
-    for i, b in rests:                      # client qui paie le reste d'une facture precise
-        if b == amount:
-            options[(str(i.id),)] = [(i, b)]
+    options, fresh, rests = await exact_options(db, fam_ids, amount, tx.posted_date)
     if len(options) == 1:
         return _invoice_plan(tx, amount, next(iter(options.values())), Decimal("0"))
     if options:
