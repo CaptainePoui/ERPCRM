@@ -24,6 +24,7 @@ from app.api.v1.endpoints.settings import get_setting
 from app.api.v1.endpoints.purchases import (NothingDue, _lock, create_recurring_bill, create_recurring_expense)
 from app.api.v1.endpoints.recurring_billing import (NothingToGenerate, CycleCoveredByBarter, create_recurring_invoice,
                                                     lock_recurrence, next_missing_cycle)
+from app.models.invoice import Invoice
 from app.models.purchases import RecurringBill, RecurringExpense
 from app.models.recurring_billing import CompanyRecurringBilling
 
@@ -60,13 +61,32 @@ async def _purchases() -> int:
     return made
 
 
+def _seq(number: str | None) -> int:
+    digits = "".join(ch for ch in number or "" if ch.isdigit())
+    return int(digits) if digits else 10 ** 12
+
+
+async def _previous_order(db) -> dict:
+    """Numero de la derniere facture de chaque periodique : a date egale, l'ancien logiciel cree les factures
+    dans l'ordre de creation de ses periodiques (toujours le meme d'un mois a l'autre, ni alphabetique ni par
+    date de debut seule -- TASK-005.27) ; reprendre l'ordre du cycle precedent le reproduit sans le deviner.
+    Une periodique sans facture passe apres les autres (la plus recente)."""
+    rows = (await db.execute(select(Invoice.recurring_billing_id, Invoice.number)
+                             .where(Invoice.recurring_billing_id.is_not(None), Invoice.credit_of_id.is_(None))
+                             .order_by(Invoice.recurring_billing_id, Invoice.issue_date.desc(), Invoice.number.desc())
+                             .distinct(Invoice.recurring_billing_id))).all()
+    return {rid: _seq(num) for rid, num in rows}
+
+
 async def _next_due_sale(tax_lock: date | None, skip: set):
     """Cycle du le plus ancien, toutes compagnies confondues : les factures sont creees dans l'ordre
-    chronologique (comme l'ancien logiciel qui tourne en parallele -- memes numeros INV-)."""
+    chronologique (comme l'ancien logiciel qui tourne en parallele -- memes numeros INV-) ; a date egale,
+    dans l'ordre des numeros du cycle precedent (_previous_order)."""
     async with AsyncSessionLocal() as db:
         rbs = (await db.execute(select(CompanyRecurringBilling).options(selectinload(CompanyRecurringBilling.lines),
                                                                          selectinload(CompanyRecurringBilling.company))
                                 .where(CompanyRecurringBilling.is_active.is_(True)))).scalars().all()
+        order = await _previous_order(db)
         due = []
         for rb in rbs:
             if rb.id in skip or not rb.lines:
@@ -78,8 +98,8 @@ async def _next_due_sale(tax_lock: date | None, skip: set):
                 log.warning("Facture periodique %s : cycle du %s dans une periode de taxes declaree, non cree", rb.name, start)
                 skip.add(rb.id)
                 continue
-            due.append((start, rb.company.name, rb.id))
-        return min(due)[2] if due else None
+            due.append((start, order.get(rb.id, 10 ** 12), rb.company.name, rb.id))
+        return min(due)[3] if due else None
 
 
 async def _sales() -> int:
