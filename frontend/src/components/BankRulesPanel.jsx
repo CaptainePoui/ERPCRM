@@ -59,7 +59,7 @@ export default function BankRulesPanel() {
           {rules?.map(r => (
             <div key={r.id} style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: '10px 12px', marginBottom: 8, fontSize: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                <b style={{ overflowWrap: 'anywhere' }}>{r.payee}</b><span style={{ color: C.muted, fontSize: 12, whiteSpace: 'nowrap' }}>{r.transactions} lignes</span>
+                <b style={{ overflowWrap: 'anywhere' }}>{r.payee}</b><span style={{ color: C.muted, fontSize: 12, whiteSpace: 'nowrap' }}>{r.transactions} transaction{r.transactions > 1 ? 's' : ''} reconnue{r.transactions > 1 ? 's' : ''}</span>
               </div>
               <div style={{ margin: '4px 0 8px' }}>{who(r)}</div>
               {actions(r)}
@@ -72,7 +72,7 @@ export default function BankRulesPanel() {
             <tr style={{ textAlign: 'left', color: C.muted, fontSize: 11, textTransform: 'uppercase', borderBottom: `1px solid ${C.border}` }}>
               <th style={{ padding: 8 }}>Bénéficiaire du relevé</th>
               <th style={{ padding: 8 }}>Client (dépôts) / Fournisseur (retraits)</th>
-              <th style={{ padding: 8, textAlign: 'right' }}>Lignes</th>
+              <th style={{ padding: 8, textAlign: 'right' }} title="Nombre de transactions du relevé de ce bénéficiaire attribuées à ce client ou à ce fournisseur">Transactions reconnues</th>
               <th style={{ padding: 8 }}></th>
             </tr>
           </thead>
