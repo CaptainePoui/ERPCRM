@@ -6099,6 +6099,14 @@ Date(s) de travail : 2026-10-21
 - Essai à blanc sur l'avis de Mc Crystal du 15 octobre (100 s) : lu « 212,08 $, facture 112237 », dépôt du 19 octobre trouvé → « à corriger : INV-112237 : 212,08 $ payés selon l'avis, mais ERPCRM ne lui laisse que 145,57 $ à payer » (le faux paiement venu de Zoho). Lancé le 2026-10-21 sur les 45 courriels de facturation@ (Mc Crystal écrit à service@ : boîte à ajouter au réglage).
 - Au passage : `reset` (changement d'onglet dans Transactions non classées) n'était plus défini depuis une modification antérieure → erreur à chaque clic sur « Tout » ou « Reconnu » ; rétabli.
 
+### TASK-042.14 [x] Reçus de carte : un dépôt Elavon peut couvrir plusieurs reçus et un reçu plusieurs factures
+- **Date de demande** : 2026-10-22 (Philippe : « même règle que les paiements, c'est un client qui paye et il peut payer une vieille facture et une nouvelle comme Talentech… il faut qu'il soit capable de les rechercher, associer »)
+- **Date(s) de travail** : 2026-10-22
+- `core/card_receipts.py` : `invoice_numbers()` lit toutes les factures de « Description » ; `match()` cherche la combinaison UNIQUE de reçus (0–5 jours avant) qui fait exactement le dépôt Elavon ; `_settle()` : factures encore ouvertes → encaissement réparti (la plus ancienne d'abord), ou factures déjà réglées par des paiements antérieurs non reliés qui font le dépôt → dépôt relié (plusieurs paiements de l'ancien système regroupés en un seul encaissement). Tout le reste reste « à vérifier ».
+- facturation@ : date de copie reculée au 2025-09-01 (le serveur n'a rien avant mai 2026) → 23 reçus lus.
+- Résultat : dépôt 1 642,57 $ du 2026-07-17 = 3 reçus Talentech (10 factures) associé. Restent : HB 52,78 $ (juin, doublon connu) et HB 2,23 $. Sauvegarde : `~/backups/before_card_group_20261022_1203.sql`.
+- Constat non corrigé (attend Philippe) : règle de bénéficiaire « ELAVON MRCH SVC → HB Architectes » (créée 2026-10-07) qui attribue à tort les dépôts Elavon à HB.
+
 ### TASK-042.2 [x] Dépôt d'un relevé dans la page : doublons, associations sûres, IA locale
 Date de demande : 2026-10-05 (Philippe : « j'aimerais avoir mon IA locale qui gère un fichier importé, pour commencer ; ce serait une sécurité si les autres connexions se perdent » ; « j'ai besoin qu'elle analyse ce qui est, enlève les doublons et associe ce qu'elle est sûre, une place dans la page »)
 Date(s) de travail : 2026-10-05, 2026-10-06, 2026-10-07, 2026-10-08

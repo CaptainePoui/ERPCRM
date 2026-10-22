@@ -3,8 +3,9 @@
 Philippe : « pour les paiements d'Elavon (bénéficiaire ELAVON MRCH SVC), dans facturation (courriel) j'ai des rapports
 d'Elavon (Merchant Email Receipt) avec la facture ». Chaque recu (noreply@mail.authorize.net, deja synchronise dans
 Courriels) donne le n° de facture, le montant, l'entreprise et la date. Lecture par expressions regulieres (format fixe,
-pas d'IA). Association SURE seulement : un seul depot ELAVON du meme montant, 0 a 5 jours apres le paiement, ET la
-facture du recu a encore un solde au moins egal au montant ; sinon le recu reste « a verifier » avec la raison.
+pas d'IA). Association SURE seulement : une seule combinaison de recus (Elavon verse en lot, un recu peut payer
+plusieurs factures, TASK-042.14) fait exactement un depot ELAVON 0 a 5 jours apres, ET les factures ont encore leur
+solde -- ou sont deja reglees par des paiements anterieurs non relies qui font le depot ; sinon « a verifier ».
 Le depot n'enseigne aucune regle « ELAVON -> client » (Elavon sert tous les clients qui paient par carte).
 """
 import re
@@ -72,55 +73,167 @@ async def scan(db) -> int:
     return n
 
 
-async def match(db) -> int:
-    """Relie chaque recu lu au depot ELAVON du meme montant ; associe le depot a la facture si c'est sur."""
-    from app.models.bank_account import BankTransaction, CardReceipt
+def invoice_numbers(text: str, main: str | None) -> list[str]:
+    """Factures payees par le recu : le champ « Invoice » plus toutes celles nommees dans « Description »
+    (un client paie souvent une vieille facture et les nouvelles d'un coup, ex. Talentech 2026-07-15)."""
+    text = re.sub(r"<[^>]+>", "\n", text or "")
+    nums = [main] if main and main != "NONE" else []
+    for n in re.findall(r"\bINV-\d+\b", _field(text, "Description") or "", re.I):
+        if n.upper() not in nums:
+            nums.append(n.upper())
+    return nums
+
+
+def _subsets(items: list, target: Decimal, limit: int = 16) -> list[tuple]:
+    """Toutes les combinaisons de recus dont la somme fait exactement le depot."""
+    from itertools import combinations
+    top = len(items) if len(items) <= limit else 1     # trop de recus : seulement un recu = un depot
+    return [c for k in range(1, top + 1) for c in combinations(items, k)
+            if sum((r.amount for r in c), Decimal(0)) == target]
+
+
+async def _settle(db, tx, group: list, nums: list[str]) -> tuple[str, str | None]:
+    """Associe le depot aux factures des recus. Deux cas surs seulement :
+    1) les factures sont deja reglees par des paiements anterieurs non relies a la banque, qui font exactement le
+       depot -> le depot est relie a ces paiements (regroupes en un seul encaissement s'il y en a plusieurs) ;
+    2) les factures ont encore leur solde -> un encaissement est cree, chaque recu reparti sur ses factures
+       (la plus ancienne d'abord). Tout autre cas reste « a verifier » avec la raison."""
     from app.models.invoice import Invoice
-    from app.models.client_payment import PaymentAllocation
-    from app.core.bank_matching import invoice_balances
+    from app.models.client_payment import ClientPayment, PaymentAllocation, PaymentDocument
+    from app.models.barter import BarterApplication
+    from app.core.bank_matching import invoice_balances, linked_payment_ids
     from app.api.v1.endpoints import bank
-    taken = set((await db.execute(select(CardReceipt.bank_transaction_id).where(CardReceipt.bank_transaction_id.is_not(None)))).scalars().all())
+    invs = (await db.execute(select(Invoice).where(Invoice.number.in_(nums)))).scalars().all()
+    if len(invs) != len(set(nums)):
+        missing = sorted(set(nums) - {i.number for i in invs})
+        return "a_verifier", f"Facture introuvable dans ERPCRM : {', '.join(missing)}"
+    by_num = {i.number: i for i in invs}
+    ids = [i.id for i in invs]
+    settled = await invoice_balances(db, ids)
+    balance = {i.id: Decimal(i.total) - Decimal(settled.get(i.id, 0)) for i in invs}
+
+    # 1) deja reglees par des paiements anterieurs pas encore relies a un depot
+    linked = await linked_payment_ids(db)
+    pays = (await db.execute(select(ClientPayment).join(PaymentAllocation, PaymentAllocation.payment_id == ClientPayment.id)
+                             .where(PaymentAllocation.invoice_id.in_(ids), ClientPayment.status == "confirmed")
+                             .distinct())).scalars().all()
+    pays = [p for p in pays if p.id not in linked and p.method_code != "troc"]
+    if all(balance[i] <= 0 for i in ids) and pays:
+        allocs = (await db.execute(select(PaymentAllocation).where(PaymentAllocation.payment_id.in_([p.id for p in pays])))).scalars().all()
+        if ({a.invoice_id for a in allocs} == set(ids) and sum((p.amount for p in pays), Decimal(0)) == Decimal(tx.amount)
+                and len({p.company_id for p in pays}) == 1):
+            keep = pays[0]
+            if len(pays) > 1:
+                if any(p.source != "zoho_import" for p in pays):
+                    return "a_verifier", "Les factures sont déjà payées par plusieurs paiements : regroupement à faire à la main"
+                others = [p.id for p in pays[1:]]
+                if (await db.execute(select(func.count()).select_from(BarterApplication)
+                                     .where(BarterApplication.client_payment_id.in_(others)))).scalar_one():
+                    return "a_verifier", "Un des paiements est lié à un échange"
+                for a in allocs:
+                    a.payment_id = keep.id
+                for d in (await db.execute(select(PaymentDocument).where(PaymentDocument.payment_id.in_(others)))).scalars().all():
+                    d.payment_id = keep.id
+                await db.flush()
+                for p in pays[1:]:
+                    await db.delete(p)
+                keep.amount = Decimal(tx.amount)
+                keep.notes = "Paiement antérieur des factures " + ", ".join(sorted(by_num)) + "."
+                await db.flush()
+            await bank.match_transaction(tx.id, bank.MatchIn(client_payment_id=keep.id, remember_payee=False), db, None)
+            return "linked", None
+        return "a_verifier", "Les factures sont déjà payées, mais les paiements inscrits ne font pas le montant du dépôt"
+
+    # 2) solde encore ouvert : chaque recu reparti sur ses factures, la plus ancienne d'abord
+    left = dict(balance)
+    out: dict = {}
+    for r, rnums in group:
+        rest = Decimal(r.amount)
+        for inv in sorted((by_num[n] for n in rnums), key=lambda i: (i.issue_date or date.min, i.number)):
+            take = min(rest, max(left[inv.id], Decimal(0)))
+            if take > 0:
+                out[inv.id] = out.get(inv.id, Decimal(0)) + take
+                left[inv.id] -= take
+                rest -= take
+        if rest > 0:
+            return "a_verifier", (f"Les factures {', '.join(rnums)} n'ont plus que "
+                                  f"{sum((max(balance[by_num[n].id], Decimal(0)) for n in rnums), Decimal(0)):.2f} $ à payer "
+                                  f"(paiement par carte de {r.amount:.2f} $)")
+    await db.flush()
+    await bank.match_transaction(tx.id, bank.MatchIn(
+        allocations=[bank.AllocIn(invoice_id=i, amount=float(a)) for i, a in out.items()],
+        method_code="authorizenet", remember_payee=False), db, None)
+    return "matched", None
+
+
+async def match(db) -> int:
+    """Relie les recus lus aux depots ELAVON. Un depot peut regrouper plusieurs recus du meme jour (Elavon verse
+    en lot) et un recu peut payer plusieurs factures : la combinaison de recus doit faire exactement le depot et
+    etre la seule possible, sinon rien n'est associe (Philippe 2026-10-22 : « même règle que les paiements »)."""
+    from app.models.bank_account import BankTransaction, CardReceipt
+    from app.models.mailbox import MailMessage
+    from app.models.client_payment import PaymentAllocation
+    from app.models.invoice import Invoice
+    pending = (await db.execute(select(CardReceipt, MailMessage).join(MailMessage, MailMessage.id == CardReceipt.mail_message_id)
+                                .where(CardReceipt.status.in_(("parsed", "a_verifier")), CardReceipt.amount > 0))).all()
+    nums = {r.id: invoice_numbers(m.body_text or m.body_html or "", r.invoice_number) for r, m in pending}
+    recs = [r for r, _ in pending]
+    if not recs:
+        return 0
+    lo = min(r.paid_at for r in recs)
+    deposits = [t for t in (await db.execute(select(BankTransaction).where(
+        BankTransaction.amount > 0, BankTransaction.posted_date >= lo,
+        BankTransaction.posted_date <= max(r.paid_at for r in recs) + timedelta(days=5)))).scalars().all()
+        if "elavon" in f"{t.description} {t.payee or ''}".lower()]
+
+    # recus deja couverts par un depot associe a leurs factures -> « linked »
+    for r in recs:
+        for t in deposits:
+            if t.status == "matched" and t.client_payment_id and r.paid_at <= t.posted_date <= r.paid_at + timedelta(days=5):
+                on = set((await db.execute(select(Invoice.number).join(PaymentAllocation, PaymentAllocation.invoice_id == Invoice.id)
+                                           .where(PaymentAllocation.payment_id == t.client_payment_id))).scalars().all())
+                if on and set(nums[r.id]) <= on and Decimal(t.amount) >= Decimal(r.amount):
+                    r.status, r.note, r.bank_transaction_id = "linked", None, t.id
+                    break
+    recs = [r for r in recs if r.status != "linked"]
+
+    pairs = []      # (depot, combinaison de recus) possibles
+    for t in deposits:
+        if t.status != "unclassified":
+            continue
+        cands = sorted((r for r in recs if r.paid_at <= t.posted_date <= r.paid_at + timedelta(days=5)), key=lambda r: r.paid_at)
+        subs = _subsets(cands, Decimal(t.amount))
+        if len(subs) == 1:
+            pairs.append((t, subs[0]))
+        elif len(subs) > 1:
+            for r in {r for c in subs for r in c}:
+                r.status, r.note = "a_verifier", f"Plusieurs combinaisons de reçus font le dépôt de {t.amount:.2f} $ : choix impossible"
+    used: dict = {}
+    for t, c in pairs:
+        for r in c:
+            used[r.id] = used.get(r.id, 0) + 1
     n = 0
-    for r in (await db.execute(select(CardReceipt).where(CardReceipt.status.in_(("parsed", "a_verifier"))))).scalars().all():
-        inv = (await db.execute(select(Invoice).where(Invoice.number == r.invoice_number))).scalar_one_or_none()
-        if not inv:
-            r.status, r.note = "a_verifier", f"Facture {r.invoice_number} introuvable dans ERPCRM"
+    for t, c in pairs:
+        if any(used[r.id] > 1 for r in c):
+            for r in c:
+                r.status, r.note = "a_verifier", "Ce reçu correspond à plus d'un dépôt Elavon : choix impossible"
             continue
-        r.invoice_id = inv.id
-        cands = [t for t in (await db.execute(select(BankTransaction).where(
-            BankTransaction.amount == r.amount, BankTransaction.amount > 0,
-            BankTransaction.posted_date >= r.paid_at, BankTransaction.posted_date <= r.paid_at + timedelta(days=5)))).scalars().all()
-            if (t.id not in taken or t.id == r.bank_transaction_id) and "elavon" in f"{t.description} {t.payee or ''}".lower()]
-        if len(cands) != 1:
-            r.status, r.note = "a_verifier", ("Aucun dépôt Elavon de ce montant dans les 5 jours" if not cands
-                                              else f"{len(cands)} dépôts Elavon de ce montant : choix impossible")
-            continue
-        tx = cands[0]
-        if tx.status == "matched":
-            on_inv = tx.client_payment_id and (await db.execute(select(func.count()).select_from(PaymentAllocation).where(
-                PaymentAllocation.payment_id == tx.client_payment_id, PaymentAllocation.invoice_id == inv.id))).scalar_one()
-            r.bank_transaction_id = tx.id
-            taken.add(tx.id)
-            r.status, r.note = ("linked", None) if on_inv else ("a_verifier", "Le dépôt est déjà associé à une autre facture")
-            continue
-        if tx.status != "unclassified":
-            r.status, r.note = "a_verifier", "Le dépôt est exclu"
-            continue
-        settled = (await invoice_balances(db, [inv.id])).get(inv.id, Decimal(0))      # deja regle sur la facture
-        balance = Decimal(inv.total) - Decimal(settled)
-        if Decimal(balance) < Decimal(r.amount):
-            r.status, r.note = "a_verifier", (f"La facture {inv.number} n'a plus que {Decimal(balance):.2f} $ à payer "
-                                              f"(paiement par carte de {r.amount:.2f} $)")
-            r.bank_transaction_id = tx.id
-            taken.add(tx.id)
-            continue
-        await db.flush()
-        await bank.match_transaction(tx.id, bank.MatchIn(
-            allocations=[bank.AllocIn(invoice_id=inv.id, amount=float(r.amount))],
-            method_code="authorizenet", remember_payee=False), db, None)
-        r.bank_transaction_id, r.status, r.note = tx.id, "matched", None
-        taken.add(tx.id)
-        n += 1
+        group = [(r, nums[r.id]) for r in c]
+        allnums = list(dict.fromkeys(x for _, ns in group for x in ns))
+        status, note = await _settle(db, t, group, allnums)
+        for r in c:
+            r.status, r.note = status, note
+            r.bank_transaction_id = t.id
+            inv = (await db.execute(select(Invoice.id).where(Invoice.number == r.invoice_number))).scalar_one_or_none()
+            r.invoice_id = inv
+        if status in ("matched", "linked"):
+            n += 1
+    for r in recs:
+        if r.status in ("parsed", "a_verifier") and not any(r in c for _, c in pairs) and not (r.note or "").startswith("Plusieurs"):
+            same = [t for t in deposits if t.status == "matched" and Decimal(t.amount) == Decimal(r.amount)
+                    and r.paid_at <= t.posted_date <= r.paid_at + timedelta(days=5)]
+            r.status, r.note = "a_verifier", ("Le dépôt est déjà associé à une autre facture" if same else
+                                              "Aucun dépôt Elavon de ce montant (seul ou avec d'autres reçus) dans les 5 jours")
     await db.flush()
     return n
 
