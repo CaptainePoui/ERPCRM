@@ -6237,6 +6237,11 @@ Date(s) de travail : 2026-10-15
 - À faire (plus tard) : 44 factures fournisseur non payées (7 374,66 $, févr.-oct. 2026 : Amazon, Elite, Bell, MyDomaine, ChatGPT, Claude, Spotify, Gentek…) — relier les remboursements de carte passés des relevés BNC à leurs factures ; vérifier Techni-Express (commissions) et Richard Handfield, probablement hors carte.
 - ScopServ est aussi un client (chèque #3131 du 2020-09-22 = INV-000013-14) ; Philippe (2026-10-15) : « depuis un bout il me le crédite sur ma facture au lieu de me faire un chèque » → compensation : vente à ScopServ (facture client, taxes) + facture fournisseur ScopServ au complet, réglée en partie par ce crédit — à repérer dans les factures ScopServ récentes pendant les dépenses.
 
+### TASK-044.3 [x] Elite : facture fournisseur annuelle, pas hebdomadaire
+- **Date de demande** : 2026-10-22 (Philippe : « Elite (dépenses) se faisait chaque semaine, c'est annuel ; n'en garde que 1, le plus vieux qui n'a pas été payé… je ne veux pas débalancer les paiements ; j'ai mis la récurrence d'Elite à annuel »)
+- **Date(s) de travail** : 2026-10-22
+- 15 factures Elite non payées supprimées par l'API (14 juillet → 20 octobre 2026) ; gardées : celle du 7 juillet (la plus vieille impayée) et les 12 payées (avril → juin, 100 $ chacune, à revoir par Philippe avec un comptable). Prochaine facture annuelle : 2027-04-14. Sauvegarde : `~/backups/before_elite_bills_20261022_1334.sql`.
+
 ## TASK-045 [ERPCRM] [x] Fuseau horaire de l'entreprise — « quel jour on est » à l'heure de Montréal partout
 Date de demande : 2026-10-07 (Philippe, au soir : « pourquoi elle est demain ?? » sur la facture des textos ; puis « oui go pour le fuseau horaire, c'est super important que tout le ERPCRM et le SIPV soit au bon fuseau horaire… le serveur est ici à Montréal »)
 Date(s) de travail : 2026-10-07 (soir, heure du Québec)
