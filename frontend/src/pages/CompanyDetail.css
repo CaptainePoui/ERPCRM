@@ -6,10 +6,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;   /* cellulaire : les boutons passent sous le nom au lieu de deborder */
+  gap: 10px;
   margin-bottom: 20px;
 }
 
-.detail-breadcrumb { display: flex; align-items: center; gap: 8px; }
+.detail-breadcrumb { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .back-btn { background: none; border: none; color: var(--brand); cursor: pointer; font-size: 14px; font-weight: 500; padding: 0; }
 .back-btn:hover { text-decoration: underline; }
 .breadcrumb-sep { color: var(--c-faint); }

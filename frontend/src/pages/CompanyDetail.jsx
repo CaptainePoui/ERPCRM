@@ -619,7 +619,7 @@ export default function CompanyDetail({ isNew }) {
           {isNew && <><span className="breadcrumb-sep">›</span><span className="breadcrumb-name">Nouvelle compagnie</span></>}
         </div>
         {!isNew && c && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
             {!c.is_owner && <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>}
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>

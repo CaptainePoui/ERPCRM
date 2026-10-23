@@ -190,6 +190,12 @@ Date(s) de travail : 2026-10-21
 
 - `CompanyDetail.jsx` (FinanceOverview) : carte « Facturé AAAA-AAAA / Payé » retirée ; restent Solde dû, En retard, Avoirs disponibles, Crédit du client, Dernier paiement. Rien d'autre ajouté ailleurs (les totaux de l'exercice restent calculés par l'API `/companies/{id}/finance`). Vérifié (Playwright, Audacie) : carte absente, aucune erreur.
 
+### TASK-002.11 [x] Fiche compagnie : boutons « + Ticket / + Facture / + Tâche » qui débordaient sur cellulaire
+Date de demande : 2026-10-23 (Philippe : « le bouton + Tâche de l'en-tête dépasse de l'écran, corrige-le »)
+Date(s) de travail : 2026-10-23
+
+- `CompanyDetail.css` `.detail-header` : `flex-wrap` + `gap` (les boutons passent sous le nom quand la place manque ; vaut aussi pour la fiche contact) ; rangée de boutons en `flexWrap`. Mesuré : 1920 et iPhone 13 sans défilement horizontal, chaque bouton dans sa boîte.
+
 ### TASK-003.1 [x] Téléphone bureau contact = champ partagé compagnie + journal filtré/recherche/revert
 Demande de l'utilisateur : "Téléphone bureau" sur un contact doit être le même champ
 que le téléphone bureau de sa compagnie (pas une copie) — modifier à un endroit le
