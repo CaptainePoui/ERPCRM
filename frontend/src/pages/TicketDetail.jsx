@@ -10,6 +10,7 @@ import HistoryButton from '../components/HistoryButton'
 import { askConfirm } from '../components/Dialog'
 import { askNotificationPermission } from '../components/ticketReminder'
 import { ZekoText, streamZeko, zekoReducer, ZekoThinking, useEnterSends, isSendKey, EnterToggle, BUSY_RING } from '../components/ZekoChat'
+import ConversationsSection from '../components/ConversationsSection'
 
 // TASK-006.5 étape 1 (2026-10-17) : le ticket = une conversation libre (texte + images, horodatée) et UN seul temps.
 // Le chrono est tenu par le serveur (périodes) ; il démarre au bouton Démarrer ou au début de l'écriture, jamais à
@@ -479,6 +480,12 @@ export default function TicketDetail() {
       </div>
 
       <TicketTachesSection ticketId={id} onNewTask={() => setShowTaskModal(true)} refreshKey={taskRefreshKey} />
+
+      {/* ── Conversations enregistrees (TASK-055) ── */}
+      <div className="tkt-entries-section" style={{ marginTop: 0 }}>
+        <div className="tkt-section-title" style={{ marginBottom: 12 }}>Conversations enregistrées</div>
+        <ConversationsSection ticketId={id} />
+      </div>
 
       {/* ── La conversation ── */}
       <div className="tkt-entries-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

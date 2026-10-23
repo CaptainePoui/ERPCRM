@@ -6,7 +6,7 @@ import { currentDevice, registerDevice, openMic } from '../utils/audioDevice'
 // serveur (rien ne sort) et rend le texte a onText. Premiere fois sur un appareil : on lui donne un nom.
 function fmt(s) { return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 
-function NameDeviceModal({ onClose, onDone }) {
+export function NameDeviceModal({ onClose, onDone }) {
   const [name, setName] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -104,6 +104,6 @@ export default function MicButton({ onText, style }) {
 }
 
 // Sans stockage local (navigation privee), on ne peut pas retenir l'appareil : on enregistre avec le micro par defaut
-function localStorageBlocked() {
+export function localStorageBlocked() {
   try { localStorage.setItem('erpcrm.t', '1'); localStorage.removeItem('erpcrm.t'); return false } catch { return true }
 }

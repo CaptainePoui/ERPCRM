@@ -61,3 +61,4 @@ tools/knowledge/graphiti/graphiti-build/graphiti-021d3a5*/
 
 # Releves bancaires importes (donnees financieres) -- jamais commites
 backend/storage/
+backend/ai_models/

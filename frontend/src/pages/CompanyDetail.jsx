@@ -26,10 +26,11 @@ import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
 import FormerInfoSection, { RenameCompanyModal } from '../components/FormerInfoSection'
+import ConversationsSection from '../components/ConversationsSection'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
-const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'entente', 'inventaire', 'photos', 'journal']
+const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Conversations', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'conversations', 'telephonie', 'transactions', 'entente', 'inventaire', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -795,6 +796,7 @@ export default function CompanyDetail({ isNew }) {
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}
             {slug === 'courriels' && <MailBrowser filter={{ company_id: id }} height="calc(100vh - 260px)" />}
             {slug === 'tickets' && <TicketsTab companyId={id} />}
+            {slug === 'conversations' && <ConversationsSection companyId={id} />}
             {slug === 'inventaire' && <InventaireTab companyId={id} />}
             {slug === 'telephonie' && <TelephonyTab companyId={id} companyName={c.name} sipvEnabled={c.sipv_enabled} initialSubTab={tabParam === 'cdr' ? 'cdr' : undefined} />}
             {slug === 'photos' && <PhotosTab companyId={id} />}

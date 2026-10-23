@@ -42,6 +42,21 @@ def _transcribe_file(path: str) -> dict:
     return {"text": text, "duration": round(info.duration, 1), "seconds": round(time.time() - t, 1)}
 
 
+def _segments_file(path: str) -> dict:
+    model = _load()
+    segments, info = model.transcribe(path, language="fr", beam_size=1, vad_filter=True, word_timestamps=True)
+    words = []
+    for i, s in enumerate(segments):
+        words += [{"start": w.start, "end": w.end, "word": w.word, "seg": i} for w in (s.words or []) if w.word.strip()]
+    return {"words": words, "duration": round(info.duration, 1)}
+
+
+async def transcribe_segments(path: str) -> dict:
+    """Mots d'un long enregistrement avec leurs temps et leur phrase (conversations, TASK-055 etape 3)."""
+    async with _lock:
+        return await asyncio.to_thread(_segments_file, path)
+
+
 async def transcribe(audio: bytes, suffix: str = ".webm") -> dict:
     """Texte d'un enregistrement (webm/ogg/wav/mp4… decode par PyAV) ; {text, duration, seconds}."""
     with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:

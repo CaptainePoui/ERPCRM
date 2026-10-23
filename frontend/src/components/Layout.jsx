@@ -113,6 +113,7 @@ function GlobalSearch() {
     navigate(result.type === 'company' ? `/companies/${result.id}`
       : result.type === 'invoice' ? `/companies/${result.company_id}?tab=transactions&facture=${result.id}`
       : result.type === 'payment' ? `/companies/${result.company_id}?tab=transactions&paiement=${result.id}`
+      : result.type === 'conversation' ? `/tickets/${result.id}`
       : `/contacts/${result.id}`)
   }
 
@@ -141,7 +142,7 @@ function GlobalSearch() {
         <div className="search-dropdown">
           {results.map((r, i) => (
             <div key={r.id} className={`search-item${i === active ? ' search-item-active' : ''}`} onMouseDown={() => go(r)}>
-              <span className="search-item-type">{r.type === 'company' ? <IconBuilding width={14} height={14} /> : r.type === 'invoice' ? '🧾' : r.type === 'payment' ? '$' : <IconUser width={14} height={14} />}</span>
+              <span className="search-item-type">{r.type === 'company' ? <IconBuilding width={14} height={14} /> : r.type === 'invoice' ? '🧾' : r.type === 'payment' ? '$' : r.type === 'conversation' ? '🎙️' : <IconUser width={14} height={14} />}</span>
               <span className="search-item-label">{r.label}</span>
               {r.sub && <span className="search-item-sub">{r.sub}</span>}
             </div>

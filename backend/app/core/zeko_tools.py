@@ -50,6 +50,9 @@ TOOLS = [
         {**_CLIENT, "texte": {"type": "string"}}, ["client"]),
     _fn("lire_ticket", "Messages complets d'un ticket, par son numéro (ex. 11000 ou T-11001).",
         {"ticket": {"type": "string"}}, ["ticket"]),
+    _fn("conversations", "Conversations enregistrées avec les clients (transcription : qui a dit quoi, avec la date et le ticket). "
+        "Par client, par personne et/ou texte cherché dans ce qui a été dit (ex. « ce que Jean-François a dit sur le portier »).",
+        {**_CLIENT, "personne": {"type": "string", "description": "prénom et nom de la personne"}, "texte": {"type": "string"}}),
     _fn("paiements_carte", "Reçus de paiement par carte (Elavon / Authorize.Net, lus dans les courriels) : à consulter pour tout "
         "dépôt ELAVON MRCH SVC. Filtre optionnel par montant ou par client.",
         {"montant": {"type": "number"}, "client": {"type": "string", "description": "nom du client"}}),
@@ -111,7 +114,7 @@ LABELS = {"chercher_courriels": "cherche dans les courriels", "lire_courriel": "
           "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite", "oublier": "oublie ce qui était appris",
           "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
-          "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
+          "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "conversations": "relit les conversations enregistrées", "equipements": "lit les équipements",
           "telephonie": "lit la téléphonie", "changer_nom_client": "change le nom d'un client",
           "ajouter_ancienne_info": "garde une ancienne coordonnée"}
 
@@ -506,6 +509,34 @@ async def _run(name, args, db, user_id=None) -> str:
                      "cell": c.mobile, "actif": c.is_active, "notes": (c.notes_internal or "")[:300] or None,
                      "entreprises": [{"client": x.company.name, "courriel": x.email, "principal": x.is_primary, "actif": x.is_active} for x in ccs],
                      "anciennes_coordonnees": await _former(db, c.id)})
+
+    if name == "conversations":   # TASK-055 etape 3
+        from app.models.conversation import Conversation, ConversationSegment
+        q = (select(Conversation).options(selectinload(Conversation.ticket).selectinload(Ticket.company),
+                                          selectinload(Conversation.segments))
+             .join(Ticket, Ticket.id == Conversation.ticket_id).where(Conversation.status == "done")
+             .order_by(Conversation.started_at.desc()))
+        if args.get("client"):
+            co = await _resolve_company(db, args["client"])
+            if not isinstance(co, Company):
+                return _out(co)
+            q = q.where(Ticket.company_id == co.id)
+        who = None
+        if args.get("personne"):
+            who = await _resolve_contact(db, args["personne"])
+            if not isinstance(who, Contact):
+                return _out(who)
+            q = q.where(Conversation.id.in_(select(ConversationSegment.conversation_id).where(ConversationSegment.contact_id == who.id))
+                        | (Ticket.contact_id == who.id))
+        texte = str(args.get("texte") or "").strip()
+        if texte:
+            q = q.where(func.unaccent(func.lower(Conversation.text)).ilike(func.unaccent(func.lower(f"%{texte}%"))))
+        rows = (await db.execute(q.limit(5))).scalars().all()
+        if not rows:
+            return _out("aucune conversation enregistrée ne correspond")
+        return _out([{"le": c.started_at.strftime("%Y-%m-%d %H:%M"), "ticket": ticket_no(c.ticket), "client": c.ticket.company.name,
+                      "duree_min": round((c.duration or 0) / 60, 1),
+                      "transcription": [f"{x.speaker} : {x.text}" for x in c.segments][:200]} for c in rows])
 
     if name == "lire_ticket":
         ref = str(args.get("ticket") or "").strip().lstrip("#").upper()

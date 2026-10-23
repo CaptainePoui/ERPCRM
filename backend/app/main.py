@@ -8,7 +8,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -29,6 +29,7 @@ from app.services.mail_sync import run_mail_sync
 from app.core.background_leader import run_as_leader
 from app.services.ticket_presence import run_presence_watcher
 from app.core.zeko_payments import run_poller as run_zeko_payments
+from app.core.conversations import run_conversation_poller
 
 
 @asynccontextmanager
@@ -41,7 +42,7 @@ async def lifespan(app: FastAPI):
     # Taches de fond : un seul des deux services (8010 / 8011) les fait tourner -- voir background_leader
     leader_task = asyncio.create_task(run_as_leader([
         run_poller, run_reminder_poller, run_backup_poller, run_cdr_report_poller, run_recurring_poller,
-        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher, run_zeko_payments,
+        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher, run_zeko_payments, run_conversation_poller,
     ]))
     try:
         yield
@@ -100,6 +101,7 @@ app.include_router(employees.router, prefix="/api/v1/employees", tags=["employee
 app.include_router(sales_reps_router.router, prefix="/api/v1/sales-reps", tags=["sales-reps"])
 app.include_router(former_infos_router.router, prefix="/api/v1/former-infos", tags=["former-infos"])
 app.include_router(speech_router.router, prefix="/api/v1/speech", tags=["speech"])
+app.include_router(conversations_router.router, prefix="/api/v1/conversations", tags=["conversations"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(sipv_events.router, prefix="/api/v1/sipv", tags=["sipv"])
 app.include_router(tracking.router, prefix="/api/v1/track", tags=["tracking"])

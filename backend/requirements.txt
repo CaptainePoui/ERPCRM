@@ -74,3 +74,4 @@ opencv-python-headless==5.0.0  # TASK-042.8 : separation des cheques numerises
 numpy==2.5.4
 faster-whisper==1.2.1  # TASK-055 : transcription de la voix sur le serveur
 av==16.1.0  # TASK-055 : faster-whisper 1.2.1 incompatible avec av 17+ (metadata_errors)
+sherpa-onnx==2.0.0  # TASK-055 : voix reconnues (modele backend/ai_models/wespeaker_en_voxceleb_resnet34_LM.onnx, telecharge depuis les publications k2-fsa/sherpa-onnx speaker-recongition-models)

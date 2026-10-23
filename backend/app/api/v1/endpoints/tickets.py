@@ -459,10 +459,15 @@ async def update_ticket(ticket_id: uuid.UUID, payload: TicketUpdate, db: AsyncSe
 async def delete_ticket(ticket_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     t = await _get_ticket(ticket_id, db)
     atts = [a for m in t.messages for a in m.attachments]
+    from app.core import conversations as convs   # TASK-055 : le son des conversations du ticket part avec lui
+    from app.models.conversation import Conversation
+    recs = (await db.execute(select(Conversation).where(Conversation.ticket_id == t.id))).scalars().all()
     await db.delete(t)
     await db.commit()
     for a in atts:
         ticket_attachments.remove(a)
+    for c in recs:
+        convs.remove_file(c)
 
 
 # ── Chrono ────────────────────────────────────────────────────────────────────

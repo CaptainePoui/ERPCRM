@@ -22,7 +22,7 @@ def _normalize(s: str) -> str:
 
 class SearchResult(BaseModel):
     id: uuid.UUID
-    type: str                       # company | contact | invoice | payment
+    type: str                       # company | contact | invoice | payment | conversation (id = ticket)
     label: str
     sub: str | None
     company_id: uuid.UUID | None = None   # facture / paiement : ouverts dans la fiche du client (TASK-002.9)
@@ -158,4 +158,20 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
         for cp, cname in rows:
             results.append(SearchResult(id=cp.id, type="payment", label=f"Paiement {cp.amount:.2f} $", company_id=cp.company_id,
                                         sub=f"{cname} · {cp.received_at or ''} · {cp.method_name}"))
+    # TASK-055 : ce qui a ete dit dans une conversation enregistree -> son ticket
+    if len(q.strip()) >= 3:
+        from app.models.conversation import Conversation, ConversationSegment
+        from app.models.ticket import Ticket
+        rows = (await db.execute(select(ConversationSegment, Conversation.started_at, Ticket.id, Ticket.title, Company.name)
+                                 .join(Conversation, Conversation.id == ConversationSegment.conversation_id)
+                                 .join(Ticket, Ticket.id == Conversation.ticket_id).join(Company, Company.id == Ticket.company_id)
+                                 .where(func.unaccent(func.lower(ConversationSegment.text)).ilike(term))
+                                 .order_by(Conversation.started_at.desc()).limit(20))).all()
+        seen_t = set()
+        for seg, when, tid, title, cname in rows:
+            if tid in seen_t or len(seen_t) >= 5:
+                continue
+            seen_t.add(tid)
+            results.append(SearchResult(id=tid, type="conversation", label=f"« {seg.text[:80]} »",
+                                        sub=f"{seg.speaker} · {cname} · {title} · {when:%Y-%m-%d}"))
     return results

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api from '../services/api'
 import { askConfirm } from './Dialog'
-import { localDeviceId, openMic } from '../utils/audioDevice'
+import { localDeviceId, openMic, currentDevice } from '../utils/audioDevice'
 
 // Administration > Configuration > Appareils audio (TASK-055, 2026-10-23) : le micro de chaque appareil (« Ordi de
 // Phil », « Cell de Phil »…), choisi depuis n'importe lequel. La liste des micros est celle que l'appareil a vue a sa
@@ -95,6 +95,59 @@ function DeviceRow({ d, here, onChanged }) {
   )
 }
 
+// Ma voix (TASK-055 etape 3) : 30 s de lecture a voix haute -> empreinte de la voix, pour etre reconnu dans les conversations
+const READ_TEXT = "Bonjour, ici c'est moi qui parle. J'enregistre ma voix pour qu'ERPCRM la reconnaisse dans les conversations avec les clients. " +
+  "Je lis ce texte lentement, comme je parle d'habitude au téléphone ou chez un client. Le technicien passera jeudi matin vers dix heures " +
+  "pour vérifier le portier, le poste de la réception et la boîte vocale. Si le problème revient, rappelez-nous au service technique. Merci et bonne journée."
+function MyVoice() {
+  const [info, setInfo] = useState(null)
+  const [secs, setSecs] = useState(null)        // null = pas en cours
+  const [msg, setMsg] = useState(null)
+  const r = useRef({})
+  const load = () => api.get('/v1/speech/my-voice').then(x => setInfo(x.data))
+  useEffect(() => { load(); return () => { clearInterval(r.current.timer); r.current.mr?.stream.getTracks().forEach(t => t.stop()) } }, [])
+  async function start() {
+    setMsg(null)
+    try {
+      let device = null
+      try { device = await currentDevice() } catch { /* micro par defaut */ }
+      const { stream } = await openMic(device)
+      const mr = new MediaRecorder(stream), chunks = []
+      mr.ondataavailable = e => e.data.size && chunks.push(e.data)
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop()); setSecs(null); setMsg('Analyse de ta voix…')
+        const fd = new FormData(); fd.append('audio', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'ma-voix')
+        try { await api.post('/v1/speech/my-voice', fd); setMsg('✓ Ta voix est enregistrée.'); load() }
+        catch (e) { setMsg(e.response?.data?.detail || 'Échec de l\'enregistrement de ta voix.') }
+      }
+      mr.start(); setSecs(0)
+      r.current = { mr, timer: setInterval(() => setSecs(s => { if (s + 1 >= 30) { clearInterval(r.current.timer); mr.stop() } return s + 1 }), 1000) }
+    } catch (e) { setMsg(e.name === 'NotAllowedError' ? 'Le navigateur a refusé le micro.' : (e.message || 'Micro introuvable.')) }
+  }
+  function stop() { clearInterval(r.current.timer); r.current.mr.stop() }
+  async function forget() {
+    if (!await askConfirm('Effacer l\'empreinte de ta voix ? Tu ne seras plus reconnu dans les prochaines conversations.')) return
+    await api.delete('/v1/speech/my-voice'); setMsg(null); load()
+  }
+  return (
+    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 20 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Ma voix</div>
+      <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>
+        {info?.enrolled ? `Enregistrée le ${new Date(info.updated_at).toLocaleDateString('fr-CA', { dateStyle: 'medium' })} : tu es reconnu dans les conversations enregistrées.`
+          : 'Pas encore enregistrée. Lis le texte à voix haute pendant 30 secondes : tu seras ensuite reconnu dans les conversations enregistrées.'}
+      </div>
+      {secs !== null && <div style={{ fontSize: 15, lineHeight: 1.6, padding: 10, borderRadius: 8, background: 'var(--c-surface-2)', marginBottom: 10 }}>{READ_TEXT}</div>}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {secs === null
+          ? <><button className="btn-secondary" onClick={start}>🎙️ {info?.enrolled ? 'Réenregistrer ma voix' : 'Enregistrer ma voix'}</button>
+            {info?.enrolled && <button className="btn-secondary" style={{ color: C.red }} onClick={forget}>Effacer ma voix</button>}</>
+          : <button className="btn-secondary" style={{ color: C.red }} disabled={secs < 20} onClick={stop}>⏹ {secs < 20 ? `Lis encore… ${30 - secs} s` : `Terminer (${30 - secs} s)`}</button>}
+        {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 export default function AudioDevicesPanel() {
   const [rows, setRows] = useState(null)
   const here = localDeviceId()
@@ -103,6 +156,7 @@ export default function AudioDevicesPanel() {
   return (
     <div>
       <div className="adm-panel-header"><span className="adm-count">Appareils audio</span></div>
+      <MyVoice />
       <p style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>
         Chaque appareil qui dicte (🎙️) s'inscrit une fois sous un nom. Choisis ici le micro de chacun ; l'appareil l'utilise à sa prochaine dictée.
         Un appareil ne voit que ses propres micros : la liste est celle qu'il a vue la dernière fois. La voix est transcrite sur ton serveur, rien ne sort.

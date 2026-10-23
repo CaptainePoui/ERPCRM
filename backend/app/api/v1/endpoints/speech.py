@@ -135,3 +135,53 @@ async def report_device(did: uuid.UUID, body: DeviceReport, db: AsyncSession = D
 async def delete_device(did: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     await db.delete(await _device(db, did, user))
     await db.commit()
+
+
+# ── Ma voix (TASK-055 etape 3) : empreinte de la voix de l'utilisateur, pour etre reconnu dans les conversations ──
+
+@router.get("/my-voice")
+async def my_voice(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.models.conversation import VoicePrint
+    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
+    return {"enrolled": bool(vp), "updated_at": vp.updated_at.isoformat() if vp else None}
+
+
+@router.post("/my-voice")
+async def set_my_voice(audio: UploadFile = File(...), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Remplace l'empreinte de sa voix par celle de cet echantillon (20 s ou plus de parole)."""
+    import asyncio, os, tempfile
+    from app.core import voices
+    from app.models.conversation import VoicePrint
+    data = await audio.read()
+    if not data or len(data) > MAX_AUDIO:
+        raise HTTPException(400, "Échantillon vide ou trop long.")
+    kind = (audio.content_type or "").split(";")[0].strip()
+    with tempfile.NamedTemporaryFile(suffix=SUFFIX.get(kind, ".webm"), delete=False) as f:
+        f.write(data)
+    try:
+        samples = await asyncio.to_thread(voices.load_audio, f.name)
+    except Exception as e:
+        raise HTTPException(422, "Le son n'a pas pu être lu.") from e
+    finally:
+        os.unlink(f.name)
+    if len(samples) < voices.RATE * 15:
+        raise HTTPException(400, "Parle au moins 20 secondes pour que ta voix soit bien reconnue.")
+    emb = await asyncio.to_thread(voices.embed_whole, samples)
+    if emb is None:
+        raise HTTPException(400, "Aucune voix entendue : vérifie le micro.")
+    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
+    if vp:
+        vp.embedding, vp.samples = emb.tolist(), 1
+    else:
+        db.add(VoicePrint(user_id=user.id, embedding=emb.tolist(), samples=1))
+    await db.commit()
+    return {"enrolled": True}
+
+
+@router.delete("/my-voice", status_code=204)
+async def delete_my_voice(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    from app.models.conversation import VoicePrint
+    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
+    if vp:
+        await db.delete(vp)
+        await db.commit()
