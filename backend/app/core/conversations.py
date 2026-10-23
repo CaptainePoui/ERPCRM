@@ -47,13 +47,14 @@ def contact_name(c) -> str:
 
 
 async def _known_voices(db, ticket: Ticket) -> list[tuple]:
-    """(empreinte, user, contact) : les utilisateurs, et les contacts de la compagnie du ticket."""
+    """(empreinte, user, contact) : les utilisateurs, les contacts de la compagnie du ticket et les employes."""
     rows = (await db.execute(select(VoicePrint, User).join(User, User.id == VoicePrint.user_id))).all()
     known = [(np.array(vp.embedding), u, None) for vp, u in rows]
     from app.models.contact import Contact
+    from app.models.employee import Employee     # contacts du client, et employes sans compte
+    of_client = select(ContactCompany.contact_id).where(ContactCompany.company_id == ticket.company_id)
     rows = (await db.execute(select(VoicePrint, Contact).join(Contact, Contact.id == VoicePrint.contact_id)
-                             .join(ContactCompany, ContactCompany.contact_id == Contact.id)
-                             .where(ContactCompany.company_id == ticket.company_id).distinct())).all()
+                             .where(Contact.id.in_(of_client) | Contact.id.in_(select(Employee.contact_id))))).all()
     return known + [(np.array(vp.embedding), None, c) for vp, c in rows]
 
 

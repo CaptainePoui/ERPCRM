@@ -22,6 +22,7 @@ import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
 import FormerInfoSection from '../components/FormerInfoSection'
 import ConversationsSection from '../components/ConversationsSection'
+import VoiceSection from '../components/VoiceSection'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
 function InlineField({ label, value, onSave, type = 'text', multiline }) {
@@ -892,6 +893,9 @@ export default function ContactDetail({ isNew }) {
                 <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
               </div>
             </div>
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Voix</div>
+            <VoiceSection contactId={c.id} name={`${c.first_name} ${c.last_name}`.trim()} />
+
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Conversations enregistrées</div>
             <ConversationsSection contactId={c.id} />
 

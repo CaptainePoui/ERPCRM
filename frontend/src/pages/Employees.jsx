@@ -5,6 +5,7 @@ import SignatureEditor from '../components/SignatureEditor'
 import SalesRepsPanel from '../components/SalesRepsPanel'
 import { useSearchParams } from 'react-router-dom'
 import { askConfirm } from '../components/Dialog'
+import VoiceSection from '../components/VoiceSection'
 
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n) }
@@ -33,6 +34,7 @@ function EmployeesTab() {
   const [contacts, setContacts] = useState([])
   const [showAdd, setShowAdd] = useState(false)
   const [showPay, setShowPay] = useState(null) // employee contact_id
+  const [voiceOf, setVoiceOf] = useState(null)   // TASK-055 : voix de l'employe
   const [signatureOf, setSignatureOf] = useState(null) // employe dont on modifie la signature (TASK-007.1)
   const [payForm, setPayForm] = useState({ amount: '', period_year: new Date().getFullYear(), period_month: new Date().getMonth() + 1, notes: '' })
   const [markingPaid, setMarkingPaid] = useState(null) // payment id
@@ -110,6 +112,9 @@ function EmployeesTab() {
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setSignatureOf(e)} title="Courriel professionnel (sa boîte dans Courriels), courriel personnel (paies) et signature">
               ✉ Courriels et signature{e.has_signature ? ' ✓' : ''}
             </button>
+            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setVoiceOf(e)} title="Sa voix, pour être reconnu dans les conversations enregistrées">
+              🎙️ Voix
+            </button>
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
               + Salaire
             </button>
@@ -117,6 +122,15 @@ function EmployeesTab() {
         ))}
       </div>
 
+      {voiceOf && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ maxWidth: 560, width: '100%' }}>
+            <h3 className="modal-title">Voix de {voiceOf.first_name} {voiceOf.last_name}</h3>
+            <VoiceSection contactId={voiceOf.contact_id} name={`${voiceOf.first_name} ${voiceOf.last_name}`.trim()} framed={false} />
+            <div className="modal-actions"><button className="btn-secondary" onClick={() => setVoiceOf(null)}>Fermer</button></div>
+          </div>
+        </div>
+      )}
       {signatureOf && <SignatureModal employee={signatureOf} onClose={() => setSignatureOf(null)} onSaved={() => { setSignatureOf(null); load() }} />}
 
       {/* ── À payer ── */}

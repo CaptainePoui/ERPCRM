@@ -137,21 +137,45 @@ async def delete_device(did: uuid.UUID, db: AsyncSession = Depends(get_db), user
     await db.commit()
 
 
-# ── Ma voix (TASK-055 etape 3) : empreinte de la voix de l'utilisateur, pour etre reconnu dans les conversations ──
+# ── Voix d'une personne (TASK-055, 2026-10-23 ; Philippe : « dans Employés et dans Contact ») ───────────────────
+# Une seule empreinte par personne : un employe qui a un compte -> celle de son compte (reconnu comme membre de
+# l'equipe) ; sinon celle du contact (aussi celle apprise par « Qui est Client 1 ? »). Patron/gestionnaire : tout le
+# monde ; un employe : seulement la sienne.
 
-@router.get("/my-voice")
-async def my_voice(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+async def _voice_owner(db, contact_id: uuid.UUID, user: User) -> tuple:
+    from app.models.contact import Contact
+    from app.models.employee import Employee
     from app.models.conversation import VoicePrint
-    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
-    return {"enrolled": bool(vp), "updated_at": vp.updated_at.isoformat() if vp else None}
+    if not await db.get(Contact, contact_id):
+        raise HTTPException(404, "Contact introuvable")
+    emp = await db.get(Employee, contact_id)
+    owner_user = emp.user_id if emp else None
+    if not _boss(user) and owner_user != user.id:
+        raise HTTPException(403, "Seulement ta propre voix")
+    cond = VoicePrint.user_id == owner_user if owner_user else VoicePrint.contact_id == contact_id
+    return owner_user, cond
 
 
-@router.post("/my-voice")
-async def set_my_voice(audio: UploadFile = File(...), db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
-    """Remplace l'empreinte de sa voix par celle de cet echantillon (20 s ou plus de parole)."""
+@router.get("/voices/{contact_id}")
+async def get_voice(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    from sqlalchemy import func
+    from app.models.conversation import VoicePrint, ConversationSegment
+    owner_user, cond = await _voice_owner(db, contact_id, user)
+    vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
+    seg = ConversationSegment.user_id == owner_user if owner_user else ConversationSegment.contact_id == contact_id
+    n = (await db.execute(select(func.count(func.distinct(ConversationSegment.conversation_id))).where(seg))).scalar()
+    return {"enrolled": bool(vp), "updated_at": vp.updated_at.isoformat() if vp else None, "conversations": n,
+            "team": bool(owner_user)}
+
+
+@router.post("/voices/{contact_id}")
+async def set_voice(contact_id: uuid.UUID, audio: UploadFile = File(...), db: AsyncSession = Depends(get_db),
+                    user: User = Depends(get_current_user)):
+    """Remplace l'empreinte par celle de cet echantillon (la personne lit le texte, 20 s ou plus)."""
     import asyncio, os, tempfile
     from app.core import voices
     from app.models.conversation import VoicePrint
+    owner_user, cond = await _voice_owner(db, contact_id, user)
     data = await audio.read()
     if not data or len(data) > MAX_AUDIO:
         raise HTTPException(400, "Échantillon vide ou trop long.")
@@ -165,23 +189,24 @@ async def set_my_voice(audio: UploadFile = File(...), db: AsyncSession = Depends
     finally:
         os.unlink(f.name)
     if len(samples) < voices.RATE * 15:
-        raise HTTPException(400, "Parle au moins 20 secondes pour que ta voix soit bien reconnue.")
+        raise HTTPException(400, "Il faut parler au moins 20 secondes pour que la voix soit bien reconnue.")
     emb = await asyncio.to_thread(voices.embed_whole, samples)
     if emb is None:
         raise HTTPException(400, "Aucune voix entendue : vérifie le micro.")
-    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
+    vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
     if vp:
         vp.embedding, vp.samples = emb.tolist(), 1
     else:
-        db.add(VoicePrint(user_id=user.id, embedding=emb.tolist(), samples=1))
+        db.add(VoicePrint(user_id=owner_user, contact_id=None if owner_user else contact_id, embedding=emb.tolist(), samples=1))
     await db.commit()
-    return {"enrolled": True}
+    return await get_voice(contact_id, db, user)
 
 
-@router.delete("/my-voice", status_code=204)
-async def delete_my_voice(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+@router.delete("/voices/{contact_id}", status_code=204)
+async def delete_voice(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     from app.models.conversation import VoicePrint
-    vp = (await db.execute(select(VoicePrint).where(VoicePrint.user_id == user.id))).scalar_one_or_none()
+    _, cond = await _voice_owner(db, contact_id, user)
+    vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
     if vp:
         await db.delete(vp)
         await db.commit()
