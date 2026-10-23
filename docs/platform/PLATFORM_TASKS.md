@@ -6630,3 +6630,5 @@ Ajout 2026-10-23 (Philippe : micro choisi « dans portail.simpleip.tel/admin?tab
   - Visible : ticket (section « Conversations enregistrées », 🎙️ avec rappel Loi 25), compagnie (onglet « Conversations »), contact (section). Recherche du haut (ce qui a été dit → ticket, 🎙️) ; Zéko : outil `conversations` (client, personne, texte).
   - Vérifié : conversation à 2 voix (Philippe + autre) correcte avec et sans voix connue, par fichier et par le navigateur (faux micro) ; 26 s transcrites en 54 s ; écrans 1920 et iPhone 13 ; « Qui est-ce », recherche et Zéko dans une transaction annulée ; données de test retirées.
 - Étape 4 (appels SIPV transcrits) : à faire.
+- Demande 2026-10-23 (Philippe : « je veux aussi avoir les autres employés, les settings de leur voix, mais j'aimerais mieux que ce soit dans Employés et dans Contact aussi ») : section « Voix » dans la fiche employé et la fiche contact (enregistrer / effacer), « Ma voix » retirée de l'administration — proposition en attente de GO.
+- Plus tard (Philippe : « une fois rendu là, mettre accessible Zéko par voix ») : parler à Zéko et l'entendre répondre — pas commencé.
