@@ -272,6 +272,69 @@ function GoogleEventChip({ e, onClick }) {
   )
 }
 
+// Hauteur de la case = heure de la journee (Philippe, 2026-10-23) : 7 h 30 en haut, 16 h 30 en bas ; plus tot -> en
+// haut, plus tard -> en bas ; un clic dans la case donne la date ET l'heure approximative.
+const DAY_START = 7.5
+const DAY_END = 16.5
+const clamp01 = x => Math.max(0, Math.min(1, x))
+
+function eventHours(e) {
+  const d = googleEventDate(e)
+  return d.getHours() + d.getMinutes() / 60
+}
+
+// Heure (« HH:MM », au quart d'heure) a la hauteur cliquee dans la zone horaire de la case
+function timeAtClick(evt) {
+  const area = evt.currentTarget.querySelector('[data-timearea]')
+  if (!area) return null
+  const r = area.getBoundingClientRect()
+  const h = DAY_START + clamp01((evt.clientY - r.top) / (r.height || 1)) * (DAY_END - DAY_START)
+  const q = Math.round(h * 4) / 4
+  return `${String(Math.floor(q)).padStart(2, '0')}:${String(Math.round((q % 1) * 60)).padStart(2, '0')}`
+}
+
+function TimedChips({ events, onEventClick, labels }) {
+  const ref = useRef(null)
+  const [height, setHeight] = useState(0)
+  useEffect(() => {
+    if (!ref.current) return
+    const ro = new ResizeObserver(([en]) => setHeight(en.contentRect.height))
+    ro.observe(ref.current)
+    return () => ro.disconnect()
+  }, [])
+  const chipH = BAR_HEIGHT + BAR_GAP
+  const allDay = events.filter(e => e.all_day)
+  const timed = events.filter(e => !e.all_day).sort((a, b) => eventHours(a) - eventHours(b))
+  const span = Math.max(0, height - chipH)
+  // petite case (cellulaire) : simple liste dans l'ordre des heures, qui defile
+  const fits = height >= 3 * chipH && events.length * chipH <= height
+  const tops = []
+  if (fits) {
+    let prev = allDay.length * chipH
+    timed.forEach(e => { const t = Math.max(clamp01((eventHours(e) - DAY_START) / (DAY_END - DAY_START)) * span, prev); tops.push(t); prev = t + chipH })
+    for (let i = tops.length - 1; i >= 0; i--) tops[i] = Math.min(tops[i], (i < tops.length - 1 ? tops[i + 1] : height) - chipH)
+  }
+  const perHour = span / (DAY_END - DAY_START)
+  const hours = []
+  if (perHour >= 8) for (let h = 8; h <= 16; h += perHour >= 16 ? 1 : 3) hours.push(h)   // graduation : aux heures, ou aux 3 h si serre
+  return (
+    <div ref={ref} data-timearea="1" style={{ position: 'relative', flex: 1, minHeight: chipH }}>
+      {fits && hours.map(h => {
+        const y = clamp01((h - DAY_START) / (DAY_END - DAY_START)) * span + chipH / 2
+        return (
+          <div key={h} style={{ position: 'absolute', left: 0, right: 0, top: y, borderTop: '1px dashed var(--c-surface-3)', pointerEvents: 'none' }}>
+            {labels && <span style={{ position: 'absolute', left: 0, top: -6, fontSize: 9, lineHeight: 1, color: 'var(--c-faint)', background: 'var(--c-surface)', paddingRight: 2 }}>{h} h</span>}
+          </div>
+        )
+      })}
+      {fits ? <>
+        {allDay.map((e, i) => <div key={e.id} style={{ position: 'absolute', left: 0, right: 0, top: i * chipH }}><GoogleEventChip e={e} onClick={onEventClick} /></div>)}
+        {timed.map((e, i) => <div key={e.id} style={{ position: 'absolute', left: labels ? 22 : 0, right: 0, top: tops[i] }}><GoogleEventChip e={e} onClick={onEventClick} /></div>)}
+      </> : <div style={{ position: 'absolute', inset: 0, overflowY: 'auto' }}>{[...allDay, ...timed].map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}</div>}
+    </div>
+  )
+}
+
 // ── Task Detail Panel ─────────────────────────────────────────────────────────
 
 function fmtOpened(iso) {
@@ -838,14 +901,13 @@ function MonthView({ year, month, googleEvents, onEventClick, onDayClick, today 
                   const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
                   const dayHolidays = dayEventsAll.filter(isHoliday)
                   return (
-                    <div key={di} onClick={() => onDayClick(date)} style={{ background: inMonth ? 'var(--c-surface)' : 'var(--c-surface-2)', padding: 6, position: 'relative', minWidth: 0, overflowY: 'auto', cursor: 'pointer', ...cellBorder(di, isLastRow) }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
+                    <div key={di} onClick={evt => onDayClick(date, timeAtClick(evt))} style={{ background: inMonth ? 'var(--c-surface)' : 'var(--c-surface-2)', padding: 6, position: 'relative', minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', ...cellBorder(di, isLastRow) }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4, flexShrink: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: isToday ? 700 : 400, color: isToday ? '#fff' : inMonth ? 'var(--c-text-2)' : 'var(--c-faint)', background: isToday ? 'var(--brand)' : 'transparent', borderRadius: '50%', width: 24, height: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{date.getDate()}</div>
                         {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                       </div>
-                      {barsSpace > 0 && <div style={{ height: barsSpace }} />}
-                      {dayGoogleEvents.slice(0, 2).map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}
-                      {dayGoogleEvents.length > 2 && <div style={{ fontSize: 10, color: 'var(--c-faint)', paddingLeft: 4 }}>+{dayGoogleEvents.length - 2} agenda</div>}
+                      {barsSpace > 0 && <div style={{ height: barsSpace, flexShrink: 0 }} />}
+                      <TimedChips events={dayGoogleEvents} onEventClick={onEventClick} />
                     </div>
                   )
                 })}
@@ -881,7 +943,7 @@ function WeekView({ weekStart, googleEvents, onEventClick, onDayClick, today }) 
           const dayGoogleEvents = dayEventsAll.filter(e => !isHoliday(e))
           const dayHolidays = dayEventsAll.filter(isHoliday)
           return (
-            <div key={i} onClick={() => onDayClick(d)} style={{ background: 'var(--c-surface)', minWidth: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', borderRight: i < 6 ? '1px solid var(--c-border)' : 'none' }}>
+            <div key={i} onClick={evt => onDayClick(d, timeAtClick(evt))} style={{ background: 'var(--c-surface)', minWidth: 0, display: 'flex', flexDirection: 'column', cursor: 'pointer', borderRight: i < 6 ? '1px solid var(--c-border)' : 'none' }}>
               <div style={{ padding: '8px 8px 4px', borderBottom: '1px solid var(--c-border)', textAlign: 'center', flexShrink: 0 }}>
                 <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 600 }}>{DAYS[i]}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
@@ -889,9 +951,9 @@ function WeekView({ weekStart, googleEvents, onEventClick, onDayClick, today }) 
                   {dayHolidays.map(h => <HolidayDot key={h.id} e={h} />)}
                 </div>
               </div>
-              <div style={{ padding: 6, flex: 1, minHeight: 0, overflowY: 'auto' }}>
-                {barsSpace > 0 && <div style={{ height: barsSpace }} />}
-                {dayGoogleEvents.map(e => <GoogleEventChip key={e.id} e={e} onClick={onEventClick} />)}
+              <div style={{ padding: 6, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                {barsSpace > 0 && <div style={{ height: barsSpace, flexShrink: 0 }} />}
+                <TimedChips events={dayGoogleEvents} onEventClick={onEventClick} labels={i === 0} />
               </div>
             </div>
           )
@@ -1122,16 +1184,20 @@ export default function Tasks({ defaultView = 'list' }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   }
 
-  function pickRdv(dateOverride) {
-    const d = dateOverride || quickAddDate
-    setQuickAddDate(null)
-    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'RDV - ', description: '', location: '', startTime: '09:00', endTime: '10:00' })
+  // date (« AAAA-MM-JJ ») et heure cliquees dans l'agenda ; sans heure : 9 h
+  function plusMinutes(t, m) {
+    const [h, mi] = t.split(':').map(Number)
+    const x = Math.min(h * 60 + mi + m, 23 * 60 + 59)
+    return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
   }
-  function pickAppel(dateOverride) {
-    const d = dateOverride || quickAddDate
+  function pickEvent(title, minutes, date, time) {
+    const d = date || quickAddDate?.date
+    const t = time || quickAddDate?.time || '09:00'
     setQuickAddDate(null)
-    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title: 'Appel - ', description: '', location: '', startTime: '09:00', endTime: '09:30' })
+    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title, description: '', location: '', startTime: t, endTime: plusMinutes(t, minutes) })
   }
+  const pickRdv = (date, time) => pickEvent('RDV - ', 60, date, time)
+  const pickAppel = (date, time) => pickEvent('Appel - ', 30, date, time)
   function openEditGoogleEvent(e) {
     const start = googleEventDate(e)
     const end = e.all_day ? start : new Date(e.end)
@@ -1293,9 +1359,9 @@ export default function Tasks({ defaultView = 'list' }) {
             </div>
           )}
           {!isAgenda && <CompetencyReportSection />}
-          {isAgenda && view === 'month' && <MonthView year={calYear} month={calMonth} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
-          {isAgenda && view === 'week' && <WeekView weekStart={calWeekStart} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} today={today} />}
-          {isAgenda && view === 'day' && <DayView day={calDay} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={d => setQuickAddDate(dateStr(d))} />}
+          {isAgenda && view === 'month' && <MonthView year={calYear} month={calMonth} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={(d, t) => setQuickAddDate({ date: dateStr(d), time: t })} today={today} />}
+          {isAgenda && view === 'week' && <WeekView weekStart={calWeekStart} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={(d, t) => setQuickAddDate({ date: dateStr(d), time: t })} today={today} />}
+          {isAgenda && view === 'day' && <DayView day={calDay} googleEvents={googleEvents} onEventClick={openEditGoogleEvent} onDayClick={(d, t) => setQuickAddDate({ date: dateStr(d), time: t })} />}
         </>
       )}
       </div>
@@ -1319,7 +1385,8 @@ export default function Tasks({ defaultView = 'list' }) {
 
       {quickAddDate && (
         <QuickAddChooser
-          date={quickAddDate}
+          date={quickAddDate.date}
+          time={quickAddDate.time}
           onClose={() => setQuickAddDate(null)}
           onPickRdv={pickRdv}
           onPickAppel={pickAppel}
@@ -1337,14 +1404,14 @@ export default function Tasks({ defaultView = 'list' }) {
   )
 }
 
-function QuickAddChooser({ date, onClose, onPickRdv, onPickAppel }) {
+function QuickAddChooser({ date, time, onClose, onPickRdv, onPickAppel }) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
-        <h3 className="modal-title">Ajouter le {new Date(date + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', month: 'long', day: 'numeric' })}</h3>
+        <h3 className="modal-title">Ajouter le {new Date(date + 'T12:00:00').toLocaleDateString('fr-CA', { weekday: 'long', month: 'long', day: 'numeric' })}{time ? ` vers ${Number(time.slice(0, 2))} h${time.slice(3) === '00' ? '' : ` ${time.slice(3)}`}` : ''}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={onPickRdv}>🧑‍🔧 RDV</button>
-          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={onPickAppel}>📞 Appel</button>
+          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={() => onPickRdv()}>🧑‍🔧 RDV</button>
+          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={() => onPickAppel()}>📞 Appel</button>
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>

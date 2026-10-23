@@ -1521,6 +1521,14 @@ une page de config ERPCRM précise avec compagnie auto-résolue (le champ
 
 ---
 
+### TASK-015.18 [x] Agenda — le clic prend la date et l'heure ; pastilles placées dans la case selon leur heure
+Date de demande : 2026-10-23 (Philippe : « quand je clique sur une journée je dois toujours mettre la journée dans les cases… pourquoi il ne prend pas la date où je clique ?? … les pastilles de RDV ou appel ou même de mon agenda perso, j'aimerais qu'elles soient placées dans la case (en hauteur) selon leur heure… de 7 h 30 à 16 h 30 gradué… l'approximation de l'heure que j'ai cliquée… plus tôt en haut, plus tard en bas »)
+Date(s) de travail : 2026-10-23
+
+- Cause : les boutons « RDV » / « Appel » du choix rapide passaient l'événement du clic comme date (`onClick={onPickRdv}`) → la date cliquée était perdue. Corrigé ; `pickEvent(titre, durée, date, heure)` (RDV 1 h, Appel 30 min, 9 h sans heure).
+- `Tasks.jsx` `TimedChips` (mois et semaine) : la zone sous le numéro du jour va de 7 h 30 (haut) à 16 h 30 (bas), lignes aux heures (aux 3 h si la case est petite, « 8 h… 16 h » dans la 1re colonne de la semaine) ; chaque pastille à la hauteur de son heure, plus tôt collée en haut, plus tard en bas, jamais superposées ; journée entière en haut. Case trop petite (cellulaire) : liste dans l'ordre des heures, qui défile. Clic → « Ajouter le mercredi 14 octobre vers 10 h 15 » et heures pré-remplies (au quart d'heure).
+- Vérifié (Playwright, sans rien enregistrer) : mois et semaine, 1920 et iPhone 13 — date et heure du clic dans les champs, sans défilement horizontal.
+
 ## TASK-016 [ERPCRM] [x] Contact — champs SIPV
 Classification: HISTORICAL
 
