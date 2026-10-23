@@ -95,10 +95,14 @@ function DeviceRow({ d, here, onChanged }) {
   )
 }
 
-// Ma voix (TASK-055 etape 3) : 30 s de lecture a voix haute -> empreinte de la voix, pour etre reconnu dans les conversations
+// Ma voix (TASK-055 etape 3) : lecture a voix haute a son rythme (jusqu'a 2 min ; Philippe 2026-10-23 : 30 s ne suffisaient pas) -> empreinte de la voix, pour etre reconnu dans les conversations
 const READ_TEXT = "Bonjour, ici c'est moi qui parle. J'enregistre ma voix pour qu'ERPCRM la reconnaisse dans les conversations avec les clients. " +
   "Je lis ce texte lentement, comme je parle d'habitude au téléphone ou chez un client. Le technicien passera jeudi matin vers dix heures " +
-  "pour vérifier le portier, le poste de la réception et la boîte vocale. Si le problème revient, rappelez-nous au service technique. Merci et bonne journée."
+  "pour vérifier le portier, le poste de la réception et la boîte vocale. Si le problème revient, rappelez-nous au service technique. " +
+  "Pour la facture du mois dernier, je vais vérifier le paiement reçu par Interac et je vous envoie un reçu par courriel dès aujourd'hui. " +
+  "Le nouveau téléphone sera installé lundi, et je reviendrai mardi après-midi pour configurer les postes et montrer comment transférer un appel. Merci et bonne journée."
+const MIN_SECS = 20, MAX_SECS = 120
+const fmtSecs = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 function MyVoice() {
   const [info, setInfo] = useState(null)
   const [secs, setSecs] = useState(null)        // null = pas en cours
@@ -121,7 +125,7 @@ function MyVoice() {
         catch (e) { setMsg(e.response?.data?.detail || 'Échec de l\'enregistrement de ta voix.') }
       }
       mr.start(); setSecs(0)
-      r.current = { mr, timer: setInterval(() => setSecs(s => { if (s + 1 >= 30) { clearInterval(r.current.timer); mr.stop() } return s + 1 }), 1000) }
+      r.current = { mr, timer: setInterval(() => setSecs(s => { if (s + 1 >= MAX_SECS) { clearInterval(r.current.timer); mr.stop() } return s + 1 }), 1000) }
     } catch (e) { setMsg(e.name === 'NotAllowedError' ? 'Le navigateur a refusé le micro.' : (e.message || 'Micro introuvable.')) }
   }
   function stop() { clearInterval(r.current.timer); r.current.mr.stop() }
@@ -134,14 +138,14 @@ function MyVoice() {
       <div style={{ fontWeight: 600, marginBottom: 4 }}>Ma voix</div>
       <div style={{ fontSize: 13, color: C.muted, marginBottom: 10 }}>
         {info?.enrolled ? `Enregistrée le ${new Date(info.updated_at).toLocaleDateString('fr-CA', { dateStyle: 'medium' })} : tu es reconnu dans les conversations enregistrées.`
-          : 'Pas encore enregistrée. Lis le texte à voix haute pendant 30 secondes : tu seras ensuite reconnu dans les conversations enregistrées.'}
+          : 'Pas encore enregistrée. Lis le texte à voix haute à ton rythme, puis appuie sur Terminer : tu seras ensuite reconnu dans les conversations enregistrées.'}
       </div>
       {secs !== null && <div style={{ fontSize: 15, lineHeight: 1.6, padding: 10, borderRadius: 8, background: 'var(--c-surface-2)', marginBottom: 10 }}>{READ_TEXT}</div>}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {secs === null
           ? <><button className="btn-secondary" onClick={start}>🎙️ {info?.enrolled ? 'Réenregistrer ma voix' : 'Enregistrer ma voix'}</button>
             {info?.enrolled && <button className="btn-secondary" style={{ color: C.red }} onClick={forget}>Effacer ma voix</button>}</>
-          : <button className="btn-secondary" style={{ color: C.red }} disabled={secs < 20} onClick={stop}>⏹ {secs < 20 ? `Lis encore… ${30 - secs} s` : `Terminer (${30 - secs} s)`}</button>}
+          : <button className="btn-secondary" style={{ color: C.red }} disabled={secs < MIN_SECS} onClick={stop}>⏹ {secs < MIN_SECS ? `Continue de lire… ${fmtSecs(secs)}` : `Terminer · ${fmtSecs(secs)} / ${fmtSecs(MAX_SECS)}`}</button>}
         {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
       </div>
     </div>
