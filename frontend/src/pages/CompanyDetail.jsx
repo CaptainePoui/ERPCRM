@@ -118,6 +118,46 @@ function VendorField({ company, contacts, onSave }) {
   )
 }
 
+const RATE_INPUT = { width: 80, minWidth: 0, fontFamily: 'inherit', fontSize: 14, color: 'var(--c-text)', background: 'var(--c-surface)', border: '1.5px solid var(--c-border-strong)', borderRadius: 6, padding: '7px 8px' }
+// ── Commission du vendeur pour ce client (TASK-007.3) ─────────────────────────
+function VendorCommissionField({ company, onSave }) {
+  const [rep, setRep] = useState(undefined)
+  const [custom, setCustom] = useState('')
+  const [msg, setMsg] = useState(null)
+  useEffect(() => {
+    setRep(undefined)
+    if (company.vendor_id) api.get(`/v1/sales-reps/by-contact/${company.vendor_id}`).then(r => setRep(r.data)).catch(() => setRep(null))
+  }, [company.vendor_id])
+  useEffect(() => { setCustom(company.vendor_rate != null ? String(company.vendor_rate) : '') }, [company.vendor_rate])
+  if (!company.vendor_id || rep === undefined) return null
+  if (!rep) return <div style={{ fontSize: 12, color: 'var(--c-faint)', margin: '-4px 0 10px' }}>Ce contact n'a pas de commission (Employés › Vendeurs pour l'ajouter).</div>
+  const base = company.vendor_support ? rep.rate : rep.referral_rate
+  const saved = company.vendor_rate != null ? String(company.vendor_rate) : ''
+  async function saveRate() {
+    setMsg(null)
+    try { await onSave('vendor_rate', custom === '' ? null : parseFloat(custom)); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Erreur') }
+  }
+  return (
+    <div className="ifield">
+      <div className="ifield-label">Commission du vendeur</div>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+        <select value={company.vendor_support ? 's' : 'r'} onChange={e => onSave('vendor_support', e.target.value === 's')} style={{ flex: '1 1 200px', minWidth: 0 }}>
+          <option value="s">Avec support du vendeur ({rep.rate} %)</option>
+          <option value="r">Sans support, référence ({rep.referral_rate} %)</option>
+        </select>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '1 1 200px', minWidth: 0 }}>
+          <input type="number" step="0.1" min="0" max="100" value={custom} placeholder={String(base)} onChange={e => setCustom(e.target.value)}
+            style={RATE_INPUT} title="Vide = taux du vendeur" />
+          <span style={{ color: custom === '' ? 'var(--c-faint)' : '#B45309', whiteSpace: 'nowrap' }}>% {custom === '' ? '(taux du vendeur)' : 'personnalisé'}</span>
+          {custom !== saved && <button className="ifield-ok" onClick={saveRate} title="Confirmer">✓</button>}
+        </div>
+        {msg && <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Status selector (inline) ──────────────────────────────────────────────────
 function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath }) {
   const [current, setCurrent] = useState(initialStatuses)
@@ -709,6 +749,7 @@ export default function CompanyDetail({ isNew }) {
                         options={[{ value: '', label: '— Aucun —' }, ...managers.map(m => ({ value: m.id, label: m.full_name }))]}
                         onSave={v => saveField('internal_manager_id', v || null)} />
                       <VendorField company={c} contacts={allContacts} onSave={saveVendor} />
+                      <VendorCommissionField company={c} onSave={saveField} />
                       <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
                     </div>
                     <div className="ifield-section-title" style={{ marginTop: 24 }}>Taxes</div>

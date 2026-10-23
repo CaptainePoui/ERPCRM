@@ -1,5 +1,6 @@
 import uuid
-from sqlalchemy import String, Text, Boolean, Float, Integer, ForeignKey
+from decimal import Decimal
+from sqlalchemy import String, Text, Boolean, Float, Integer, Numeric, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -37,6 +38,10 @@ class Company(Base):
 
     # Vendeur référent (contact)
     vendor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"))
+    # TASK-007.3 : le vendeur fait le premier support (taux « avec support ») ou a seulement refere le client (taux
+    # « référence ») ; vendor_rate = taux propre a ce client (vide = taux du vendeur pour ce mode)
+    vendor_support: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    vendor_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 3))
 
     # Succursale (TASK-002.4) : sa maison mere (plusieurs niveaux possibles) ; facturee a elle-meme, sauf si on choisit une
     # de ses maisons meres (bill_to_company_id)

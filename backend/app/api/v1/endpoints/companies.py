@@ -1,6 +1,7 @@
 import uuid
 import shutil
 import httpx
+from decimal import Decimal
 from pathlib import Path
 from datetime import datetime, date
 from pydantic import BaseModel
@@ -85,6 +86,8 @@ def _build_company_out(company: Company) -> CompanyOut:
         internal_manager=company.internal_manager,
         vendor_id=company.vendor_id,
         vendor=VendorRef(contact_id=company.vendor.id, first_name=company.vendor.first_name, last_name=company.vendor.last_name) if company.vendor else None,
+        vendor_support=company.vendor_support,
+        vendor_rate=float(company.vendor_rate) if company.vendor_rate is not None else None,
         currency=company.currency,
         is_taxable=company.is_taxable,
         tvq_applicable=company.tvq_applicable,
@@ -198,6 +201,16 @@ async def update_company(company_id: uuid.UUID, payload: CompanyUpdate, db: Asyn
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
 
     changes = payload.model_dump(exclude_unset=True)
+    if "vendor_id" in changes and changes["vendor_id"] != company.vendor_id:
+        # TASK-007.3 : autre vendeur = reglages de commission de base (avec support, taux du vendeur)
+        changes.setdefault("vendor_support", True)
+        changes.setdefault("vendor_rate", None)
+    if changes.get("vendor_support") is None and "vendor_support" in changes:
+        changes.pop("vendor_support")
+    if changes.get("vendor_rate") is not None and not (0 <= changes["vendor_rate"] <= 100):
+        raise HTTPException(status_code=400, detail="Taux entre 0 et 100 %")
+    if changes.get("vendor_rate") is not None:
+        changes["vendor_rate"] = Decimal(str(changes["vendor_rate"]))
     for field, new_value in changes.items():
         old_value = getattr(company, field, None)
         if str(old_value) != str(new_value):

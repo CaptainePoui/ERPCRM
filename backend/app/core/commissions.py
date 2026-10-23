@@ -7,6 +7,8 @@ sync() est relancable sans risque (poller des periodiques toutes les 30 min, et 
   factures d'avant sont deja couvertes par ses anciens paiements), d'un client dont il est le « Vendeur référent » (periodique seulement si c'est sa regle), donne une commission :
   taux x part payee (x sous-total / total si « avant taxes ») ; un avoir ou un troc n'est pas un paiement ;
 - un paiement retire : commission enlevee si sa facture de commission n'est pas encore payee, sinon ajustement negatif ;
+- taux (TASK-007.3) : celui du client s'il en a un, sinon celui du vendeur « avec support » ou « référence » selon le
+  client ; garde a la commission (un changement vaut pour les paiements suivants) ;
 - les commissions d'un mois forment la facture fournisseur « COM-AAAA-MM » du vendeur (compte « Commissions et
   frais », sans taxes) ; une fois payee, ce qui arrive ensuite pour ce mois va dans « COM-AAAA-MM-2 », etc.
 """
@@ -33,12 +35,24 @@ def _money(v) -> Decimal:
     return Decimal(v).quantize(CENT, rounding=ROUND_HALF_UP)
 
 
-def compute(rep: SalesRep, inv: Invoice, paid: Decimal) -> tuple[Decimal, Decimal]:
+MODES = {"support": "avec support", "reference": "référence", "client": "taux du client"}
+
+
+def rate_for(rep: SalesRep, company: Company) -> tuple[Decimal, str]:
+    """(taux, mode) d'un client (TASK-007.3) : son taux propre s'il en a un, sinon celui du vendeur pour ce mode."""
+    if company.vendor_rate is not None:
+        return Decimal(company.vendor_rate), "client"
+    if company.vendor_support:
+        return Decimal(rep.rate), "support"
+    return Decimal(rep.referral_rate), "reference"
+
+
+def compute(rep: SalesRep, inv: Invoice, paid: Decimal, rate: Decimal) -> tuple[Decimal, Decimal]:
     """(base, commission) d'une part payee."""
     base = Decimal(paid)
     if rep.before_taxes and inv.total:
         base = _money(base * Decimal(inv.subtotal) / Decimal(inv.total))
-    return _money(base), _money(base * Decimal(rep.rate) / 100)
+    return _money(base), _money(base * Decimal(rate) / 100)
 
 
 async def _paid_on_bills(db, bill_ids) -> dict:
@@ -48,7 +62,7 @@ async def _paid_on_bills(db, bill_ids) -> dict:
 
 async def _rep_allocations(db, rep: SalesRep) -> list:
     received = func.coalesce(ClientPayment.received_at, func.date(ClientPayment.created_at))
-    q = (select(PaymentAllocation, Invoice, ClientPayment, received)
+    q = (select(PaymentAllocation, Invoice, ClientPayment, received, Company)
          .join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
          .join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
          .join(Company, Company.id == Invoice.company_id)
@@ -78,7 +92,7 @@ async def sync_rep(db, rep: SalesRep) -> set:
             dirty.add(e.bill_id)
             by_alloc.pop(e.allocation_id, None)
             await db.delete(e)
-    for alloc, inv, pay, received in current:
+    for alloc, inv, pay, received, company in current:
         e = by_alloc.get(alloc.id)
         if e is None:
             twins = orphans.get((inv.id, Decimal(alloc.amount_allocated)))
@@ -86,13 +100,14 @@ async def sync_rep(db, rep: SalesRep) -> set:
                 e = twins.pop()
                 e.allocation_id = alloc.id
                 continue
-            base, amount = compute(rep, inv, alloc.amount_allocated)
+            rate, mode = rate_for(rep, company)
+            base, amount = compute(rep, inv, alloc.amount_allocated, rate)
             db.add(CommissionEntry(sales_rep_id=rep.id, kind="commission", allocation_id=alloc.id, invoice_id=inv.id,
                                    company_id=inv.company_id, entry_date=received, paid_amount=alloc.amount_allocated,
-                                   base=base, rate=rep.rate, amount=amount))
+                                   base=base, rate=rate, mode=mode, amount=amount))
             continue
-        if Decimal(e.paid_amount) != Decimal(alloc.amount_allocated):     # part changee apres coup
-            base, amount = compute(rep, inv, alloc.amount_allocated)
+        if Decimal(e.paid_amount) != Decimal(alloc.amount_allocated):     # part changee apres coup (meme taux qu'avant)
+            base, amount = compute(rep, inv, alloc.amount_allocated, e.rate)
             if locked(e):
                 db.add(CommissionEntry(sales_rep_id=rep.id, kind="ajustement", invoice_id=inv.id, company_id=inv.company_id,
                                        entry_date=received, amount=amount - Decimal(e.amount),
@@ -175,7 +190,8 @@ async def rebuild(db, bill_id) -> None:
         if e.kind == "ajustement":
             text = f"Ajustement — {e.note or ''}".strip(" —")
         else:
-            text = f"Commission — {client} — {number} : {float(e.rate):g} % de {e.base} $ (payé le {e.entry_date:%Y-%m-%d})"
+            mode = f" ({MODES[e.mode]})" if e.mode in MODES else ""
+            text = f"Commission — {client} — {number} : {float(e.rate):g} %{mode} de {e.base} $ (payé le {e.entry_date:%Y-%m-%d})"
         lines.append(BillLineIn(description=text[:500], category_id=cat, qty=1, rate=float(e.amount), tax_code="aucune"))
     _apply_bill(b, BillIn(vendor_id=b.vendor_id, bill_number=b.bill_number, bill_date=b.bill_date, due_date=b.due_date,
                           tax_mode="exclusive", notes=b.notes, lines=lines))

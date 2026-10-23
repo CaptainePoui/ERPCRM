@@ -28,11 +28,17 @@ class SalesRepIn(BaseModel):
     contact_id: uuid.UUID
     vendor_id: uuid.UUID
     rate: float | None = None
+    referral_rate: float | None = None
     before_taxes: bool = True
     recurring_only: bool = True
     start_date: date
     is_active: bool = True
     notes: str | None = None
+
+
+class ClientIn(BaseModel):
+    support: bool
+    rate: float | None = None      # vide = taux du vendeur pour ce mode
 
 
 class AdjustIn(BaseModel):
@@ -52,12 +58,18 @@ async def _summary(db, r: SalesRep) -> dict:
     due = sum((max(ZERO, Decimal(b.total) - paid.get(b.id, ZERO)) for b in bills), ZERO)
     earned = sum((Decimal(e.amount) for e in (await db.execute(select(CommissionEntry).where(
         CommissionEntry.sales_rep_id == r.id, CommissionEntry.kind != "annulee"))).scalars().all()), ZERO)
-    clients = (await db.execute(select(Company.id, Company.name).where(Company.vendor_id == r.contact_id).order_by(Company.name))).all()
+    clients = (await db.execute(select(Company).where(Company.vendor_id == r.contact_id).order_by(Company.name))).scalars().all()
     return {"id": str(r.id), "name": _name(r), "contact_id": str(r.contact_id), "vendor_id": str(r.vendor_id),
-            "vendor_name": r.vendor.name, "rate": float(r.rate), "before_taxes": r.before_taxes, "recurring_only": r.recurring_only,
+            "vendor_name": r.vendor.name, "rate": float(r.rate), "referral_rate": float(r.referral_rate), "before_taxes": r.before_taxes, "recurring_only": r.recurring_only,
             "start_date": r.start_date, "is_active": r.is_active, "notes": r.notes,
-            "clients": [{"id": str(i), "name": n} for i, n in clients],
+            "clients": [_client(r, c) for c in clients],
             "earned": float(earned), "due": float(due)}
+
+
+def _client(r: SalesRep, c: Company) -> dict:
+    rate, mode = commissions.rate_for(r, c)
+    return {"id": str(c.id), "name": c.name, "support": c.vendor_support, "custom_rate": float(c.vendor_rate) if c.vendor_rate is not None else None,
+            "rate": float(rate), "mode": mode}
 
 
 async def _get(db, rid) -> SalesRep:
@@ -75,6 +87,15 @@ async def list_reps(db: AsyncSession = Depends(get_db), _: User = Depends(get_cu
     out = [await _summary(db, r) for r in reps]
     default = await get_setting(db, "commission_rate")
     return {"default_rate": float(default or 10), "reps": sorted(out, key=lambda x: (not x["is_active"], x["name"].lower()))}
+
+
+@router.get("/by-contact/{contact_id}")
+async def rep_of_contact(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Taux du vendeur pour la fiche client (sans recalcul) ; null si ce contact n'est pas un vendeur."""
+    r = (await db.execute(select(SalesRep).where(SalesRep.contact_id == contact_id))).scalar_one_or_none()
+    if not r:
+        return None
+    return {"id": str(r.id), "rate": float(r.rate), "referral_rate": float(r.referral_rate), "is_active": r.is_active}
 
 
 @router.get("/{rid}")
@@ -97,7 +118,7 @@ async def get_rep(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = 
     d["entries"] = [{"id": str(e.id), "kind": e.kind, "date": e.entry_date, "client": client,
                      "company_id": str(e.company_id) if e.company_id else None, "invoice": number,
                      "invoice_id": str(e.invoice_id) if e.invoice_id else None, "paid_amount": float(e.paid_amount),
-                     "base": float(e.base), "rate": float(e.rate), "amount": float(e.amount), "note": e.note,
+                     "base": float(e.base), "rate": float(e.rate), "mode": e.mode, "amount": float(e.amount), "note": e.note,
                      "bill_number": bill_number, "bill_id": str(e.bill_id) if e.bill_id else None}
                     for e, number, client, bill_number in rows]
     d["bills"] = [{"id": str(b.id), "number": b.bill_number, "date": b.bill_date, "total": float(b.total),
@@ -110,7 +131,7 @@ async def get_rep(rid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = 
 
 
 async def _check(db, p: SalesRepIn, rid=None) -> None:
-    if p.rate is not None and not (0 <= p.rate <= 100):
+    if any(v is not None and not (0 <= v <= 100) for v in (p.rate, p.referral_rate)):
         raise HTTPException(status_code=400, detail="Taux entre 0 et 100 %")
     if not await db.get(Vendor, p.vendor_id):
         raise HTTPException(status_code=400, detail="Fournisseur introuvable")
@@ -123,7 +144,8 @@ async def _check(db, p: SalesRepIn, rid=None) -> None:
 async def create_rep(p: SalesRepIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     await _check(db, p)
     rate = p.rate if p.rate is not None else float(await get_setting(db, "commission_rate") or 10)
-    r = SalesRep(contact_id=p.contact_id, vendor_id=p.vendor_id, rate=Decimal(str(rate)), before_taxes=p.before_taxes,
+    r = SalesRep(contact_id=p.contact_id, vendor_id=p.vendor_id, rate=Decimal(str(rate)),
+                 referral_rate=Decimal(str(p.referral_rate if p.referral_rate is not None else 5)), before_taxes=p.before_taxes,
                  recurring_only=p.recurring_only, start_date=p.start_date, is_active=p.is_active, notes=p.notes)
     db.add(r)
     await db.flush()
@@ -143,8 +165,26 @@ async def update_rep(rid: uuid.UUID, p: SalesRepIn, db: AsyncSession = Depends(g
     r.start_date, r.is_active, r.notes = p.start_date, p.is_active, p.notes
     if p.rate is not None:
         r.rate = Decimal(str(p.rate))      # les commissions deja calculees gardent leur taux
+    if p.referral_rate is not None:
+        r.referral_rate = Decimal(str(p.referral_rate))
     await db.flush()
     await commissions.sync(db, r.id)
+    await db.commit()
+    return await get_rep(r.id, db)
+
+
+@router.put("/{rid}/clients/{company_id}")
+async def update_client(rid: uuid.UUID, company_id: uuid.UUID, p: ClientIn, db: AsyncSession = Depends(get_db),
+                        _: User = Depends(get_current_user)):
+    """Mode (avec support / référence) et taux propre d'un client du vendeur ; vaut pour les paiements suivants."""
+    r = await _get(db, rid)
+    c = await db.get(Company, company_id)
+    if not c or c.vendor_id != r.contact_id:
+        raise HTTPException(status_code=404, detail="Ce client n'est pas à ce vendeur")
+    if p.rate is not None and not (0 <= p.rate <= 100):
+        raise HTTPException(status_code=400, detail="Taux entre 0 et 100 %")
+    c.vendor_support = p.support
+    c.vendor_rate = Decimal(str(p.rate)) if p.rate is not None else None
     await db.commit()
     return await get_rep(r.id, db)
 

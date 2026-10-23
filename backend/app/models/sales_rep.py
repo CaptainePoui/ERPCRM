@@ -23,7 +23,9 @@ class SalesRep(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     contact_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), nullable=False, unique=True)
     vendor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("vendors.id", ondelete="RESTRICT"), nullable=False)
-    rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("10"))
+    rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("10"))   # clients « avec support »
+    # TASK-007.3 : clients « sans support » (simple reference) ; un client peut aussi avoir son propre taux (companies.vendor_rate)
+    referral_rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("5"), server_default="5")
     before_taxes: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     recurring_only: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     # Factures emises a partir de cette date (celles d'avant sont couvertes par le dernier paiement fait au vendeur)
@@ -49,6 +51,7 @@ class CommissionEntry(Base):
     paid_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     base: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0"))
     rate: Mapped[Decimal] = mapped_column(Numeric(6, 3), nullable=False, default=Decimal("0"))
+    mode: Mapped[str | None] = mapped_column(String(12))   # TASK-007.3 : support | reference | client (taux propre au client)
     amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     bill_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("bills.id", ondelete="SET NULL"), index=True)
     note: Mapped[str | None] = mapped_column(Text)

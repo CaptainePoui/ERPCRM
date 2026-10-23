@@ -61,6 +61,8 @@ class CompanyUpdate(BaseModel):
     notes_internal: str | None = None
     internal_manager_id: uuid.UUID | None = None
     vendor_id: uuid.UUID | None = None
+    vendor_support: bool | None = None     # TASK-007.3
+    vendor_rate: float | None = None       # vide = taux du vendeur
     currency: str | None = None
     exchange_rate: float | None = None
     is_taxable: bool | None = None
@@ -110,6 +112,8 @@ class CompanyOut(BaseModel):
     internal_manager: UserRefOut | None
     vendor_id: uuid.UUID | None
     vendor: VendorRef | None
+    vendor_support: bool = True
+    vendor_rate: float | None = None
     currency: str
     is_taxable: bool
     tvq_applicable: bool

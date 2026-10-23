@@ -13,6 +13,8 @@ const card = { background: 'var(--c-surface)', border: `1px solid ${C.border}`, 
 const h3 = { fontSize: 14, fontWeight: 700, margin: '0 0 12px', color: 'var(--c-text)' }
 const th = { padding: '8px 10px', textAlign: 'left', fontSize: 12, color: C.muted, fontWeight: 600, borderBottom: `1px solid ${C.border}`, whiteSpace: 'nowrap' }
 const td = { padding: '8px 10px', fontSize: 13, borderBottom: '1px solid var(--c-surface-3)', verticalAlign: 'top' }
+const RATE_INPUT = { width: 80, minWidth: 0, fontFamily: 'inherit', fontSize: 14, color: 'var(--c-text)', background: 'var(--c-surface)', border: '1.5px solid var(--c-border-strong)', borderRadius: 6, padding: '7px 8px' }
+const MODE = { support: 'avec support', reference: 'référence', client: 'taux du client' }
 const STATUS = { payee: 'Payée', partielle: 'Partielle', ouverte: 'À payer', en_retard: 'À payer', brouillon: 'Brouillon', annulee: 'Annulée' }
 
 function usePhone() {
@@ -62,7 +64,7 @@ function RepView({ id, onChanged }) {
   const [adjusting, setAdjusting] = useState(false)
   function take(d) {
     setRep(d)
-    setForm({ rate: String(d.rate), before_taxes: d.before_taxes, recurring_only: d.recurring_only, start_date: d.start_date, is_active: d.is_active, notes: d.notes || '' })
+    setForm({ rate: String(d.rate), referral_rate: String(d.referral_rate), before_taxes: d.before_taxes, recurring_only: d.recurring_only, start_date: d.start_date, is_active: d.is_active, notes: d.notes || '' })
   }
   useEffect(() => { api.get(`/v1/sales-reps/${id}`).then(r => take(r.data)) }, [id])
   if (!rep) return <div style={{ color: C.faint }}>Chargement…</div>
@@ -70,7 +72,7 @@ function RepView({ id, onChanged }) {
     setMsg(null)
     try {
       const r = await api.put(`/v1/sales-reps/${id}`, { contact_id: rep.contact_id, vendor_id: rep.vendor_id, rate: parseFloat(form.rate),
-        before_taxes: form.before_taxes, recurring_only: form.recurring_only, start_date: form.start_date, is_active: form.is_active, notes: form.notes || null })
+        referral_rate: parseFloat(form.referral_rate), before_taxes: form.before_taxes, recurring_only: form.recurring_only, start_date: form.start_date, is_active: form.is_active, notes: form.notes || null })
       take(r.data); setMsg({ ok: true, t: 'Enregistré' }); onChanged()
     } catch (e) { setMsg({ ok: false, t: e.response?.data?.detail || 'Erreur' }) }
   }
@@ -79,7 +81,7 @@ function RepView({ id, onChanged }) {
     try { await api.delete(`/v1/sales-reps/${id}/entries/${e.id}`); take((await api.get(`/v1/sales-reps/${id}`)).data); onChanged() }
     catch (err) { setMsg({ ok: false, t: err.response?.data?.detail || 'Erreur' }) }
   }
-  const dirty = form && (form.rate !== String(rep.rate) || form.before_taxes !== rep.before_taxes || form.recurring_only !== rep.recurring_only
+  const dirty = form && (form.rate !== String(rep.rate) || form.referral_rate !== String(rep.referral_rate) || form.before_taxes !== rep.before_taxes || form.recurring_only !== rep.recurring_only
     || form.start_date !== rep.start_date || form.is_active !== rep.is_active || (form.notes || '') !== (rep.notes || ''))
   const field = { minWidth: 0, flex: '1 1 160px', marginBottom: 0 }
 
@@ -100,8 +102,10 @@ function RepView({ id, onChanged }) {
       <div style={card}>
         <h3 style={h3}>Réglages de commission</h3>
         <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-          <div className="form-group" style={field}><label>Taux (%)</label>
+          <div className="form-group" style={field}><label>Taux avec support (%)</label>
             <input type="number" step="0.1" min="0" max="100" value={form.rate} onChange={e => setForm(f => ({ ...f, rate: e.target.value }))} /></div>
+          <div className="form-group" style={field}><label>Taux référence, sans support (%)</label>
+            <input type="number" step="0.1" min="0" max="100" value={form.referral_rate} onChange={e => setForm(f => ({ ...f, referral_rate: e.target.value }))} /></div>
           <div className="form-group" style={field}><label>Calculé sur</label>
             <select value={form.before_taxes ? 'avant' : 'apres'} onChange={e => setForm(f => ({ ...f, before_taxes: e.target.value === 'avant' }))}>
               <option value="avant">Le montant avant taxes</option><option value="apres">Le montant taxes incluses</option></select></div>
@@ -124,11 +128,9 @@ function RepView({ id, onChanged }) {
 
       <div style={card}>
         <h3 style={h3}>Ses clients ({rep.clients.length})</h3>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {rep.clients.map(c => <Link key={c.id} to={`/companies/${c.id}`} className="filter-tab" style={{ textDecoration: 'none' }}>{c.name}</Link>)}
-          {rep.clients.length === 0 && <span style={{ color: C.faint, fontSize: 13 }}>Aucun client.</span>}
-        </div>
-        <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>Pour lui ajouter un client : dans la fiche du client, choisis {rep.name} comme « Vendeur ».</div>
+        {rep.clients.length === 0 && <span style={{ color: C.faint, fontSize: 13 }}>Aucun client.</span>}
+        {rep.clients.map(c => <ClientRow key={c.id} rep={rep} client={c} onSaved={d => { take(d); onChanged() }} />)}
+        <div style={{ fontSize: 12, color: C.faint, marginTop: 8 }}>Pour lui ajouter un client : dans la fiche du client, choisis {rep.name} comme « Vendeur ». Un changement de mode ou de taux vaut pour les prochains paiements.</div>
       </div>
 
       <div style={card}>
@@ -144,7 +146,7 @@ function RepView({ id, onChanged }) {
                 <span style={{ fontWeight: 600, minWidth: 0, overflowWrap: 'anywhere' }}>{e.kind === 'ajustement' ? 'Ajustement' : e.client}</span>
                 <span style={{ fontWeight: 700 }}>{money(e.amount)}</span>
               </div>
-              <div style={{ color: C.muted, overflowWrap: 'anywhere' }}>{e.date} · {e.kind === 'ajustement' ? e.note : <>{e.invoice_id ? <Link to={`/invoices/${e.invoice_id}`}>{e.invoice}</Link> : e.invoice} — payé {money(e.paid_amount)}, {e.rate} % de {money(e.base)}</>}</div>
+              <div style={{ color: C.muted, overflowWrap: 'anywhere' }}>{e.date} · {e.kind === 'ajustement' ? e.note : <>{e.invoice_id ? <Link to={`/invoices/${e.invoice_id}`}>{e.invoice}</Link> : e.invoice} — payé {money(e.paid_amount)}, {e.rate} %{MODE[e.mode] ? ` (${MODE[e.mode]})` : ''} de {money(e.base)}</>}</div>
               <div style={{ color: C.faint, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                 {e.bill_id && <Link to={`/purchases/bills/${e.bill_id}`}>{e.bill_number}</Link>}
                 {e.kind === 'annulee' && <span>Paiement retiré</span>}
@@ -164,7 +166,7 @@ function RepView({ id, onChanged }) {
                       <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.invoice_id ? <Link to={`/invoices/${e.invoice_id}`}>{e.invoice}</Link> : e.invoice}</td>
                       <td style={{ ...td, textAlign: 'right' }}>{money(e.paid_amount)}</td>
                       <td style={{ ...td, textAlign: 'right' }}>{money(e.base)}</td>
-                      <td style={{ ...td, textAlign: 'right' }}>{e.rate} %</td>
+                      <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>{e.rate} %{MODE[e.mode] && <div style={{ fontSize: 11, color: C.faint }}>{MODE[e.mode]}</div>}</td>
                     </>}
                   <td style={{ ...td, textAlign: 'right', fontWeight: 700 }}>{money(e.amount)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{e.bill_id ? <Link to={`/purchases/bills/${e.bill_id}`}>{e.bill_number}</Link> : ''}{e.kind === 'annulee' ? ' (paiement retiré)' : ''}</td>
@@ -196,6 +198,34 @@ function RepView({ id, onChanged }) {
       </div>
 
       {adjusting && <AdjustModal rep={rep} onClose={() => setAdjusting(false)} onSaved={d => { setAdjusting(false); take(d); onChanged() }} />}
+    </div>
+  )
+}
+
+// TASK-007.3 : mode (avec support / reference) et taux propre de chaque client, modifiables sur sa ligne
+function ClientRow({ rep, client, onSaved }) {
+  const [support, setSupport] = useState(client.support)
+  const [custom, setCustom] = useState(client.custom_rate != null ? String(client.custom_rate) : '')
+  const [err, setErr] = useState(null)
+  const base = support ? rep.rate : rep.referral_rate
+  const dirty = support !== client.support || custom !== (client.custom_rate != null ? String(client.custom_rate) : '')
+  async function save() {
+    setErr(null)
+    try { onSaved((await api.put(`/v1/sales-reps/${rep.id}/clients/${client.id}`, { support, rate: custom === '' ? null : parseFloat(custom) })).data) }
+    catch (e) { setErr(e.response?.data?.detail || 'Erreur') }
+  }
+  return (
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid var(--c-surface-3)', fontSize: 13 }}>
+      <Link to={`/companies/${client.id}`} style={{ flex: '1 1 180px', minWidth: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>{client.name}</Link>
+      <select value={support ? 's' : 'r'} onChange={e => setSupport(e.target.value === 's')} style={{ flex: '0 1 230px', minWidth: 0 }}>
+        <option value="s">Avec support du vendeur</option><option value="r">Sans support (référence)</option></select>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flex: '0 1 230px', minWidth: 0 }}>
+        <input type="number" step="0.1" min="0" max="100" value={custom} placeholder={String(base)} onChange={e => setCustom(e.target.value)}
+          style={RATE_INPUT} title="Vide = taux du vendeur pour ce mode" />
+        <span style={{ color: custom === '' ? C.faint : '#B45309', whiteSpace: 'nowrap' }}>% {custom === '' ? '(taux du vendeur)' : 'personnalisé'}</span>
+      </div>
+      <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }} disabled={!dirty} onClick={save}>Enregistrer</button>
+      {err && <span style={{ color: C.red, width: '100%' }}>{err}</span>}
     </div>
   )
 }
@@ -234,6 +264,7 @@ function AddRep({ defaultRate, onClose, onSaved }) {
   const [contact, setContact] = useState(null)
   const [vendor, setVendor] = useState(null)
   const [rate, setRate] = useState(String(defaultRate))
+  const [refRate, setRefRate] = useState('5')
   const [start, setStart] = useState(new Date().toISOString().slice(0, 10))
   const [error, setError] = useState(null)
   useEffect(() => {
@@ -243,7 +274,7 @@ function AddRep({ defaultRate, onClose, onSaved }) {
   async function save() {
     setError(null)
     try {
-      onSaved((await api.post('/v1/sales-reps', { contact_id: contact.id, vendor_id: vendor.id, rate: parseFloat(rate), start_date: start,
+      onSaved((await api.post('/v1/sales-reps', { contact_id: contact.id, vendor_id: vendor.id, rate: parseFloat(rate), referral_rate: parseFloat(refRate), start_date: start,
         before_taxes: true, recurring_only: true })).data)
     } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
   }
@@ -254,8 +285,10 @@ function AddRep({ defaultRate, onClose, onSaved }) {
         <Autocomplete label="Vendeur (contact)" items={contacts} value={contact} onSelect={setContact} placeholder="Rechercher un contact..." autoFocus />
         <Autocomplete label="Payé à (fournisseur)" items={vendors} value={vendor} onSelect={setVendor} placeholder="Rechercher un fournisseur..." openOnFocus />
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <div className="form-group" style={{ flex: '1 1 120px' }}><label>Taux (%)</label>
+          <div className="form-group" style={{ flex: '1 1 120px' }}><label>Avec support (%)</label>
             <input type="number" step="0.1" value={rate} onChange={e => setRate(e.target.value)} /></div>
+          <div className="form-group" style={{ flex: '1 1 120px' }}><label>Référence (%)</label>
+            <input type="number" step="0.1" value={refRate} onChange={e => setRefRate(e.target.value)} /></div>
           <div className="form-group" style={{ flex: '1 1 160px' }}><label>Factures émises à partir du</label>
             <input type="date" value={start} onChange={e => setStart(e.target.value)} /></div>
         </div>
@@ -263,7 +296,7 @@ function AddRep({ defaultRate, onClose, onSaved }) {
         {error && <div style={{ color: C.red, fontSize: 13, marginTop: 8 }}>{error}</div>}
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
-          <button className="btn-primary" disabled={!contact || !vendor || !(parseFloat(rate) >= 0)} onClick={save}>Ajouter</button>
+          <button className="btn-primary" disabled={!contact || !vendor || !(parseFloat(rate) >= 0) || !(parseFloat(refRate) >= 0)} onClick={save}>Ajouter</button>
         </div>
       </div>
     </div>
