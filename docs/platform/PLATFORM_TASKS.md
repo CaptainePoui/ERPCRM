@@ -6615,3 +6615,5 @@ Demandé : 2026-10-23 (Philippe : « mettre du speech to text pour les conversat
 Constats (2026-10-23) : aucune transcription dans ERPCRM ; SIPV enregistre déjà des appels (`record_session`, .wav mono dans /usr/local/freeswitch/recordings, 59 fichiers) ; serveur ERPCRM sans carte graphique (12 cœurs, 45 Go).
 
 Proposition en attente de GO : (1) enregistrer depuis le ticket (micro du navigateur/cellulaire), son + transcription dans le ticket, donc dans la fiche contact/compagnie ; transcription locale, cherchable (recherche globale + Zéko) ; voix de Philippe reconnue (échantillon enregistré une fois) ; (2) voix d'un client associée à un contact, reconnue ensuite ; (3) appels téléphoniques SIPV transcrits automatiquement (enregistrement en stéréo : un côté par canal).
+
+Ajout 2026-10-23 (Philippe : « je pourrais aussi dicter à Zéko ce que je veux… rien ne sort de chez moi ») : dictée vocale à Zéko avec le même moteur ; décision : tout local, rien ne sort du serveur (donc pas la dictée intégrée du navigateur, qui passe par Google).
