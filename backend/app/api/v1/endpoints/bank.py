@@ -685,11 +685,15 @@ async def rule_forget_client(db: AsyncSession, rule: BankPayeeRule) -> None:
 
 
 async def rule_delete(db: AsyncSession, rule: BankPayeeRule) -> None:
-    """Supprime la regle ; les lignes non classees reconnues par elle redeviennent sans compagnie."""
+    """Supprime la regle ; les lignes non classees reconnues par elle redeviennent sans compagnie / sans fournisseur."""
     for t in (await db.execute(select(BankTransaction).where(
         BankTransaction.status == "unclassified", BankTransaction.company_source == "rule"))).scalars().all():
         if bm.payee_key(t.payee) == rule.payee_key:
             t.company_id, t.company_source = None, None
+    for t in (await db.execute(select(BankTransaction).where(   # retraits reconnus par elle : redeviennent sans fournisseur
+            BankTransaction.status == "unclassified", BankTransaction.vendor_source == "rule"))).scalars().all():
+        if bm.payee_key(t.payee or t.description) == rule.payee_key:
+            t.vendor_id, t.vendor_source = None, None
     await db.delete(rule)
 
 
@@ -1007,7 +1011,8 @@ def _withdrawal_body(sug: dict) -> WithdrawalMatchIn:
         return WithdrawalMatchIn(expense_id=sug["id"])
     if sug["kind"] == "vendor_payment":
         return WithdrawalMatchIn(vendor_payment_id=sug["id"])
-    return WithdrawalMatchIn(bill_allocations=[BillAllocIn(**a) for a in sug["allocations"]])
+    return WithdrawalMatchIn(bill_allocations=[BillAllocIn(**a) for a in sug["allocations"]],
+                             remember_payee=not sug.get("by_amount"))
 
 
 async def _remember_vendor(db: AsyncSession, payee: str | None, vendor_id: uuid.UUID, category_id: uuid.UUID | None) -> None:
@@ -1104,7 +1109,7 @@ async def match_withdrawal(tx_id: uuid.UUID, payload: WithdrawalMatchIn, db: Asy
         # « match » = fournisseur venu de l'association : retire si on annule (un fournisseur choisi a la main reste)
         if tx.vendor_id != vendor_id or tx.vendor_source not in ("manual", "rule"):
             tx.vendor_id, tx.vendor_source = vendor_id, "match"
-        if payload.remember_payee and (tx.payee or tx.description):
+        if payload.remember_payee and (tx.payee or tx.description) and not bm.generic_transfer(tx):
             await _remember_vendor(db, tx.payee or tx.description, vendor_id, category_id)
     await db.commit()
     return await _tx_out(tx, db, with_suggestion=False)

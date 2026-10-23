@@ -517,6 +517,9 @@ function GovernmentForm({ tx, onDone }) {
   )
 }
 
+// Virement Interac envoye sans destinataire au releve (TASK-042.15) : meme test que bank_matching.generic_transfer
+const genericTransfer = tx => !(tx.payee || '').trim() && /INTERAC|VIRDT/i.test(tx.description || '')
+
 // Retraits (TASK-042.4) : lier une depense / un paiement deja enregistre (jamais recreer : double compte),
 // payer des factures fournisseurs (les plus vieilles d'abord), ou enregistrer une nouvelle depense.
 function WithdrawalModal({ tx, onClose, onDone, embedded }) {
@@ -645,9 +648,11 @@ function WithdrawalModal({ tx, onClose, onDone, embedded }) {
           </div>
         )}
 
-        <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
-          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> Retenir ce bénéficiaire pour ce fournisseur (prochains relevés)
-        </label>
+        {genericTransfer(tx)
+          ? <div style={{ fontSize: 12, color: C.faint }}>Virement Interac sans nom de destinataire : aucune règle retenue (le libellé vaut pour tous les virements).</div>
+          : <label style={{ fontSize: 13, display: 'flex', gap: 6, alignItems: 'center' }}>
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} /> Retenir ce bénéficiaire pour ce fournisseur (prochains relevés)
+          </label>}
         {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
         {!embedded && <div className="modal-actions"><button className="btn-secondary" onClick={onClose}>Fermer</button></div>}
     </Wrap>
@@ -910,6 +915,7 @@ function UnclassifiedTab({ transactions, onChanged, accountId }) {
                     <div style={{ fontSize: 12, color: C.muted }}>
                       {sugOf(t).kind === 'expense' ? `dépense déjà enregistrée du ${fmtD(sugOf(t).date)} (${sugOf(t).category_name || 'sans compte'})`
                         : sugOf(t).kind === 'vendor_payment' ? `paiement fournisseur déjà enregistré du ${fmtD(sugOf(t).date)}`
+                        : sugOf(t).by_amount ? `${sugOf(t).vendor_name} : factures ${sugOf(t).bill_numbers.join(', ')} (montant exact)`
                         : `factures ${sugOf(t).bill_numbers.join(', ')} (la plus vieille d'abord)`}
                     </div>
                   )}

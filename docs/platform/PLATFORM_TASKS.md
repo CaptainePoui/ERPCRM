@@ -6143,6 +6143,15 @@ Date(s) de travail : 2026-10-21
 - Reçu SANS n° de facture (Philippe : « s'il n'y a pas de # de facture on cherche une ou une association de factures ») : `guess_invoices()` trouve le client (nom exact, sinon courriel du reçu → contact ; un seul) puis la seule façon exacte de payer le montant avec ses plus vieilles factures ouvertes — `bank_matching.exact_options()`, extraite de `best_exact` (41 dépôts : résultat identique avant/après). Plusieurs façons ou aucune → « à vérifier » avec la raison. Seuls les reçus à 0 $ (vérifications de carte) restent « échoué ».
 - Constat non corrigé (attend Philippe) : règle de bénéficiaire « ELAVON MRCH SVC → HB Architectes » (créée 2026-10-07) qui attribue à tort les dépôts Elavon à HB.
 
+### TASK-042.15 [x] Banque : virement Interac envoyé reconnu par son montant (le relevé ne donne pas le destinataire)
+Date de demande : 2026-10-22 (Philippe : « si je lui fais un virement de 150,69, Zéko va trouver les dépenses ? » ; « ça n'existe plus [les paiements d'entreprise]… là c'est tout Interac » ; GO 2026-10-23)
+Date(s) de travail : 2026-10-23
+
+- Constat : le relevé BNC d'un virement Interac envoyé n'a que « VIREMENT INTERAC » / « VIRDT INTERAC » / « MOBILE VIRDT IT », sans destinataire ; une règle bénéficiaire → fournisseur sur ce libellé (« Retenir ce bénéficiaire », coché par défaut) mettait TOUS les virements au même fournisseur (règle VIREMENT INTERAC → Richard, 8 retraits de 150 $ à 2 069 $). Supprimer une règle ne libérait pas les retraits qu'elle avait reconnus (seulement les dépôts).
+- `core/bank_matching.py` : `generic_transfer()` (sans bénéficiaire + libellé Interac) ; `_bills_by_amount()` : un seul fournisseur dont les plus vieilles factures ouvertes (émises au plus tard à la fin du mois du virement) font exactement le montant → association sûre (passe sûre aux 10 min et import), annulable ; deux fournisseurs possibles ou aucun → rien. Simulé : 150,69 $ → Techni-Express COM-2026-05 à -09 ; 4,79 $ → Richard COM-2026-10.
+- Jamais de règle sur ce libellé : `propose_vendors` ne l'applique plus et retire le fournisseur d'une règle supprimée ou d'une règle sur ce libellé ; `match_withdrawal` n'en retient plus ; `rule_delete` libère aussi les retraits. Écran Banque : « fournisseur : factures … (montant exact) » ; la case « Retenir ce bénéficiaire » remplacée par une explication sur ces virements.
+- Effet sur les données (passe sûre) : 10 retraits non classés libérés (8 « Richard », 2 « kim Sylvestre » de la règle VIRDT INTERAC, désormais ignorée) ; le retrait du 2022-05-17 de 750 $ trouve le paiement fournisseur déjà enregistré RDNetwork du même jour (bloqué avant par le mauvais fournisseur).
+
 ### TASK-042.2 [x] Dépôt d'un relevé dans la page : doublons, associations sûres, IA locale
 Date de demande : 2026-10-05 (Philippe : « j'aimerais avoir mon IA locale qui gère un fichier importé, pour commencer ; ce serait une sécurité si les autres connexions se perdent » ; « j'ai besoin qu'elle analyse ce qui est, enlève les doublons et associe ce qu'elle est sûre, une place dans la page »)
 Date(s) de travail : 2026-10-05, 2026-10-06, 2026-10-07, 2026-10-08

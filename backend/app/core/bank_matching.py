@@ -417,6 +417,53 @@ async def open_bills_oldest_first(db: AsyncSession, vendor_id) -> list:
     return out
 
 
+# Virement Interac envoye (TASK-042.15) : le releve BNC ne donne pas le destinataire -- seulement « VIREMENT INTERAC »,
+# « VIRDT INTERAC », « MOBILE VIRDT IT ». Jamais de regle beneficiaire -> fournisseur sur ce libelle (il vaut pour tous).
+_GENERIC_TRANSFER = re.compile(r"INTERAC|VIRDT", re.I)
+
+
+def generic_transfer(tx: BankTransaction) -> bool:
+    return not (tx.payee or "").strip() and bool(_GENERIC_TRANSFER.search(tx.description or ""))
+
+
+async def _bills_by_amount(db: AsyncSession, tx: BankTransaction) -> dict | None:
+    """Virement sans destinataire : un seul fournisseur dont les plus vieilles factures ouvertes (emises au plus tard a la
+    fin du mois du virement) font exactement le montant -> ses factures ; deux fournisseurs possibles ou aucun -> rien."""
+    from app.models.purchases import Bill, Vendor
+    from app.api.v1.endpoints.purchases import _bill_balances
+    amount = -Decimal(str(tx.amount))
+    bills = (await db.execute(select(Bill).where(Bill.status.in_(["ouverte", "partielle", "en_retard"]), Bill.vendor_id.is_not(None))
+                              .order_by(Bill.vendor_id, Bill.bill_date, Bill.bill_number))).scalars().all()
+    paid = await _bill_balances(db, [b.id for b in bills]) if bills else {}
+    nxt = date(tx.posted_date.year + tx.posted_date.month // 12, tx.posted_date.month % 12 + 1, 1)
+    month_end = nxt - timedelta(days=1)       # factures du mois du virement comprises (commissions datees du dernier jour)
+    by_vendor: dict = {}
+    for b in bills:
+        bal = Decimal(b.total) - paid.get(b.id, Decimal("0"))
+        if bal > 0:
+            by_vendor.setdefault(b.vendor_id, []).append((b, bal))
+    found = []
+    for vid, rows in by_vendor.items():
+        run, picked = Decimal("0"), []
+        for b, bal in rows:
+            if b.bill_date > month_end:
+                break
+            run += bal
+            picked.append((b, bal))
+            if run >= amount:
+                break
+        if run == amount:
+            found.append((vid, picked))
+    if len(found) != 1:
+        return None
+    vid, picked = found[0]
+    vendor = await db.get(Vendor, vid)
+    return {"kind": "bills", "id": str(picked[0][0].id), "amount": float(amount), "oldest_first": True, "by_amount": True,
+            "vendor_id": str(vid), "vendor_name": vendor.name if vendor else None,
+            "bill_numbers": [b.bill_number or "" for b, _ in picked],
+            "allocations": [{"bill_id": str(b.id), "amount": float(bal)} for b, bal in picked]}
+
+
 async def best_exact_withdrawal(db: AsyncSession, tx: BankTransaction) -> dict | None:
     """Suggestion sure pour un retrait : une seule depense / un seul paiement enregistre du meme montant
     (le plus proche s'il l'est nettement, 10 jours au plus) ; sinon, fournisseur confirme ET montant =
@@ -430,6 +477,8 @@ async def best_exact_withdrawal(db: AsyncSession, tx: BankTransaction) -> dict |
         if best["gap"] <= 10 and (len(cands) == 1 or cands[1]["gap"] > best["gap"]):
             return best
         return None
+    if not tx.vendor_id and generic_transfer(tx):
+        return await _bills_by_amount(db, tx)
     if not tx.vendor_id or tx.vendor_source not in ("manual", "rule"):
         return None
     amount, run, picked = -Decimal(tx.amount), Decimal("0"), []
@@ -451,11 +500,21 @@ async def propose_vendors(db: AsyncSession, tx_ids: list | None = None) -> int:
     from app.models.purchases import Vendor
     rules = {r.payee_key: r for r in (await db.execute(select(BankPayeeRule).where(BankPayeeRule.vendor_id.is_not(None)))).scalars().all()}
     vendors = list((await db.execute(select(Vendor.id, Vendor.name).where(Vendor.is_active.is_(True)))).all())
+    # Fournisseur venu d'une regle supprimee, ou d'une regle sur un libelle de virement Interac (vaut pour tous) : retire
+    stale = select(BankTransaction).where(BankTransaction.amount < 0, BankTransaction.status == "unclassified",
+                                          BankTransaction.vendor_source == "rule")
+    if tx_ids is not None:
+        stale = stale.where(BankTransaction.id.in_(tx_ids))
+    for tx in (await db.execute(stale)).scalars().all():
+        if generic_transfer(tx) or payee_key(tx.payee or tx.description) not in rules:
+            tx.vendor_id, tx.vendor_source = None, None
     q = select(BankTransaction).where(BankTransaction.amount < 0, BankTransaction.status == "unclassified", BankTransaction.vendor_id.is_(None))
     if tx_ids is not None:
         q = q.where(BankTransaction.id.in_(tx_ids))
     n = 0
     for tx in (await db.execute(q)).scalars().all():
+        if generic_transfer(tx):
+            continue          # destinataire inconnu : reconnu par le montant (_bills_by_amount) ou a la main
         rule = rules.get(payee_key(tx.payee or tx.description))
         if rule:
             tx.vendor_id, tx.vendor_source = rule.vendor_id, "rule"
