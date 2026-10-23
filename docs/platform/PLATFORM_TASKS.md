@@ -6606,3 +6606,12 @@ Date(s) de travail : 2026-10-21
 - Retour : `components/navTrail.js` suit chaque écran (adresse + onglet) ; « ← Retour » ramène à l'écran précédent (fiche compagnie, contact, ticket, devis, article, facture fournisseur) ; une redirection remplace l'étape (sinon boucle sur /invoices/x → fiche client). Chemin gardé sur l'appareil et au serveur (migration `b63e91e5bf6b`, `users.nav_trail`, `GET/PUT /auth/me/nav-trail`, 50 derniers écrans).
 - Vérifié (Playwright) : tickets → lien compagnie → rafraîchir → Retour = /tickets ; paiements → lien facture (fiche client) → Retour = /sales/payments (pas de boucle) ; 16 écrans modifiés ouverts sans erreur. Voir ERRORS_LESSONS TASK-054 (fiche compagnie plantée quelques minutes).
 
+
+## TASK-055 [ERPCRM+SIPV] [ ] Conversations clients : enregistrement, transcription, voix reconnues (Zéko)
+Classification: CURRENT
+
+Demandé : 2026-10-23 (Philippe : « mettre du speech to text pour les conversations de client pour avoir la conversation en son dans le contact / compagnie et aussi la transcription pour des recherches rapides… enregistrer à partir du ticket quand un client me parle, qu'il sache la distinction de moi et le client (moi est important, le client moins, mais si je peux associer la voix à un contact c'est super)… pour Zéko »).
+
+Constats (2026-10-23) : aucune transcription dans ERPCRM ; SIPV enregistre déjà des appels (`record_session`, .wav mono dans /usr/local/freeswitch/recordings, 59 fichiers) ; serveur ERPCRM sans carte graphique (12 cœurs, 45 Go).
+
+Proposition en attente de GO : (1) enregistrer depuis le ticket (micro du navigateur/cellulaire), son + transcription dans le ticket, donc dans la fiche contact/compagnie ; transcription locale, cherchable (recherche globale + Zéko) ; voix de Philippe reconnue (échantillon enregistré une fois) ; (2) voix d'un client associée à un contact, reconnue ensuite ; (3) appels téléphoniques SIPV transcrits automatiquement (enregistrement en stéréo : un côté par canal).
