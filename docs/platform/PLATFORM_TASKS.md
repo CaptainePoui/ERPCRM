@@ -6607,7 +6607,7 @@ Date(s) de travail : 2026-10-21
 - Vérifié (Playwright) : tickets → lien compagnie → rafraîchir → Retour = /tickets ; paiements → lien facture (fiche client) → Retour = /sales/payments (pas de boucle) ; 16 écrans modifiés ouverts sans erreur. Voir ERRORS_LESSONS TASK-054 (fiche compagnie plantée quelques minutes).
 
 
-## TASK-055 [ERPCRM+SIPV] [ ] Conversations clients : enregistrement, transcription, voix reconnues (Zéko)
+## TASK-055 [ERPCRM+SIPV] [~] Conversations clients : enregistrement, transcription, voix reconnues (Zéko)
 Classification: CURRENT
 
 Demandé : 2026-10-23 (Philippe : « mettre du speech to text pour les conversations de client pour avoir la conversation en son dans le contact / compagnie et aussi la transcription pour des recherches rapides… enregistrer à partir du ticket quand un client me parle, qu'il sache la distinction de moi et le client (moi est important, le client moins, mais si je peux associer la voix à un contact c'est super)… pour Zéko »).
@@ -6617,3 +6617,10 @@ Constats (2026-10-23) : aucune transcription dans ERPCRM ; SIPV enregistre déj�
 Proposition en attente de GO : (1) enregistrer depuis le ticket (micro du navigateur/cellulaire), son + transcription dans le ticket, donc dans la fiche contact/compagnie ; transcription locale, cherchable (recherche globale + Zéko) ; voix de Philippe reconnue (échantillon enregistré une fois) ; (2) voix d'un client associée à un contact, reconnue ensuite ; (3) appels téléphoniques SIPV transcrits automatiquement (enregistrement en stéréo : un côté par canal).
 
 Ajout 2026-10-23 (Philippe : « je pourrais aussi dicter à Zéko ce que je veux… rien ne sort de chez moi ») : dictée vocale à Zéko avec le même moteur ; décision : tout local, rien ne sort du serveur (donc pas la dictée intégrée du navigateur, qui passe par Google).
+
+Ajout 2026-10-23 (Philippe : micro choisi « dans portail.simpleip.tel/admin?tab=configuration avec les appareils comme l'ordi de Phil, la tablette de Phil, le cell de Phil ») puis GO pour les étapes 1 et 2.
+
+- Étape 1 [x] Moteur (2026-10-23) : faster-whisper 1.2.1 + av 16.1.0 (av 17+ incompatible), modèle large-v3-turbo int8 sur CPU, `app/core/speech.py` (une transcription à la fois, modèle chargé au premier usage ; `SPEECH_MODEL`/`SPEECH_DEVICE`/`SPEECH_COMPUTE`/`SPEECH_THREADS`). Mesuré sur les échantillons de voix de Philippe : qualité excellente ; serveur actuel (Xeon E5-2630 v2, sans AVX2 ni GPU) ≈ 30-40 s par phrase de 10 s (fenêtre fixe de 30 s), ≈ 1,3× la durée pour un long enregistrement ; « small » 3× plus rapide mais fautif → refusé. Sur le P720 (TASK-053, RTX) : `SPEECH_DEVICE=cuda`.
+- Étape 2 [x] Dictée à Zéko + appareils audio (2026-10-23) : `POST /v1/speech/transcribe` ; table `audio_devices` (migration 4b7e0a3ed055, sauvegarde `before_audio_devices_20261023.sql`) ; `/v1/speech/devices` (inscription, liste des micros vue par l'appareil, micro choisi, rapport d'utilisation et repli sur le micro par défaut ; admin/gestionnaire voient tous les appareils). Front : `utils/audioDevice.js`, `components/MicButton.jsx` (🎙️ dans Zéko ; 1re fois : « Nommer cet appareil »), `components/AudioDevicesPanel.jsx` (Administration › Configuration générale › Appareils audio, test de niveau sur l'appareil courant). Vérifié : dictée de bout en bout dans Chromium avec faux micro (34 s, texte correct), écrans 1920 et iPhone 13.
+- Constat hors tâche : /companies défile de 5 px de côté sur cellulaire (déjà avant, pas lié).
+- Étapes 3 (enregistrement depuis le ticket, voix reconnues) et 4 (appels SIPV) : à faire.

@@ -72,3 +72,5 @@ weasyprint==70.0
 websockets==16.0
 opencv-python-headless==5.0.0  # TASK-042.8 : separation des cheques numerises
 numpy==2.5.4
+faster-whisper==1.2.1  # TASK-055 : transcription de la voix sur le serveur
+av==16.1.0  # TASK-055 : faster-whisper 1.2.1 incompatible avec av 17+ (metadata_errors)

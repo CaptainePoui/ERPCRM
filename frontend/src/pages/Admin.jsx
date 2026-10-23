@@ -12,6 +12,7 @@ import JournalPanel from '../components/JournalPanel'
 import PastillesPanel from '../components/PastillesPanel'
 import { askConfirm } from '../components/Dialog'
 import BankRulesPanel from '../components/BankRulesPanel'
+import AudioDevicesPanel from '../components/AudioDevicesPanel'
 import ZekoProposals from '../components/ZekoProposals'
 
 const ROLES = ['admin', 'manager', 'tech', 'billing', 'readonly']
@@ -113,7 +114,7 @@ export default function Admin() {
 // Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
 // rassembler dans un onglet config générale ») -- factures : conditions de paiement
 // Configuration generale (2026-10-16, Philippe) : tous les reglages generaux au meme endroit, en sous-onglets
-const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles']]
+const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio']]
 function ConfigPanel({ initial }) {
   const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
   return (
@@ -126,6 +127,7 @@ function ConfigPanel({ initial }) {
       {sub === 'paiements' && <PaymentMethodsPanel />}
       {sub === 'tickets' && <TicketsSettingsPanel />}
       {sub === 'pastilles' && <PastillesPanel />}
+      {sub === 'audio' && <AudioDevicesPanel />}
     </div>
   )
 }

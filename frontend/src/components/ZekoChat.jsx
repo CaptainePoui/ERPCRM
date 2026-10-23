@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import api, { getToken } from '../services/api'
 import { askConfirm } from './Dialog'
+import MicButton from './MicButton'
 
 // Conversation avec Zéko (TASK-006.5 étape 2, 2026-10-18). La réponse arrive mot par mot (flux du serveur) ;
 // « Zéko lit la fiche du client… » montre ce qu'il consulte. Arrêter coupe la génération (le texte déjà écrit reste).
@@ -213,6 +214,7 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button className="btn-primary" onClick={send} disabled={!!live || !draft.trim()} style={live ? BUSY_RING : undefined}
             title={live ? 'Zéko réfléchit — vous pourrez envoyer quand il aura fini' : undefined}>Envoyer</button>
+          <MicButton onText={t => { setDraft(d => d.trim() ? `${d.trimEnd()} ${t}` : t); inputRef.current?.focus() }} />
           {live && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => abortRef.current?.abort()}>Arrêter</button>}
           {!live && conv.messages.length > 0 && !conv.ticket_id && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={remove}>Supprimer</button>}
         </div>
