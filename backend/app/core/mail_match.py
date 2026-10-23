@@ -67,6 +67,11 @@ async def by_address(db, addr: str):
     ch = (await db.execute(select(CommunicationChannel.entity_id, Entity.entity_type).join(Entity, Entity.id == CommunicationChannel.entity_id)
                            .where(CommunicationChannel.channel_type == ChannelType.email, CommunicationChannel.is_active.is_(True),
                                   func.lower(func.trim(CommunicationChannel.value)) == a))).all()
+    from app.core.former_infos import entity_of_email          # TASK-002.8 : ancienne adresse
+    olds = await entity_of_email(db, a)
+    if olds:
+        kinds = dict((await db.execute(select(Entity.id, Entity.entity_type).where(Entity.id.in_(olds)))).all())
+        ch = list(ch) + [(e, kinds[e]) for e in olds if e in kinds]
     ids = list(dict.fromkeys(list(ids) + [e for e, t in ch if t == EntityType.person]))
     companies = list(dict.fromkeys(e for e, t in ch if t == EntityType.company))
     if len(ids) == 1:
@@ -91,6 +96,14 @@ async def by_domain(db, dom: str):
     found |= set((await db.execute(select(ContactCompany.company_id).join(Contact, Contact.id == ContactCompany.contact_id)
                                    .where(ContactCompany.is_active.is_(True),
                                           (func.lower(Contact.email).like(pat)) | (func.lower(ContactCompany.email).like(pat))))).scalars().all())
+    from app.core.former_infos import entities_of_domain        # TASK-002.8 : ancien domaine (ancien nom de la compagnie)
+    for e in await entities_of_domain(db, dom):
+        if await db.get(Company, e):
+            found.add(e)
+        else:
+            cid = await _company_of_contact(db, e)
+            if cid:
+                found.add(cid)
     return next(iter(found)) if len(found) == 1 else None
 
 

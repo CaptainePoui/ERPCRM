@@ -8,7 +8,7 @@ from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router, former_infos as former_infos_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -98,6 +98,7 @@ app.include_router(mailboxes_router.router, prefix="/api/v1/mailboxes", tags=["m
 app.include_router(mail_router.router, prefix="/api/v1/mail", tags=["mail"])
 app.include_router(employees.router, prefix="/api/v1/employees", tags=["employees"])
 app.include_router(sales_reps_router.router, prefix="/api/v1/sales-reps", tags=["sales-reps"])
+app.include_router(former_infos_router.router, prefix="/api/v1/former-infos", tags=["former-infos"])
 app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(sipv_events.router, prefix="/api/v1/sipv", tags=["sipv"])
 app.include_router(tracking.router, prefix="/api/v1/track", tags=["tracking"])

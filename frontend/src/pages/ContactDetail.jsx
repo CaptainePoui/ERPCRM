@@ -20,6 +20,7 @@ import { contrastText } from '../utils/color'
 import './CompanyDetail.css'
 import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
+import FormerInfoSection from '../components/FormerInfoSection'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
 function InlineField({ label, value, onSave, type = 'text', multiline }) {
@@ -740,7 +741,7 @@ export default function ContactDetail({ isNew }) {
           </span>
         </div>
         {!isNew && c && (
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
             <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
@@ -890,6 +891,8 @@ export default function ContactDetail({ isNew }) {
                 <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
               </div>
             </div>
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Anciennes coordonnées</div>
+            <FormerInfoSection entityId={c.id} kinds={['email', 'phone', 'name']} />
 
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Téléphonie</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>

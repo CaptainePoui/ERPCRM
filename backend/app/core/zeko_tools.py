@@ -1,6 +1,7 @@
 """Outils de Zeko (TASK-006.5 etape 2, 2026-10-18) : Zeko consulte les donnees d'ERPCRM. Il ne modifie aucune donnee
-d'affaires ; seuls ce qu'il a appris et les regles d'association de la banque se changent, apres un « oui » et pour un
-administrateur ou un gestionnaire (TASK-006.6, 2026-10-22). Reponses courtes : sur ce processeur,
+d'affaires ; seuls ce qu'il a appris, les regles d'association de la banque (TASK-006.6, 2026-10-22) et le changement de
+nom d'un client / les anciennes coordonnees (TASK-002.8, 2026-10-23) se changent, apres un « oui » et pour un
+administrateur ou un gestionnaire. Reponses courtes : sur ce processeur,
 chaque mot lu par le modele coute du temps."""
 import json
 import uuid
@@ -84,6 +85,22 @@ TOOLS = [
         "l'utilisateur a répondu oui à ta question « Je … ? » qui décrit le changement exact.",
         {"beneficiaire": {"type": "string"}, "action": {"type": "string", "enum": ["retirer_client", "supprimer", "associer_client"]},
          "client": {"type": "string", "description": "pour associer_client"}}, ["beneficiaire", "action"]),
+    _fn("changer_nom_client", "Changement de nom (ou achat) d'un client : la fiche prend le nouveau nom et garde l'ancien, avec "
+        "ses dates, pour le retrouver encore (recherche, courriels). Ex. un courriel « Strong-MDI a changé de nom pour MDI "
+        "innovations Inc. ». À appeler SEULEMENT après que l'utilisateur a répondu oui à ta question « Je renomme… ? ».",
+        {"client": {"type": "string", "description": "nom actuel dans ERPCRM"}, "nouveau_nom": {"type": "string"},
+         "ancien_nom": {"type": "string", "description": "ancien nom à garder s'il diffère du nom actuel dans ERPCRM (ex. nom légal)"},
+         "ancien_nom_jusqua": {"type": "string", "description": "AAAA-MM-JJ : fin de l'ancien nom (date du courriel si inconnue)"},
+         "ancien_nom_depuis": {"type": "string", "description": "AAAA-MM-JJ, optionnel"},
+         "note": {"type": "string", "description": "d'où vient l'info (ex. courriel de Jean-François Gagnon du 2026-10-23)"}},
+        ["client", "nouveau_nom"]),
+    _fn("ajouter_ancienne_info", "Garde une ancienne coordonnée d'un client ou d'une personne (ancien nom, ancien courriel, ancien "
+        "téléphone) avec ses dates, pour continuer à reconnaître ses courriels et la retrouver. À appeler SEULEMENT après que "
+        "l'utilisateur a répondu oui à ta question « Je garde… comme ancien… ? ».",
+        {"client": {"type": "string"}, "contact": {"type": "string", "description": "prénom et nom, si c'est une personne"},
+         "genre": {"type": "string", "enum": ["nom", "courriel", "telephone"]}, "valeur": {"type": "string"},
+         "jusqua": {"type": "string", "description": "AAAA-MM-JJ"}, "depuis": {"type": "string", "description": "AAAA-MM-JJ"},
+         "note": {"type": "string"}}, ["genre", "valeur"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
 ]
@@ -95,7 +112,8 @@ LABELS = {"chercher_courriels": "cherche dans les courriels", "lire_courriel": "
           "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
           "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "equipements": "lit les équipements",
-          "telephonie": "lit la téléphonie"}
+          "telephonie": "lit la téléphonie", "changer_nom_client": "change le nom d'un client",
+          "ajouter_ancienne_info": "garde une ancienne coordonnée"}
 
 
 def _out(x) -> str:
@@ -153,6 +171,13 @@ async def _resolve_contact(db, name):
     if not res:
         return f"aucune personne ne correspond à « {name} »"
     return {"plusieurs_personnes": [f"{r.label} ({', '.join(await _companies_of_contact(db, r.id)) or 'sans entreprise'})" for r in res]}
+
+
+async def _former(db, entity_id) -> list:
+    from app.core import former_infos as fi
+    from app.models.former_info import FormerInfo
+    rows = (await db.execute(select(FormerInfo).where(FormerInfo.entity_id == entity_id))).scalars().all()
+    return [f"ancien {fi.KIND_FR[f.kind]} : {f.value} {fi.period(f)}".strip() for f in rows]
 
 
 async def _can_change(db, user_id) -> bool:
@@ -443,6 +468,34 @@ async def _run(name, args, db, user_id=None) -> str:
             out.append(item)
         return _out(out or "aucun résultat")
 
+    if name in ("changer_nom_client", "ajouter_ancienne_info"):
+        from app.core import former_infos as fi
+        if not await _can_change(db, user_id):
+            return _out("refusé : seuls un administrateur ou un gestionnaire peuvent changer le nom d'un client ou ses anciennes coordonnées")
+        note = str(args.get("note") or "").strip() or None
+        if name == "changer_nom_client":
+            comp = await _resolve_company(db, args.get("client"))
+            if not isinstance(comp, Company):
+                return _out(comp)
+            old_label = str(args.get("ancien_nom") or "").strip()
+            current = comp.name
+            await fi.rename_company(db, comp, str(args.get("nouveau_nom") or ""), _day(args.get("ancien_nom_jusqua")),
+                                    _day(args.get("ancien_nom_depuis")), note, user_id, source="automatique")
+            if old_label and old_label.lower() != current.lower():
+                await fi.add(db, comp.id, "name", old_label, _day(args.get("ancien_nom_depuis")), _day(args.get("ancien_nom_jusqua")), note, user_id)
+            await db.commit()
+            return _out(f"renommé : « {current} » → « {comp.name} » (ancien nom gardé{', ' + old_label if old_label else ''})")
+        kind = {"nom": "name", "courriel": "email", "telephone": "phone"}.get(str(args.get("genre") or ""))
+        if not kind:
+            return _out("précise le genre : nom, courriel ou telephone")
+        target = await (_resolve_contact(db, args["contact"]) if args.get("contact") else _resolve_company(db, args.get("client")))
+        if not isinstance(target, (Company, Contact)):
+            return _out(target)
+        f = await fi.add(db, target.id, kind, str(args.get("valeur") or ""), _day(args.get("depuis")), _day(args.get("jusqua")), note, user_id)
+        await db.commit()
+        who = target.name if isinstance(target, Company) else f"{target.first_name} {target.last_name}"
+        return _out(f"gardé pour {who} : ancien {fi.KIND_FR[kind]} {f.value} {fi.period(f)}".strip())
+
     if name == "fiche_contact":
         c = await _resolve_contact(db, args.get("contact"))
         if not isinstance(c, Contact):
@@ -451,7 +504,8 @@ async def _run(name, args, db, user_id=None) -> str:
                                 .where(ContactCompany.contact_id == c.id))).scalars().all()
         return _out({"nom": f"{c.first_name} {c.last_name}", "courriel": c.email, "tel": c.phone, "poste": c.extension,
                      "cell": c.mobile, "actif": c.is_active, "notes": (c.notes_internal or "")[:300] or None,
-                     "entreprises": [{"client": x.company.name, "courriel": x.email, "principal": x.is_primary, "actif": x.is_active} for x in ccs]})
+                     "entreprises": [{"client": x.company.name, "courriel": x.email, "principal": x.is_primary, "actif": x.is_active} for x in ccs],
+                     "anciennes_coordonnees": await _former(db, c.id)})
 
     if name == "lire_ticket":
         ref = str(args.get("ticket") or "").strip().lstrip("#").upper()
@@ -477,7 +531,6 @@ async def _run(name, args, db, user_id=None) -> str:
         rows = (await db.execute(q.limit(20))).scalars().all()
         etat = {"matched": "dépôt associé par Zéko", "linked": "dépôt déjà associé à cette facture", "a_verifier": "à vérifier",
                 "parsed": "en attente du dépôt", "failed": "refusé ou illisible"}
-        from app.models.invoice import Invoice
         from app.models.client_payment import ClientPayment, PaymentAllocation
         out = []
         for r in rows:
@@ -529,6 +582,7 @@ async def _run(name, args, db, user_id=None) -> str:
             "contacts": [{"nom": f"{c.contact.first_name} {c.contact.last_name}", "fonctions": [f.function.name for f in c.functions if f.function],
                           "courriel": c.email or c.contact.email, "tel": c.contact.phone, "poste": c.contact.extension,
                           "cell": c.contact.mobile, "principal": c.is_primary} for c in ccs],
+            "anciens_noms_et_coordonnees": await _former(db, comp.id),
             "factures_impayees": [{"no": i.number, "date": i.issue_date, "total": float(i.total), "statut": INVOICE_STATUS_FR.get(i.status, i.status)} for i in unpaid],
         })
 

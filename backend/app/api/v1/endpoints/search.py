@@ -84,8 +84,20 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
             return max(SequenceMatcher(None, sq, p).ratio() for p in parts if p)
         scored = sorted(((score(c), c) for c in allc), key=lambda t: -t[0])
         found = [c for sc, c in scored if sc >= 0.66][:4]
+    # TASK-002.8 : anciens noms et anciennes coordonnees (« str » -> MDI innovations Inc., anciennement Strong-MDI)
+    from app.core import former_infos as fi
+    former = await fi.entities_matching(db, q)
+    seen = {c.id for c in found}
+    if former:
+        extra = (await db.execute(select(Company).where(Company.id.in_([e for e in former if e not in seen]))
+                                  .order_by(Company.is_active.desc(), Company.name).limit(6))).scalars().all()
+        found = list(found) + list(extra)
     for c in found:
-        results.append(SearchResult(id=c.id, type="company", label=c.name, sub=c.account_number))
+        olds = [f for f in former.get(c.id, []) if f.kind == "name"]
+        sub = c.account_number
+        if olds and c.id not in seen:
+            sub = f"anciennement {olds[0].value}" + (f" · {c.account_number}" if c.account_number else "")
+        results.append(SearchResult(id=c.id, type="company", label=c.name, sub=sub))
 
     contacts = await db.execute(
         select(Contact)
@@ -106,11 +118,21 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
         .distinct()
         .limit(5)
     )
-    for c in contacts.scalars().unique():
+    contact_rows = list(contacts.scalars().unique())
+    have = {c.id for c in contact_rows}
+    old_ids = [e for e in former if e not in have and e not in seen]
+    if old_ids:
+        contact_rows += list((await db.execute(select(Contact).options(selectinload(Contact.contact_companies).selectinload(ContactCompany.company))
+                                               .where(Contact.id.in_(old_ids)).limit(5))).scalars().unique())
+    for c in contact_rows:
         name = f"{c.first_name} {c.last_name}".strip()
         office = _office_company(c)
         phone_display = (office.office_phone if office else None) or c.phone or c.mobile
-        results.append(SearchResult(id=c.id, type="contact", label=name, sub=c.email or phone_display))
+        sub = c.email or phone_display
+        if c.id not in have and former.get(c.id):
+            f = former[c.id][0]
+            sub = f"ancien {fi.KIND_FR[f.kind]} : {f.value}"
+        results.append(SearchResult(id=c.id, type="contact", label=name, sub=sub))
 
     # TASK-052 : factures (par numero, ou par montant) et paiements (par montant)
     from app.models.invoice import Invoice

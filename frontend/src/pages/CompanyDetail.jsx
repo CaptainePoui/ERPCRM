@@ -25,6 +25,7 @@ import ConnectivityPanel from '../components/ConnectivityPanel'
 import BranchSection, { ParentBadge } from '../components/BranchSection'
 import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
+import FormerInfoSection, { RenameCompanyModal } from '../components/FormerInfoSection'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
 const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
@@ -583,6 +584,7 @@ export default function CompanyDetail({ isNew }) {
     await load()
   }
 
+  const [renaming, setRenaming] = useState(null)   // TASK-002.8 : nouveau nom en attente (changement de nom ou correction ?)
   const [confirmSipv, setConfirmSipv] = useState(null) // null | true | false — valeur ciblee en attente de confirmation
   const [sipvError, setSipvError] = useState('')
   // TASK-021/S032 : facturation récurrente obligatoire à l'activation -- date
@@ -626,6 +628,7 @@ export default function CompanyDetail({ isNew }) {
           </div>
         )}
       </div>
+      {renaming && c && <RenameCompanyModal company={c} newName={renaming} onClose={() => setRenaming(null)} onDone={() => { setRenaming(null); load() }} />}
       {showTicket && c && (
         <NewTicketModal
           prefillCompany={{ id: c.id, label: c.name }}
@@ -727,7 +730,7 @@ export default function CompanyDetail({ isNew }) {
                         <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
                           apiPath="/v1/companies" />
                       </div>
-                      <InlineField label="Nom de compagnie" value={c.name} onSave={v => saveField('name', v)} />
+                      <InlineField label="Nom de compagnie" value={c.name} onSave={v => { if ((v || '').trim() && v.trim() !== c.name) setRenaming(v.trim()) }} />
                       <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
                       <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
                       <div className="ifield">
@@ -769,6 +772,8 @@ export default function CompanyDetail({ isNew }) {
                     <AddressesSection entityId={id} company={c} onRefresh={load} />
                     <div className="ifield-section-title" style={{ marginTop: 24 }}>Coordonnées</div>
                     <CommunicationsSection entityId={id} company={c} onRefresh={load} />
+                    <div className="ifield-section-title" style={{ marginTop: 24 }}>Anciens noms et coordonnées</div>
+                    <FormerInfoSection entityId={id} refreshKey={c.name} />
                   </div>
                 </div>
                 <CompanyDetailsSection c={c} saveField={saveField} />
