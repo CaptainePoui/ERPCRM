@@ -1538,6 +1538,13 @@ Date(s) de travail : 2026-10-23
 - `Tasks.jsx` `TimedChips` (mois et semaine) : la zone sous le numéro du jour va de 7 h 30 (haut) à 16 h 30 (bas), lignes aux heures (aux 3 h si la case est petite, « 8 h… 16 h » dans la 1re colonne de la semaine) ; chaque pastille à la hauteur de son heure, plus tôt collée en haut, plus tard en bas, jamais superposées ; journée entière en haut. Case trop petite (cellulaire) : liste dans l'ordre des heures, qui défile. Clic → « Ajouter le mercredi 14 octobre vers 10 h 15 » et heures pré-remplies (au quart d'heure).
 - Vérifié (Playwright, sans rien enregistrer) : mois et semaine, 1920 et iPhone 13 — date et heure du clic dans les champs, sans défilement horizontal.
 
+### TASK-015.19 [x] RDV et appels toujours liés à un ticket
+Demandé : 2026-10-23 (Philippe : « j'aimerais que ça fasse un ticket automatique quand je mets un RDV ou un appel, je veux que toutes les interactions passent par les tickets »). Travail : 2026-10-23.
+- Agenda : un RDV ou un appel exige une compagnie ou un contact (refusé par `POST /v1/google-calendar/events` AVANT de créer l'événement Google) ; le ticket existait déjà (TASK-015.15) mais seulement quand un client était choisi. Nouveau bouton « Perso (sans client) » : seul événement sans ticket (`personal: true`).
+- Prise de RDV en ligne (`/appointments/book`) : crée un ticket (numéroté, en cours, lié à l'événement Google) au lieu d'une tâche.
+- Supprimer un RDV lié à un ticket : popup « ATTENTION » (le ticket reste la trace), puis, s'il est ouvert, « Fermer aussi le ticket ? » (`PUT /tickets/{id}` status ferme ; facture le temps facturable s'il y en a). `GET /events/{id}/ticket` renvoie aussi numéro et statut.
+- Vérifié : RDV sans client refusé (400) ; réservation en ligne simulée dans une transaction annulée → ticket T-… créé ; écran mesuré 1920 et iPhone 13.
+
 ## TASK-016 [ERPCRM] [x] Contact — champs SIPV
 Classification: HISTORICAL
 

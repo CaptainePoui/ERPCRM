@@ -8,7 +8,7 @@ import QuickNewContact from '../components/QuickNewContact'
 import UnsavedChangesPrompt from '../components/UnsavedChangesPrompt'
 import useUnsavedChangesGuard from '../hooks/useUnsavedChangesGuard'
 import { parseDay } from '../utils/date'
-import { askConfirm } from '../components/Dialog'
+import { askConfirm, askChoice } from '../components/Dialog'
 
 const PRIORITY_LABELS = { basse: 'Basse', normale: 'Normale', haute: 'Haute', urgente: 'Urgente' }
 const PRIORITY_COLORS = { basse: 'var(--c-muted)', normale: 'var(--brand)', haute: '#D97706', urgente: '#DC2626' }
@@ -1190,14 +1190,15 @@ export default function Tasks({ defaultView = 'list' }) {
     const x = Math.min(h * 60 + mi + m, 23 * 60 + 59)
     return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
   }
-  function pickEvent(title, minutes, date, time) {
+  function pickEvent(title, minutes, date, time, personal = false) {
     const d = date || quickAddDate?.date
     const t = time || quickAddDate?.time || '09:00'
     setQuickAddDate(null)
-    setEditingGoogleEvent({ mode: 'create', date: d, endDate: d, title, description: '', location: '', startTime: t, endTime: plusMinutes(t, minutes) })
+    setEditingGoogleEvent({ mode: 'create', personal, date: d, endDate: d, title, description: '', location: '', startTime: t, endTime: plusMinutes(t, minutes) })
   }
   const pickRdv = (date, time) => pickEvent('RDV - ', 60, date, time)
   const pickAppel = (date, time) => pickEvent('Appel - ', 30, date, time)
+  const pickPerso = (date, time) => pickEvent('', 60, date, time, true)
   function openEditGoogleEvent(e) {
     const start = googleEventDate(e)
     const end = e.all_day ? start : new Date(e.end)
@@ -1390,6 +1391,7 @@ export default function Tasks({ defaultView = 'list' }) {
           onClose={() => setQuickAddDate(null)}
           onPickRdv={pickRdv}
           onPickAppel={pickAppel}
+          onPickPerso={pickPerso}
         />
       )}
 
@@ -1404,7 +1406,7 @@ export default function Tasks({ defaultView = 'list' }) {
   )
 }
 
-function QuickAddChooser({ date, time, onClose, onPickRdv, onPickAppel }) {
+function QuickAddChooser({ date, time, onClose, onPickRdv, onPickAppel, onPickPerso }) {
   return (
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 340 }}>
@@ -1412,6 +1414,7 @@ function QuickAddChooser({ date, time, onClose, onPickRdv, onPickAppel }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={() => onPickRdv()}>🧑‍🔧 RDV</button>
           <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={() => onPickAppel()}>📞 Appel</button>
+          <button className="btn-secondary" style={{ textAlign: 'left', padding: '10px 14px' }} onClick={() => onPickPerso()}>🗓️ Perso (sans client)</button>
         </div>
         <div className="modal-actions">
           <button className="btn-secondary" onClick={onClose}>Annuler</button>
@@ -1428,6 +1431,8 @@ function formatAddress(a) {
 
 function GoogleEventModal({ data, onClose, onSaved }) {
   const isEdit = data.mode === 'edit'
+  // RDV et appel : toujours un client, donc un ticket (TASK-015.19) ; seul « Perso (sans client) » n'en a pas
+  const personal = !!data.personal
   const [title, setTitle] = useState(data.title || '')
   const [description, setDescription] = useState(data.description || '')
   const [location, setLocation] = useState(data.location || '')
@@ -1471,10 +1476,10 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const [savedEvent, setSavedEvent] = useState(isEdit ? { event_id: data.event_id, calendar_id: data.calendar_id } : null)
 
   useEffect(() => {
-    if (isEdit) return
+    if (isEdit || personal) return
     api.get('/v1/companies').then(r => setCompanies(r.data))
     api.get('/v1/contacts').then(r => setContacts(r.data))
-  }, [isEdit])
+  }, [isEdit, personal])
 
   useEffect(() => {
     if (!isEdit) return
@@ -1531,13 +1536,14 @@ function GoogleEventModal({ data, onClose, onSaved }) {
           company_id: selectedCompany?.id || null,
           contact_id: selectedContact?.id || null,
           send_confirmation: sendConfirmation,
+          personal,
         })
         setDirty(false)
         setSavedEvent({ event_id: r.data.id, calendar_id: r.data.calendar_id })
         if (r.data.ticket_id) {
           setTicket({ id: r.data.ticket_id, title, company_name: selectedCompany?.label || '' })
         } else {
-          // Aucune compagnie/contact -- rien a lier, le RDV est simple et complet.
+          // Evenement perso -- rien a lier, il est simple et complet.
           onSaved()
         }
       }
@@ -1547,11 +1553,23 @@ function GoogleEventModal({ data, onClose, onSaved }) {
     } finally { setSaving(false) }
   }
 
+  // Le ticket reste la trace de l'interaction : avertir, puis demander s'il faut aussi le fermer (TASK-015.19)
   async function del() {
-    if (!await askConfirm('Supprimer cet événement Google ?')) return
+    const open = ticket && !['ferme', 'facture'].includes(ticket.status)
+    const label = ticket ? `le ticket ${ticket.number ? ticket.number + ' ' : ''}« ${ticket.title} »${ticket.company_name ? ` (${ticket.company_name})` : ''}` : ''
+    if (ticket) {
+      if (!await askConfirm(`ATTENTION : ce RDV est lié à ${label}. Le ticket n'est pas supprimé : il reste la trace de l'interaction avec le client.\n\nSupprimer le RDV de l'agenda ?`, { danger: true, okLabel: 'Supprimer le RDV' })) return
+    } else if (!await askConfirm('Supprimer cet événement de l\'agenda ?')) return
+    let closeTicket = false
+    if (open) {
+      const choice = await askChoice(`Le RDV est annulé. Fermer aussi ${label} ? S'il contient du temps facturable, la fermeture le facture.`,
+        [['keep', 'Garder le ticket ouvert'], ['close', 'Fermer le ticket']])
+      closeTicket = choice === 'close'
+    }
     setDeleting(true)
     try {
       await api.delete('/v1/google-calendar/events', { data: { calendar_id: data.calendar_id, event_id: data.event_id } })
+      if (closeTicket) await api.put(`/v1/tickets/${ticket.id}`, { status: 'ferme' })
       onSaved()
     } catch (e) {
       setError(e.response?.data?.detail || 'Erreur lors de la suppression')
@@ -1560,13 +1578,14 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   }
 
   const justCreated = !isEdit && !!savedEvent
+  const needsClient = !isEdit && !personal && !selectedCompany && !selectedContact
   const locked = justCreated // champs verrouilles -- RDV deja enregistre, plus rien a re-sauvegarder ici
 
   return (
     <>
     <div className="modal-overlay">
       <div className="modal-box" onClick={e => e.stopPropagation()} style={{ width: 480 }}>
-        <h3 className="modal-title">{isEdit ? 'Modifier' : justCreated ? 'RDV créé ✓' : 'Ajouter'} un événement</h3>
+        <h3 className="modal-title">{isEdit ? 'Modifier un événement' : justCreated ? 'RDV créé ✓' : personal ? 'Ajouter un événement perso' : 'Ajouter un RDV ou un appel'}</h3>
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginBottom: 10 }}>{error}</div>}
         <div className="form-group"><label>Titre</label><input value={title} onChange={e => setTitle(e.target.value)} autoFocus disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         <div style={{ display: 'flex', gap: 10 }}>
@@ -1577,7 +1596,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
           <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
           <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         </div>
-        {!isEdit && !justCreated && (
+        {!isEdit && !justCreated && !personal && (
           <>
             <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} onCreate={name => setQuickCompanyName(name)} placeholder="Rechercher une compagnie..." />
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
@@ -1615,6 +1634,8 @@ function GoogleEventModal({ data, onClose, onSaved }) {
           </label>
         )}
 
+        {needsClient && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginBottom: 10 }}>Choisis la compagnie ou le contact : un ticket est créé avec le RDV ou l'appel.</div>}
+
         {ticket && (
           <div style={{ borderTop: '1px solid var(--c-border)', margin: '16px 0', paddingTop: 16 }}>
             <a href={`/tickets/${ticket.id}`} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-block', marginBottom: 12, fontSize: 13, color: 'var(--brand)', textDecoration: 'none', background: 'var(--brand)11', padding: '4px 10px', borderRadius: 8 }}>
@@ -1631,7 +1652,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
           ) : (
             <>
               <button className="btn-secondary" onClick={onClose}>Annuler</button>
-              <button className="btn-primary" onClick={save} disabled={saving || !title.trim()}>{saving ? '...' : 'Enregistrer'}</button>
+              <button className="btn-primary" onClick={save} disabled={saving || !title.trim() || needsClient}>{saving ? '...' : 'Enregistrer'}</button>
             </>
           )}
         </div>

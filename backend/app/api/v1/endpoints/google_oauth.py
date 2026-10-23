@@ -138,6 +138,7 @@ class EventCreate(BaseModel):
     company_id: uuid.UUID | None = None
     contact_id: uuid.UUID | None = None
     send_confirmation: bool = False
+    personal: bool = False      # « Perso (sans client) » : seul evenement sans ticket (TASK-015.19)
 
 
 class EventUpdate(BaseModel):
@@ -173,12 +174,16 @@ async def _resolve_company_id(db: AsyncSession, company_id: uuid.UUID | None, co
 
 @router.post("/events")
 async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    # Toute interaction avec un client passe par un ticket (TASK-015.19, Philippe 2026-10-23) : un RDV ou un appel
+    # a donc toujours un client ; seul un evenement « Perso » n'en a pas -- verifie AVANT de creer l'evenement Google
+    resolved_company_id = None if payload.personal else await _resolve_company_id(db, payload.company_id, payload.contact_id)
+    if not payload.personal and not resolved_company_id:
+        raise HTTPException(status_code=400, detail="Choisis la compagnie ou le contact : un RDV ou un appel crée toujours un ticket.")
     event_id = await create_event(db, payload.title, payload.description or "", payload.location, payload.start, payload.end)
     if not event_id:
         raise HTTPException(status_code=400, detail="Échec de la création — Google Calendar est-il bien connecté ?")
 
     ticket_id = None
-    resolved_company_id = await _resolve_company_id(db, payload.company_id, payload.contact_id)
 
     if resolved_company_id:
         local_start = payload.start.astimezone(_LOCAL_TZ)
@@ -239,7 +244,8 @@ async def get_event_ticket(event_id: str, calendar_id: str = Query("primary"), d
     ticket = result.scalar_one_or_none()
     if not ticket:
         return None
-    return {"id": str(ticket.id), "title": ticket.title, "company_name": ticket.company.name}
+    return {"id": str(ticket.id), "number": ticket.number, "title": ticket.title, "company_name": ticket.company.name,
+            "status": ticket.status}
 
 
 @router.put("/events")

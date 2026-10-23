@@ -19,7 +19,7 @@ from app.models.entity import Entity, EntityType
 from app.models.contact import Contact
 from app.models.company import Company
 from app.models.contact_company import ContactCompany
-from app.models.task import Task
+from app.models.ticket import Ticket
 from app.core.email import send_rdv_confirmation_email
 
 router = APIRouter()
@@ -214,17 +214,19 @@ async def book_appointment(payload: BookingRequest, db: AsyncSession = Depends(g
     task_description = payload.description
     if payload.address:
         task_description = f"Adresse : {payload.address}\n\n{task_description}"
-    task = Task(
+    # Toute interaction avec un client passe par un ticket (TASK-015.19, 2026-10-23) -- comme un RDV de l'agenda
+    # (TASK-015.15), plus une tache ; cree directement, sans le courriel « ticket ouvert » (la confirmation suit)
+    ticket = Ticket(
         title=f"{label} — {payload.first_name} {payload.last_name}",
         description=task_description,
         company_id=company.id,
         contact_id=contact.id,
-        due_date=payload.date,
-        due_time=payload.time,
-        priority="normale",
+        priority="normal",
         status="en_cours",
     )
-    db.add(task)
+    db.add(ticket)
+    from app.core.numbering import assign_ticket_number
+    await assign_ticket_number(db, ticket)
     await db.flush()
 
     start_utc = start_local.astimezone(timezone.utc)
@@ -246,9 +248,10 @@ async def book_appointment(payload: BookingRequest, db: AsyncSession = Depends(g
         description=payload.description,
         contact_id=contact.id,
         company_id=company.id,
-        task_id=task.id,
         google_event_id=google_event_id,
     )
+    if google_event_id:
+        ticket.google_calendar_event_id, ticket.google_calendar_id = google_event_id, "primary"
     db.add(appt)
     await db.commit()
 
