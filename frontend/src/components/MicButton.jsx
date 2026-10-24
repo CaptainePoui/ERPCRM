@@ -35,15 +35,21 @@ export function NameDeviceModal({ onClose, onDone }) {
   )
 }
 
-export default function MicButton({ onText, style }) {
+// silenceStop (secondes) : la dictée s'arrête seule après ce temps sans parler, une fois qu'on a commencé (TASK-006.7)
+const SPEAKING = 0.02, QUIET = 0.012          // niveau du micro (moyenne quadratique) : parole / silence
+
+export default function MicButton({ onText, style, silenceStop }) {
   const [state, setState] = useState('idle')        // idle | recording | transcribing
   const [secs, setSecs] = useState(0)
   const [naming, setNaming] = useState(false)
   const [notice, setNotice] = useState(null)
   const rec = useRef(null)
   const timer = useRef(null)
+  const listen = useRef(null)                     // surveillance du silence
+  const onTextRef = useRef(onText)
+  onTextRef.current = onText
 
-  useEffect(() => () => { clearInterval(timer.current); rec.current?.stream.getTracks().forEach(t => t.stop()) }, [])
+  useEffect(() => () => { clearInterval(timer.current); listen.current?.(); rec.current?.stream.getTracks().forEach(t => t.stop()) }, [])
 
   async function start(device) {
     setNotice(null)
@@ -57,14 +63,46 @@ export default function MicButton({ onText, style }) {
       mr.start()
       rec.current = mr
       setSecs(0); setState('recording')
+      if (silenceStop) watchSilence(stream)
       timer.current = setInterval(() => setSecs(s => s + 1), 1000)
     } catch (e) {
       setNotice(e.name === 'NotAllowedError' ? 'Le navigateur a refusé le micro : autorise-le dans les réglages du site.' : (e.message || 'Micro introuvable.'))
     }
   }
 
+  // Arrêt automatique : silenceStop secondes sans parler après avoir parlé
+  function watchSilence(stream) {
+    const ctx = new AudioContext()
+    const an = ctx.createAnalyser(); an.fftSize = 1024
+    ctx.createMediaStreamSource(stream).connect(an)
+    const buf = new Float32Array(an.fftSize)
+    let spoke = false, quietSince = null
+    const iv = setInterval(() => {
+      an.getFloatTimeDomainData(buf)
+      let sum = 0
+      for (const v of buf) sum += v * v
+      const level = Math.sqrt(sum / buf.length)
+      if (level > SPEAKING) { spoke = true; quietSince = null }
+      else if (spoke && level < QUIET) {
+        quietSince = quietSince || Date.now()
+        if (Date.now() - quietSince > silenceStop * 1000) finish()
+      }
+    }, 200)
+    listen.current = () => { clearInterval(iv); ctx.close(); listen.current = null }
+  }
+
+  function finish() {
+    if (rec.current?.state !== 'recording') return
+    listen.current?.()
+    clearInterval(timer.current)
+    rec.current.stop()
+    rec.current.stream.getTracks().forEach(t => t.stop())
+    setState('transcribing')
+  }
+
   async function click() {
     if (state === 'recording') {
+      listen.current?.()
       clearInterval(timer.current)
       rec.current.stop()
       rec.current.stream.getTracks().forEach(t => t.stop())
@@ -84,7 +122,7 @@ export default function MicButton({ onText, style }) {
     fd.append('audio', blob, `dictee.${ext}`)
     try {
       const r = await api.post('/v1/speech/transcribe', fd, { timeout: 0 })
-      if (r.data.text) onText(r.data.text)
+      if (r.data.text) onTextRef.current(r.data.text)
       else setNotice('Aucune parole reconnue.')
     } catch (e) {
       setNotice(e.response?.data?.detail || 'La transcription a échoué.')

@@ -117,9 +117,12 @@ function fmtWhen(iso) {
 }
 
 const TOOL_LABELS = { chercher_courriels: 'a cherché dans les courriels', lire_courriel: 'a lu un courriel et ses pièces jointes', transactions_banque: 'a lu le relevé bancaire', regles_apprises: 'a relu ce qu’il a appris', retenir: 'a retenu pour la suite', paiements_carte: 'a lu les reçus de carte', demander_ia_externe: 'a demandé à l’IA externe', chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
-                      lire_ticket: 'a lu un ticket', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
+                      lire_ticket: 'a lu un ticket', ouvrir_page: 'a ouvert la page', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
 
-export default function ZekoChat({ conversationId, onChanged, compact }) {
+// TASK-006.7 (2026-10-24) : la réponse se fait sur le serveur même si la fenêtre se ferme ; en revenant, « Zéko
+// travaille… » s'affiche jusqu'à sa réponse. La dictée part seule à Zéko après 5 s sans parler. onOpenPage(chemin) :
+// Zéko ouvre une page (dans la fenêtre ERPCRM quand il est dans sa fenêtre à part).
+export default function ZekoChat({ conversationId, onChanged, compact, onOpenPage }) {
   const [conv, setConv] = useState(null)
   const [draft, setDraft] = useState('')
   const [live, setLive] = useState(null)        // { text, steps: [], thinking } pendant une réponse
@@ -130,18 +133,32 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
   const [enterSends, setEnterSends] = useEnterSends()
 
   async function load() {
-    if (!conversationId) return
-    setConv((await api.get(`/v1/zeko/conversations/${conversationId}`)).data)
+    if (!conversationId) return null
+    const c = (await api.get(`/v1/zeko/conversations/${conversationId}`)).data
+    setConv(c)
+    return c
   }
-  useEffect(() => { setConv(null); setLive(null); setError(null); load() }, [conversationId])
+  // Réponse en cours sans flux (fenêtre rouverte, connexion coupée) : on regarde toutes les 5 s
+  const [waiting, setWaiting] = useState(false)
+  useEffect(() => { if (conv?.busy && !live) setWaiting(true) }, [conv?.busy, live])
+  useEffect(() => {
+    if (!waiting) return
+    const t = setInterval(async () => {
+      const c = await load().catch(() => null)
+      if (c && !c.busy) { setWaiting(false); onChanged && onChanged() }
+    }, 5000)
+    return () => clearInterval(t)
+  }, [waiting, conversationId])
+  useEffect(() => { setConv(null); setLive(null); setError(null); setWaiting(false); load() }, [conversationId])
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end' }) }, [conv?.messages?.length, live?.text, live?.steps?.length])
   useEffect(() => () => abortRef.current?.abort(), [])
   // Le curseur reste dans la boîte d'écriture : à l'ouverture, après l'envoi et après la réponse (Philippe, 2026-10-18)
   useEffect(() => { if (conv && !live) inputRef.current?.focus() }, [conv?.id, live])
 
-  async function send() {
-    const text = draft.trim()
-    if (!text || live) return
+  async function send(extra) {
+    const text = (extra ? `${draft.trim()} ${extra}` : draft).trim()
+    if (extra && (live || waiting)) { setDraft(text); return }     // dictée pendant que Zéko travaille : gardée à envoyer
+    if (!text || live || waiting) return
     setDraft(''); setError(null)
     setConv(c => ({ ...c, messages: [...c.messages, { id: `tmp-${Date.now()}`, role: 'user', content: text, created_at: new Date().toISOString(), author_name: 'Moi' }] }))
     setLive({ text: '', steps: [], thinking: true })
@@ -150,6 +167,7 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
     try {
       await streamZeko(`/api/v1/zeko/conversations/${conversationId}/messages`, { content: text }, ev => {
         if (ev.type === 'erreur') setError(ev.texte)
+        else if (ev.type === 'ouvrir') onOpenPage && onOpenPage(ev.chemin)
         else setLive(l => zekoReducer(l, ev))
       }, ctrl.signal)
     } catch (e) {
@@ -157,9 +175,14 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
     } finally {
       abortRef.current = null
       setLive(null)
-      await load()
+      await load().catch(() => null)
       onChanged && onChanged()
     }
+  }
+
+  async function stop() {
+    await api.post(`/v1/zeko/conversations/${conversationId}/stop`).catch(() => {})
+    abortRef.current?.abort()
   }
 
   async function remove() {
@@ -191,6 +214,12 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
               {m.role === 'user' ? <div style={{ whiteSpace: 'pre-wrap' }}>{m.content}</div> : <ZekoText text={m.content} />}
             </div>
           ))}
+        {waiting && !live && (
+          <div style={bubble(false)}>
+            <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 2 }}>Zéko</div>
+            <div style={{ color: 'var(--c-faint)', fontSize: 12, fontStyle: 'italic' }}>Zéko travaille sur ta demande…</div>
+          </div>
+        )}
         {live && (
           <>
             {live.steps.map((s, i) => <div key={i} style={{ fontSize: 11, color: 'var(--c-faint)', paddingLeft: 4 }}>Zéko {s}…</div>)}
@@ -208,15 +237,15 @@ export default function ZekoChat({ conversationId, onChanged, compact }) {
       </div>
       <div style={{ padding: '4px 8px 8px', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
         <textarea ref={inputRef} rows={compact ? 2 : 3} value={draft} onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!live) send() } }}
+          onKeyDown={e => { if (isSendKey(e, enterSends)) { e.preventDefault(); if (!live && !waiting) send() } }}
           placeholder="Écrire à Zéko…"
           style={{ flex: 1, resize: 'none', fontSize: 14, padding: 8, borderRadius: 8, border: '1px solid var(--c-border-strong)', background: 'var(--c-surface)', color: 'var(--c-text)' }} />
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <button className="btn-primary" onClick={send} disabled={!!live || !draft.trim()} style={live ? BUSY_RING : undefined}
+          <button className="btn-primary" onClick={() => send()} disabled={!!live || waiting || !draft.trim()} style={live || waiting ? BUSY_RING : undefined}
             title={live ? 'Zéko réfléchit — vous pourrez envoyer quand il aura fini' : undefined}>Envoyer</button>
-          <MicButton onText={t => { setDraft(d => d.trim() ? `${d.trimEnd()} ${t}` : t); inputRef.current?.focus() }} />
-          {live && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={() => abortRef.current?.abort()}>Arrêter</button>}
-          {!live && conv.messages.length > 0 && !conv.ticket_id && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={remove}>Supprimer</button>}
+          <MicButton silenceStop={5} onText={t => send(t)} />
+          {(live || waiting) && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={stop}>Arrêter</button>}
+          {!live && !waiting && conv.messages.length > 0 && !conv.ticket_id && <button className="btn-secondary" style={{ fontSize: 11, padding: '2px 6px' }} onClick={remove}>Supprimer</button>}
         </div>
       </div>
     </div>

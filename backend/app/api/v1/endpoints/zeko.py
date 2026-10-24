@@ -34,7 +34,8 @@ SYSTEM = (
     "équipement ou un ticket : consulte d'abord ; si l'information n'y est pas, dis-le simplement. Sépare ce qui est "
     "confirmé dans ERPCRM de tes hypothèses. Désigne toujours les clients et les personnes par leur nom. Ne montre jamais "
     "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
-    "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Avant de dire qu'une information "
+    "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Quand la demande porte sur un client, une "
+    "personne, un ticket ou une facture précis, ouvre sa page (ouvrir_page) : elle s'affiche dans la fenêtre ERPCRM de l'utilisateur. Avant de dire qu'une information "
     "manque, consulte la fiche qui la contient (contacts, postes, téléphones, adresses, factures impayées : la fiche du "
     "client). Ici, « poste » veut dire le poste téléphonique (extension). Un dépôt « ELAVON MRCH SVC » est un paiement par carte : "
     "son client et sa facture se trouvent dans les reçus de carte des courriels (paiements_carte), jamais dans le nom du "
@@ -66,6 +67,7 @@ class MessageOut(BaseModel):
 
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
+    busy: bool = False             # Zeko est en train de repondre (meme si la fenetre a ete fermee)
 
 class NewConversation(BaseModel):
     ticket_id: uuid.UUID | None = None
@@ -88,7 +90,7 @@ async def _get_conv(db: AsyncSession, cid: uuid.UUID, user: User) -> ZekoConvers
 
 def _detail(c: ZekoConversation) -> ConversationDetail:
     return ConversationDetail(
-        id=c.id, ticket_id=c.ticket_id, title=c.title, updated_at=c.updated_at,
+        id=c.id, ticket_id=c.ticket_id, title=c.title, updated_at=c.updated_at, busy=_busy(c),
         messages=[MessageOut(id=m.id, role=m.role, content=m.content if m.role != "tool" else "",
                              tool_name=m.tool_name, author_name=m.user.full_name if m.user else None, created_at=m.created_at)
                   for m in c.messages if m.role != "assistant" or m.content or not m.tool_calls],
@@ -196,7 +198,7 @@ async def _setup(user: User):
     return system, zeko_tools.TOOLS + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else []), ext
 
 
-async def _turn(s, messages, tool_list, ext, user_id, cid, save):
+async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=False):
     """Un tour de Zeko : flux du modele, outils (jusqu'a 5 tours), evenements SSE. save(role, content, **kw) garde
     les etapes (conversation personnelle : tout ; ticket : seulement la reponse finale)."""
     partial = ""
@@ -241,11 +243,22 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save):
                     result = await zeko_tools.run(x["name"], args, s, user_id)
                 await save("tool", result, tool_call_id=x["id"], tool_name=x["name"])
                 messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
+                if x["name"] == "ouvrir_page":           # la page s'ouvre dans la fenetre ERPCRM de l'utilisateur
+                    try:
+                        page = json.loads(result)
+                        if page.get("chemin"):
+                            yield _sse({"type": "ouvrir", "chemin": page["chemin"], "nom": page.get("ouvert")})
+                    except ValueError:
+                        pass
             partial = None
     except zeko.ZekoUnavailable as e:
         yield _sse({"type": "erreur", "texte": str(e)})
+        if keep_errors:
+            await save("assistant", f"⚠ {e}")
     except Exception as e:
         yield _sse({"type": "erreur", "texte": f"Zéko n'a pas pu répondre : {str(e)[:200]}"})
+        if keep_errors:
+            await save("assistant", f"⚠ Zéko n'a pas pu répondre : {str(e)[:200]}")
     finally:
         if partial:                          # arrete en cours de route : garder ce qui etait ecrit
             try:
@@ -254,22 +267,72 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save):
                 pass
 
 
-def _stream(produce):
+_RUNNING: set = set()          # reponses en cours dans ce processus (garde une reference aux taches)
+BUSY_MAX = 30                  # la reponse en cours se signale toutes les 2 s ; sans signe de vie depuis 30 s, elle est perdue (redemarrage)
+
+
+def _busy(c: ZekoConversation) -> bool:
+    return bool(c.busy_since and (_now() - c.busy_since).total_seconds() < BUSY_MAX)
+
+
+def _stream(produce, cid=None):
+    """Flux SSE d'une reponse. Conversation personnelle (cid) : la reponse se fait dans une tache a part qui continue
+    si la fenetre se ferme (TASK-006.7, 2026-10-24 ; avant, la fermer coupait Zeko et sa reponse etait perdue) ;
+    seul « Arrêter » (stop_requested) la coupe. Fil de ticket : fermer coupe Zeko, comme avant."""
+    q: asyncio.Queue = asyncio.Queue()
+
+    async def release():
+        async with AsyncSessionLocal() as s:
+            c = await s.get(ZekoConversation, cid)
+            if c:
+                c.busy_since, c.stop_requested = None, False
+                await s.commit()
+
+    async def pump():
+        try:
+            async for chunk in produce():
+                await q.put(chunk)
+        finally:
+            if cid:                  # libre avant d'annoncer la fin : l'ecran qui recharge ne voit plus « en cours »
+                try:
+                    await release()
+                except Exception:
+                    pass
+            await q.put(None)
+
+    async def run_detached():
+        work = asyncio.create_task(pump())
+        try:
+            while not work.done():
+                await asyncio.wait({work}, timeout=2)
+                if work.done():
+                    break
+                async with AsyncSessionLocal() as s:   # signe de vie, et « Arrêter » demande ?
+                    c = await s.get(ZekoConversation, cid)
+                    stop = bool(c and c.stop_requested)
+                    if c and not stop:
+                        c.busy_since = _now()
+                        await s.commit()
+                if stop:
+                    work.cancel()
+                    try:
+                        await work
+                    except BaseException:
+                        pass
+        finally:
+            await release()
+
+    if cid:
+        job = asyncio.create_task(run_detached())
+        _RUNNING.add(job)
+        job.add_done_callback(_RUNNING.discard)
+
     async def gen():
         # Sur processeur, le modele peut reflechir plus d'une minute avant le premier mot : sans rien envoyer, le
         # serveur web (et Cloudflare) coupent la connexion (504). On envoie tout de suite, puis toutes les 10 s, une
         # ligne de commentaire SSE (ignoree par l'ecran) tant que Zeko n'a rien a dire.
         yield ": ouvert\n\n"
-        q: asyncio.Queue = asyncio.Queue()
-
-        async def pump():
-            try:
-                async for chunk in produce():
-                    await q.put(chunk)
-            finally:
-                await q.put(None)
-
-        task = asyncio.create_task(pump())
+        task = None if cid else asyncio.create_task(pump())
         try:
             while True:
                 try:
@@ -281,7 +344,7 @@ def _stream(produce):
                     break
                 yield item
         finally:
-            if not task.done():                      # l'ecran a ferme la connexion (Arreter) : couper Zeko
+            if task and not task.done():             # fil de ticket : l'ecran a ferme la connexion, couper Zeko
                 task.cancel()
                 try:
                     await task
@@ -289,6 +352,15 @@ def _stream(produce):
                     pass
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/conversations/{cid}/stop", status_code=204)
+async def stop_conversation(cid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """« Arrêter » : le processus qui fait la reponse la coupe (il regarde toutes les 2 s)."""
+    c = await _get_conv(db, cid, current_user)
+    if _busy(c):
+        c.stop_requested = True
+        await db.commit()
 
 
 @router.post("/conversations/{cid}/messages")
@@ -299,10 +371,13 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
     if not await zeko.enabled():
         raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Zéko)")
     c = await _get_conv(db, cid, current_user)
+    if _busy(c):
+        raise HTTPException(status_code=409, detail="Zéko travaille encore sur ta demande précédente.")
     db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text))
     if not c.title:
         c.title = text[:80]
     c.updated_at = _now()
+    c.busy_since, c.stop_requested = _now(), False
     await db.commit()
     user_id, ticket_id = current_user.id, c.ticket_id
 
@@ -318,10 +393,10 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
                 s.add(ZekoMessage(conversation_id=cid, role=role, content=content, **kw))
                 await s.commit()
 
-            async for chunk in _turn(s, messages, tool_list, ext, user_id, cid, save):
+            async for chunk in _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=True):
                 yield chunk
 
-    return _stream(produce)
+    return _stream(produce, cid)
 
 
 @router.get("/journal")

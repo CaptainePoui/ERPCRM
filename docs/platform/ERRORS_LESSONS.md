@@ -70,6 +70,8 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 
 **2026-10-21 — Test sur un ticket de Philippe (même tâche)** : pour vérifier le bouton « Photo » sur cellulaire, le test a choisi une image dans le ticket T-11000 de Philippe ; choisir une photo démarre le chrono → 18 s ajoutées à son ticket (chrono remis en pause par l'écran, aucune correction faite à la main). Leçon : un test qui agit (photo, message, chrono) se fait sur un ticket d'essai créé pour l'occasion ou dans une transaction annulée, jamais sur un document de Philippe ; et vérifier d'abord quels effets secondaires une action déclenche (ici : démarrage du chrono).
+
+**2026-10-24 — Réponse perdue puis plantage du serveur (même tâche, suivi dans TASK-006.7)** : Philippe a demandé à Zéko s'il avait mis un RDV à l'agenda ; aucune réponse. La réponse se fabriquait dans la connexion de la page : coupée après ~4 min de réflexion, Zéko était arrêté au milieu d'une requête à la base, sans rien enregistrer, et sa connexion PostgreSQL restait ouverte. 7 min plus tard, Python a nettoyé cette connexion orpheline et le module asyncpg (0.31) a fait planter Python 3.14 (`PyObject_GC_Track: object already tracked`) ; le service a redémarré seul. Correction : la réponse d'une conversation se fait dans une tâche à part qui continue si la page se ferme (signe de vie toutes les 2 s, « Arrêter » passe par la base), l'erreur éventuelle est enregistrée dans la conversation. Leçon : un travail long (IA, transcription) ne doit jamais dépendre de la connexion de la page qui l'a demandé ; couper une tâche au milieu d'une requête à la base laisse des connexions orphelines.
 ---
 
 ## TASK-051 — Ordre de redémarrage envoyé au mauvais domaine

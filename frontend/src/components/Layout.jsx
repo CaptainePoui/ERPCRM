@@ -8,6 +8,7 @@ import {
 import './Layout.css'
 import { playReminder, showNotification, fmtSince } from './ticketReminder'
 import ZekoPanel from './ZekoPanel'
+import { listenForZeko } from '../utils/zekoBridge'
 import { useNavTrail } from './navTrail'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
@@ -276,6 +277,9 @@ export default function Layout({ user, onLogout, children }) {
   const location = useLocation()
   useNavTrail()
   const group = activeGroup(location.pathname)
+  const navigateTo = useNavigate()
+  // Les pages que Zéko ouvre depuis sa fenêtre à part s'affichent ici (TASK-006.7)
+  useEffect(() => listenForZeko(navigateTo), [])
 
   useEffect(() => {
     let saved = 'jour'

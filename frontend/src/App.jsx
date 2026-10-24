@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import DialogHost from './components/Dialog'
-import { createBrowserRouter, createRoutesFromElements, RouterProvider, Routes, Route, Navigate } from 'react-router-dom'
+import { createBrowserRouter, createRoutesFromElements, RouterProvider, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
 import Layout from './components/Layout'
+import ZekoPanel from './components/ZekoPanel'
 import Companies from './pages/Companies'
 import CompanyDetail from './pages/CompanyDetail'
 import Contacts from './pages/Contacts'
@@ -38,6 +39,7 @@ import { clearToken } from './services/api'
 import './App.css'
 
 function InternalApp() {
+  const location = useLocation()
   const [user, setUser] = useState(() => {
     const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
     return stored ? JSON.parse(stored) : null
@@ -53,6 +55,8 @@ function InternalApp() {
   }
 
   if (!user) return <Login onLogin={handleLogin} />
+  // Fenêtre Zéko à part, sans menu (TASK-006.7) : à placer sur un autre écran
+  if (location.pathname === '/zeko') return <ZekoPanel standalone onClose={() => window.close()} />
 
   return (
     <Layout user={user} onLogout={handleLogout}>

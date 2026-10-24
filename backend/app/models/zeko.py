@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Integer, DateTime, ForeignKey
+from sqlalchemy import Boolean, String, Text, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -18,6 +18,10 @@ class ZekoConversation(Base):
     title: Mapped[str | None] = mapped_column(String(255))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    # Reponse en cours (TASK-006.7, 2026-10-24) : Zeko finit sa reponse meme si la fenetre se ferme ; « Arrêter » la
+    # demande ici (lu par le processus qui fait le travail, quel qu'il soit)
+    busy_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stop_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
 
     messages: Mapped[list["ZekoMessage"]] = relationship("ZekoMessage", back_populates="conversation", cascade="all, delete-orphan", order_by="ZekoMessage.created_at")
 

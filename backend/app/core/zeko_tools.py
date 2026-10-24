@@ -106,11 +106,15 @@ TOOLS = [
          "note": {"type": "string"}}, ["genre", "valeur"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
+    _fn("ouvrir_page", "Ouvre à l'écran, dans la fenêtre ERPCRM de l'utilisateur, la page d'un client, d'une personne, d'un "
+        "ticket ou d'une facture : à faire quand la demande porte sur un dossier précis, pour qu'il le voie.",
+        {"genre": {"type": "string", "enum": ["client", "personne", "ticket", "facture"]},
+         "nom": {"type": "string", "description": "nom du client ou de la personne, numéro du ticket ou de la facture"}}, ["genre", "nom"]),
 ]
 EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus puissante sur une question TECHNIQUE générale "
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
-LABELS = {"chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
+LABELS = {"ouvrir_page": "ouvre la page", "chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
           "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite", "oublier": "oublie ce qui était appris",
           "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
@@ -538,6 +542,21 @@ async def _run(name, args, db, user_id=None) -> str:
                       "duree_min": round((c.duration or 0) / 60, 1),
                       "transcription": [f"{x.speaker} : {x.text}" for x in c.segments][:200]} for c in rows])
 
+    if name == "ouvrir_page":           # TASK-006.7 : le chemin n'est lu que par l'ecran, Zeko ne le montre pas
+        genre, nom = args.get("genre"), str(args.get("nom") or "").strip()
+        if genre == "client":
+            c = await _resolve_company(db, nom)
+            return _out({"ouvert": c.name, "chemin": f"/companies/{c.id}"} if isinstance(c, Company) else c)
+        if genre == "personne":
+            c = await _resolve_contact(db, nom)
+            return _out({"ouvert": f"{c.first_name} {c.last_name}".strip(), "chemin": f"/contacts/{c.id}"} if isinstance(c, Contact) else c)
+        if genre == "ticket":
+            t = (await db.execute(select(Ticket).where(func.upper(Ticket.number) == nom.lstrip("#").upper()))).scalars().first()
+            return _out({"ouvert": f"ticket {ticket_no(t)}", "chemin": f"/tickets/{t.id}"} if t else "ticket introuvable")
+        if genre == "facture":
+            inv = (await db.execute(select(Invoice).where(func.upper(Invoice.number) == nom.lstrip("#").upper()))).scalars().first()
+            return _out({"ouvert": f"facture {inv.number}", "chemin": f"/invoices/{inv.id}"} if inv else "facture introuvable")
+        return _out("genre inconnu : client, personne, ticket ou facture")
     if name == "lire_ticket":
         ref = str(args.get("ticket") or "").strip().lstrip("#").upper()
         q = select(Ticket).options(selectinload(Ticket.company), selectinload(Ticket.messages).selectinload(TicketMessage.user),
