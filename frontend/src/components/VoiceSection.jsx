@@ -4,7 +4,7 @@ import { askConfirm } from './Dialog'
 import { currentDevice, openMic } from '../utils/audioDevice'
 
 // Voix d'une personne (TASK-055, 2026-10-23 ; Philippe : « dans Employés et dans Contact ») : la personne lit le texte
-// devant le micro a son rythme (jusqu'a 2 min) -> empreinte de sa voix, pour etre reconnue dans les conversations.
+// devant le micro a son rythme (1 min) -> empreinte de sa voix, pour etre reconnue dans les conversations.
 // Employe avec un compte : reconnu comme membre de l'equipe ; client : meme voix que celle apprise par « Qui est… ? ».
 const C = { border: 'var(--c-border)', muted: 'var(--c-muted)', red: '#DC2626' }
 // Une phrase par ligne, en gros caracteres : plus facile a lire a voix haute sans se tromper
@@ -20,7 +20,7 @@ const READ_LINES = [
   "Je reviendrai mardi après-midi pour configurer les postes et montrer comment transférer un appel.",
   "Merci et bonne journée.",
 ]
-const MIN_SECS = 20, MAX_SECS = 120
+const MIN_SECS = 20, MAX_SECS = 60
 const fmtSecs = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 export default function VoiceSection({ contactId, name, framed = true }) {
   const [info, setInfo] = useState(null)
@@ -29,7 +29,8 @@ export default function VoiceSection({ contactId, name, framed = true }) {
   const r = useRef({})
   const load = () => api.get(`/v1/speech/voices/${contactId}`).then(x => setInfo(x.data)).catch(e => setInfo({ error: e.response?.data?.detail || 'Erreur' }))
   useEffect(() => { load() }, [contactId])
-  useEffect(() => () => { clearInterval(r.current.timer); r.current.mr?.stream.getTracks().forEach(t => t.stop()) }, [])
+  // Fenetre fermee pendant la lecture : on abandonne, rien n'est enregistre
+  useEffect(() => () => { r.current.cancelled = true; clearInterval(r.current.timer); r.current.mr?.stream.getTracks().forEach(t => t.stop()) }, [])
   async function start() {
     setMsg(null)
     try {
@@ -39,7 +40,9 @@ export default function VoiceSection({ contactId, name, framed = true }) {
       const mr = new MediaRecorder(stream), chunks = []
       mr.ondataavailable = e => e.data.size && chunks.push(e.data)
       mr.onstop = async () => {
-        stream.getTracks().forEach(t => t.stop()); setSecs(null); setMsg('Analyse de la voix…')
+        stream.getTracks().forEach(t => t.stop())
+        if (r.current.cancelled) return
+        setSecs(null); setMsg('Analyse de la voix…')
         const fd = new FormData(); fd.append('audio', new Blob(chunks, { type: mr.mimeType || 'audio/webm' }), 'voix')
         try { setInfo((await api.post(`/v1/speech/voices/${contactId}`, fd)).data); setMsg('✓ Voix enregistrée.') }
         catch (e) { setMsg(e.response?.data?.detail || 'Échec de l\'enregistrement de la voix.') }
@@ -70,8 +73,8 @@ export default function VoiceSection({ contactId, name, framed = true }) {
           : <button className="btn-secondary" style={{ color: C.red }} disabled={secs < MIN_SECS} onClick={stop}>⏹ {secs < MIN_SECS ? `Continue de lire… ${fmtSecs(secs)}` : `Terminer · ${fmtSecs(secs)} / ${fmtSecs(MAX_SECS)}`}</button>}
         {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
       </div>
-      {secs !== null && <div style={{ fontSize: 21, lineHeight: 1.45, padding: '16px 20px', borderRadius: 8, background: 'var(--c-surface-2)', marginTop: 12, maxWidth: 760 }}>
-        {READ_LINES.map((l, i) => <p key={i} style={{ margin: '0 0 18px', overflowWrap: 'anywhere' }}>{l}</p>)}</div>}
+      {secs !== null && <div style={{ fontSize: 'clamp(18px, 1.2vw, 26px)', lineHeight: 1.45, padding: '2% 3%', borderRadius: 8, background: 'var(--c-surface-2)', marginTop: 12 }}>
+        {READ_LINES.map((l, i) => <p key={i} style={{ margin: '0 0 0.8em' }}>{l}</p>)}</div>}
     </div>
   )
 }

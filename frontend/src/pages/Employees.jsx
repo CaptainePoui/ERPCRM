@@ -124,7 +124,7 @@ function EmployeesTab() {
 
       {voiceOf && (
         <div className="modal-overlay">
-          <div className="modal-box" style={{ maxWidth: 560, width: '100%' }}>
+          <div className="modal-box" style={{ width: '60vw', maxHeight: '90vh', overflowY: 'auto' }}>
             <h3 className="modal-title">Voix de {voiceOf.first_name} {voiceOf.last_name}</h3>
             <VoiceSection contactId={voiceOf.contact_id} name={`${voiceOf.first_name} ${voiceOf.last_name}`.trim()} framed={false} />
             <div className="modal-actions"><button className="btn-secondary" onClick={() => setVoiceOf(null)}>Fermer</button></div>
