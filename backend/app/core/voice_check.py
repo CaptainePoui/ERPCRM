@@ -60,7 +60,8 @@ def tokens(text: str) -> list[str]:
 
 
 def _close(a: str, b: str) -> bool:
-    return a == b or (len(a) > 3 and SequenceMatcher(None, a, b).ratio() >= 0.8)
+    # « qu' » lu « que », « j' » lu « je »
+    return a == b or (len(a) <= 2 and b == a + "e") or (len(a) > 3 and SequenceMatcher(None, a, b).ratio() >= 0.8)
 
 
 def compare(lines: list[int], heard: str) -> dict[int, list[bool]]:
@@ -77,8 +78,10 @@ def compare(lines: list[int], heard: str) -> dict[int, list[bool]]:
         if tag == "equal":
             hit[i1:i2] = [True] * (i2 - i1)
         elif tag == "replace":         # mot mal transcrit mais proche (« reconnaisse » / « reconnaise »)
+            # un mot coupe en deux par la transcription (« ERPCRM » -> « ERP CRM ») compte aussi
+            joined = got[j1:j2] + [a + b for a, b in zip(got[j1:j2], got[j1 + 1:j2])]
             for i in range(i1, i2):
-                hit[i] = any(_close(expected[i], g) for g in got[j1:j2])
+                hit[i] = any(_close(expected[i], g) for g in joined)
     result = {li: [True] * len(READ_LINES[li].split(" ")) for li in lines}
     for (li, wi), ok in zip(owner, hit):
         result[li][wi] = result[li][wi] and ok
@@ -109,6 +112,7 @@ async def _verify(check_id) -> None:
             # phrase relue : un mot deja reconnu le reste
             new[li] = [a or b for a, b in zip(new[li], flags)] if check.line is not None and old else flags
         vp.check_lines = new
+        vp.updated_at = vp.updated_at       # la verification ne change pas la date de la voix
         remove_file(check)
         await db.delete(check)
         await db.commit()

@@ -169,10 +169,6 @@ export default function VoiceSection({ contactId, name, framed = true }) {
           {result && !fullChecking && <button className="btn-secondary" onClick={() => setShowCheck(v => !v)}>{showCheck ? 'Masquer la vérification' : 'Vérifier'}</button>}
           {known && <button className="btn-secondary" style={{ color: C.red }} onClick={forget}>Effacer la voix</button>}
         </>}
-        {(phase === 'countdown' || phase === 'recording') && <>
-          <button className="btn-secondary" style={{ color: C.red, borderColor: '#FCA5A5', fontWeight: 700 }} onClick={finish}>{phase === 'countdown' ? 'Annuler' : '⏹ Fin'}</button>
-          {phase === 'recording' && <span style={{ color: C.red, fontWeight: 600, animation: 'voice-pulse 1.2s infinite' }}>● Enregistrement en cours</span>}
-        </>}
         {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
       </div>
 
@@ -183,6 +179,13 @@ export default function VoiceSection({ contactId, name, framed = true }) {
       {(phase === 'countdown' || phase === 'recording') && lines.length > 0 && (
         <div style={big}>
           {shown.map(([l, i]) => <p key={i} style={{ margin: '0 0 0.8em' }}>{l}</p>)}
+        </div>
+      )}
+      {/* Fin en bas, sous le texte : on le trouve en terminant la lecture */}
+      {(phase === 'countdown' || phase === 'recording') && (
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginTop: 12 }}>
+          <button className="btn-secondary" style={{ color: C.red, borderColor: '#FCA5A5', fontWeight: 700 }} onClick={finish}>{phase === 'countdown' ? 'Annuler' : '⏹ Fin'}</button>
+          {phase === 'recording' && <span style={{ color: C.red, fontWeight: 600, animation: 'voice-pulse 1.2s infinite' }}>● Enregistrement en cours</span>}
         </div>
       )}
 
