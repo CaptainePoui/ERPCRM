@@ -150,7 +150,7 @@ export default function VoiceSection({ contactId, name, framed = true }) {
   const total = result ? result.flat().length : 0
   const heard = result ? result.flat().filter(Boolean).length : 0
   const shown = target == null ? lines.map((l, i) => [l, i]) : [[lines[target], target]]
-  const big = { fontSize: 'clamp(18px, 1.2vw, 26px)', lineHeight: 1.45, padding: '2% 3%', borderRadius: 8, background: 'var(--c-surface-2)', marginTop: 12 }
+  const big = { fontSize: 'clamp(17px, 1.1vw, 24px)', lineHeight: 1.45, padding: '2% 3%', borderRadius: 8, background: 'var(--c-surface-2)', marginTop: 12 }
 
   return (
     <div style={framed ? { border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 } : undefined}>
