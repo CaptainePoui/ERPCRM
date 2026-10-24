@@ -888,6 +888,11 @@ Date(s) de travail : 2026-10-17, 2026-10-18
 - Zéko (`core/zeko_tools.py`) : `regles_banque` (lecture), `changer_regle_banque` (retirer_client / supprimer / associer_client), `oublier` ; changement seulement après un « oui » à « Je … ? » et pour administrateur/gestionnaire (`_can_change`). Consigne SYSTEM mise à jour.
 - Frontend : onglet **Zéko** dans Administration (sous-onglets Réglages, Ce que Zéko a appris, Règles de la banque, Propositions de paiement) ; `components/BankRulesPanel.jsx` partagé avec Banque › Règles de transaction (bouton « Retirer le client » quand la règle a aussi un fournisseur ; fiches empilées sur cellulaire). Mesuré 1920 et 390 : aucun défilement horizontal, aucun bouton qui déborde.
 
+### TASK-006.7 [ ] Zéko met des RDV et appels à l'agenda (après un oui) ; une réponse ne se perd plus si la page se ferme
+- Date de demande : 2026-10-24 (Philippe : « j'ai demandé à Zéko de mettre à l'agenda quelque chose et il ne l'a pas fait... il faudrait qu'il fasse la différence ou au pire enlever la règle qu'il ne doit pas répondre à tout si elle est problématique »)
+- Constat 2026-10-24 : Zéko n'a aucun outil pour l'agenda (il ne peut que lire, sauf ce qu'il a appris et les règles de la banque). La première demande (12 mars 2027) n'est jamais arrivée à Zéko (aucun message enregistré) ; la question de suivi de 15 h 54 (heure UTC) n'a pas eu de réponse : la réponse se fabrique pendant que la page attend, et la connexion a été coupée après ~4 min (réflexion lente sur processeur), donc rien n'a été enregistré.
+- Proposé, en attente du GO : outil agenda (créer un RDV ou un appel, toujours lié à un ticket et à une compagnie comme TASK-015.19, après une question « Je mets… ? » et un oui, admin/gestionnaire) ; réponse de Zéko qui continue sur le serveur même si la page se ferme, et s'affiche au retour.
+
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
 
