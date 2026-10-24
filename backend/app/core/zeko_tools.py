@@ -1,7 +1,8 @@
 """Outils de Zeko (TASK-006.5 etape 2, 2026-10-18) : Zeko consulte les donnees d'ERPCRM. Il ne modifie aucune donnee
 d'affaires ; seuls ce qu'il a appris, les regles d'association de la banque (TASK-006.6, 2026-10-22) et le changement de
 nom d'un client / les anciennes coordonnees (TASK-002.8, 2026-10-23) se changent, apres un « oui » et pour un
-administrateur ou un gestionnaire. Reponses courtes : sur ce processeur,
+administrateur ou un gestionnaire. Depuis TASK-006.7 etape 2 (2026-10-24), Zeko fait aussi le travail demande, apres un
+oui par tache : agenda (RDV, appel, perso) et nouveau poste / reglages d'un poste. Reponses courtes : sur ce processeur,
 chaque mot lu par le modele coute du temps."""
 import json
 import uuid
@@ -106,6 +107,42 @@ TOOLS = [
          "note": {"type": "string"}}, ["genre", "valeur"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
+    # TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail, un oui par tache
+    _fn("agenda", "Rendez-vous, appels et événements de l'agenda entre deux dates (tous les calendriers).",
+        {"depuis": {"type": "string", "description": "AAAA-MM-JJ"}, "jusqua": {"type": "string", "description": "AAAA-MM-JJ, inclus"}},
+        ["depuis"]),
+    _fn("mettre_agenda", "Met à l'agenda un RDV ou un appel avec un client (crée aussi son ticket) ou un événement perso "
+        "(sans client). À appeler SEULEMENT après un oui à ta question « Je mets… à l'agenda ? ».",
+        {"genre": {"type": "string", "enum": ["rdv", "appel", "perso"]}, "titre": {"type": "string"},
+         "date": {"type": "string", "description": "la date comme elle a été dite, avec le jour et le mois en mots (ex. « lundi 2 novembre »)"},
+         "heure": {"type": "string", "description": "HH:MM (24 h)"},
+         "duree_minutes": {"type": "integer", "description": "par défaut : RDV 60, appel 30, perso 60"},
+         "client": {"type": "string"}, "personne": {"type": "string", "description": "prénom et nom"},
+         "lieu": {"type": "string"}, "description": {"type": "string"}}, ["genre", "titre", "date", "heure"]),
+    _fn("creer_poste", "Nouveau poste téléphonique pour une personne d'un client : crée la personne si elle n'existe pas "
+        "encore dans ce client, puis son poste (numéro suivant si non précisé) avec ses réglages. Renvois possibles vers un "
+        "poste, la boîte vocale ou un groupe d'appel. IMPOSSIBLE pour l'instant : un renvoi vers un cellulaire ou un numéro "
+        "externe (dis-le dans ta question). À appeler SEULEMENT après un oui à ta question « Je crée… ? ». Ensuite, dis "
+        "seulement ce que le résultat dit fait et pas fait.",
+        {**_CLIENT, "prenom": {"type": "string"}, "nom": {"type": "string"}, "numero": {"type": "string", "description": "numéro du poste, optionnel"},
+         "courriel": {"type": "string", "description": "seulement s'il est donné"},
+         "cellulaire": {"type": "string", "description": "numéro, seulement s'il est donné"}, "boite_vocale": {"type": "boolean"},
+         "langue": {"type": "string", "enum": ["fr", "en"], "description": "langue d'affichage du téléphone : fr ou en"},
+         "renvois": {"type": "array", "description": "renvois du poste", "items": {"type": "object", "properties": {
+             "quand": {"type": "string", "enum": ["toujours", "occupe", "sans_reponse", "non_connecte"]},
+             "vers": {"type": "string", "enum": ["poste", "boite_vocale", "groupe_appel", "numero_externe"]},
+             "destination": {"type": "string", "description": "numéro du poste, du groupe ou du téléphone"},
+             "delai_secondes": {"type": "integer", "description": "sans_reponse seulement"}}}}},
+        ["client", "prenom", "nom"]),
+    _fn("regler_poste", "Change les réglages du poste d'une personne : boîte vocale, langue du téléphone, renvois (mêmes "
+        "règles que creer_poste). À appeler SEULEMENT après un oui à ta question « Je règle… ? ».",
+        {"personne": {"type": "string", "description": "prénom et nom"}, "boite_vocale": {"type": "boolean"},
+         "langue": {"type": "string", "enum": ["fr", "en"]},
+         "renvois": {"type": "array", "items": {"type": "object", "properties": {
+             "quand": {"type": "string", "enum": ["toujours", "occupe", "sans_reponse", "non_connecte"]},
+             "vers": {"type": "string", "enum": ["poste", "boite_vocale", "groupe_appel", "numero_externe", "aucun"]},
+             "destination": {"type": "string"}, "delai_secondes": {"type": "integer"}}}}},
+        ["personne"]),
     _fn("ouvrir_page", "Ouvre à l'écran, dans la fenêtre ERPCRM de l'utilisateur, la page d'un client, d'une personne, d'un "
         "ticket ou d'une facture : à faire quand la demande porte sur un dossier précis, pour qu'il le voie.",
         {"genre": {"type": "string", "enum": ["client", "personne", "ticket", "facture"]},
@@ -114,7 +151,8 @@ TOOLS = [
 EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus puissante sur une question TECHNIQUE générale "
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
-LABELS = {"ouvrir_page": "ouvre la page", "chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
+LABELS = {"ouvrir_page": "ouvre la page", "agenda": "lit l'agenda", "mettre_agenda": "met à l'agenda",
+          "creer_poste": "crée le poste", "regler_poste": "règle le poste", "chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
           "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite", "oublier": "oublie ce qui était appris",
           "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
@@ -542,6 +580,11 @@ async def _run(name, args, db, user_id=None) -> str:
                       "duree_min": round((c.duration or 0) / 60, 1),
                       "transcription": [f"{x.speaker} : {x.text}" for x in c.segments][:200]} for c in rows])
 
+    if name in ("agenda", "mettre_agenda", "creer_poste", "regler_poste"):
+        res = await (_agenda if name in ("agenda", "mettre_agenda") else _poste)(name, args, db, user_id)
+        if name != "agenda" and not (isinstance(res, dict) and res.get("fait")):
+            res = f"{ECHEC}{res}"          # l'ecran le montre aussi (✗), meme si Zeko le resume mal
+        return _out(res)
     if name == "ouvrir_page":           # TASK-006.7 : le chemin n'est lu que par l'ecran, Zeko ne le montre pas
         genre, nom = args.get("genre"), str(args.get("nom") or "").strip()
         if genre == "client":
@@ -661,3 +704,269 @@ async def _run(name, args, db, user_id=None) -> str:
                      "postes": [{"poste": x.extension, "nom": x.name, "actif": x.is_active} for x in exts]})
 
     return _out(f"outil inconnu : {name}")
+
+
+# --- TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail (agenda, poste), apres un oui, comme dans l'ecran ---
+
+async def _user(db, user_id):
+    from app.models.user import User
+    return await db.get(User, user_id) if user_id else None
+
+
+def _http_detail(e) -> str:
+    return str(getattr(e, "detail", None) or e)[:300]
+
+
+_JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche"]
+
+
+_MOIS = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
+
+
+def _date_dite(v, today):
+    """Date comme on la dit (« lundi 2 novembre », « 2 nov. 2026 ») ou AAAA-MM-JJ : lue ici, pas par le modele (il se
+    trompait de mois). Annee absente = la prochaine fois que cette date arrive. Jour de semaine dit et faux = refus."""
+    import re, unicodedata
+    from datetime import date, timedelta
+    txt = "".join(ch for ch in unicodedata.normalize("NFD", str(v or "").lower()) if unicodedata.category(ch) != "Mn")
+    d = _day(txt.strip())
+    dit = next((i for i, j in enumerate(_JOURS_FR) if j in txt), None)
+    if not d:
+        rel = next((n for w, n in (("apres-demain", 2), ("apres demain", 2), ("demain", 1), ("aujourd", 0)) if w in txt), None)
+        if rel is not None:
+            return today + timedelta(days=rel)
+    if not d and dit is not None and not re.search(r"\d", txt):    # « lundi », « lundi prochain » : le prochain lundi
+        return today + timedelta(days=(dit - today.weekday() - 1) % 7 + 1)
+    if not d:
+        m = re.search(r"(\d{1,2})(?:er)?\s+([a-z]+)\.?(?:\s+(\d{4}))?", txt)
+        mois = next((i + 1 for i, n in enumerate(_MOIS) if m and n.startswith(m.group(2)[:3])), None)
+        if not m or not mois:
+            return "précise la date (ex. « lundi 2 novembre » ou 2026-11-02)"
+        try:
+            y = int(m.group(3)) if m.group(3) else today.year
+            d = date(y, mois, int(m.group(1)))
+            if not m.group(3) and d < today:
+                d = date(y + 1, mois, int(m.group(1)))
+        except ValueError:
+            return "cette date n'existe pas"
+    if dit is not None and dit != d.weekday():
+        return f"le {d.day} {_MOIS[d.month - 1]} {d.year} est un {_JOURS_FR[d.weekday()]}, pas un {_JOURS_FR[dit]} : vérifie la date"
+    return d
+
+
+async def _agenda(name, args, db, user_id):
+    from datetime import datetime, time, timedelta
+    from fastapi import HTTPException
+    from app.core import clock
+    tz = clock.business_tz()
+    if name == "agenda":
+        from app.core.google_calendar import list_events
+        d1 = _day(args.get("depuis")) or clock.today()
+        d2 = _day(args.get("jusqua")) or d1
+        evs = await list_events(db, datetime.combine(d1, time(0), tz), datetime.combine(d2 + timedelta(days=1), time(0), tz))
+        out = []
+        for e in sorted(evs, key=lambda e: e["start"]):
+            if e["all_day"]:
+                when = f"{e['start']} (journée)"
+            else:
+                st, en = datetime.fromisoformat(e["start"]).astimezone(tz), datetime.fromisoformat(e["end"]).astimezone(tz)
+                when = f"{st:%Y-%m-%d %H:%M}-{en:%H:%M}"
+            out.append({"quand": when, "titre": e["title"], "lieu": e.get("location") or None})
+        return out or "rien à l'agenda pour cette période"
+
+    user = await _user(db, user_id)
+    if not await _can_change(db, user_id):
+        return "seul un administrateur ou un gestionnaire peut faire changer l'agenda par Zéko"
+    from app.api.v1.endpoints.google_oauth import EventCreate, create_google_event
+    genre = str(args.get("genre") or "").strip().lower()
+    if genre not in ("rdv", "appel", "perso"):
+        return "genre : rdv, appel ou perso"
+    d = _date_dite(args.get("date"), clock.today())
+    if isinstance(d, str):
+        return d
+    try:
+        hh, mm = (int(x) for x in str(args.get("heure") or "").replace("h", ":").split(":")[:2])
+        start = datetime.combine(d, time(hh, mm), tz) if d else None
+    except (ValueError, TypeError):
+        start = None
+    if not start:
+        return "précise la date (AAAA-MM-JJ) et l'heure (HH:MM)"
+    if start < clock.now():
+        return f"le {_JOURS_FR[d.weekday()]} {d.isoformat()} à {start:%H:%M} est déjà passé : vérifie la date"
+    minutes = int(args.get("duree_minutes") or (30 if genre == "appel" else 60))
+    titre = str(args.get("titre") or "").strip() or str(args.get("description") or "").strip()[:80]
+    prefix = {"rdv": "RDV - ", "appel": "Appel - "}.get(genre, "")
+    if prefix and not titre.lower().startswith(prefix.split(" ")[0].lower()):
+        titre = prefix + titre
+    company = contact = None
+    if genre != "perso":            # un RDV ou un appel cree toujours un ticket (TASK-015.19)
+        if args.get("personne"):
+            contact = await _resolve_contact(db, args["personne"])
+            if not isinstance(contact, Contact):
+                return contact
+        if args.get("client"):
+            company = await _resolve_company(db, args["client"])
+            if not isinstance(company, Company):
+                return company
+        if not company and not contact:
+            return "un RDV ou un appel est toujours lié à un client (il crée son ticket) : précise le client ou la personne"
+    payload = EventCreate(title=titre, description=args.get("description"), location=args.get("lieu"), start=start,
+                          end=start + timedelta(minutes=minutes), company_id=company.id if company else None,
+                          contact_id=contact.id if contact else None, personal=genre == "perso")
+    try:
+        res = await create_google_event(payload, db, user)
+    except HTTPException as e:
+        return f"pas mis à l'agenda : {_http_detail(e)}"
+    fait = {"fait": f"mis à l'agenda : {titre}, le {_JOURS_FR[d.weekday()]} {d.isoformat()} à {start:%H:%M}, {minutes} min"}
+    if res.get("ticket_id"):
+        t = await db.get(Ticket, uuid.UUID(res["ticket_id"]))
+        fait.update(ticket=ticket_no(t), ouvert=f"ticket {ticket_no(t)}", chemin=f"/tickets/{t.id}")
+    return fait
+
+
+_LANGUE = {"fr": "fr", "francais": "fr", "français": "fr", "french": "fr", "en": "en", "anglais": "en", "english": "en"}
+_QUAND_FR = {"forward_immediate": "toujours", "forward_busy": "si occupé", "forward_no_answer": "si pas de réponse",
+             "forward_offline": "si non connecté"}
+_VERS_FR = {"extension": "vers le poste", "voicemail": "vers la boîte vocale", "ring_group": "vers le groupe d'appel"}
+ECHEC = "ÉCHEC, rien n'a été fait : "
+_QUAND = {"toujours": "forward_immediate", "occupe": "forward_busy", "sans_reponse": "forward_no_answer", "non_connecte": "forward_offline"}
+_VERS = {"poste": "extension", "boite_vocale": "voicemail", "groupe_appel": "ring_group"}
+
+
+def _poste_fields(args) -> dict | str:
+    """Reglages du poste demandes -> champs SIPV ; un reglage invalide refuse tout (rien n'est change), un renvoi vers un
+    numero externe (pas encore fait par SIPV) est seulement marque « pas fait »."""
+    f = {}
+    if args.get("boite_vocale") is not None:
+        f["voicemail_enabled"] = bool(args["boite_vocale"])
+    lang = _LANGUE.get(str(args.get("langue") or "").strip().lower())
+    if lang:
+        f["display_language"] = lang
+    for r in args.get("renvois") or []:
+        key = _QUAND.get(r.get("quand"))
+        if not key:
+            return "renvoi : quand = toujours, occupe, sans_reponse ou non_connecte"
+        vers = r.get("vers")
+        if vers == "numero_externe":        # le reste de la tache se fait ; ce renvoi est dit « pas fait »
+            f["_externe"] = True
+            continue
+        if vers == "aucun":
+            f[f"{key}_enabled"] = False
+            continue
+        if vers not in _VERS:
+            return "renvoi : vers = poste, boite_vocale ou groupe_appel"
+        dest = str(r.get("destination") or "").strip()
+        if vers != "boite_vocale" and not dest:
+            return "renvoi : précise le numéro du poste ou du groupe"
+        f.update({f"{key}_enabled": True, f"{key}_destination_type": _VERS[vers], f"{key}_destination": dest or None})
+        if key == "forward_no_answer" and r.get("delai_secondes"):
+            f["forward_no_answer_delay_seconds"] = int(r["delai_secondes"])
+    return f
+
+
+def _applied(fields) -> str:
+    """Ce qui a vraiment ete applique au poste, en clair : Zeko le repete, il n'en dit jamais plus."""
+    out = []
+    if "voicemail_enabled" in fields:
+        out.append("boîte vocale " + ("active" if fields["voicemail_enabled"] else "désactivée"))
+    if "display_language" in fields:
+        out.append("téléphone en " + ("anglais" if fields["display_language"] == "en" else "français"))
+    for key, quand in _QUAND_FR.items():
+        if f"{key}_enabled" in fields:
+            out.append(f"renvoi {quand} " + (f"{_VERS_FR[fields[key + '_destination_type']]} {fields.get(key + '_destination') or ''}".strip()
+                                             if fields[f"{key}_enabled"] else "retiré"))
+    if not any(k.endswith("_enabled") and k.startswith("forward_") for k in fields):
+        out.append("aucun renvoi changé")
+    return " ; réglé : " + ", ".join(out)
+
+
+def _not_live(fields, externe=False) -> str:
+    ext = (" ; PAS FAIT : le renvoi vers un numéro externe (cellulaire) n'existe pas encore dans le serveur téléphonique "
+           "(seulement vers un poste, la boîte vocale ou un groupe d'appel)") if externe else ""
+    # meme avertissement que la fiche du poste (SIPV, TASK-S023.6) : a dire tel quel, jamais promettre que ca marche
+    late = [lbl for k, lbl in (("forward_busy_enabled", "occupé"), ("forward_no_answer_enabled", "sans réponse"),
+                                ("forward_offline_enabled", "non connecté")) if fields.get(k)]
+    return (f" ; attention : le renvoi « {' / '.join(late)} » est enregistré, mais n'est pas encore confirmé par le "
+            f"serveur téléphonique (seul le renvoi immédiat l'est)") + ext if late else ext
+
+
+async def _poste(name, args, db, user_id):
+    import httpx
+    from fastapi import HTTPException
+    from app.core import sipv_client
+    user = await _user(db, user_id)
+    if not await _can_change(db, user_id):
+        return "seul un administrateur ou un gestionnaire peut faire créer ou régler un poste par Zéko"
+    fields = _poste_fields(args)
+    if isinstance(fields, str):
+        return fields
+    externe = fields.pop("_externe", False)
+    if name == "regler_poste":
+        c = await _resolve_contact(db, args.get("personne"))
+        if not isinstance(c, Contact):
+            return c
+        if not fields:
+            return "rien n'a été changé" + _not_live(fields, externe)
+        if not c.sipv_sync:
+            return f"{c.first_name} {c.last_name} n'a pas de poste"
+        try:
+            ext = (await sipv_client.get_extensions_by_contact(str(c.id)))[0]
+            await sipv_client.update_extension(ext["id"], **fields)
+        except (httpx.HTTPError, IndexError):
+            return "le serveur téléphonique ne répond pas : rien n'a été changé"
+        return {"fait": f"poste {ext.get('extension')} de {c.first_name} {c.last_name} réglé" + _applied(fields) + _not_live(fields, externe), "ouvert": f"{c.first_name} {c.last_name}",
+                "chemin": f"/contacts/{c.id}"}
+
+    from app.api.v1.endpoints.contacts import ContactSipvActivate, create_contact_sip_extension
+    from app.models.entity import EntityType
+    comp = await _resolve_company(db, args.get("client"))
+    if not isinstance(comp, Company):
+        return comp
+    if not comp.sipv_enabled or not comp.sipv_tenant_id:
+        return f"{comp.name} n'a pas encore la téléphonie (à activer dans sa fiche) : rien n'a été créé"
+    first, last = str(args.get("prenom") or "").strip(), str(args.get("nom") or "").strip()
+    if not first:
+        return "précise le prénom et le nom"
+    if last.lower().startswith(first.lower() + " "):     # nom complet donne comme nom : « Paul » + « Paul Vital »
+        last = last[len(first):].strip()
+    full = func.lower(func.unaccent(func.concat(Contact.first_name, " ", Contact.last_name)))
+    c = (await db.execute(select(Contact).join(ContactCompany, ContactCompany.contact_id == Contact.id)
+                          .where(ContactCompany.company_id == comp.id, full == func.lower(func.unaccent(f"{first} {last}"))))).scalars().first()
+    created = c is None
+    if c and c.sipv_sync:
+        return f"{first} {last} a déjà un poste chez {comp.name} : rien n'a été créé"
+    if c:                            # le poste va au client principal de la personne (comme dans sa fiche)
+        main = (await db.execute(select(ContactCompany).where(ContactCompany.contact_id == c.id, ContactCompany.is_active == True)
+                                 .order_by(ContactCompany.is_primary.desc()))).scalars().first()
+        if not main or main.company_id != comp.id:
+            return f"{first} {last} a {comp.name} comme entreprise secondaire : crée le poste depuis sa fiche. Rien n'a été créé"
+    if created:                      # meme creation que l'ecran : personne + lien au client (entreprise principale)
+        cell = str(args.get("cellulaire") or "").strip()
+        mail = str(args.get("courriel") or "").strip()
+        c = Contact(first_name=first, last_name=last, email=mail if "@" in mail else None,   # jamais un numero ou un courriel invente
+                    mobile=cell if sum(ch.isdigit() for ch in cell) >= 7 else None)
+        ent = Entity(entity_type=EntityType.person)
+        db.add(ent)
+        await db.flush()
+        c.id = ent.id
+        db.add(c)
+        await db.flush()
+        db.add(ContactCompany(contact_id=c.id, company_id=comp.id, email=c.email, is_primary=True))
+        await db.commit()
+    who = f"{first} {last}".strip()
+    try:
+        await create_contact_sip_extension(c.id, ContactSipvActivate(extension_number=str(args.get("numero") or "").strip() or None), db, user)
+    except HTTPException as e:
+        if created:                  # la personne existe maintenant : ce n'est pas « rien n'a été fait »
+            return {"fait": f"{who} créé chez {comp.name} ; PAS FAIT : le poste ({_http_detail(e)})", "ouvert": who, "chemin": f"/contacts/{c.id}"}
+        return f"poste pas créé : {_http_detail(e)}"
+    await db.refresh(c)
+    note = ""
+    if fields:
+        try:
+            ext = (await sipv_client.get_extensions_by_contact(str(c.id)))[0]
+            await sipv_client.update_extension(ext["id"], **fields)
+        except (httpx.HTTPError, IndexError):
+            note = " ; ses réglages (boîte vocale, langue, renvois) n'ont pas pu être appliqués : à refaire"
+    return {"fait": (f"{who} créé chez {comp.name}, " if created else "") + f"poste {c.extension} créé" + (note or _applied(fields)) + _not_live(fields, externe),
+            "ouvert": who, "chemin": f"/contacts/{c.id}"}

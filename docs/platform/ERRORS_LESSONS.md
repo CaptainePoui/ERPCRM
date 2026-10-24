@@ -54,6 +54,10 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-006.7 — Zéko affirme un travail qu'il n'a pas fait
+
+**2026-10-24 — Essais de l'étape 2 (Zéko fait le travail)** : trois fois, Zéko (gpt-oss:20b) a dit avoir fait plus que ce que l'outil avait fait : « follow me vers son cell configuré » alors qu'il n'avait passé aucun renvoi (et un faux cellulaire « <num> », langue « anglais » ignorée) ; « RDV ajouté » alors que l'outil avait refusé (mauvais mois : 2 octobre au lieu du 2 novembre, genre « RDV » en majuscules). Corrections : l'outil tolère les formes courantes, lit lui-même la date dite, refuse date passée / jour de semaine faux, rapporte en clair tout ce qui a été appliqué ; chaque refus commence par « ÉCHEC, rien n'a été fait » et l'écran le montre en rouge, indépendamment du texte de Zéko ; la consigne demande de répéter le résultat de l'outil, jamais plus. Leçon : un petit modèle résume ce qu'on lui a demandé, pas ce qui a été fait — tout travail fait par Zéko doit avoir une trace vraie à l'écran qui ne passe pas par son texte, et les conversions délicates (dates) se font dans le code, pas dans le modèle.
+
 ## TASK-006.5 — Zéko : erreur 504 au premier vrai essai de Philippe
 
 **Date** : 2026-10-18

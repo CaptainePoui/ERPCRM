@@ -117,7 +117,8 @@ function fmtWhen(iso) {
 }
 
 const TOOL_LABELS = { chercher_courriels: 'a cherché dans les courriels', lire_courriel: 'a lu un courriel et ses pièces jointes', transactions_banque: 'a lu le relevé bancaire', regles_apprises: 'a relu ce qu’il a appris', retenir: 'a retenu pour la suite', paiements_carte: 'a lu les reçus de carte', demander_ia_externe: 'a demandé à l’IA externe', chercher: 'a cherché dans ERPCRM', fiche_client: 'a lu la fiche du client', fiche_contact: 'a lu la fiche de la personne', tickets_client: 'a lu les tickets du client',
-                      lire_ticket: 'a lu un ticket', ouvrir_page: 'a ouvert la page', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie' }
+                      lire_ticket: 'a lu un ticket', ouvrir_page: 'a ouvert la page', equipements: 'a lu les équipements', telephonie: 'a lu la téléphonie',
+                      agenda: 'a lu l’agenda', mettre_agenda: 'a mis à l’agenda', creer_poste: 'a créé le poste', regler_poste: 'a réglé le poste' }
 
 // TASK-006.7 (2026-10-24) : la réponse se fait sur le serveur même si la fenêtre se ferme ; en revenant, « Zéko
 // travaille… » s'affiche jusqu'à sa réponse. La dictée part seule à Zéko après 5 s sans parler. onOpenPage(chemin) :
@@ -205,7 +206,9 @@ export default function ZekoChat({ conversationId, onChanged, compact, onOpenPag
           </div>
         )}
         {conv.messages.map(m => m.role === 'tool'
-          ? <div key={m.id} style={{ fontSize: 11, color: 'var(--c-faint)', paddingLeft: 4 }}>Zéko {TOOL_LABELS[m.tool_name] || m.tool_name}</div>
+          ? (m.content || '').startsWith('"ÉCHEC')     // travail refusé par ERPCRM : montré tel quel, même si Zéko le résume mal
+            ? <div key={m.id} style={{ fontSize: 12, color: 'var(--c-on-red)', paddingLeft: 4 }}>✗ {JSON.parse(m.content)}</div>
+            : <div key={m.id} style={{ fontSize: 11, color: 'var(--c-faint)', paddingLeft: 4 }}>Zéko {TOOL_LABELS[m.tool_name] || m.tool_name}</div>
           : (
             <div key={m.id} style={bubble(m.role === 'user')}>
               <div style={{ fontSize: 11, color: 'var(--c-muted)', marginBottom: 2 }}>
