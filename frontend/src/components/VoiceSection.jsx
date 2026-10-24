@@ -7,11 +7,19 @@ import { currentDevice, openMic } from '../utils/audioDevice'
 // devant le micro a son rythme (jusqu'a 2 min) -> empreinte de sa voix, pour etre reconnue dans les conversations.
 // Employe avec un compte : reconnu comme membre de l'equipe ; client : meme voix que celle apprise par « Qui est… ? ».
 const C = { border: 'var(--c-border)', muted: 'var(--c-muted)', red: '#DC2626' }
-const READ_TEXT = "Bonjour, ici c'est moi qui parle. J'enregistre ma voix pour qu'ERPCRM la reconnaisse dans les conversations avec les clients. " +
-  "Je lis ce texte lentement, comme je parle d'habitude au téléphone ou chez un client. Le technicien passera jeudi matin vers dix heures " +
-  "pour vérifier le portier, le poste de la réception et la boîte vocale. Si le problème revient, rappelez-nous au service technique. " +
-  "Pour la facture du mois dernier, je vais vérifier le paiement reçu par Interac et je vous envoie un reçu par courriel dès aujourd'hui. " +
-  "Le nouveau téléphone sera installé lundi, et je reviendrai mardi après-midi pour configurer les postes et montrer comment transférer un appel. Merci et bonne journée."
+// Une phrase par ligne, en gros caracteres : plus facile a lire a voix haute sans se tromper
+const READ_LINES = [
+  "Bonjour, ici c'est moi qui parle.",
+  "J'enregistre ma voix pour qu'ERPCRM la reconnaisse dans les conversations avec les clients.",
+  "Je lis ce texte lentement, comme je parle d'habitude au téléphone ou chez un client.",
+  "Le technicien passera jeudi matin vers dix heures pour vérifier le portier, le poste de la réception et la boîte vocale.",
+  "Si le problème revient, rappelez-nous au service technique.",
+  "Pour la facture du mois dernier, je vais vérifier le paiement reçu par Interac.",
+  "Je vous envoie un reçu par courriel dès aujourd'hui.",
+  "Le nouveau téléphone sera installé lundi.",
+  "Je reviendrai mardi après-midi pour configurer les postes et montrer comment transférer un appel.",
+  "Merci et bonne journée.",
+]
 const MIN_SECS = 20, MAX_SECS = 120
 const fmtSecs = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 export default function VoiceSection({ contactId, name, framed = true }) {
@@ -55,7 +63,6 @@ export default function VoiceSection({ contactId, name, framed = true }) {
           : 'Voix pas encore connue. Fais lire le texte à voix haute devant le micro, à son rythme, puis Terminer. Elle s\'apprend aussi avec « Qui est… ? » dans une conversation.'}
         {info?.conversations > 0 && ` Reconnue dans ${info.conversations} conversation${info.conversations > 1 ? 's' : ''}.`}
       </div>
-      {secs !== null && <div style={{ fontSize: 15, lineHeight: 1.6, padding: 10, borderRadius: 8, background: 'var(--c-surface-2)', marginBottom: 10 }}>{READ_TEXT}</div>}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {secs === null
           ? <><button className="btn-secondary" onClick={start}>🎙️ {known ? 'Réenregistrer la voix' : 'Enregistrer la voix'}</button>
@@ -63,6 +70,8 @@ export default function VoiceSection({ contactId, name, framed = true }) {
           : <button className="btn-secondary" style={{ color: C.red }} disabled={secs < MIN_SECS} onClick={stop}>⏹ {secs < MIN_SECS ? `Continue de lire… ${fmtSecs(secs)}` : `Terminer · ${fmtSecs(secs)} / ${fmtSecs(MAX_SECS)}`}</button>}
         {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
       </div>
+      {secs !== null && <div style={{ fontSize: 21, lineHeight: 1.45, padding: '16px 20px', borderRadius: 8, background: 'var(--c-surface-2)', marginTop: 12, maxWidth: 760 }}>
+        {READ_LINES.map((l, i) => <p key={i} style={{ margin: '0 0 18px', overflowWrap: 'anywhere' }}>{l}</p>)}</div>}
     </div>
   )
 }
