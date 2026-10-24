@@ -166,7 +166,7 @@ export default function VoiceSection({ contactId, name, framed = true }) {
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {!busy && <>
           <button className="btn-secondary" onClick={() => start(null)} disabled={!lines.length}>🎙️ {known ? 'Réenregistrer la voix' : 'Enregistrer la voix'}</button>
-          {result && !fullChecking && <button className="btn-secondary" onClick={() => setShowCheck(v => !v)}>{showCheck ? 'Masquer la vérification' : 'Vérifier'}</button>}
+          {result && !fullChecking && !showCheck && <button className="btn-secondary" onClick={() => setShowCheck(true)}>Vérifier</button>}
           {known && <button className="btn-secondary" style={{ color: C.red }} onClick={forget}>Effacer la voix</button>}
         </>}
         {msg && <span style={{ fontSize: 13, color: C.muted }}>{msg}</span>}
@@ -209,6 +209,8 @@ export default function VoiceSection({ contactId, name, framed = true }) {
               </p>
             )
           })}
+          {/* fin de la verification en bas, sous le texte */}
+          <button className="btn-secondary" style={{ fontSize: 13 }} onClick={() => setShowCheck(false)}>Fin de la vérification</button>
         </div>
       )}
     </div>
