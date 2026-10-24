@@ -156,31 +156,48 @@ async def _voice_owner(db, contact_id: uuid.UUID, user: User) -> tuple:
     return owner_user, cond
 
 
+@router.get("/reading-text")
+async def reading_text(_: User = Depends(get_current_user)):
+    """Texte a lire pour enregistrer une voix, une phrase par ligne (le meme sert a la verification)."""
+    from app.core.voice_check import READ_LINES
+    return {"lines": READ_LINES}
+
+
 @router.get("/voices/{contact_id}")
 async def get_voice(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     from sqlalchemy import func
-    from app.models.conversation import VoicePrint, ConversationSegment
+    from app.models.conversation import VoicePrint, VoiceCheck, ConversationSegment
     owner_user, cond = await _voice_owner(db, contact_id, user)
     vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
     seg = ConversationSegment.user_id == owner_user if owner_user else ConversationSegment.contact_id == contact_id
     n = (await db.execute(select(func.count(func.distinct(ConversationSegment.conversation_id))).where(seg))).scalar()
+    checks = (await db.execute(select(VoiceCheck).where(VoiceCheck.voice_print_id == vp.id))).scalars().all() if vp else []
     return {"enrolled": bool(vp), "updated_at": vp.updated_at.isoformat() if vp else None, "conversations": n,
-            "team": bool(owner_user)}
+            "team": bool(owner_user),
+            # verification de la lecture : resultat par mot, lectures encore a verifier (None = lecture complete)
+            "check_lines": vp.check_lines if vp else None,
+            "checking": [c.line for c in checks if c.status != "error"],
+            "check_error": next((c.error for c in checks if c.status == "error"), None)}
 
 
 @router.post("/voices/{contact_id}")
-async def set_voice(contact_id: uuid.UUID, audio: UploadFile = File(...), db: AsyncSession = Depends(get_db),
-                    user: User = Depends(get_current_user)):
-    """Remplace l'empreinte par celle de cet echantillon (la personne lit le texte, 20 s ou plus)."""
+async def set_voice(contact_id: uuid.UUID, audio: UploadFile = File(...), line: int | None = None,
+                    db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Lecture complete (line absent) : remplace l'empreinte. Phrase relue (line = son numero) : s'ajoute a
+    l'empreinte. Dans les deux cas le son est verifie en arriere-plan contre le texte."""
     import asyncio, os, tempfile
-    from app.core import voices
-    from app.models.conversation import VoicePrint
+    from sqlalchemy import delete
+    from app.core import voices, voice_check
+    from app.models.conversation import VoicePrint, VoiceCheck
     owner_user, cond = await _voice_owner(db, contact_id, user)
+    if line is not None and not 0 <= line < len(voice_check.READ_LINES):
+        raise HTTPException(400, "Phrase inconnue.")
     data = await audio.read()
     if not data or len(data) > MAX_AUDIO:
         raise HTTPException(400, "Échantillon vide ou trop long.")
     kind = (audio.content_type or "").split(";")[0].strip()
-    with tempfile.NamedTemporaryFile(suffix=SUFFIX.get(kind, ".webm"), delete=False) as f:
+    suffix = SUFFIX.get(kind, ".webm")
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(data)
     try:
         samples = await asyncio.to_thread(voices.load_audio, f.name)
@@ -188,16 +205,36 @@ async def set_voice(contact_id: uuid.UUID, audio: UploadFile = File(...), db: As
         raise HTTPException(422, "Le son n'a pas pu être lu.") from e
     finally:
         os.unlink(f.name)
-    if len(samples) < voices.RATE * 15:
-        raise HTTPException(400, "Il faut parler au moins 20 secondes pour que la voix soit bien reconnue.")
+    vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
+    if line is None and len(samples) < voices.RATE * 15:
+        raise HTTPException(400, "Trop court : lis au moins jusqu'à la moitié du texte avant Fin.")
+    if line is not None and not vp:
+        raise HTTPException(400, "Enregistre d'abord la lecture complète.")
+    if line is not None and len(samples) < voices.RATE * 1:
+        raise HTTPException(400, "Trop court : relis la phrase au complet.")
     emb = await asyncio.to_thread(voices.embed_whole, samples)
     if emb is None:
         raise HTTPException(400, "Aucune voix entendue : vérifie le micro.")
-    vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
-    if vp:
-        vp.embedding, vp.samples = emb.tolist(), 1
+    if line is not None:
+        vp.embedding, vp.samples = voices.merge(vp.embedding, vp.samples, [emb])
+    elif vp:
+        vp.embedding, vp.samples, vp.check_lines = emb.tolist(), 1, None
+        for old in (await db.execute(select(VoiceCheck).where(VoiceCheck.voice_print_id == vp.id))).scalars():
+            voice_check.remove_file(old)
+        await db.execute(delete(VoiceCheck).where(VoiceCheck.voice_print_id == vp.id))
     else:
-        db.add(VoicePrint(user_id=owner_user, contact_id=None if owner_user else contact_id, embedding=emb.tolist(), samples=1))
+        vp = VoicePrint(user_id=owner_user, contact_id=None if owner_user else contact_id, embedding=emb.tolist(), samples=1)
+        db.add(vp)
+        await db.flush()
+    if line is not None:          # une phrase relue remplace sa verification encore en attente
+        for old in (await db.execute(select(VoiceCheck).where(VoiceCheck.voice_print_id == vp.id, VoiceCheck.line == line,
+                                                              VoiceCheck.status != "transcribing"))).scalars():
+            voice_check.remove_file(old)
+            await db.delete(old)
+    check = VoiceCheck(voice_print_id=vp.id, line=line, suffix=suffix)
+    db.add(check)
+    await db.flush()
+    voice_check.save(check, data)
     await db.commit()
     return await get_voice(contact_id, db, user)
 
@@ -208,5 +245,9 @@ async def delete_voice(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     _, cond = await _voice_owner(db, contact_id, user)
     vp = (await db.execute(select(VoicePrint).where(cond))).scalar_one_or_none()
     if vp:
+        from app.core import voice_check
+        from app.models.conversation import VoiceCheck
+        for c in (await db.execute(select(VoiceCheck).where(VoiceCheck.voice_print_id == vp.id))).scalars():
+            voice_check.remove_file(c)
         await db.delete(vp)
         await db.commit()

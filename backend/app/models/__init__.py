@@ -40,4 +40,4 @@ from app.models.zeko import ZekoConversation, ZekoMessage, ZekoInvocation, ZekoR
 from app.models.sales_rep import SalesRep, CommissionEntry
 from app.models.former_info import FormerInfo
 from app.models.audio_device import AudioDevice
-from app.models.conversation import Conversation, ConversationSegment, VoicePrint
+from app.models.conversation import Conversation, ConversationSegment, VoicePrint, VoiceCheck

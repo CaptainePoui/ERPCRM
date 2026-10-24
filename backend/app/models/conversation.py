@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Text, Integer, Float, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from app.core.database import Base
 
 STATUSES = ("recording", "pending", "transcribing", "done", "error")
@@ -61,5 +61,22 @@ class VoicePrint(Base):
     contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="CASCADE"), unique=True)
     embedding: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
     samples: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    # Verification de la lecture (TASK-055, 2026-10-24) : pour chaque phrase du texte lu, un booleen par mot
+    # (reconnu ou non) ; None = pas encore verifiee
+    check_lines: Mapped[list | None] = mapped_column(JSONB)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                                                  onupdate=lambda: datetime.now(timezone.utc))
+
+
+class VoiceCheck(Base):
+    """Lecture a verifier (TASK-055, 2026-10-24 ; Philippe : « prends le temps de le reconnaitre, je reviendrai dans
+    Voix ») : le son de la lecture complete (line=None) ou d'une phrase relue, transcrit en arriere-plan puis compare
+    au texte ; le son est efface une fois verifie."""
+    __tablename__ = "voice_checks"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    voice_print_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("voice_prints.id", ondelete="CASCADE"), nullable=False, index=True)
+    line: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(15), nullable=False, default="pending")     # pending | transcribing | error
+    suffix: Mapped[str] = mapped_column(String(10), nullable=False, default=".webm")
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
