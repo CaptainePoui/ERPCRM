@@ -969,6 +969,7 @@ Date(s) de travail : —
 - Existant à croiser avant de coder : rôles `UserRole` (admin/manager/tech/billing/readonly), arbre de privilèges prévu du portail (TASK-019 / TASK-S053).
 - Philippe : tout ; Denis Normandeau (employé fictif, lié au contact « Papa Normandeau ») : privilèges de comptable, pour tester le portail employé à distance ; le provisioning du GXP2135 (ticket « Ajout d'un GX, P. 2135. ») plus tard, avec le GPU du nouveau serveur.
 - Zéko agit avec les privilèges de la personne qui lui parle (TASK-006.7).
+- Précision 2026-10-25 (Philippe : « et dans admin tu as mis l'onglet privilège pour les gérer et ajouter ou enlever des privilèges ? ») : rien de codé encore ; proposé : Administration › Privilèges = les profils (Tout, Comptable, Technicien…) et ce que chacun permet, ajouter / enlever ; Employés › Privilèges = le profil de chaque employé (et ses exceptions).
 
 ---
 
