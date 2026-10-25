@@ -33,9 +33,15 @@ SYSTEM = (
     "client). Avant de changer quoi que ce soit, décris en UNE question « Je … ? » tout ce que tu vas faire pour cette "
     "tâche ; après un oui clair, fais-la au complet sans redemander, puis dis ce qui est fait en reprenant le résultat de "
     "l'outil (ce qu'il dit fait, et ce qu'il dit pas fait), jamais plus. Si une partie de la demande "
-    "n'est pas possible, dis-le dans ta question. N'invente jamais un fait sur un client, un "
+    "n'est pas possible, dis-le dans ta question. Pour l'agenda, ta question vient de l'outil : appelle-le d'abord sans "
+    "oui, en lui passant la date avec les mots dits (ex. « tarte le 16 ») ; il te rend la question à poser, ou ce qui ne "
+    "va pas (une date à faire préciser, un client introuvable) : dis-le tel quel. N'invente jamais un fait sur un client, un "
     "équipement ou un ticket : consulte d'abord ; si l'information n'y est pas, dis-le simplement. Sépare ce qui est "
-    "confirmé dans ERPCRM de tes hypothèses. Désigne toujours les clients et les personnes par leur nom. Ne montre jamais "
+    "confirmé dans ERPCRM de tes hypothèses. Une question marquée « restée sans réponse » : réponds-y d'abord, en commençant "
+    "par « Pour la question de ce matin : » (le moment indiqué), puis une ligne seule ---, puis la réponse à la nouvelle "
+    "question. Sois un vrai assistant : donne l'état concret (ex. « 4 postes en ligne sur 4 ») et, sans qu'on le demande, "
+    "ce que tu as vérifié de plus ; sauf demande, ne regarde pas plus loin qu'aujourd'hui. Ne dis jamais avoir vérifié "
+    "ce que tes outils ne donnent pas. Désigne toujours les clients et les personnes par leur nom. Ne montre jamais "
     "un identifiant interne, un code technique ni le nom de tes outils, et ne demande jamais d'identifiant : un nom suffit. "
     "Si plusieurs clients ou personnes correspondent, nomme-les et demande lequel. Quand la demande porte sur un client, une "
     "personne, un ticket ou une facture précis, ouvre sa page (ouvrir_page) : elle s'affiche dans la fenêtre ERPCRM de l'utilisateur. Avant de dire qu'une information "
@@ -165,9 +171,39 @@ async def _ticket_context(db, ticket_id) -> str:
     return "\n".join(lines)
 
 
+def _quand(t) -> str:
+    """« ce matin », « hier soir », « le 22 octobre » : quand une question a ete posee, comme on le dit."""
+    t = t.astimezone(clock.business_tz())
+    moment = "matin" if t.hour < 12 else "après-midi" if t.hour < 18 else "soir"
+    jours = (clock.today() - t.date()).days
+    if jours == 0:
+        return f"de {'cet' if moment == 'après-midi' else 'ce'} {moment}"
+    if jours == 1:
+        return f"d'hier {moment}"
+    return f"du {t.day} {zeko_tools._MOIS_DIT[t.month - 1]}"
+
+
+def _unanswered(msgs) -> set:
+    """Questions restees sans reponse juste avant la nouvelle (fenetre fermee avant l'etape 1, redemarrage) : Zeko y
+    repond d'abord, separement (TASK-006.7, 2026-10-25 ; avant, il les melangeait a la nouvelle question)."""
+    out, i = set(), len(msgs) - 2
+    while i >= 0:
+        j = i
+        while j >= 0 and msgs[j].role != "user":
+            if msgs[j].role == "assistant" and (msgs[j].content or "").strip() and not msgs[j].tool_calls:
+                return out                      # une vraie reponse : tout ce qui est avant a ete repondu
+            j -= 1
+        if j < 0:
+            return out
+        out.add(msgs[j].id)
+        i = j - 1
+    return out
+
+
 def _history(c: ZekoConversation) -> list[dict]:
     """Messages deja echanges (outils compris), les plus recents dans la limite de taille."""
     out, size = [], 0
+    pending = _unanswered(c.messages)
     for m in reversed(c.messages):
         if m.role == "assistant" and m.tool_calls:
             calls = json.loads(m.tool_calls)
@@ -175,6 +211,8 @@ def _history(c: ZekoConversation) -> list[dict]:
                 {"id": x["id"], "type": "function", "function": {"name": x["name"], "arguments": x["arguments"]}} for x in calls]}
         elif m.role == "tool":
             d = {"role": "tool", "tool_call_id": m.tool_call_id, "content": m.content}
+        elif m.id in pending:
+            d = {"role": "user", "content": f"(Question {_quand(m.created_at)}, restée sans réponse) {m.content}"}
         else:
             d = {"role": m.role, "content": m.content}
         size += len(json.dumps(d, ensure_ascii=False))
@@ -230,6 +268,7 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
             await save("assistant", partial, tool_calls=json.dumps(calls, ensure_ascii=False))
             messages.append({"role": "assistant", "content": partial, "tool_calls": [
                 {"id": x["id"], "type": "function", "function": {"name": x["name"], "arguments": x["arguments"]}} for x in calls]})
+            asked = None
             for x in calls:
                 external = x["name"] == "demander_ia_externe"
                 label = f"demande à {ext['label']}" if external else zeko_tools.LABELS.get(x["name"], x["name"])
@@ -245,9 +284,16 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                     except zeko.ZekoUnavailable as e:
                         result = f"{ext['label']} indisponible ({e}) : réponds avec tes propres connaissances et dis-le."
                 else:
+                    if x["name"] == "mettre_agenda":
+                        args = _asked(messages, args) if args.get("oui") is True else _said(messages, args)
                     result = await zeko_tools.run(x["name"], args, s, user_id)
                 await save("tool", result, tool_call_id=x["id"], tool_name=x["name"])
                 messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
+                if x["name"] == "mettre_agenda" and '"question"' in result:
+                    try:
+                        asked = json.loads(result).get("question")
+                    except (ValueError, AttributeError):
+                        asked = None
                 # la page (demandee, ou le dossier que Zeko vient de creer) s'ouvre dans la fenetre ERPCRM de l'utilisateur
                 if '"chemin"' in result:
                     try:
@@ -257,20 +303,71 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                     except ValueError:
                         pass
             partial = None
+            if asked:                        # la question vient de l'outil, telle quelle (le modele la reformulait mal)
+                await save("assistant", asked)
+                yield _sse({"type": "texte", "texte": asked})
+                yield _sse({"type": "fin"})
+                return
     except zeko.ZekoUnavailable as e:
+        partial = None
         yield _sse({"type": "erreur", "texte": str(e)})
         if keep_errors:
             await save("assistant", f"⚠ {e}")
     except Exception as e:
+        partial = None
         yield _sse({"type": "erreur", "texte": f"Zéko n'a pas pu répondre : {str(e)[:200]}"})
         if keep_errors:
             await save("assistant", f"⚠ Zéko n'a pas pu répondre : {str(e)[:200]}")
     finally:
-        if partial:                          # arrete en cours de route : garder ce qui etait ecrit
+        if partial is not None:              # arrete en cours de route : garder ce qui etait ecrit (ou la trace de l'arret)
             try:
-                await save("assistant", partial + " … (arrêté)")
+                await save("assistant", (partial + " … (arrêté)").strip())
             except Exception:
                 pass
+
+
+def _said(messages, args):
+    """Valeurs d'agenda que l'utilisateur n'a pas dites : retirees (TASK-006.7, 2026-10-25 : le modele mettait « Philippe
+    Normandeau » comme personne et « Administrateur » comme titre, pris dans sa consigne). Personne : tous ses mots dits ;
+    titre, lieu : au moins un mot dit."""
+    import re, unicodedata
+    plain = lambda t: "".join(c for c in unicodedata.normalize("NFD", str(t or "").lower()) if unicodedata.category(c) != "Mn")
+    dit = set(re.findall(r"[a-z0-9]+", plain(" ".join(m["content"] for m in messages if m["role"] == "user"))))
+    out = dict(args)
+    for k, tous in (("personne", True), ("titre", False), ("lieu", False)):
+        mots = [w for w in re.findall(r"[a-z0-9]+", plain(out.get(k))) if len(w) > 2 and w not in ("rdv", "appel")]
+        if mots and not (all if tous else any)(w in dit for w in mots):
+            out[k] = ""
+    return out
+
+
+def _asked(messages, args):
+    """Le oui vaut pour la question d'agenda posee : on reprend les valeurs verifiees de cette question, pas celles que le
+    modele renvoie (TASK-006.7, 2026-10-25 : apres un oui il remettait l'ancienne date et ajoutait une personne). Seulement
+    la question posee juste avant ce oui ; sans elle, on reverifie (question d'abord) au lieu de faire."""
+    last_user = max((i for i, m in enumerate(messages) if m["role"] == "user"), default=-1)
+    for i in range(last_user - 1, -1, -1):
+        m = messages[i]
+        if m["role"] == "user":
+            break
+        if m["role"] != "tool" or '"question"' not in (m.get("content") or ""):
+            continue
+        try:
+            q = json.loads(m["content"])
+            if not isinstance(q, dict):
+                continue
+        except ValueError:
+            continue
+        if isinstance(q.get("valeurs"), dict):          # question qui a corrige la date : ses valeurs corrigees
+            return {**q["valeurs"], "oui": True}
+        for a in messages[:i]:
+            for c in a.get("tool_calls") or []:
+                if c["id"] == m.get("tool_call_id") and c["function"]["name"] == "mettre_agenda":
+                    try:
+                        return {**json.loads(c["function"]["arguments"] or "{}"), "oui": True}
+                    except ValueError:
+                        break
+    return {**args, "oui": False}
 
 
 _RUNNING: set = set()          # reponses en cours dans ce processus (garde une reference aux taches)

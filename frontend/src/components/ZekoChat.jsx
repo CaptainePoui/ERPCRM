@@ -36,10 +36,11 @@ export function ZekoText({ text }) {
       list.push(li[1])
     } else {
       list = null
-      if (line.trim()) blocks.push({ p: line.replace(/^#+\s*/, '') })
+      if (/^\s*-{3,}\s*$/.test(line)) blocks.push({ gap: true })     // réponse à une question restée sans réponse, puis la nouvelle
+      else if (line.trim()) blocks.push({ p: line.replace(/^#+\s*/, '') })
     }
   })
-  return blocks.map((b, i) => b.list
+  return blocks.map((b, i) => b.gap ? <div key={i} style={{ height: '2.4em' }} /> : b.list
     ? <ul key={i} style={{ margin: '4px 0', paddingLeft: 20 }}>{b.list.map((x, j) => <li key={j}>{inline(x, `${i}-${j}`)}</li>)}</ul>
     : <div key={i} style={{ margin: '3px 0' }}>{inline(b.p, i)}</div>)
 }

@@ -16,7 +16,7 @@ from app.models.contact_company import ContactCompany, ContactCompanyFunction
 from app.models.entity import Entity
 from app.models.equipment import Equipment
 from app.models.invoice import Invoice
-from app.models.telephony import DID, Extension
+from app.models.telephony import DID
 from app.models.ticket import Ticket, TicketMessage, TicketTimePeriod, TicketTimeAdjustment
 
 _MAX = 3500
@@ -106,14 +106,20 @@ TOOLS = [
          "jusqua": {"type": "string", "description": "AAAA-MM-JJ"}, "depuis": {"type": "string", "description": "AAAA-MM-JJ"},
          "note": {"type": "string"}}, ["genre", "valeur"]),
     _fn("equipements", "Équipements d'un client (marque, modèle, IP, MAC, état, notes).", _CLIENT, ["client"]),
-    _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client.", _CLIENT, ["client"]),
+    _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client, lus en direct sur le serveur téléphonique : "
+        "qui est en ligne en ce moment, en appel, boîte vocale, langue, renvois.", _CLIENT, ["client"]),
     # TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail, un oui par tache
     _fn("agenda", "Rendez-vous, appels et événements de l'agenda entre deux dates (tous les calendriers).",
         {"depuis": {"type": "string", "description": "AAAA-MM-JJ"}, "jusqua": {"type": "string", "description": "AAAA-MM-JJ, inclus"}},
         ["depuis"]),
+    _fn("lire_date", "Quel jour tombe une date dite (« le 16 », « lundi 16 novembre ») ; s'il répond par une question "
+        "(« veux-tu dire… ? »), pose-la telle quelle.",
+        {"date": {"type": "string", "description": "la date exactement comme elle a été dite"}}, ["date"]),
     _fn("mettre_agenda", "Met à l'agenda un RDV ou un appel avec un client (crée aussi son ticket) ou un événement perso "
-        "(sans client). À appeler SEULEMENT après un oui à ta question « Je mets… à l'agenda ? ».",
-        {"genre": {"type": "string", "enum": ["rdv", "appel", "perso"]}, "titre": {"type": "string"},
+        "(sans client). Appelle-le D'ABORD sans oui : il vérifie la date et le client et te rend la question exacte à poser "
+        "(ou ce qui ne va pas, à dire tel quel). Après un oui clair à cette question, rappelle-le avec oui=true.",
+        {"oui": {"type": "boolean", "description": "true seulement après un oui à la question qu'il t'a rendue"},
+         "genre": {"type": "string", "enum": ["rdv", "appel", "perso"]}, "titre": {"type": "string"},
          "date": {"type": "string", "description": "la date comme elle a été dite, avec le jour et le mois en mots (ex. « lundi 2 novembre »)"},
          "heure": {"type": "string", "description": "HH:MM (24 h)"},
          "duree_minutes": {"type": "integer", "description": "par défaut : RDV 60, appel 30, perso 60"},
@@ -151,7 +157,7 @@ TOOLS = [
 EXTERNAL_TOOL = _fn("demander_ia_externe", "Demande l'avis d'une IA externe plus puissante sur une question TECHNIQUE générale "
                     "(dépannage, configuration, normes) quand tes connaissances ne suffisent pas, ou si l'utilisateur le demande. "
                     "Écris la question technique seule, sans noms ni coordonnées.", {"question": {"type": "string"}}, ["question"])
-LABELS = {"ouvrir_page": "ouvre la page", "agenda": "lit l'agenda", "mettre_agenda": "met à l'agenda",
+LABELS = {"ouvrir_page": "ouvre la page", "lire_date": "lit la date", "agenda": "lit l'agenda", "mettre_agenda": "met à l'agenda",
           "creer_poste": "crée le poste", "regler_poste": "règle le poste", "chercher_courriels": "cherche dans les courriels", "lire_courriel": "lit un courriel et ses pièces jointes",
           "transactions_banque": "lit le relevé bancaire", "regles_apprises": "relit ce qu'il a appris", "retenir": "retient pour la suite", "oublier": "oublie ce qui était appris",
           "regles_banque": "lit les règles de la banque", "changer_regle_banque": "change une règle de la banque",
@@ -580,9 +586,15 @@ async def _run(name, args, db, user_id=None) -> str:
                       "duree_min": round((c.duration or 0) / 60, 1),
                       "transcription": [f"{x.speaker} : {x.text}" for x in c.segments][:200]} for c in rows])
 
+    if name == "lire_date":
+        from app.core import clock
+        d = _date_dite(args.get("date"), clock.today())
+        return _out(d if isinstance(d, str) else _date_txt(d))
+
     if name in ("agenda", "mettre_agenda", "creer_poste", "regler_poste"):
         res = await (_agenda if name in ("agenda", "mettre_agenda") else _poste)(name, args, db, user_id)
-        if name != "agenda" and not (isinstance(res, dict) and res.get("fait")):
+        verif = name == "mettre_agenda" and args.get("oui") is not True      # simple verification avant la question
+        if name != "agenda" and not verif and not (isinstance(res, dict) and res.get("fait")):
             res = f"{ECHEC}{res}"          # l'ecran le montre aussi (✗), meme si Zeko le resume mal
         return _out(res)
     if name == "ouvrir_page":           # TASK-006.7 : le chemin n'est lu que par l'ecran, Zeko ne le montre pas
@@ -699,11 +711,46 @@ async def _run(name, args, db, user_id=None) -> str:
 
     if name == "telephonie":
         dids = (await db.execute(select(DID).where(DID.company_id == comp.id))).scalars().all()
-        exts = (await db.execute(select(Extension).where(Extension.company_id == comp.id).order_by(Extension.extension))).scalars().all()
-        return _out({"numeros": [{"no": d.number, "actif": d.is_active, "vers": f"{d.destination_type or ''} {d.destination or ''}".strip() or None} for d in dids],
-                     "postes": [{"poste": x.extension, "nom": x.name, "actif": x.is_active} for x in exts]})
+        numeros = [{"no": d.number, "actif": d.is_active, "vers": f"{d.destination_type or ''} {d.destination or ''}".strip() or None} for d in dids]
+        return _out(await _postes_live(comp, numeros))
 
     return _out(f"outil inconnu : {name}")
+
+
+async def _postes_live(comp, numeros):
+    """Postes du client lus en direct dans SIPV, avec qui est en ligne en ce moment (TASK-006.7, 2026-10-25 : l'outil
+    lisait les anciennes tables locales et disait « aucun poste » pour un client qui en avait 4 en ligne)."""
+    import httpx
+    from app.core import sipv_client
+    if not comp.sipv_enabled or not comp.sipv_tenant_id:
+        return {"numeros": numeros, "postes": "ce client n'a pas la téléphonie (SIPV)"}
+    try:
+        exts = await sipv_client.list_extensions(str(comp.sipv_tenant_id))
+    except httpx.HTTPError as e:
+        return {"numeros": numeros, "postes": f"serveur téléphonique injoignable ({str(e)[:100]}) : postes inconnus"}
+    try:
+        regs = {r["username"]: r for r in await sipv_client.tenant_registrations(str(comp.sipv_tenant_id))}
+        live = True
+    except httpx.HTTPError:
+        regs, live = {}, False
+    postes = []
+    for x in sorted(exts, key=lambda x: x["extension"]):
+        r = regs.get(x["username"])
+        renvois = [f"{q} vers {x.get(f'forward_{k}_destination_type')} {x.get(f'forward_{k}_destination') or ''}".strip()
+                   for k, q in (("immediate", "toujours"), ("busy", "occupé"), ("no_answer", "sans réponse"), ("offline", "non connecté"))
+                   if x.get(f"forward_{k}_enabled")]
+        p = {"poste": x["extension"], "nom": x.get("name"), "actif": x.get("is_active"),
+             "boite_vocale": x.get("voicemail_enabled"), "langue": x.get("display_language"), "renvois": renvois or None,
+             "ne_pas_deranger": x.get("dnd_enabled") or None}
+        if live and x.get("is_active"):
+            p["en_ligne"] = bool(r and r.get("registered"))
+            p["en_appel"] = bool(r and r.get("call_state") not in (None, "idle"))
+            p["appareils"] = r.get("registered_count") if r else 0
+        postes.append(p)
+    actifs = [p for p in postes if p["actif"]]
+    return {"numeros": numeros, "postes": postes,
+            "en_ligne": f"{sum(1 for p in actifs if p.get('en_ligne'))} sur {len(actifs)} postes actifs" if live else "état en direct indisponible",
+            "historique_connexions": "le serveur téléphonique ne garde pas encore l'historique des connexions : seulement l'état en ce moment"}
 
 
 # --- TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail (agenda, poste), apres un oui, comme dans l'ecran ---
@@ -723,14 +770,30 @@ _JOURS_FR = ["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "diman
 _MOIS = ["janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre"]
 
 
+_MOIS_DIT = ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"]
+_MOTS_DATE = {"le", "la", "l", "du", "de", "des", "d", "au", "a", "en", "er", "ce", "cette", "prochain", "prochaine", "matin",
+              "soir", "midi", "apres", "avant", "aujourd", "hui", "demain", "semaine", "h", "heure", "heures"}
+
+
+def _date_txt(d):
+    return f"{_JOURS_FR[d.weekday()]} {d.day} {_MOIS_DIT[d.month - 1]} {d.year}"
+
+
+def _mois(w):
+    w = w.rstrip(".")
+    return next((i + 1 for i, n in enumerate(_MOIS) if n == w or (len(w) >= 3 and n.startswith(w))), None)
+
+
 def _date_dite(v, today):
-    """Date comme on la dit (« lundi 2 novembre », « 2 nov. 2026 ») ou AAAA-MM-JJ : lue ici, pas par le modele (il se
-    trompait de mois). Annee absente = la prochaine fois que cette date arrive. Jour de semaine dit et faux = refus."""
+    """Date comme on la dit (« lundi 2 novembre », « le 16 », « 2 nov. 2026 ») ou AAAA-MM-JJ : lue ici, pas par le modele
+    (il se trompait de mois). Annee absente = la prochaine fois que cette date arrive ; mois absent = le prochain 16.
+    Jour de semaine faux, ou mot qui n'est pas un jour (« tarte le 16 », Philippe 2026-10-25) = question avec la bonne date."""
     import re, unicodedata
     from datetime import date, timedelta
     txt = "".join(ch for ch in unicodedata.normalize("NFD", str(v or "").lower()) if unicodedata.category(ch) != "Mn")
+    words, dits = re.findall(r"[a-z]+", txt), re.findall(r"[^\W\d_]+", str(v or ""))
     d = _day(txt.strip())
-    dit = next((i for i, j in enumerate(_JOURS_FR) if j in txt), None)
+    dit = next((_JOURS_FR.index(w) for w in words if w in _JOURS_FR), None)
     if not d:
         rel = next((n for w, n in (("apres-demain", 2), ("apres demain", 2), ("demain", 1), ("aujourd", 0)) if w in txt), None)
         if rel is not None:
@@ -738,19 +801,38 @@ def _date_dite(v, today):
     if not d and dit is not None and not re.search(r"\d", txt):    # « lundi », « lundi prochain » : le prochain lundi
         return today + timedelta(days=(dit - today.weekday() - 1) % 7 + 1)
     if not d:
-        m = re.search(r"(\d{1,2})(?:er)?\s+([a-z]+)\.?(?:\s+(\d{4}))?", txt)
-        mois = next((i + 1 for i, n in enumerate(_MOIS) if m and n.startswith(m.group(2)[:3])), None)
-        if not m or not mois:
+        m = re.search(r"(\d{1,2})(?:er)?(?:\s+([a-z]+\.?))?(?:\s+(\d{4}))?", txt)
+        if not m:
             return "précise la date (ex. « lundi 2 novembre » ou 2026-11-02)"
+        jour, mois = int(m.group(1)), _mois(m.group(2)) if m.group(2) else None
         try:
-            y = int(m.group(3)) if m.group(3) else today.year
-            d = date(y, mois, int(m.group(1)))
-            if not m.group(3) and d < today:
-                d = date(y + 1, mois, int(m.group(1)))
+            if mois:
+                y = int(m.group(3)) if m.group(3) else today.year
+                d = date(y, mois, jour)
+                if not m.group(3) and d < today:
+                    d = date(y + 1, mois, jour)
+            else:                                                    # « le 16 » : le prochain 16 du mois
+                y, mo = today.year, today.month
+                for _ in range(12):
+                    try:
+                        d = date(y, mo, jour)
+                        if d >= today:
+                            break
+                    except ValueError:
+                        pass
+                    y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
+                    d = None
+                if not d:
+                    raise ValueError
         except ValueError:
             return "cette date n'existe pas"
+    autre = next((dits[i] if i < len(dits) else w for i, w in enumerate(words)
+                  if w not in _MOTS_DATE and w not in _JOURS_FR and not _mois(w)), None)
+    if autre and dit is None:
+        return f"« {autre} » n'est pas un jour de semaine : demande « Veux-tu dire {_date_txt(d)} ? »"
     if dit is not None and dit != d.weekday():
-        return f"le {d.day} {_MOIS[d.month - 1]} {d.year} est un {_JOURS_FR[d.weekday()]}, pas un {_JOURS_FR[dit]} : vérifie la date"
+        return (f"le {d.day} {_MOIS_DIT[d.month - 1]} {d.year} est un {_JOURS_FR[d.weekday()]}, pas un {_JOURS_FR[dit]} : "
+                f"demande « Veux-tu dire {_date_txt(d)} ? »")
     return d
 
 
@@ -783,6 +865,18 @@ async def _agenda(name, args, db, user_id):
         return "genre : rdv, appel ou perso"
     d = _date_dite(args.get("date"), clock.today())
     if isinstance(d, str):
+        if "Veux-tu dire" in d and not args.get("_corrige"):   # la question corrige la date ET decrit tout : un seul oui
+            bonne = d.split("Veux-tu dire ")[1].split(" ?")[0]
+            mots = str(args.get("client") or "").split()
+            fix = {**args, "date": bonne, "_corrige": True, "oui": False}
+            if len(mots) > 1 and mots[-1].lower() in str(args.get("date") or "").lower():
+                fix["client"] = " ".join(mots[:-1])     # « la compagnie test tarte le 16 » : « tarte » etait la date
+            res = await _agenda(name, fix, db, user_id)
+            debut = d.split(" : demande ")[0] + f" : veux-tu dire {bonne} ?"
+            if isinstance(res, dict) and res.get("question"):
+                fix.pop("_corrige"); fix.pop("oui")
+                return {"question": f"{debut} Si oui, {res['question'][0].lower()}{res['question'][1:-2]}.", "valeurs": fix}
+            return f"{debut} ({res})" if isinstance(res, str) else res
         return d
     try:
         hh, mm = (int(x) for x in str(args.get("heure") or "").replace("h", ":").split(":")[:2])
@@ -795,9 +889,8 @@ async def _agenda(name, args, db, user_id):
         return f"le {_JOURS_FR[d.weekday()]} {d.isoformat()} à {start:%H:%M} est déjà passé : vérifie la date"
     minutes = int(args.get("duree_minutes") or (30 if genre == "appel" else 60))
     titre = str(args.get("titre") or "").strip() or str(args.get("description") or "").strip()[:80]
-    prefix = {"rdv": "RDV - ", "appel": "Appel - "}.get(genre, "")
-    if prefix and not titre.lower().startswith(prefix.split(" ")[0].lower()):
-        titre = prefix + titre
+    if titre.lower() in ("rdv", "appel", "perso"):
+        titre = ""
     company = contact = None
     if genre != "perso":            # un RDV ou un appel cree toujours un ticket (TASK-015.19)
         if args.get("personne"):
@@ -806,10 +899,23 @@ async def _agenda(name, args, db, user_id):
                 return contact
         if args.get("client"):
             company = await _resolve_company(db, args["client"])
+            mots = str(args["client"]).split()
+            if not isinstance(company, Company) and len(mots) > 1 and mots[-1].lower() in str(args.get("date") or "").lower():
+                company = await _resolve_company(db, " ".join(mots[:-1]))   # « test tarte le 16 » : « tarte » est la date
             if not isinstance(company, Company):
                 return company
         if not company and not contact:
             return "un RDV ou un appel est toujours lié à un client (il crée son ticket) : précise le client ou la personne"
+    if not titre:                            # sans titre dit : le nom du client
+        titre = company.name if company else f"{contact.first_name} {contact.last_name}" if contact else "Perso"
+    prefix = {"rdv": "RDV - ", "appel": "Appel - "}.get(genre, "")
+    if prefix and not titre.lower().startswith(prefix.split(" ")[0].lower()):
+        titre = prefix + titre
+    if args.get("oui") is not True:          # tout est verifie : la question exacte a poser, rien n'est encore fait
+        avec = " avec " + " de ".join(x for x in ((f"{contact.first_name} {contact.last_name}" if contact else None), (company.name if company else None)) if x) if (company or contact) else ""
+        return {"question": f"Je mets à l'agenda « {titre} » le {_date_txt(d)} à {start:%H:%M} ({minutes} min){avec}"
+                            f"{', avec son ticket' if genre != 'perso' else ''} ?",
+                "consigne": "pose cette question telle quelle ; après un oui, rappelle mettre_agenda avec les mêmes valeurs et oui=true"}
     payload = EventCreate(title=titre, description=args.get("description"), location=args.get("lieu"), start=start,
                           end=start + timedelta(minutes=minutes), company_id=company.id if company else None,
                           contact_id=contact.id if contact else None, personal=genre == "perso")
