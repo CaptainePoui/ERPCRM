@@ -596,7 +596,7 @@ Date(s) de travail : 2026-10-14
 
 ### TASK-005.20 [x] PDF des factures ERPCRM inspiré de celui de l'ancien logiciel
 Date de demande : 2026-10-14 (Philippe, en déposant l'historique des factures PDF : « tu pourrais te guider pour les factures de ceux de Zoho, je les trouvais bien »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Modèle : les PDF de l'ancien logiciel dans `/home/simpleip/Simple_IP/factures_zoho/Invoices*.zip` (en-tête vendeur à gauche, « Solde dû » en haut à droite, bloc « Facturer à » + date/conditions/échéance, tableau # / Article & Description / Quantité / Taux / Montant avec la description sous le nom de l'article, totaux Sous-total / TPS / TVQ / Total / Paiement effectué / Solde dû, Remarques, options de paiement, conditions d'utilisation, n° TPS/TVQ en pied de page). Jamais le mot « Zoho » dans le PDF (TASK-005.11).
 - Pas commencé : à faire après l'import de l'historique.
@@ -616,7 +616,7 @@ Date(s) de travail : 2026-10-14
 
 ### TASK-005.22 [x] Rappel chaque semaine des factures en brouillon + « Offrir au client »
 Date de demande : 2026-10-14 (Philippe, en découvrant les factures HRH 2021 et J. Lavoie 2023 jamais envoyées : « une facture brouillon devrait se faire rappeler à chaque semaine qu'elle existe… là je l'ai oubliée depuis tellement longtemps » ; « j'espère qu'avec toi on ne vivra plus ça »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Fait le 2026-10-14 (GO de Philippe : « go ») :
   - `app/core/draft_reminders.py`, appelé par `reminder_poller` : une fois par semaine ISO, s'il y a des brouillons, tâche « Factures en brouillon : N » (numéro, client, date, âge en jours, montant), assignée au responsable des rappels de déclaration (`tax_reminder_user_id`, sinon un admin), courriel à 9 h ; la tâche de la semaine précédente encore ouverte est fermée. 1re tâche créée le 2026-10-14 (HRH INV-000003, Compagnie test 2026-0001).
@@ -637,7 +637,7 @@ Date(s) de travail : 2026-10-14
 
 ### TASK-005.24 [~] Paiement « Facture perdue (ancien logiciel) » + chèques attachés aux paiements
 Date de demande : 2026-10-15 (Philippe : « est-ce qu'on peut le mettre dans le portail client avec facture perdue pour ceux qu'on connaît… on a les dépôts, ce serait cool que les clients aient cette info aussi… comment on pourrait faire sans exclure » ; « je pense qu'on devrait les mettre dans paiement lié au client »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Contexte : 98 dépôts BNC d'avant juin 2020 sans facture dans ERPCRM (factures QuickBooks perdues, plus d'accès). Décision : ne PAS recréer de factures (pièces reconstruites = faux originaux ; revenus et taxes déjà déclarés à l'époque).
 - À faire : type de paiement « Facture perdue (ancien logiciel) » relié au dépôt BNC (client, date, montant, numéro de facture quand le chèque le donne) ; jamais du crédit (comme le troc), aucun effet sur ventes/taxes ; visible au portail (« Facture perdue (ancien logiciel) — payée le … », sans PDF) et dans la fiche compagnie ; modifiable/annulable. Image du chèque attachée au paiement (pas au portail : numéro de compte du client sur le chèque).
@@ -646,7 +646,7 @@ Date(s) de travail : —
 
 ### TASK-005.25 [ ] Recouvrement : factures envoyées à une agence, chèque de l'agence, commission et perte
 Date de demande : 2026-10-15 (Philippe : « l'agence de recouvrement Oligny et Thibodeau, je l'ai utilisée pour me faire rembourser des clients pas satisfaits… je pense qu'elle me donnait 75 % du montant… j'ai d'autres clients ici qui ne paient pas et que je vais envoyer… faire dans le dossier des clients un endroit où je pourrais mettre recouvrement qui me permettrait d'associer les factures à un chèque du recouvrement, qui ne serait sûrement pas le même montant, le reste tomberait en perte »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Constat : chèque #8178 de l'Agence de recouvrement Oligny et Thibodeau en fidéicommis, 112,02 $ daté du 2019-10-31, déposé le 2019-12-24 (dépôt mobile) — client et facture inconnus ; image gardée dans `backend/storage/payment_documents_pending/`, dépôt laissé non classé.
 - À concevoir (avec Philippe) : sur une ou plusieurs factures, « Envoyer en recouvrement » (agence, date) ; à l'arrivée du chèque de l'agence, l'associer à ces factures : montant reçu = paiement ; **distinguer** (1) la commission de l'agence quand le client a payé au complet (dépense de recouvrement — la facture est payée, aucune taxe à récupérer) et (2) la partie que le client n'a jamais payée (créance irrécouvrable / perte — ajustement de TPS/TVQ possible, à confirmer avec Revenu Québec). Visible dans la fiche du client ; le client en recouvrement exclu des relances normales.
@@ -962,16 +962,17 @@ Date(s) de travail : 2026-10-23
 - Écrans : Employés › Vendeurs → deux taux dans les réglages (et à l'ajout), « Ses clients » = une ligne par client (mode, taux personnalisé, Enregistrer), taux et mode dans le tableau des commissions ; fiche client → « Commission du vendeur » sous « Vendeur ». Mesuré 1920 et iPhone 13 : Vendeurs sans défaut ; fiche client : seul « + Tâche » de l'en-tête déborde sur cellulaire (déjà avant ce changement).
 - Données : Richard et Sylvain — tous leurs clients restent « avec support » 10 %, soldes inchangés (4,79 $ et 150,69 $).
 
-### TASK-007.4 [ ] Onglet Privilèges dans Employés : ce que chaque employé a le droit de voir et faire (et Zéko pour lui)
+### TASK-007.4 [~] Onglet Privilèges dans Employés : ce que chaque employé a le droit de voir et faire (et Zéko pour lui)
 Date de demande : 2026-10-25 (Philippe : « pour l'employé il va avoir accès à tout ce qu'il a besoin pour gérer un client… mais pas les points comme l'ajustement des salaires, des taxes, le fiscaliste, les ristournes, etc. ; d'ailleurs dans Employés on va mettre un onglet Privilèges pour choisir ce que j'ai accès. Philippe : un privilège avec tout comme accès, mais on va faire un employé fictif (mon père) qu'on va appeler Denis Normandeau puisqu'il va aussi être le test de l'employé de test au contact Papa Normandeau ; je vais me connecter à distance pour tester avec lui son portail employé (avec les privilèges de comptable) et l'employé c'est pour tester le provisioning d'un GXP2135 (photo dans le ticket « Ajout d'un GX, P. 2135. », à traiter plus tard avec le GPU sur le nouveau serveur) »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Existant à croiser avant de coder : rôles `UserRole` (admin/manager/tech/billing/readonly), arbre de privilèges prévu du portail (TASK-019 / TASK-S053).
 - Philippe : tout ; Denis Normandeau (employé fictif, lié au contact « Papa Normandeau ») : privilèges de comptable, pour tester le portail employé à distance ; le provisioning du GXP2135 (ticket « Ajout d'un GX, P. 2135. ») plus tard, avec le GPU du nouveau serveur.
 - Zéko agit avec les privilèges de la personne qui lui parle (TASK-006.7).
 - Précision 2026-10-25 (Philippe : « et dans admin tu as mis l'onglet privilège pour les gérer et ajouter ou enlever des privilèges ? ») : rien de codé encore ; proposé : Administration › Privilèges = les profils (Tout, Comptable, Technicien…) et ce que chacun permet, ajouter / enlever ; Employés › Privilèges = le profil de chaque employé (et ses exceptions).
 - Constat 2026-10-25 (plan, GO « go prépare le plan ») : aujourd'hui aucun contrôle réel — ~375 actions d'écriture dans l'API, ~6 vérifient le rôle (admin, journal, voix, boîtes courriel, graphe, Zéko) ; le menu est le même pour tous ; 1 seul compte (Philippe, admin) ; le contact Denis Normandeau existe déjà ; aucun « portail employé » distinct (ce sera ERPCRM avec ses privilèges).
-- Plan proposé (en attente de GO par étape) : (1) liste des privilèges par zone du menu, voir / modifier (Compagnies-contacts, Tickets, Courriels, Catalogue, Ventes, Achats, Banque, Fiscalité, Commandes, Employés, Salaires, Commissions, Tâches-agenda, Téléphonie-serveur, Administration, Zéko) ; (2) Administration › Privilèges : profils modifiables (« Tout » verrouillé, jamais retiré au dernier administrateur) ; (3) Employés › Privilèges : profil + exceptions + compte de connexion ; (4) verrou côté serveur sur chaque routeur (refus clair) + menu et pages adaptés ; (5) Zéko : chaque outil lié à une zone, selon la personne qui parle (remplace `_can_change`) ; (6) Denis Normandeau employé avec profil Comptable, essai à distance.
+- 2026-10-25 : GO étapes 1 à 5 (Philippe : « non Denis le contact change-le pour Papa et je vais créer un employé, voir comment ça marche… mais go pour tout le reste ») ; contact « Denis Normandeau » renommé « Papa Normandeau » (par l'API, pas de poste SIPV) ; l'étape 6 (employé de test) est faite par Philippe lui-même.
+- Plan proposé : (1) liste des privilèges par zone du menu, voir / modifier (Compagnies-contacts, Tickets, Courriels, Catalogue, Ventes, Achats, Banque, Fiscalité, Commandes, Employés, Salaires, Commissions, Tâches-agenda, Téléphonie-serveur, Administration, Zéko) ; (2) Administration › Privilèges : profils modifiables (« Tout » verrouillé, jamais retiré au dernier administrateur) ; (3) Employés › Privilèges : profil + exceptions + compte de connexion ; (4) verrou côté serveur sur chaque routeur (refus clair) + menu et pages adaptés ; (5) Zéko : chaque outil lié à une zone, selon la personne qui parle (remplace `_can_change`) ; (6) Denis Normandeau employé avec profil Comptable, essai à distance.
 
 ---
 
@@ -2835,13 +2836,13 @@ Maintenant (`backend/app/api/v1/endpoints/companies.py`) :
 
 ### TASK-023.36 [ ] Bogue : poste 104 « test PAPA » dans ERPCRM mais jamais créé sur SIPV
 Date de demande : 2026-10-10 (Philippe : « ça veut dire que l'ERPCRM n'a pas créé le 104 comme il aurait dû le faire »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Constaté (2026-10-10) : le 104 « test PAPA » (courriel de messagerie normdenis@hotmail.com, créé le 2026-08-14) existe seulement dans l'ancienne table `extensions` d'ERPCRM, rattachée à Simple IP inc. ; le tenant SIPV de Simple IP (T1001) a 100, 101, 102, 103. Cause à trouver (ancien chemin de création qui n'envoyait pas à SIPV ? envoi en échec non signalé ?) avant de corriger.
 
 ### TASK-023.37 [ ] Numéros libres de Simple IP dans le tenant T1000 : message de vente puis transfert
 Date de demande : 2026-10-10 (Philippe : « je veux que le tenant test soit le T1000, ça va être là aussi que je vais mettre mes # DID libres pour qu'ils soient dans le serveur et jouent le message « ce numéro appartient à Simple IP, vous pouvez l'acheter en restant en ligne » (destination 2) mon cell (futur app de cell IP) »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - À faire après la création de T1000 (TASK-002.5) : les numéros non vendus vont dans T1000 ; appel entrant → message enregistré → transfert vers le cellulaire de Philippe (plus tard l'application cellulaire IP). Vérifier ce que les destinations de numéros existantes (TASK-023.31) permettent déjà avant de coder.
 
@@ -2940,7 +2941,7 @@ Date(s) de travail : 2026-10-02
 
 ### TASK-025.2 [ ] Devis « à régler en troc » (facture d'échange) → facture datée du jour de l'échange
 Date de demande : 2026-10-08 (Philippe, sur le devis 2026-D0001 de Physotech : « ou facture d'échange qui serait entre le devis et la facture… il y aurait les taxes mais pas calculées ; si je voudrais un jour la mettre en facture, là on met la date du jour qu'on le fait avec le lien vers l'échange en question, comme ça on a toutes les dates et on est légal »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - En attente du GO sur la proposition : pas un 3e type de document — le devis existant (taxes affichées, jamais dans les ventes ni la déclaration) reçoit la marque « À régler en troc » ; il apparaît dans la boîte « À régler en troc » de l'onglet Échanges (en attente, hors taxes déclarées) ; « Créer un échange » sur ce devis le convertit en facture datée du jour de l'échange (taxes alors comptées), reliée au devis et à l'échange, et payée par lui ; bouton « Convertir en facture » aussi seul. Condition légale dite à Philippe : la facture doit être faite au moment de l'échange (paiement en services = paiement), pas laissée indéfiniment.
 - Décision 2026-10-08 pour Physotech (Philippe, après explication — un échange se déclare de chaque côté ; coiffure/laser pour lui = services personnels, aucune taxe récupérable : « je comprends maintenant, ok fais la facture à la date d'aujourd'hui, j'aurais dû payer ces taxes en 2021, je les paierai dans le prochain rapport ») : **INV-112254 gardée** (2026-10-08, 929,90 $ + 139,26 $ = 1 069,16 $, à régler en troc, non envoyée) ; devis 2026-D0001 « Accepté » et relié à la facture (`devis.invoice_id`, pas modifiable par l'API — écrit par un court script, à la demande). Le devis troc (facture d'échange) reste à évaluer par Philippe (« on va évaluer ça »).
@@ -6288,7 +6289,7 @@ Date(s) de travail : 2026-10-07
 
 ## TASK-043.2 [ ] Fiscalité › Rapports : seulement ceux utiles à Simple IP inc. au Québec
 Date de demande : 2026-10-21 (Philippe : « dans Fiscalité il faut qu'on ait accès aux rapports… Zoho a ça… regarde pour mon projet et le Québec ce que j'ai besoin, plein de rapports de Zoho me sont inutiles, je ne les veux pas » ; liste des 73 rapports de Zoho fournie)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Recommandation proposée (en attente du GO) : 1) État des résultats de l'exercice (juillet–juin), détaillable par compte de dépense et par transaction ; 2) Bilan (dépend de ce qu'ERPCRM sait des actifs/passifs : banque, comptes clients, comptes fournisseurs connus ; capital-actions, prêt d'actionnaire, immobilisations/DPA pas encore modélisés) ; 3) Résumé des taxes TPS/TVQ (perçues, payées sur achats, à remettre par période — lié à l'onglet Déclaration) ; 4) Comptes clients par ancienneté ; 5) Comptes fournisseurs par ancienneté ; 6) Ventes par client et par article ; 7) Salaires et retenues (T4/RL-1, DAS) ; 8) Détail des transactions d'un compte (grand livre simplifié, pour justifier un chiffre). Écartés : ratios, prévisions, flux de trésorerie, vendeurs, canaux de vente, projets/feuilles de temps, budgets, devises, cartes et renouvellements, automatisation, API, activités (le Journal des actions existe déjà).
 - Rappel : l'analyse TPS/TVQ des périodes reste suspendue (mémoire « taxes en attente ») ; ces rapports sont l'outil, pas une révision des déclarations.
@@ -6470,7 +6471,7 @@ Date(s) de travail : 2026-10-09
 
 ## TASK-048 [ERPCRM+SIPV] [ ] Installation chez un client : un seul endroit pour savoir quoi changer
 Date de demande : 2026-10-09 (Philippe, après TASK-S055.8 : « c'est important d'être dynamique : si on installe chez un client, il faut savoir quoi changer et ne pas chercher partout dans le projet »)
-Date(s) de travail : —
+Date(s) de travail : 2026-10-25
 
 - Constaté le 2026-10-09 : les réglages sont déjà centralisés (`config.py` / `.env` de chaque serveur, TASK-031 et TASK-S056), mais aucun document ne dit, pour une nouvelle installation, quoi régler, quels dossiers créer et dans quel ordre. Le script `scripts/install.sh` de SIPV est périmé (installe Asterisk, pas FreeSWITCH ; ne crée aucun service ni dossier).
 - Exemple qui a déjà cassé : TASK-S055.8 (dossier créé à la main, perdu). À faire par le code plutôt qu'à la main quand c'est possible : `StateDirectory=sipv` dans les services systemd SIPV crée `/var/lib/sipv` au démarrage, avec le bon propriétaire.
