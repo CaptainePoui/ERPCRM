@@ -6364,6 +6364,11 @@ Date(s) de travail : 2026-10-15
 - **Date(s) de travail** : 2026-10-22
 - 15 factures Elite non payées supprimées par l'API (14 juillet → 20 octobre 2026) ; gardées : celle du 7 juillet (la plus vieille impayée) et les 12 payées (avril → juin, 100 $ chacune, à revoir par Philippe avec un comptable). Prochaine facture annuelle : 2027-04-14. Sauvegarde : `~/backups/before_elite_bills_20261022_1334.sql`.
 
+### TASK-044.4 [ ] Dépôt de factures (glisser-déposer) sous « Nouvelle facture fournisseur »
+- **Date de demande** : 2026-10-25 (Philippe : « j'aimerais avoir sous nouvelle facture un import pour les dépenses qui serait drag and drop aussi ; si j'ai des factures, je les mets là et Zéko crée la dépense »)
+- **Date(s) de travail** : —
+- Constat : la zone de dépôt existe déjà dans Achats › Dépenses (TASK-044.1, lecture par l'IA locale = le même modèle que Zéko) ; elle ne crée que des dépenses. En attente du GO sur le plan (même zone dans Factures fournisseurs ; facture non payée plutôt que dépense, selon TASK-044.2).
+
 ## TASK-045 [ERPCRM] [x] Fuseau horaire de l'entreprise — « quel jour on est » à l'heure de Montréal partout
 Date de demande : 2026-10-07 (Philippe, au soir : « pourquoi elle est demain ?? » sur la facture des textos ; puis « oui go pour le fuseau horaire, c'est super important que tout le ERPCRM et le SIPV soit au bon fuseau horaire… le serveur est ici à Montréal »)
 Date(s) de travail : 2026-10-07 (soir, heure du Québec)
