@@ -1,9 +1,9 @@
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Text, Enum as SAEnum
+from sqlalchemy import String, Boolean, DateTime, Text, Enum as SAEnum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 
@@ -32,3 +32,6 @@ class User(Base):
     # Chemin de navigation (TASK-054, 2026-10-21) : derniers ecrans visites, garde sur le serveur pour que « Retour »
     # ramene ou on etait meme apres un rafraichissement ou sur un autre appareil (JSON : [{"path": ...}, ...])
     nav_trail: Mapped[str | None] = mapped_column(Text)
+    # Privileges (TASK-007.4, 2026-10-25) : son profil, et ses exceptions par section ({section: "aucun"|"voir"|"modifier"})
+    privilege_profile_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("privilege_profiles.id", ondelete="SET NULL"), nullable=True)
+    privilege_overrides: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")

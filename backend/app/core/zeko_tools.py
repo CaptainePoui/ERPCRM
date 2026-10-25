@@ -232,13 +232,46 @@ async def _former(db, entity_id) -> list:
 
 
 async def _can_change(db, user_id) -> bool:
-    """Changer ce que Zeko sait ou une regle de la banque : administrateur ou gestionnaire seulement."""
-    from app.models.user import User, UserRole
-    u = await db.get(User, user_id) if user_id else None
-    return bool(u and u.role in (UserRole.admin, UserRole.manager))
+    """Un changement demande a Zeko vient toujours d'un employe connecte ; ce qu'il a le droit de changer est verifie
+    avant, par les privileges de cet employe (run, TASK-007.4 ; avant : administrateur ou gestionnaire seulement)."""
+    from app.models.user import User
+    return bool(user_id and await db.get(User, user_id))
+
+
+# Section d'ERPCRM et niveau qu'il faut a l'employe qui parle a Zeko pour chaque outil (TASK-007.4, 2026-10-25) : Zeko
+# fait seulement ce que cette personne a le droit de faire elle-meme. Liste vide = libre.
+TOOL_PRIVILEGES = {
+    "chercher": [("clients", "voir")], "fiche_client": [("clients", "voir")], "fiche_contact": [("clients", "voir")],
+    "equipements": [("clients", "voir")], "tickets_client": [("tickets", "voir")], "lire_ticket": [("tickets", "voir")],
+    "conversations": [("tickets", "voir")], "paiements_carte": [("ventes", "voir")],
+    "chercher_courriels": [("courriels", "voir")], "lire_courriel": [("courriels", "voir")],
+    "transactions_banque": [("banque", "voir")], "regles_banque": [("banque", "voir")],
+    "changer_regle_banque": [("banque", "modifier")], "regles_apprises": [("zeko", "voir")],
+    "retenir": [("zeko", "modifier")], "oublier": [("zeko", "modifier")],
+    "changer_nom_client": [("clients", "modifier")], "ajouter_ancienne_info": [("clients", "modifier")],
+    "telephonie": [("telephonie", "voir")], "agenda": [("agenda", "voir")], "mettre_agenda": [("agenda", "modifier")],
+    "creer_poste": [("telephonie", "modifier"), ("clients", "modifier")], "regler_poste": [("telephonie", "modifier")],
+    "lire_date": [], "ouvrir_page": [], "demander_ia_externe": [],
+}
+
+
+def allowed_tools(privs: dict, tools: list) -> list:
+    """Les outils que Zeko offre a cette personne (un outil inconnu ici n'est jamais offert : oubli = ferme)."""
+    from app.core import privileges as P
+    return [t for t in tools if t["function"]["name"] in TOOL_PRIVILEGES
+            and all(P.allows(privs, s, lv) for s, lv in TOOL_PRIVILEGES[t["function"]["name"]])]
 
 
 async def run(name: str, args: dict, db, user_id=None) -> str:
+    from app.core import privileges as P
+    need = TOOL_PRIVILEGES.get(name)
+    if need is None and name != "demander_ia_externe":
+        return _out(f"outil inconnu : {name}")
+    privs = await P.for_user_id(db, user_id)
+    refus = [s for s, lv in need or [] if not P.allows(privs, s, lv)]
+    if refus:
+        label = ", ".join(next(l for k, l, _e in P.SECTIONS if k == s) for s in refus)
+        return _out(f"{ECHEC}les privilèges de la personne qui te parle ne permettent pas cela ({label})")
     try:
         return await _run(name, args or {}, db, user_id)
     except Exception as e:
@@ -858,7 +891,7 @@ async def _agenda(name, args, db, user_id):
 
     user = await _user(db, user_id)
     if not await _can_change(db, user_id):
-        return "seul un administrateur ou un gestionnaire peut faire changer l'agenda par Zéko"
+        return "il faut être connecté pour faire changer l'agenda par Zéko"
     from app.api.v1.endpoints.google_oauth import EventCreate, create_google_event
     genre = str(args.get("genre") or "").strip().lower()
     if genre not in ("rdv", "appel", "perso"):
@@ -1002,7 +1035,7 @@ async def _poste(name, args, db, user_id):
     from app.core import sipv_client
     user = await _user(db, user_id)
     if not await _can_change(db, user_id):
-        return "seul un administrateur ou un gestionnaire peut faire créer ou régler un poste par Zéko"
+        return "il faut être connecté pour faire créer ou régler un poste par Zéko"
     fields = _poste_fields(args)
     if isinstance(fields, str):
         return fields

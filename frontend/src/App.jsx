@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import DialogHost from './components/Dialog'
 import { createBrowserRouter, createRoutesFromElements, RouterProvider, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Login from './pages/Login'
@@ -35,8 +35,17 @@ import BankAccountDetail from './pages/BankAccountDetail'
 import Taxes from './pages/Taxes'
 import { SalesPayments, SalesDeposits } from './pages/Sales'
 import { PurchaseVendors, PurchaseExpenses, PurchaseRecurringExpenses, PurchaseBills, PurchaseBillDetail, PurchaseRecurringBills, PurchasePayments, PurchaseCredits, PurchaseOrdersPage } from './pages/Purchases'
-import { clearToken } from './services/api'
+import api, { clearToken } from './services/api'
+import { setPrivileges, can } from './utils/privileges'
 import './App.css'
+
+// Première page permise (TASK-007.4) : Compagnies, sinon la première section que la personne peut voir
+function firstPage() {
+  const order = [['clients', '/companies'], ['tickets', '/tickets'], ['ventes', '/invoices'], ['achats', '/purchases/bills'],
+    ['banque', '/bank'], ['fiscalite', '/taxes'], ['agenda', '/tasks'], ['courriels', '/mail'], ['catalogue', '/catalogue'],
+    ['commandes', '/commandes'], ['employes', '/employees'], ['serveur', '/server'], ['administration', '/admin']]
+  return (order.find(([s]) => can(s)) || [null, '/settings'])[1]
+}
 
 function InternalApp() {
   const location = useLocation()
@@ -49,6 +58,17 @@ function InternalApp() {
     setUser({ id: data.user_id, full_name: data.full_name, role: data.role })
   }
 
+  // Privilèges (TASK-007.4) : relus à chaque ouverture, le menu suit
+  const [privsReady, setPrivsReady] = useState(false)
+  useEffect(() => {
+    if (!user?.id) return
+    setPrivsReady(false)
+    api.get('/v1/auth/me').then(r => {
+      setPrivileges(r.data.privileges)
+      setUser(u => ({ ...u, privileges: r.data.privileges, profile: r.data.profile }))
+    }).catch(() => {}).finally(() => setPrivsReady(true))
+  }, [user?.id])
+
   function handleLogout() {
     clearToken()
     setUser(null)
@@ -58,10 +78,11 @@ function InternalApp() {
   // Fenêtre Zéko à part, sans menu (TASK-006.7) : à placer sur un autre écran
   if (location.pathname === '/zeko') return <ZekoPanel standalone onClose={() => window.close()} />
 
+  if (!privsReady) return null
   return (
     <Layout user={user} onLogout={handleLogout}>
       <Routes>
-        <Route path="/" element={<Navigate to="/companies" replace />} />
+        <Route path="/" element={<Navigate to={firstPage()} replace />} />
         <Route path="/companies" element={<Companies />} />
         <Route path="/companies/new" element={<CompanyDetail isNew />} />
         <Route path="/companies/:id" element={<CompanyDetail />} />

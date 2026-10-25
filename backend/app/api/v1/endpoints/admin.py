@@ -15,8 +15,10 @@ from app.models.status import Status, EntityStatus
 router = APIRouter()
 
 
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role != UserRole.admin:
+async def require_admin(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> User:
+    """Privilege « Administration » (modifier) -- TASK-007.4 ; avant : le role administrateur seulement."""
+    from app.core import privileges
+    if not privileges.allows(await privileges.for_user_id(db, current_user.id), "administration", privileges.MODIFIER):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Accès administrateur requis")
     return current_user
 
@@ -111,6 +113,8 @@ async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession 
             raise HTTPException(status_code=400, detail="Rôle invalide")
     for k, v in data.items():
         setattr(u, k, v)
+    from app.core import privileges
+    await privileges.ensure_someone_full(db)
     await db.commit()
     await db.refresh(u)
     return UserOut(id=u.id, email=u.email, full_name=u.full_name, role=u.role.value,
@@ -126,6 +130,8 @@ async def delete_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), ad
     if u.id == admin.id:
         raise HTTPException(status_code=400, detail="Impossible de supprimer votre propre compte")
     await db.delete(u)
+    from app.core import privileges
+    await privileges.ensure_someone_full(db)
     await db.commit()
 
 

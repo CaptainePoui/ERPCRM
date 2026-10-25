@@ -116,13 +116,18 @@ async def get_current_user_or_service(
 
 
 @router.get("/me", response_model=UserMe)
-async def me(current_user: User = Depends(get_current_user)):
+async def me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    from app.core import privileges
+    from app.models.privilege import PrivilegeProfile
+    prof = await db.get(PrivilegeProfile, current_user.privilege_profile_id) if current_user.privilege_profile_id else None
     return UserMe(
         id=str(current_user.id),
         email=current_user.email,
         full_name=current_user.full_name,
         role=current_user.role,
         is_active=current_user.is_active,
+        privileges=privileges.effective(current_user, prof),
+        profile=prof.name if prof else None,
     )
 
 

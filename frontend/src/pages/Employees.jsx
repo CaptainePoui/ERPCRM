@@ -6,24 +6,34 @@ import SalesRepsPanel from '../components/SalesRepsPanel'
 import { useSearchParams } from 'react-router-dom'
 import { askConfirm } from '../components/Dialog'
 import VoiceSection from '../components/VoiceSection'
+import EmployeePrivileges from '../components/EmployeePrivileges'
+import { can } from '../utils/privileges'
 
 const MONTHS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc']
 function fmt(n) { return new Intl.NumberFormat('fr-CA', { style: 'currency', currency: 'CAD' }).format(n) }
 
-// Deux onglets (TASK-007.2, 2026-10-22) : Employes, et Vendeurs (chacun son module de commission)
+// Onglets (TASK-007.2, 2026-10-22) : Employes, Vendeurs (chacun son module de commission) ; Privileges (TASK-007.4,
+// 2026-10-25) : compte de connexion, profil et exceptions de chacun. Chaque onglet n'apparait qu'avec son privilege.
+const TABS = [['employes', 'Employés', () => can('employes')], ['vendeurs', 'Vendeurs', () => can('commissions')],
+  ['privileges', 'Privilèges', () => can('administration', 'modifier')]]
+
 export default function Employees() {
   const [params, setParams] = useSearchParams()
-  const tab = params.get('tab') === 'vendeurs' ? 'vendeurs' : 'employes'
+  const tabs = TABS.filter(([, , ok]) => ok())
+  const tab = (tabs.find(([k]) => k === params.get('tab')) || tabs[0] || [])[0]
   return (
     <div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 20 }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>👷 Employés</h2>
         <div className="filter-tabs" style={{ marginBottom: 0 }}>
-          <button className={`filter-tab${tab === 'employes' ? ' active' : ''}`} onClick={() => setParams({}, { replace: true })}>Employés</button>
-          <button className={`filter-tab${tab === 'vendeurs' ? ' active' : ''}`} onClick={() => setParams({ tab: 'vendeurs' }, { replace: true })}>Vendeurs</button>
+          {tabs.map(([k, l]) => (
+            <button key={k} className={`filter-tab${tab === k ? ' active' : ''}`} onClick={() => setParams(k === 'employes' ? {} : { tab: k }, { replace: true })}>{l}</button>
+          ))}
         </div>
       </div>
-      {tab === 'employes' ? <EmployeesTab /> : <SalesRepsPanel />}
+      {tab === 'employes' && <EmployeesTab />}
+      {tab === 'vendeurs' && <SalesRepsPanel />}
+      {tab === 'privileges' && <EmployeePrivileges />}
     </div>
   )
 }
@@ -46,8 +56,8 @@ function EmployeesTab() {
   async function load() {
     const [e, p, c] = await Promise.all([
       api.get('/v1/employees'),
-      api.get('/v1/employees/payments'),
-      api.get('/v1/contacts'),
+      can('salaires') ? api.get('/v1/employees/payments') : { data: [] },      // paies : privilege Salaires
+      can('clients') ? api.get('/v1/contacts') : { data: [] },
     ])
     setEmployees(e.data)
     setPayments(p.data)
@@ -115,9 +125,9 @@ function EmployeesTab() {
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setVoiceOf(e)} title="Sa voix, pour être reconnu dans les conversations enregistrées">
               🎙️ Voix
             </button>
-            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
+            {can('salaires', 'modifier') && <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
               + Salaire
-            </button>
+            </button>}
           </div>
         ))}
       </div>

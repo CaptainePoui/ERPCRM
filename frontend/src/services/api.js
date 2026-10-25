@@ -36,6 +36,12 @@ api.interceptors.response.use(
       clearToken()
       window.location.href = '/'
     }
+    // Action refusée par les privilèges (TASK-007.4) : la page Layout l'affiche en rouge (les lectures, elles, se
+    // contentent de ne rien montrer)
+    const detail = err.response?.data?.detail
+    if (err.response?.status === 403 && (err.config?.method || 'get') !== 'get' && typeof detail === 'string') {
+      window.dispatchEvent(new CustomEvent('erpcrm-refus', { detail }))
+    }
     return Promise.reject(err)
   }
 )

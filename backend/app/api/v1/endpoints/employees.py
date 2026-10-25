@@ -108,14 +108,28 @@ def _emp_out(emp: Employee) -> EmployeeOut:
 
 # ── Employee endpoints ────────────────────────────────────────────────────────
 
+async def _sees_pay(db, user, level="voir") -> bool:
+    """Taux horaire et salaire : seulement avec le privilege Salaires (TASK-007.4)."""
+    from app.core import privileges as P
+    return P.allows(await P.for_user_id(db, user.id), "salaires", level)
+
+
+def _hide_pay(o: EmployeeOut) -> EmployeeOut:
+    o.hourly_rate = o.monthly_salary = None
+    return o
+
+
 @router.get("", response_model=list[EmployeeOut])
-async def list_employees(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def list_employees(db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
     r = await db.execute(select(Employee).options(selectinload(Employee.contact)).where(Employee.is_active == True))
-    return [_emp_out(e) for e in r.scalars().all()]
+    pay = await _sees_pay(db, me)
+    return [_emp_out(e) if pay else _hide_pay(_emp_out(e)) for e in r.scalars().all()]
 
 
 @router.post("", response_model=EmployeeOut, status_code=status.HTTP_201_CREATED)
-async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
+    if (payload.hourly_rate is not None or payload.monthly_salary is not None) and not await _sees_pay(db, me, "modifier"):
+        raise HTTPException(status_code=403, detail="Tes privilèges ne permettent pas de modifier : Salaires")
     existing = await db.execute(select(Employee).where(Employee.contact_id == payload.contact_id))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Ce contact est déjà un employé")
@@ -127,9 +141,15 @@ async def create_employee(payload: EmployeeCreate, db: AsyncSession = Depends(ge
 
 
 @router.patch("/{contact_id}", response_model=EmployeeOut)
-async def update_employee(contact_id: uuid.UUID, payload: EmployeeUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def update_employee(contact_id: uuid.UUID, payload: EmployeeUpdate, db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
     emp = await _get_employee(contact_id, db)
     data = payload.model_dump(exclude_unset=True)
+    if ({"hourly_rate", "monthly_salary"} & set(data)) and not await _sees_pay(db, me, "modifier"):
+        raise HTTPException(status_code=403, detail="Tes privilèges ne permettent pas de modifier : Salaires")
+    if "user_id" in data:
+        from app.core import privileges as P
+        if not P.allows(await P.for_user_id(db, me.id), "administration", P.MODIFIER):
+            raise HTTPException(status_code=403, detail="Tes privilèges ne permettent pas de modifier : Administration (compte de connexion)")
     if data.get("user_id"):
         if not await db.get(User, data["user_id"]):
             raise HTTPException(status_code=400, detail="Compte de connexion introuvable")
@@ -144,7 +164,8 @@ async def update_employee(contact_id: uuid.UUID, payload: EmployeeUpdate, db: As
     for k, v in data.items():
         setattr(emp, k, v)
     await db.commit()
-    return _emp_out(await _get_employee(contact_id, db))
+    out = _emp_out(await _get_employee(contact_id, db))
+    return out if await _sees_pay(db, me) else _hide_pay(out)
 
 
 # ── Signature des courriels de communication (TASK-007.1, 2026-10-08) ─────────
@@ -305,6 +326,96 @@ async def save_employee_mail(contact_id: uuid.UUID, p: EmployeeMailIn, db: Async
     await db.commit()
     emp = await _get_employee(contact_id, db)
     return _mail_out(emp, await _work_box(db, emp), await _login(db, emp))
+
+
+# ── Privileges et compte de connexion (TASK-007.4, 2026-10-25) ───────────────
+# Employes > Privileges : son compte pour entrer dans ERPCRM, son profil (Administration > Privileges) et ses
+# exceptions par section. Reserve a l'Administration (core/privileges.py).
+
+class AccountIn(BaseModel):
+    email: str
+    password: str | None = None            # vide = garder celui enregistre (obligatoire a la creation)
+    is_active: bool = True
+
+
+class PrivilegesIn(BaseModel):
+    profile_id: uuid.UUID | None = None
+    overrides: dict[str, str] = {}
+
+
+async def _priv_out(db, emp) -> dict:
+    from app.core import privileges as P
+    from app.models.privilege import PrivilegeProfile
+    u = await db.get(User, emp.user_id) if emp.user_id else None
+    prof = await db.get(PrivilegeProfile, u.privilege_profile_id) if u and u.privilege_profile_id else None
+    return {"account": {"email": u.email, "is_active": u.is_active, "last_login": u.last_login,
+                        "administrateur": str(getattr(u.role, "value", u.role)) == "admin"} if u else None,
+            "profile_id": str(prof.id) if prof else None, "profile": prof.name if prof else None,
+            "overrides": (u.privilege_overrides or {}) if u else {},
+            "effective": P.effective(u, prof) if u else {k: P.AUCUN for k in P.KEYS}}
+
+
+@router.get("/{contact_id}/privileges")
+async def get_employee_privileges(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return await _priv_out(db, await _get_employee(contact_id, db))
+
+
+@router.put("/{contact_id}/privileges")
+async def save_employee_privileges(contact_id: uuid.UUID, p: PrivilegesIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import privileges as P
+    from app.models.privilege import PrivilegeProfile
+    emp = await _get_employee(contact_id, db)
+    u = await db.get(User, emp.user_id) if emp.user_id else None
+    if not u:
+        raise HTTPException(status_code=400, detail="Crée d'abord son compte de connexion")
+    if p.profile_id and not await db.get(PrivilegeProfile, p.profile_id):
+        raise HTTPException(status_code=404, detail="Profil introuvable")
+    for k, v in p.overrides.items():
+        if k not in P.KEYS or v not in (P.AUCUN, P.VOIR, P.MODIFIER):
+            raise HTTPException(status_code=400, detail=f"Exception invalide : {k} = {v}")
+    u.privilege_profile_id, u.privilege_overrides = p.profile_id, dict(p.overrides)
+    await P.ensure_someone_full(db)
+    await db.commit()
+    return await _priv_out(db, emp)
+
+
+@router.put("/{contact_id}/account")
+async def save_employee_account(contact_id: uuid.UUID, p: AccountIn, db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
+    """Son compte pour entrer dans ERPCRM : cree s'il n'existe pas (courriel + mot de passe), sinon mis a jour. Le
+    courriel de connexion vit a un seul endroit (core/accounts.py) : sa boite personnelle le suit."""
+    from app.core import privileges as P
+    from app.core.accounts import set_login_email
+    from app.core.security import hash_password
+    from app.models.user import UserRole
+    emp = await _get_employee(contact_id, db)
+    email = (p.email or "").strip().lower()
+    if "@" not in email:
+        raise HTTPException(status_code=400, detail="Courriel de connexion invalide")
+    if p.password is not None and p.password.strip() and len(p.password) < 8:
+        raise HTTPException(status_code=400, detail="Mot de passe : au moins 8 caractères")
+    other = (await db.execute(select(User).where(func.lower(User.email) == email))).scalars().first()
+    u = await db.get(User, emp.user_id) if emp.user_id else None
+    if other and (not u or other.id != u.id):
+        raise HTTPException(status_code=409, detail="Ce courriel sert déjà à un autre compte de connexion")
+    if not u:
+        if not (p.password or "").strip():
+            raise HTTPException(status_code=400, detail="Choisis son mot de passe")
+        u = User(email=email, full_name=f"{emp.contact.first_name} {emp.contact.last_name}".strip(),
+                 hashed_password=hash_password(p.password), role=UserRole.tech, is_active=p.is_active)
+        db.add(u)
+        await db.flush()
+        emp.user_id = u.id
+    else:
+        if u.id == me.id and not p.is_active:
+            raise HTTPException(status_code=400, detail="Impossible de désactiver ton propre compte")
+        if email != u.email:
+            await set_login_email(db, u, email, me)
+        if (p.password or "").strip():
+            u.hashed_password = hash_password(p.password)
+        u.is_active = p.is_active
+    await P.ensure_someone_full(db)
+    await db.commit()
+    return await _priv_out(db, emp)
 
 
 # ── Salary payments ───────────────────────────────────────────────────────────

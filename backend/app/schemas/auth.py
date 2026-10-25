@@ -22,3 +22,5 @@ class UserMe(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    privileges: dict = {}           # {section: "aucun"|"voir"|"modifier"} (TASK-007.4)
+    profile: str | None = None

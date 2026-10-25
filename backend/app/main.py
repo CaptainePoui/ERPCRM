@@ -1,12 +1,13 @@
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal
 from app.core.seed import seed_defaults
 import app.models
+from app.core import privileges   # verrou des privileges sur toutes les routes (TASK-007.4)
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
 from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
 from app.api.v1.endpoints import sipv_events
@@ -17,6 +18,7 @@ from app.api.v1.endpoints import taxes
 from app.api.v1.endpoints import purchases
 from app.api.v1.endpoints import barter
 from app.api.v1.endpoints import journal
+from app.api.v1.endpoints import privileges as privileges_router
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
@@ -63,6 +65,7 @@ app = FastAPI(
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     lifespan=lifespan,
+    dependencies=[Depends(privileges.guard)],
 )
 
 app.add_middleware(
@@ -117,6 +120,7 @@ app.include_router(bank.router, prefix="/api/v1/bank", tags=["bank"])
 app.include_router(taxes.router, prefix="/api/v1/taxes", tags=["taxes"])
 app.include_router(purchases.router, prefix="/api/v1/purchases", tags=["purchases"])
 app.include_router(barter.router, prefix="/api/v1/barter", tags=["barter"])
+app.include_router(privileges_router.router, prefix="/api/v1/privileges", tags=["privileges"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 # Meme dossier sous /api (2026-10-09) : passe par le meme chemin que l'API (portail.simpleip.tel -> /api), donc les photos
 # du catalogue et des installations s'affichent aussi hors du bureau (avant : adresse interne 192.168.1.9 seulement).

@@ -1,3 +1,4 @@
+import PrivilegesAdmin from '../components/PrivilegesAdmin'
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
@@ -59,9 +60,9 @@ function PermissionBranch({ masterKey, masterLabel, items, form, onChange, heade
   )
 }
 
-const TABS = ['Utilisateurs', 'Portail client', 'Intégrations', 'Zéko', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal']
+const TABS = ['Utilisateurs', 'Portail client', 'Intégrations', 'Zéko', 'Backup cloud', 'Configuration générale', 'Graphe de connaissance', 'Entreprise', 'Journal', 'Privilèges']
 // Slugs stables (pas l'index) pour que l'URL survive un reordonnancement de TABS.
-const TAB_SLUGS = ['utilisateurs', 'portail-client', 'integrations', 'zeko', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal']
+const TAB_SLUGS = ['utilisateurs', 'portail-client', 'integrations', 'zeko', 'backup-cloud', 'configuration', 'graphe-connaissance', 'entreprise', 'journal', 'privileges']
 // anciens onglets regroupes dans Configuration generale (2026-10-16)
 const OLD_TABS = { tickets: 'tickets', 'methodes-paiement': 'paiements', pastilles: 'pastilles' }
 
@@ -104,6 +105,7 @@ export default function Admin() {
         {tab === 6 && <KnowledgeGraphViewer />}
         {tab === 7 && <CompanySettingsPanel only="entreprise" />}
         {tab === 8 && <JournalPanel />}
+        {tab === 9 && <PrivilegesAdmin />}
       </div>
     </div>
   )

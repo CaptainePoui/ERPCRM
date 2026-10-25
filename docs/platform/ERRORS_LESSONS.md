@@ -54,6 +54,10 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-007.4 — Zéko répond faux quand l'outil lui est retiré
+
+**2026-10-25 — Privilèges** : pour un comptable (sans « Téléphonie des clients »), Zéko n'avait plus l'outil `telephonie` ; à « combien de postes sont en ligne dans la compagnie test ? », il a lu les équipements et répondu « Aucun poste n'est enregistré » — faux (4 postes en ligne). Retirer l'outil empêchait la fuite, pas la fausse réponse. Correction : sa consigne nomme les sections fermées à cette personne et la phrase exacte à répondre (« Tes privilèges ne permettent pas de voir : … ») ; réessayé → bonne réponse. Leçon (même famille que TASK-006.7) : ce petit modèle comble un manque avec ce qu'il a sous la main ; toute limite doit lui être dite explicitement, avec la réponse attendue.
+
 ## TASK-006.7 — Zéko affirme un travail qu'il n'a pas fait
 
 **2026-10-24 — Essais de l'étape 2 (Zéko fait le travail)** : trois fois, Zéko (gpt-oss:20b) a dit avoir fait plus que ce que l'outil avait fait : « follow me vers son cell configuré » alors qu'il n'avait passé aucun renvoi (et un faux cellulaire « <num> », langue « anglais » ignorée) ; « RDV ajouté » alors que l'outil avait refusé (mauvais mois : 2 octobre au lieu du 2 novembre, genre « RDV » en majuscules). Corrections : l'outil tolère les formes courantes, lit lui-même la date dite, refuse date passée / jour de semaine faux, rapporte en clair tout ce qui a été appliqué ; chaque refus commence par « ÉCHEC, rien n'a été fait » et l'écran le montre en rouge, indépendamment du texte de Zéko ; la consigne demande de répéter le résultat de l'outil, jamais plus. Leçon : un petit modèle résume ce qu'on lui a demandé, pas ce qui a été fait — tout travail fait par Zéko doit avoir une trace vraie à l'écran qui ne passe pas par son texte, et les conversions délicates (dates) se font dans le code, pas dans le modèle.

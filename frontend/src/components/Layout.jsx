@@ -10,13 +10,14 @@ import { playReminder, showNotification, fmtSince } from './ticketReminder'
 import ZekoPanel from './ZekoPanel'
 import { listenForZeko } from '../utils/zekoBridge'
 import { useNavTrail } from './navTrail'
+import { can } from '../utils/privileges'
 
 // Groupes Ventes / Achats : une entree dans le menu de gauche, sous-menus en onglets
 // horizontaux en haut de la page (demande de Philippe, 2026-10-02). `match` = autres
 // prefixes d'adresse qui appartiennent a l'onglet (fiches de detail).
 const GROUPS = {
   ventes: {
-    label: 'Ventes', Icon: IconReceipt, home: '/invoices',
+    label: 'Ventes', Icon: IconReceipt, home: '/invoices', sec: 'ventes',
     items: [
       { to: '/devis', label: 'Devis' },
       { to: '/sales/deposits', label: "Factures d'acompte" },
@@ -27,7 +28,7 @@ const GROUPS = {
     ],
   },
   achats: {
-    label: 'Achats', Icon: IconCart, home: '/purchases/bills',
+    label: 'Achats', Icon: IconCart, home: '/purchases/bills', sec: 'achats',
     items: [
       { to: '/purchases/vendors', label: 'Fournisseurs' },
       { to: '/purchases/expenses', label: 'Dépenses' },
@@ -42,21 +43,21 @@ const GROUPS = {
 }
 
 const NAV = [
-  { to: '/companies', label: 'Compagnies', Icon: IconBuilding },
-  { to: '/contacts',  label: 'Contacts',   Icon: IconUser },
-  { to: '/catalogue', label: 'Catalogue',  Icon: IconPackage },
-  { to: '/mail',             label: 'Courriels',  Icon: IconMail },
-  { to: '/tickets',          label: 'Tickets',    Icon: IconTicket },
+  { to: '/companies', label: 'Compagnies', Icon: IconBuilding, sec: 'clients' },
+  { to: '/contacts',  label: 'Contacts',   Icon: IconUser, sec: 'clients' },
+  { to: '/catalogue', label: 'Catalogue',  Icon: IconPackage, sec: 'catalogue' },
+  { to: '/mail',             label: 'Courriels',  Icon: IconMail, sec: 'courriels' },
+  { to: '/tickets',          label: 'Tickets',    Icon: IconTicket, sec: 'tickets' },
   { group: 'ventes' },
   { group: 'achats' },
-  { to: '/bank',             label: 'Banque',     Icon: IconBank },
-  { to: '/taxes',            label: 'Fiscalité',  Icon: IconFlag },
-  { to: '/commandes',        label: 'Commandes',  Icon: IconClipboard },
-  { to: '/employees',        label: 'Employés',   Icon: IconUsers },
-  { to: '/tasks',            label: 'Tâches',     Icon: IconCheck },
-  { to: '/agenda',           label: 'Agenda',     Icon: IconCalendar },
-  { to: '/server',           label: 'Serveur',    Icon: IconServer },
-  { to: '/admin',            label: 'Admin',      Icon: IconSettings },
+  { to: '/bank',             label: 'Banque',     Icon: IconBank, sec: 'banque' },
+  { to: '/taxes',            label: 'Fiscalité',  Icon: IconFlag, sec: 'fiscalite' },
+  { to: '/commandes',        label: 'Commandes',  Icon: IconClipboard, sec: 'commandes' },
+  { to: '/employees',        label: 'Employés',   Icon: IconUsers, sec: ['employes', 'salaires', 'commissions', 'administration'] },
+  { to: '/tasks',            label: 'Tâches',     Icon: IconCheck, sec: 'agenda' },
+  { to: '/agenda',           label: 'Agenda',     Icon: IconCalendar, sec: 'agenda' },
+  { to: '/server',           label: 'Serveur',    Icon: IconServer, sec: 'serveur' },
+  { to: '/admin',            label: 'Admin',      Icon: IconSettings, sec: 'administration' },
 ]
 
 function itemMatches(item, path) {
@@ -280,6 +281,14 @@ export default function Layout({ user, onLogout, children }) {
   const navigateTo = useNavigate()
   // Les pages que Zéko ouvre depuis sa fenêtre à part s'affichent ici (TASK-006.7)
   useEffect(() => listenForZeko(navigateTo), [])
+  // Action refusée par les privilèges (TASK-007.4) : bandeau rouge, quelle que soit la page
+  const [refus, setRefus] = useState(null)
+  useEffect(() => {
+    let t
+    const on = e => { setRefus(e.detail); clearTimeout(t); t = setTimeout(() => setRefus(null), 7000) }
+    window.addEventListener('erpcrm-refus', on)
+    return () => { window.removeEventListener('erpcrm-refus', on); clearTimeout(t) }
+  }, [])
 
   useEffect(() => {
     let saved = 'jour'
@@ -299,7 +308,7 @@ export default function Layout({ user, onLogout, children }) {
           <div className="brand-icon">SI</div>
           <div className="brand-text"><div className="brand-name">Simple IP</div><div className="brand-sub">ERP·CRM</div></div>
         </div>
-        {NAV.map(item => {
+        {NAV.filter(item => [].concat(item.group ? GROUPS[item.group].sec : item.sec).some(s => !s || can(s))).map(item => {
           if (item.group) {
             const g = GROUPS[item.group]
             return (
@@ -325,20 +334,22 @@ export default function Layout({ user, onLogout, children }) {
           <GlobalSearch />
           <ActiveTimers />
           <div className="layout-user">
-            <button onClick={() => setZekoOpen(true)} title="Zéko — l'assistant d'ERPCRM"
+            {can('zeko', 'modifier') && <button onClick={() => setZekoOpen(true)} title="Zéko — l'assistant d'ERPCRM"
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: '1px solid var(--brand)',
                        background: 'var(--brand-bg)', color: 'var(--brand)', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
               <span style={{ width: 22, height: 22, borderRadius: 11, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>Z</span>
               <span className="hide-phone">Zéko</span>
-            </button>
+            </button>}
             <div className="user-text">
               <div className="user-name">{user.full_name}</div>
-              <div className="user-role">{ROLE_LABELS[user.role] || user.role}</div>
+              <div className="user-role">{user.profile || ROLE_LABELS[user.role] || user.role}</div>
             </div>
             <NavLink to="/settings" className={({ isActive }) => `user-avatar${isActive ? ' active' : ''}`} title="Mon compte" aria-label="Mon compte">{initials(user.full_name)}</NavLink>
             <button onClick={onLogout} className="logout-btn">Déconnexion</button>
           </div>
         </header>
+        {refus && <div role="alert" style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--c-tint-red)',
+          color: 'var(--c-on-red)', fontWeight: 600, fontSize: 13 }}>✗ {refus}</div>}
 
         {zekoOpen && <ZekoPanel onClose={() => setZekoOpen(false)} />}
         <main className="layout-main">

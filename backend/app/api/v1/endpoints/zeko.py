@@ -238,7 +238,16 @@ async def _setup(user: User):
         system += (f"\n\nTu peux demander l'avis de {ext['label']} (IA externe) pour une question technique générale que tu "
                    f"ne maîtrises pas, ou si on te le demande. Les noms et coordonnées sont retirés automatiquement avant l'envoi. "
                    f"Dis quand une information vient de {ext['label']}.")
-    return system, zeko_tools.TOOLS + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else []), ext
+    from app.core import privileges
+    async with AsyncSessionLocal() as db:
+        privs = await privileges.for_user_id(db, user.id)
+    tools = zeko_tools.allowed_tools(privs, zeko_tools.TOOLS)      # seulement ce que cette personne a le droit de faire
+    fermes = [l for k, l, _e in privileges.SECTIONS if not privileges.allows(privs, k)]
+    if fermes:                          # sans la liste, il repondait avec un autre outil (« aucun poste », faux)
+        system += (f"\n\nCette personne n'a PAS accès à : {', '.join(fermes)}. Si la question touche une de ces sections, "
+                   f"n'utilise aucun outil et réponds seulement : « Tes privilèges ne permettent pas de voir : <la section> ». "
+                   f"Ne réponds jamais à sa place avec un autre outil.")
+    return system, tools + ([zeko_tools.EXTERNAL_TOOL] if ext["enabled"] else []), ext
 
 
 async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=False):
