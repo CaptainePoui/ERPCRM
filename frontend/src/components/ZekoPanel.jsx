@@ -3,6 +3,7 @@ import api from '../services/api'
 import { useNavigate } from 'react-router-dom'
 import ZekoChat from './ZekoChat'
 import { askConfirm } from './Dialog'
+import ZekoDropPopup, { useZekoDropTarget } from './ZekoDrops'
 import { openInMain, openZekoWindow } from '../utils/zekoBridge'
 
 // Panneau Zéko à droite de l'écran (TASK-006.5 étape 2). Sans ticket : mes conversations (liste + nouvelle) ;
@@ -139,6 +140,7 @@ export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone }
   const [newProject, setNewProject] = useState(null)
   const [editProject, setEditProject] = useState(null)
   const [drag, setDrag] = useState(null)
+  const fileDrop = useZekoDropTarget()       // fenêtre à part : on y glisse aussi des documents (TASK-006.9)
 
   async function loadList(selectFirst) {
     const params = client ? { [client.type === 'company' ? 'company_id' : 'contact_id']: client.id } : {}
@@ -198,8 +200,11 @@ export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone }
   const curConv = list.find(c => c.id === current)
 
   return (
-    <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: standalone ? '100vw' : ticketId ? 520 : 760, maxWidth: '100vw', zIndex: 1200,
-                  background: 'var(--c-surface)', borderLeft: '1px solid var(--c-border)', boxShadow: '-8px 0 30px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column' }}>
+    <div {...(standalone ? fileDrop.props : {})}
+      style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: standalone ? '100vw' : ticketId ? 520 : 760, maxWidth: '100vw', zIndex: 1200,
+                  background: 'var(--c-surface)', borderLeft: '1px solid var(--c-border)', boxShadow: '-8px 0 30px rgba(0,0,0,.25)', display: 'flex', flexDirection: 'column',
+                  outline: fileDrop.over ? '3px dashed var(--brand)' : 'none', outlineOffset: -3 }}>
+      {standalone && <ZekoDropPopup />}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderBottom: '1px solid var(--c-border)' }}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
           <span style={{ width: 28, height: 28, borderRadius: 14, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800 }}>Z</span>

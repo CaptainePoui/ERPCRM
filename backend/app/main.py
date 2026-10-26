@@ -9,7 +9,7 @@ from app.core.seed import seed_defaults
 import app.models
 from app.core import privileges   # verrou des privileges sur toutes les routes (TASK-007.4)
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, zeko_drops as zeko_drops_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -31,6 +31,7 @@ from app.services.mail_sync import run_mail_sync
 from app.core.background_leader import run_as_leader
 from app.services.ticket_presence import run_presence_watcher
 from app.core.zeko_payments import run_poller as run_zeko_payments
+from app.core.zeko_drops import run_drop_poller
 from app.core.conversations import run_conversation_poller
 from app.core.voice_check import run_voice_check_poller
 
@@ -45,7 +46,7 @@ async def lifespan(app: FastAPI):
     # Taches de fond : un seul des deux services (8010 / 8011) les fait tourner -- voir background_leader
     leader_task = asyncio.create_task(run_as_leader([
         run_poller, run_reminder_poller, run_backup_poller, run_cdr_report_poller, run_recurring_poller,
-        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher, run_zeko_payments, run_conversation_poller, run_voice_check_poller,
+        run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher, run_zeko_payments, run_conversation_poller, run_voice_check_poller, run_drop_poller,
     ]))
     try:
         yield
@@ -90,6 +91,7 @@ app.include_router(invoices.router, prefix="/api/v1/invoices", tags=["invoices"]
 app.include_router(recurring_billing.router, prefix="/api/v1", tags=["recurring-billing"])
 app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"])
 app.include_router(tickets.router, prefix="/api/v1/tickets", tags=["tickets"])
+app.include_router(zeko_drops_router.router, prefix="/api/v1/zeko/drops", tags=["zeko"])   # TASK-006.9
 app.include_router(zeko_router.router, prefix="/api/v1/zeko", tags=["zeko"])
 app.include_router(maintenance.router, prefix="/api/v1/maintenance", tags=["maintenance"])
 app.include_router(equipment.router, prefix="/api/v1/equipment", tags=["equipment"])

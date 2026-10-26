@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Boolean, String, Text, Integer, DateTime, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 # Zeko, l'IA unique d'ERPCRM (TASK-006.5 etape 2, 2026-10-18) : conversations gardees, journal de chaque appel.
@@ -127,3 +127,33 @@ class ZekoProposal(Base):
     decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class ZekoDrop(Base):
+    """Document depose sur Zeko (TASK-006.9, 2026-10-26) : lu et reconnu en arriere-plan (releve, depense, carte
+    d'affaires, photo, document d'un client), puis place au bon endroit apres un oui. « Autre » relance l'analyse ;
+    au 2e « Autre », la personne dit ou il va (instruction)."""
+    __tablename__ = "zeko_drops"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    origin: Mapped[str | None] = mapped_column(String(500))          # « dans le ZIP x », « joint au courriel « sujet » »
+    context: Mapped[str | None] = mapped_column(Text)                # courriel qui l'accompagnait (de, sujet, debut du texte)
+    page_company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
+    page_contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"))
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", index=True)
+    # pending | reading | analyzing | ready | done | failed | ignored
+    text: Mapped[str | None] = mapped_column(Text)
+    analysis: Mapped[dict | None] = mapped_column(JSONB)
+    rejected: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    instruction: Mapped[str | None] = mapped_column(Text)
+    result: Mapped[dict | None] = mapped_column(JSONB)
+    error: Mapped[str | None] = mapped_column(String(500))
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

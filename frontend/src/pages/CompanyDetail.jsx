@@ -1435,8 +1435,20 @@ function PhotosTab({ companyId }) {
   const [uploading, setUploading] = useState(false)
   const fileInput = useRef(null)
 
-  const load = () => api.get(`/v1/companies/${companyId}/photos`).then(r => { setPhotos(r.data); setLoading(false) })
+  const [docs, setDocs] = useState([])           // documents classés par Zéko (TASK-006.9)
+  const load = () => Promise.all([api.get(`/v1/companies/${companyId}/photos`), api.get(`/v1/zeko/drops/company/${companyId}`).catch(() => ({ data: [] }))])
+    .then(([r, d]) => { setPhotos(r.data); setDocs(d.data); setLoading(false) })
   useEffect(() => { load() }, [companyId])
+
+  async function openDoc(d) {
+    const r = await api.get(`/v1/zeko/drops/${d.id}/file`, { responseType: 'blob' })
+    window.open(URL.createObjectURL(r.data), '_blank')
+  }
+  async function removeDoc(d) {
+    if (!await askConfirm(`Retirer « ${d.titre || d.filename} » de cette fiche ?`)) return
+    await api.delete(`/v1/zeko/drops/${d.id}/classement`)
+    load()
+  }
 
   async function upload(file) {
     const caption = prompt('Légende (optionnel) :') || ''
@@ -1469,6 +1481,23 @@ function PhotosTab({ companyId }) {
           {uploading ? 'Envoi...' : '+ Ajouter une photo'}
         </button>
       </div>
+      {docs.length > 0 && <>
+        <div className="ifield-section-title" style={{ marginBottom: 8 }}>Documents classés par Zéko</div>
+        <div style={{ border: '1px solid var(--c-border)', borderRadius: 8, marginBottom: 20 }}>
+          {docs.map((d, i) => (
+            <div key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 12px', borderTop: i ? '1px solid var(--c-border)' : 'none' }}>
+              <span>📄</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: 'var(--brand)' }} onClick={() => openDoc(d)}>{d.titre || d.filename}</div>
+                <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>{d.filename}{d.contact ? ` · ${d.contact}` : ''} · {new Date(d.created_at).toLocaleDateString('fr-CA')}</div>
+              </div>
+              <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => openDoc(d)}>Ouvrir</button>
+              <button onClick={() => removeDoc(d)} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: 12 }}>Retirer</button>
+            </div>
+          ))}
+        </div>
+        <div className="ifield-section-title" style={{ marginBottom: 8 }}>Photos d'installation</div>
+      </>}
       {photos.length === 0 && <div className="empty-tab">Aucune photo d'installation.</div>}
       {photos.length > 0 && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 16 }}>

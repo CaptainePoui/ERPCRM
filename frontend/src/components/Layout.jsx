@@ -9,6 +9,7 @@ import './Layout.css'
 import { playReminder, showNotification, fmtSince } from './ticketReminder'
 import ZekoPanel from './ZekoPanel'
 import { listenForZeko } from '../utils/zekoBridge'
+import ZekoDropPopup, { useZekoDropTarget } from './ZekoDrops'
 import { useNavTrail } from './navTrail'
 import { can } from '../utils/privileges'
 
@@ -275,6 +276,7 @@ function ActiveTimers() {
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [zekoOpen, setZekoOpen] = useState(false)
+  const zekoDrop = useZekoDropTarget()       // fichiers glissés sur le bouton Zéko (TASK-006.9)
   const location = useLocation()
   useNavTrail()
   const group = activeGroup(location.pathname)
@@ -334,9 +336,11 @@ export default function Layout({ user, onLogout, children }) {
           <GlobalSearch />
           <ActiveTimers />
           <div className="layout-user">
-            {can('zeko', 'modifier') && <button onClick={() => setZekoOpen(true)} title="Zéko — l'assistant d'ERPCRM"
-              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: '1px solid var(--brand)',
-                       background: 'var(--brand-bg)', color: 'var(--brand)', cursor: 'pointer', fontWeight: 700, fontSize: 13 }}>
+            {can('zeko', 'modifier') && <button onClick={() => setZekoOpen(true)} {...zekoDrop.props}
+              title={zekoDrop.err || "Zéko — l'assistant d'ERPCRM. Glisse un document ici : Zéko le place au bon endroit"}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: `${zekoDrop.over ? 2 : 1}px ${zekoDrop.over ? 'dashed' : 'solid'} var(--brand)`,
+                       background: zekoDrop.over ? 'var(--brand)' : 'var(--brand-bg)', color: zekoDrop.over ? '#fff' : 'var(--brand)', cursor: 'pointer', fontWeight: 700, fontSize: 13,
+                       transform: zekoDrop.over ? 'scale(1.08)' : 'none', transition: 'transform .1s' }}>
               <span style={{ width: 22, height: 22, borderRadius: 11, background: 'var(--brand)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12 }}>Z</span>
               <span className="hide-phone">Zéko</span>
             </button>}
@@ -351,7 +355,10 @@ export default function Layout({ user, onLogout, children }) {
         {refus && <div role="alert" style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--c-tint-red)',
           color: 'var(--c-on-red)', fontWeight: 600, fontSize: 13 }}>✗ {refus}</div>}
 
+        {zekoDrop.err && <div role="alert" style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--c-tint-red)',
+          color: 'var(--c-on-red)', fontWeight: 600, fontSize: 13 }}>✗ Zéko : {zekoDrop.err}</div>}
         {zekoOpen && <ZekoPanel onClose={() => setZekoOpen(false)} />}
+        {can('zeko', 'modifier') && <ZekoDropPopup />}
         <main className="layout-main">
           {group && <GroupTabs groupKey={group} path={location.pathname} />}
           {children}
