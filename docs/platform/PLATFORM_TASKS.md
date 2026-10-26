@@ -969,6 +969,11 @@ Date(s) de travail : 2026-10-17, 2026-10-18
 - Note : le courriel affiché vient de l'autre fiche Papa Normandeau (même personne en double, à fusionner par Philippe).
 
 
+### TASK-006.9 [ ] Déposer n'importe quel document sur le bouton Zéko : il le reconnaît et le place au bon endroit (après un oui)
+- **Date de demande** : 2026-10-26 (Philippe : « est-ce que je pourrais déposer mes docs sur le bouton Zéko pour qu'il les analyse et les place à la bonne place ? là j'ai le relevé de la semaine de ma banque mais je suis dans la compagnie CNJ ; j'aimerais pouvoir dropper une facture de dépense, un relevé, une carte d'affaires ou autre et Zéko le place dans le bon onglet, le bon client, le bon contact »)
+- **Date(s) de travail** : —
+- Existant réutilisable : relevés OFX/CSV (`core/bank_statement_parser.py`, `POST /bank/accounts/{id}/statements`), reçus → dépenses (`core/receipt_reader.py`, TASK-044.1), avertissement de doublon (TASK-003.3). En attente du GO sur le plan.
+
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
 
