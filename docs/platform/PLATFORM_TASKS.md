@@ -288,10 +288,15 @@ Reste à faire : rien.
 ---
 
 
-### TASK-003.3 [ ] Avertissement avant de créer un contact qui existe déjà
+### TASK-003.3 [x] Avertissement avant de créer un contact (ou une compagnie) qui existe déjà
 - **Date de demande** : 2026-10-26 (Philippe, après le 2e « Papa Normandeau » créé par erreur : « je veux une sécurité qui m'empêche de créer involontairement un contact s'il est déjà dans ERPCRM, un popup qui dit : ce nom existe déjà, aller au contact ou créer un nouveau »)
-- **Date(s) de travail** : —
-- En attente du GO sur le plan.
+- **Date(s) de travail** : 2026-10-26
+- GO 2026-10-26 (Philippe : « sans tenir compte des accents ni des majuscules ni des - ou des espaces ou d'une ou 2 lettres accrochées au clavier ou mal épelées… go même protection pour la compagnie » ; ex. « MC crystal, M-C Chrystal, MCCrystal »).
+- `backend/app/core/duplicates.py` : nom ramené à ses lettres et chiffres (accents, majuscules, tirets, espaces, ponctuation ignorés ; formes juridiques inc/ltée/enr… ignorées pour une compagnie), puis 1 lettre de différence (nom de 4 à 6 caractères) ou 2 (7 et plus) — changée, ajoutée, enlevée ou inversée ; nom de 3 caractères ou moins : identique seulement. Contact : prénom+nom dans les deux ordres, même courriel (principal/autre), même téléphone (10 derniers chiffres : bureau, cellulaire, autre) ; compagnie : nom ou raison sociale, même téléphone. Les anciens noms/courriels/téléphones (former_infos, TASK-002.8) comptent.
+- `POST /v1/contacts` et `POST /v1/companies` : 409 `{code: doublon, matches}` si semblable, sauf `allow_duplicate=true` ; appels de service SIPV (clé) non touchés. Zéko `creer_poste` : même vérification, demande si c'est la même personne (`nouvelle_personne=true` pour créer quand même).
+- Écran (`utils/duplicates.js`, Dialog `askChoice`) : « Ce contact existe peut-être déjà dans ERPCRM » + les fiches (compagnie, courriel, raison) → Annuler / Créer quand même / Aller à la fiche (bouton principal, Entrée ; jamais « Créer quand même » par Entrée). Dans les petites fenêtres de création (nouveau ticket, tâche, facture, devis, téléphonie, contacts d'une compagnie) : « Utiliser ce contact / cette compagnie » au lieu de « Aller à ». Deux fiches du même nom : bouton précisé par la compagnie ou le courriel.
+- Preuve (1920) : « papa Normendau » → les 2 Papa Normandeau proposés ; « Simple-IP » et « M-C simple ip » → Simple IP inc., « Aller à cette compagnie » ouvre sa fiche ; « Créer quand même » (API) crée, contact de test supprimé. Tests de la comparaison : MC crystal = M-C Chrystal = MCCrystal, Physotech = Physiotech, Bell ≠ Bel, Paul Vital ≠ Paul Martin.
+- Limites : création automatique (courriel reçu d'un inconnu, prise de rendez-vous en ligne) non concernée — pas d'écran pour demander ; renommer une fiche existante n'avertit pas.
 
 ## TASK-004 [ERPCRM] [x] Catalogue — items, types, linked_to_hourly_rate
 Classification: CURRENT

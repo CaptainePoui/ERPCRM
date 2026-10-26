@@ -3,6 +3,7 @@ import { useBack } from '../components/navTrail'
 import EntityLink, { InvoiceLinks } from '../components/EntityLink'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api, { getToken } from '../services/api'
+import { createChecked } from '../utils/duplicates'
 import Autocomplete from '../components/Autocomplete'
 import PaymentModal from '../components/PaymentModal'
 import InvoiceDetail from './InvoiceDetail'
@@ -239,8 +240,8 @@ function NewCompanyForm({ managers, statuses, onCreated }) {
         tps_rate: Number(form.tps_rate),
         tvq_rate: Number(form.tvq_rate),
       }
-      const r = await api.post('/v1/companies', payload)
-      navigate(`/companies/${r.data.id}`, { replace: true })
+      const res = await createChecked('/v1/companies', payload)   // deja dans ERPCRM ? (TASK-003.3)
+      if (res) navigate(res.go || `/companies/${res.created.id}`, { replace: true })
     } catch (e) {
       setError(e.response?.data?.detail || 'Erreur')
     } finally { setSaving(false) }

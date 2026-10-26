@@ -28,6 +28,7 @@ class ContactCreate(BaseModel):
     sipv_sync: bool = False
     notes_internal: str | None = None
     status_ids: list[uuid.UUID] = []
+    allow_duplicate: bool = False      # « Créer quand même » apres l'avertissement (TASK-003.3)
 
 
 class ContactUpdate(BaseModel):

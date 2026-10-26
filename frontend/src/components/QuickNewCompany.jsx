@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import api from '../services/api'
+import { createChecked } from '../utils/duplicates'
 
 export default function QuickNewCompany({ initialName = '', onCreated, onClose }) {
   const [name, setName] = useState(initialName)
@@ -10,8 +10,8 @@ export default function QuickNewCompany({ initialName = '', onCreated, onClose }
     if (!name.trim()) { setError('Le nom est requis'); return }
     setSaving(true)
     try {
-      const r = await api.post('/v1/companies', { name: name.trim() })
-      onCreated(r.data)
+      const res = await createChecked('/v1/companies', { name: name.trim() }, { use: true })   // deja dans ERPCRM ? (TASK-003.3)
+      if (res) onCreated(res.created || res.existing)
     } catch { setError('Erreur lors de la création') } finally { setSaving(false) }
   }
 

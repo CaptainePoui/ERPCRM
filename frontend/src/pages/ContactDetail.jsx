@@ -3,6 +3,7 @@ import { useBack } from '../components/navTrail'
 import MailBrowser from '../components/MailBrowser'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
+import { createChecked } from '../utils/duplicates'
 import NewTicketModal from '../components/NewTicketModal'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import NewTaskModal from '../components/NewTaskModal'
@@ -122,9 +123,11 @@ function NewContactForm() {
     if (!company?.id) { setError('La compagnie est requise.'); return }
     setSaving(true)
     try {
-      const r = await api.post('/v1/contacts', form)
-      await api.post(`/v1/companies/${company.id}/contacts`, { contact_id: r.data.id, is_primary: true })
-      navigate(`/contacts/${r.data.id}`)
+      const res = await createChecked('/v1/contacts', form)       // deja dans ERPCRM ? (TASK-003.3)
+      if (!res) return
+      if (res.go) { navigate(res.go); return }
+      await api.post(`/v1/companies/${company.id}/contacts`, { contact_id: res.created.id, is_primary: true })
+      navigate(`/contacts/${res.created.id}`)
     } catch { setError('Erreur lors de la création.') } finally { setSaving(false) }
   }
 

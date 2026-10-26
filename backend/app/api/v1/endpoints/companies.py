@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from app.core import clock
+from app.core import clock, duplicates
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
@@ -108,6 +108,10 @@ def _log(db: AsyncSession, entity_id: uuid.UUID, user: User, action: str, **kwar
 async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Chaque compagnie a son numero de compte (txxxx) des sa creation, hebergee ou pas (TASK-002.7, 2026-10-14) : il ne
     # change jamais, sert aux filtres et a la Loi 25, et devient le numero du tenant si elle est hebergee.
+    if not payload.allow_duplicate:       # deja dans ERPCRM ? (TASK-003.3)
+        found = await duplicates.similar_companies(db, payload.name, payload.office_phone)
+        if found:
+            duplicates.conflict("compagnie", found)
     account_number = (payload.account_number or "").strip() or None
     if account_number:
         if (await db.execute(select(Company.id).where(Company.account_number == account_number))).first():

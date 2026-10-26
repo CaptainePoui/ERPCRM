@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete as sa_delete
 from sqlalchemy.orm import selectinload
-from app.core import clock
+from app.core import clock, duplicates
 from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
@@ -77,7 +77,13 @@ def _build_contact_out(contact: Contact) -> ContactOut:
 
 
 @router.post("", response_model=ContactOut, status_code=status.HTTP_201_CREATED)
-async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_db), _: User | None = Depends(get_current_user_or_service)):
+async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_db), user: User | None = Depends(get_current_user_or_service)):
+    # Deja dans ERPCRM ? (TASK-003.3) -- pour un employe a l'ecran ; les appels de service (SIPV) ne changent pas
+    if user is not None and not payload.allow_duplicate:
+        found = await duplicates.similar_contacts(db, payload.first_name, payload.last_name, payload.email,
+                                                  (payload.phone, payload.mobile, payload.phone_other))
+        if found:
+            duplicates.conflict("contact", found)
     entity = Entity(entity_type=EntityType.person)
     db.add(entity)
     await db.flush()

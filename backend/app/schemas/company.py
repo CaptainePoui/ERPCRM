@@ -45,6 +45,7 @@ class CompanyCreate(BaseModel):
     status_ids: list[uuid.UUID] = []
     addresses: list[dict] = []
     communications: list[dict] = []
+    allow_duplicate: bool = False      # « Créer quand même » apres l'avertissement (TASK-003.3)
 
 
 class CompanyUpdate(BaseModel):

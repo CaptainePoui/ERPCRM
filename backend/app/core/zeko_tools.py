@@ -133,6 +133,7 @@ TOOLS = [
         {**_CLIENT, "prenom": {"type": "string"}, "nom": {"type": "string"}, "numero": {"type": "string", "description": "numéro du poste, optionnel"},
          "courriel": {"type": "string", "description": "seulement s'il est donné"},
          "cellulaire": {"type": "string", "description": "numéro, seulement s'il est donné"}, "boite_vocale": {"type": "boolean"},
+         "nouvelle_personne": {"type": "boolean", "description": "true seulement si on t'a dit que c'est une autre personne que celle qui existe déjà"},
          "langue": {"type": "string", "enum": ["fr", "en"], "description": "langue d'affichage du téléphone : fr ou en"},
          "renvois": {"type": "array", "description": "renvois du poste", "items": {"type": "object", "properties": {
              "quand": {"type": "string", "enum": ["toujours", "occupe", "sans_reponse", "non_connecte"]},
@@ -1082,6 +1083,13 @@ async def _poste(name, args, db, user_id):
     if created:                      # meme creation que l'ecran : personne + lien au client (entreprise principale)
         cell = str(args.get("cellulaire") or "").strip()
         mail = str(args.get("courriel") or "").strip()
+        if args.get("nouvelle_personne") is not True:      # deja dans ERPCRM ? (TASK-003.3, meme verification que l'ecran)
+            from app.core import duplicates
+            found = await duplicates.similar_contacts(db, first, last, mail, (cell,))
+            if found:
+                qui = " ; ".join(f"{m['nom']}{' (' + m['compagnies'] + ')' if m['compagnies'] else ''} : {m['raison']}" for m in found)
+                return (f"rien n'a été créé : semblable déjà dans ERPCRM -- {qui}. Demande si c'est la même personne (son poste se "
+                        f"crée alors depuis sa fiche) ou une autre personne (rappelle creer_poste avec nouvelle_personne=true)")
         c = Contact(first_name=first, last_name=last, email=mail if "@" in mail else None,   # jamais un numero ou un courriel invente
                     mobile=cell if sum(ch.isdigit() for ch in cell) >= 7 else None)
         ent = Entity(entity_type=EntityType.person)

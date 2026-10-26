@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../services/api'
+import { createChecked } from '../utils/duplicates'
 
 export default function QuickNewContact({ initialName = '', companyId = null, onCreated, onClose }) {
   const parts = initialName.trim().split(' ')
@@ -27,7 +28,9 @@ export default function QuickNewContact({ initialName = '', companyId = null, on
     if (!form.first_name.trim()) { setError('Le prénom est requis'); return }
     setSaving(true)
     try {
-      const r = await api.post('/v1/contacts', form)
+      const res = await createChecked('/v1/contacts', form, { use: true })   // deja dans ERPCRM ? (TASK-003.3)
+      if (!res) return
+      const r = { data: res.created || res.existing }
       if (companyId && companyPhone !== originalCompanyPhone) {
         await api.put(`/v1/companies/${companyId}`, { office_phone: companyPhone || null })
       }
