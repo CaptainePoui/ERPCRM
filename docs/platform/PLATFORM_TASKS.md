@@ -287,6 +287,12 @@ Reste à faire : rien.
 
 ---
 
+
+### TASK-003.3 [ ] Avertissement avant de créer un contact qui existe déjà
+- **Date de demande** : 2026-10-26 (Philippe, après le 2e « Papa Normandeau » créé par erreur : « je veux une sécurité qui m'empêche de créer involontairement un contact s'il est déjà dans ERPCRM, un popup qui dit : ce nom existe déjà, aller au contact ou créer un nouveau »)
+- **Date(s) de travail** : —
+- En attente du GO sur le plan.
+
 ## TASK-004 [ERPCRM] [x] Catalogue — items, types, linked_to_hourly_rate
 Classification: CURRENT
 
@@ -928,6 +934,7 @@ Date(s) de travail : 2026-10-17, 2026-10-18
 - **Date de demande** : 2026-10-26 (Philippe : « est-ce que je peux avoir un petit bouton hamburger juste sous le Z de Zéko pour mettre et enlever les conversations, aussi j'aimerais avoir la possibilité de faire des projets comme dans ChatGPT pour pouvoir classer les conversations »)
 - **Date(s) de travail** : —
 - Constat : la liste des conversations (220 px, toujours affichée) est dans `components/ZekoPanel.jsx` ; `zeko_conversations` n'a pas de projet. En attente du GO sur le plan.
+- 2026-10-26, ajout (Philippe : « je veux aussi un bouton Zéko dans chaque client et compagnie pour partir leur conversation… générale, je prends la compagnie, ou précise, je prends le contact… HA! on pourrait à la place, dans Zéko, dans le menu hamburger, avoir une option ou un champ de recherche pour trouver le contact ou la compagnie ») : conversations rattachées à une compagnie ou à un contact, trouvées par une recherche dans le menu de Zéko.
 
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
