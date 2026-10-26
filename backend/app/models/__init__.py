@@ -36,7 +36,7 @@ from app.models.purchases import Vendor, ExpenseCategory, Expense, RecurringExpe
 from app.models.document_counter import DocumentCounter
 from app.models.barter import BarterExchange, BarterDeduction, BarterFile, BarterApplication
 from app.models.mailbox import Mailbox, MailMessage
-from app.models.zeko import ZekoConversation, ZekoMessage, ZekoInvocation, ZekoRule, ZekoMailScan, ZekoProposal
+from app.models.zeko import ZekoProject, ZekoConversation, ZekoMessage, ZekoInvocation, ZekoRule, ZekoMailScan, ZekoProposal
 from app.models.sales_rep import SalesRep, CommissionEntry
 from app.models.former_info import FormerInfo
 from app.models.audio_device import AudioDevice

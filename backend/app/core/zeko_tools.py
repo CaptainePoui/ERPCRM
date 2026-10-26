@@ -4,6 +4,7 @@ nom d'un client / les anciennes coordonnees (TASK-002.8, 2026-10-23) se changent
 administrateur ou un gestionnaire. Depuis TASK-006.7 etape 2 (2026-10-24), Zeko fait aussi le travail demande, apres un
 oui par tache : agenda (RDV, appel, perso) et nouveau poste / reglages d'un poste. Reponses courtes : sur ce processeur,
 chaque mot lu par le modele coute du temps."""
+import contextvars
 import json
 import uuid
 
@@ -191,18 +192,28 @@ async def _companies_of_contact(db, contact_id) -> list[str]:
     return list(rows)
 
 
+# Client de la conversation (TASK-006.8) : (company_id, contact_id) ; departage deux fiches du meme nom, et sert quand
+# aucun nom n'est donne (« son courriel ? » dans la conversation sur Papa Normandeau)
+FOCUS: contextvars.ContextVar = contextvars.ContextVar("zeko_focus", default=(None, None))
+
+
 async def _resolve_company(db, name):
     """Nom -> client : nom exact (sans accents ni casse), sinon la recherche tolerante d'ERPCRM ; plusieurs = demander."""
     name = str(name or "").strip()
+    focus = FOCUS.get()[0]
     if not name:
-        return "précise le nom du client"
+        return await db.get(Company, focus) if focus else "précise le nom du client"
     exact = (await db.execute(select(Company).where(func.lower(func.unaccent(Company.name)) == func.lower(func.unaccent(name))))).scalars().all()
     if len(exact) == 1:
         return exact[0]
+    if focus and any(c.id == focus for c in exact):
+        return next(c for c in exact if c.id == focus)
     from app.api.v1.endpoints.search import search
     res = [r for r in await search(q=name, db=db, _=None) if r.type == "company"]
     if len(res) == 1:
         return await db.get(Company, res[0].id)
+    if focus and any(str(r.id) == str(focus) for r in res):
+        return await db.get(Company, focus)
     if not res:
         return f"aucun client ne correspond à « {name} »"
     return {"plusieurs_clients": [r.label for r in res]}
@@ -210,16 +221,21 @@ async def _resolve_company(db, name):
 
 async def _resolve_contact(db, name):
     name = str(name or "").strip()
+    focus = FOCUS.get()[1]
     if not name:
-        return "précise le nom de la personne"
+        return await db.get(Contact, focus) if focus else "précise le nom de la personne"
     full = func.lower(func.unaccent(func.concat(Contact.first_name, " ", Contact.last_name)))
     exact = (await db.execute(select(Contact).where(full == func.lower(func.unaccent(name))))).scalars().all()
     if len(exact) == 1:
         return exact[0]
+    if focus and any(c.id == focus for c in exact):
+        return next(c for c in exact if c.id == focus)
     from app.api.v1.endpoints.search import search
     res = [r for r in await search(q=name, db=db, _=None) if r.type == "contact"]
     if len(res) == 1:
         return await db.get(Contact, res[0].id)
+    if focus and any(str(r.id) == str(focus) for r in res):
+        return await db.get(Contact, focus)
     if not res:
         return f"aucune personne ne correspond à « {name} »"
     return {"plusieurs_personnes": [f"{r.label} ({', '.join(await _companies_of_contact(db, r.id)) or 'sans entreprise'})" for r in res]}

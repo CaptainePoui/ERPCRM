@@ -18,7 +18,10 @@ from app.core import clock, zeko, zeko_tools
 from app.core.database import get_db, AsyncSessionLocal
 from app.models.ticket import Ticket, TicketMessage
 from app.models.user import User
-from app.models.zeko import ZekoConversation, ZekoMessage, ZekoInvocation
+from app.models.company import Company
+from app.models.contact import Contact
+from app.models.contact_company import ContactCompany
+from app.models.zeko import ZekoProject, ZekoConversation, ZekoMessage, ZekoInvocation
 
 router = APIRouter()
 
@@ -67,6 +70,10 @@ class ConversationOut(BaseModel):
     ticket_id: uuid.UUID | None
     title: str | None
     updated_at: datetime
+    project_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+    client: str | None = None          # « Compagnie » ou « Prénom Nom — Compagnie » (TASK-006.8)
 
 class MessageOut(BaseModel):
     id: uuid.UUID
@@ -82,6 +89,16 @@ class ConversationDetail(ConversationOut):
 
 class NewConversation(BaseModel):
     ticket_id: uuid.UUID | None = None
+    company_id: uuid.UUID | None = None      # conversation generale sur ce client (TASK-006.8)
+    contact_id: uuid.UUID | None = None      # ou precise sur cette personne (sa compagnie suit)
+    project_id: uuid.UUID | None = None
+
+class ConversationChange(BaseModel):
+    project_id: uuid.UUID | None = None      # None = retirer du projet (seulement les champs envoyes changent)
+    title: str | None = None
+
+class ProjectIn(BaseModel):
+    name: str
 
 class SendMessage(BaseModel):
     content: str
@@ -99,9 +116,41 @@ async def _get_conv(db: AsyncSession, cid: uuid.UUID, user: User) -> ZekoConvers
     return c
 
 
-def _detail(c: ZekoConversation) -> ConversationDetail:
+async def _clients(db, convs) -> dict:
+    """{conversation: « Compagnie » ou « Prénom Nom — Compagnie »} -- par le nom, jamais un identifiant."""
+    comp_ids = {c.company_id for c in convs if c.company_id}
+    cont_ids = {c.contact_id for c in convs if c.contact_id}
+    comps = {i: n for i, n in (await db.execute(select(Company.id, Company.name).where(Company.id.in_(comp_ids)))).all()} if comp_ids else {}
+    conts = {i: f"{f} {l}".strip() for i, f, l in (await db.execute(select(Contact.id, Contact.first_name, Contact.last_name)
+                                                                      .where(Contact.id.in_(cont_ids)))).all()} if cont_ids else {}
+    out = {}
+    for c in convs:
+        parts = [conts.get(c.contact_id), comps.get(c.company_id)]
+        out[c.id] = " — ".join(p for p in parts if p) or None
+    return out
+
+
+def _out(c: ZekoConversation, client: str | None) -> dict:
+    return dict(id=c.id, ticket_id=c.ticket_id, title=c.title, updated_at=c.updated_at, project_id=c.project_id,
+                company_id=c.company_id, contact_id=c.contact_id, client=client)
+
+
+async def _client_context(db, c: ZekoConversation) -> str:
+    """Consigne : de quel client parle cette conversation (TASK-006.8)."""
+    who = (await _clients(db, [c])).get(c.id)
+    if not who:
+        return ""
+    if c.contact_id:
+        return (f"Cette conversation porte sur {who} (la personne, puis sa compagnie). Sauf si on nomme quelqu'un d'autre, "
+                f"« il », « elle », « le client » et les questions sans nom parlent de cette personne et de sa compagnie : "
+                f"ne demande pas de qui il s'agit.")
+    return (f"Cette conversation porte sur le client {who}. Sauf si on nomme un autre client, les questions sans nom parlent "
+            f"de ce client : ne demande pas de qui il s'agit.")
+
+
+def _detail(c: ZekoConversation, client: str | None = None) -> ConversationDetail:
     return ConversationDetail(
-        id=c.id, ticket_id=c.ticket_id, title=c.title, updated_at=c.updated_at, busy=_busy(c),
+        **_out(c, client), busy=_busy(c),
         messages=[MessageOut(id=m.id, role=m.role, content=m.content if m.role != "tool" else "",
                              tool_name=m.tool_name, author_name=m.user.full_name if m.user else None, created_at=m.created_at)
                   for m in c.messages if m.role != "assistant" or m.content or not m.tool_calls],
@@ -116,13 +165,19 @@ async def status(_: User = Depends(get_current_user)):
 
 
 @router.get("/conversations", response_model=list[ConversationOut])
-async def list_conversations(ticket_id: uuid.UUID | None = Query(default=None), db: AsyncSession = Depends(get_db),
+async def list_conversations(ticket_id: uuid.UUID | None = Query(default=None), company_id: uuid.UUID | None = Query(default=None),
+                             contact_id: uuid.UUID | None = Query(default=None), db: AsyncSession = Depends(get_db),
                              current_user: User = Depends(get_current_user)):
     q = select(ZekoConversation).order_by(ZekoConversation.updated_at.desc())
     q = q.where(ZekoConversation.ticket_id == ticket_id) if ticket_id else \
         q.where(ZekoConversation.ticket_id.is_(None), ZekoConversation.user_id == current_user.id)
-    return [ConversationOut(id=c.id, ticket_id=c.ticket_id, title=c.title, updated_at=c.updated_at)
-            for c in (await db.execute(q.limit(100))).scalars().all()]
+    if contact_id:                     # un contact : ses conversations
+        q = q.where(ZekoConversation.contact_id == contact_id)
+    elif company_id:                   # une compagnie : les siennes et celles de ses contacts
+        q = q.where(ZekoConversation.company_id == company_id)
+    convs = (await db.execute(q.limit(300))).scalars().all()
+    names = await _clients(db, convs)
+    return [ConversationOut(**_out(c, names.get(c.id))) for c in convs]
 
 
 @router.post("/conversations", response_model=ConversationDetail)
@@ -137,15 +192,87 @@ async def new_conversation(payload: NewConversation, db: AsyncSession = Depends(
             return _detail(await _get_conv(db, c.id, current_user))
         c = ZekoConversation(user_id=current_user.id, ticket_id=t.id, title=t.title[:255])
     else:
-        c = ZekoConversation(user_id=current_user.id)
+        company_id = payload.company_id
+        if payload.contact_id:         # personne precise : sa compagnie principale suit
+            if not await db.get(Contact, payload.contact_id):
+                raise HTTPException(status_code=404, detail="Contact introuvable")
+            if not company_id:
+                company_id = (await db.execute(select(ContactCompany.company_id).where(ContactCompany.contact_id == payload.contact_id,
+                              ContactCompany.is_active == True).order_by(ContactCompany.is_primary.desc()))).scalars().first()
+        if company_id and not await db.get(Company, company_id):
+            raise HTTPException(status_code=404, detail="Compagnie introuvable")
+        await _own_project(db, payload.project_id, current_user)
+        c = ZekoConversation(user_id=current_user.id, company_id=company_id, contact_id=payload.contact_id, project_id=payload.project_id)
     db.add(c)
     await db.commit()
-    return _detail(await _get_conv(db, c.id, current_user))
+    c = await _get_conv(db, c.id, current_user)
+    return _detail(c, (await _clients(db, [c])).get(c.id))
+
+
+async def _own_project(db, pid, user) -> ZekoProject | None:
+    if pid is None:
+        return None
+    p = await db.get(ZekoProject, pid)
+    if not p or p.user_id != user.id:
+        raise HTTPException(status_code=404, detail="Projet introuvable")
+    return p
+
+
+@router.patch("/conversations/{cid}", response_model=ConversationOut)
+async def change_conversation(cid: uuid.UUID, payload: ConversationChange, db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(get_current_user)):
+    """Placer dans un projet (ou l'en retirer) ; renommer."""
+    c = await _get_conv(db, cid, current_user)
+    if c.ticket_id:
+        raise HTTPException(status_code=400, detail="La conversation d'un ticket reste dans son ticket")
+    sent = payload.model_fields_set
+    if "project_id" in sent:
+        await _own_project(db, payload.project_id, current_user)
+        c.project_id = payload.project_id
+    if "title" in sent and (payload.title or "").strip():
+        c.title = payload.title.strip()[:255]
+    await db.commit()
+    return ConversationOut(**_out(c, (await _clients(db, [c])).get(c.id)))
+
+
+@router.get("/projects")
+async def list_projects(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    rows = (await db.execute(select(ZekoProject).where(ZekoProject.user_id == current_user.id).order_by(func.lower(ZekoProject.name)))).scalars()
+    return [{"id": p.id, "name": p.name} for p in rows]
+
+
+@router.post("/projects")
+async def new_project(payload: ProjectIn, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    name = payload.name.strip()[:120]
+    if not name:
+        raise HTTPException(status_code=400, detail="Donne un nom au projet")
+    p = ZekoProject(user_id=current_user.id, name=name)
+    db.add(p)
+    await db.commit()
+    return {"id": p.id, "name": p.name}
+
+
+@router.put("/projects/{pid}")
+async def rename_project(pid: uuid.UUID, payload: ProjectIn, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    p = await _own_project(db, pid, current_user)
+    if payload.name.strip():
+        p.name = payload.name.strip()[:120]
+    await db.commit()
+    return {"id": p.id, "name": p.name}
+
+
+@router.delete("/projects/{pid}", status_code=204)
+async def delete_project(pid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Ses conversations retournent dans la liste : rien n'est efface."""
+    p = await _own_project(db, pid, current_user)
+    await db.delete(p)
+    await db.commit()
 
 
 @router.get("/conversations/{cid}", response_model=ConversationDetail)
 async def get_conversation(cid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    return _detail(await _get_conv(db, cid, current_user))
+    c = await _get_conv(db, cid, current_user)
+    return _detail(c, (await _clients(db, [c])).get(c.id))
 
 
 @router.delete("/conversations/{cid}", status_code=204)
@@ -499,6 +626,9 @@ async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = 
             system, tool_list, ext = await _setup(current_user)
             if ticket_id:
                 system += "\n\n" + await _ticket_context(s, ticket_id)
+            elif about := await _client_context(s, conv):
+                system += "\n\n" + about
+            zeko_tools.FOCUS.set((conv.company_id, conv.contact_id))     # departage les fiches du meme nom (TASK-006.8)
             messages = [{"role": "system", "content": system}] + _history(conv)
 
             async def save(role, content, **kw):

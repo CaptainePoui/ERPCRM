@@ -935,11 +935,19 @@ Date(s) de travail : 2026-10-17, 2026-10-18
   - Zéko a accès à tout (« pas de codage mais à la configuration de tout pour moi le gestionnaire ») ; pour un employé, selon ses privilèges (voir TASK-007.4).
 - Proposé (premier jet), remplacé par la demande élargie : outil agenda (créer un RDV ou un appel, toujours lié à un ticket et à une compagnie comme TASK-015.19, après une question « Je mets… ? » et un oui, admin/gestionnaire) ; réponse de Zéko qui continue sur le serveur même si la page se ferme, et s'affiche au retour.
 
-### TASK-006.8 [ ] Zéko : bouton « hamburger » sous le Z pour montrer/cacher la liste des conversations + projets pour les classer (comme ChatGPT)
+### TASK-006.8 [x] Zéko : bouton « hamburger » sous le Z pour montrer/cacher la liste des conversations + projets pour les classer (comme ChatGPT) + conversations par client
 - **Date de demande** : 2026-10-26 (Philippe : « est-ce que je peux avoir un petit bouton hamburger juste sous le Z de Zéko pour mettre et enlever les conversations, aussi j'aimerais avoir la possibilité de faire des projets comme dans ChatGPT pour pouvoir classer les conversations »)
-- **Date(s) de travail** : —
+- **Date(s) de travail** : 2026-10-26
 - Constat : la liste des conversations (220 px, toujours affichée) est dans `components/ZekoPanel.jsx` ; `zeko_conversations` n'a pas de projet. En attente du GO sur le plan.
 - 2026-10-26, ajout (Philippe : « je veux aussi un bouton Zéko dans chaque client et compagnie pour partir leur conversation… générale, je prends la compagnie, ou précise, je prends le contact… HA! on pourrait à la place, dans Zéko, dans le menu hamburger, avoir une option ou un champ de recherche pour trouver le contact ou la compagnie ») : conversations rattachées à une compagnie ou à un contact, trouvées par une recherche dans le menu de Zéko.
+- GO 2026-10-26 (« go », avec TASK-003.3). Sauvegarde `~/backups/before_zeko_projects_20261026.sql`.
+- Migration `8891c11a4e0a` (id généré, une seule tête, up/down/up testés) : table `zeko_projects` (propre à chaque personne) ; `zeko_conversations.project_id` (SET NULL : supprimer un projet remet ses conversations dans la liste), `company_id`, `contact_id`.
+- API `/v1/zeko` : `GET/POST/PUT/DELETE /projects` ; `PATCH /conversations/{id}` (projet, titre) ; `POST /conversations` avec `company_id` ou `contact_id` (la compagnie principale du contact suit) ; `GET /conversations?company_id=` (la compagnie et ses contacts) ou `?contact_id=` ; chaque conversation donne `client` (« Papa Normandeau — AAA Compagnie test », par le nom). Privilèges : `zeko/projects` = section Zéko.
+- Zéko : la consigne dit de quel client parle la conversation (ne pas redemander) ; `zeko_tools.FOCUS` (contexte de la conversation) choisit ce client/contact quand deux fiches portent le même nom ou qu'aucun nom n'est donné.
+- Écran `ZekoPanel.jsx` : ☰ sous le Z (montre/cache la liste, retenu dans le navigateur) ; « Chercher un client ou un contact… » → ses conversations + « + Nouvelle sur ce client/contact » (« + Nouvelle » du haut aussi) ; sections Projets (+, ✎, ✕ avec confirmation, dépliés retenus, « Glisse une conversation ici »), Clients (groupées par client), Conversations ; ⋯ par conversation : Renommer, Déplacer vers un projet, Retirer du projet ; glisser sur un projet (ou sur Conversations pour l'en retirer) ; en-tête « À propos de : client ».
+- Preuve : API (projet, conversation sur un contact → compagnie suivie, déplacer, filtre par compagnie, supprimer le projet → conversation gardée sans projet) ; navigateur 1920 (projet créé, conversation glissée dedans, recherche « AAA Comp » → conversations du client, ☰ cache la liste ; aucun bouton qui déborde après correction de « + Nouvelle sur ce client », pas de défilement horizontal) ; Zéko dans une conversation sur Papa Normandeau (AAA Compagnie test) : « quel est son courriel et à quelle compagnie il est ? » → d'abord « deux Papa Normandeau, lequel ? », corrigé (FOCUS) → « normdenis@hotmail.com, AAA Compagnie test » (84 s). Données de test supprimées.
+- Note : le courriel affiché vient de l'autre fiche Papa Normandeau (même personne en double, à fusionner par Philippe).
+
 
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL

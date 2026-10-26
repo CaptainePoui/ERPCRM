@@ -8,6 +8,18 @@ from app.core.database import Base
 # Zeko, l'IA unique d'ERPCRM (TASK-006.5 etape 2, 2026-10-18) : conversations gardees, journal de chaque appel.
 
 
+class ZekoProject(Base):
+    """Projet pour classer ses conversations avec Zeko, comme dans ChatGPT (TASK-006.8, 2026-10-26) : propre a chaque
+    personne ; le supprimer remet ses conversations dans la liste (rien n'est efface)."""
+    __tablename__ = "zeko_projects"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
 class ZekoConversation(Base):
     """Une conversation avec Zeko : personnelle (bouton du haut) ou rattachee a un ticket (partagee par les techniciens)."""
     __tablename__ = "zeko_conversations"
@@ -16,6 +28,10 @@ class ZekoConversation(Base):
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     ticket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=True, index=True)
     title: Mapped[str | None] = mapped_column(String(255))
+    # Classement (TASK-006.8) : projet de la personne ; client dont on parle (compagnie, ou contact precis et sa compagnie)
+    project_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("zeko_projects.id", ondelete="SET NULL"), nullable=True, index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), nullable=True, index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     # Reponse en cours (TASK-006.7, 2026-10-24) : Zeko finit sa reponse meme si la fenetre se ferme ; « Arrêter » la

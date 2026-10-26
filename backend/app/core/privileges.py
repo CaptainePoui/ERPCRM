@@ -63,7 +63,7 @@ _ROUTES = [
     (r"(invoices|recurring-billing|payments|devis|barter)(/|$)", "ventes"),
     (r"zeko/tickets(/|$)", "tickets"),
     (r"(tickets|conversations)(/|$)", "tickets"),
-    (r"zeko/(conversations|rules|proposals)(/|$)", "zeko"),
+    (r"zeko/(conversations|projects|rules|proposals)(/|$)", "zeko"),
     (r"zeko(/|$)", "administration"),
     (r"mail(/|$)", "courriels"),
     (r"purchase-orders(/|$)", "commandes"),
