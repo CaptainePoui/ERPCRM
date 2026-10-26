@@ -674,6 +674,14 @@ Date(s) de travail : 2026-10-25
 - Règle : à date égale, `recurring_poller._next_due_sale` suit l'ordre des numéros de la dernière facture de chaque périodique (`_previous_order`) ; une périodique sans facture passe en dernier.
 - Correction ponctuelle : `backend/renumber_invoices_20261022.py` (INV-112267/68/70/71 renumérotées, non transmises, paiements suivent la facture) ; proposition Zéko Kiko recalculée (`recheck_all`). Sauvegarde `~/backups/before_renumber_20261022_1504.sql`.
 
+
+### TASK-005.28 [x] Facture : menu de l'engrenage fermé au clic à côté ; plus de cases TPS/TVQ (taxes réglées dans le client)
+- **Date de demande** : 2026-10-26 (Philippe : « la fenêtre de l'engrenage de la facture, je veux qu'elle s'en aille quand je clique à côté (mais pas pour tout le monde) » ; « les taxes sont configurées dans le client et s'affichent dans la facture, mais dans la facture je ne veux pas les check box »)
+- **Date(s) de travail** : 2026-10-26
+- `InvoiceDetail.jsx` : le menu ⚙ se ferme au clic à côté (mousedown en capture sur la page, et `blur` de la fenêtre pour un clic dans l'aperçu de la facture, qui est un cadre à part) ; même fermeture pour le menu ⋯ des conversations Zéko. Exception à la règle « jamais fermé au clic extérieur », qui reste entière pour les fenêtres avec saisie (mémoire mise à jour).
+- Taxes : cases TPS/TVQ retirées de la fiche de la facture (remplacées par « Taxes : TPS 5 % · TVQ 9.975 % », en lecture) et de « Nouvelle facture ». `InvoiceCreate.apply_tps/apply_tvq` : défaut `None` = selon la fiche du client (`is_taxable`, `tvq_applicable`) — avant, le défaut `True` ignorait la fiche du client ; taux TPS/TVQ pris dans la fiche du client à la création. Vérifié : aucune compagnie non taxable aujourd'hui, aucune facture récente différente de sa fiche client.
+- Preuve (1920, INV-112273) : menu ouvert puis fermé par un clic à côté et par un clic dans l'aperçu ; 0 case à cocher ; pas de défilement horizontal.
+
 ### TASK-005.26 [x] « Ententes » remplacent « Échanges » : sans frais de retard, factures périodiques, pause de facturation
 Date de demande : 2026-10-16 (Philippe : « je trouve plus difficile de gérer les échanges que de me faire payer… j'aime le principe que je peux choisir qu'une entreprise ne paie pas de frais de retard ; au lieu d'échange on va mettre entente, dans cette fenêtre je peux désactiver les frais de retard pour cette entreprise… facture périodique devient un rassemblement des ententes, je veux facture périodique dans entente ; il me faudrait aussi l'option de mettre une pause à leur facturation périodique, ex. donner 8 mois et 12 jours gratuits… je n'en suis pas sûr alors garde un backup de ce qu'on a avant de changer, mais j'aimerais voir ce que ça donne »)
 Date(s) de travail : 2026-10-16

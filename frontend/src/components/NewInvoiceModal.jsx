@@ -9,7 +9,7 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
   const [companies, setCompanies] = useState([])
   const [selectedCompany, setSelectedCompany] = useState(prefillCompany)
   const [quickCompany, setQuickCompany] = useState(null)
-  const [form, setForm] = useState({ apply_tps: true, apply_tvq: true, is_recurring: false, recurrence_frequency: '' })
+  const [form, setForm] = useState({ is_recurring: false, recurrence_frequency: '' })
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { api.get('/v1/companies').then(r => setCompanies(r.data)) }, [])
@@ -28,8 +28,6 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
     try {
       const r = await api.post('/v1/invoices', {
         company_id: selectedCompany.id,
-        apply_tps: form.apply_tps,
-        apply_tvq: form.apply_tvq,
         is_recurring: form.is_recurring,
         recurrence_frequency: form.is_recurring ? form.recurrence_frequency : null,
       })
@@ -52,14 +50,6 @@ export default function NewInvoiceModal({ onClose, prefillCompany = null }) {
             autoFocus={!prefillCompany}
           />
           <div style={{ display: 'flex', gap: 16, marginBottom: 12 }}>
-            <label className="tax-check">
-              <input type="checkbox" checked={form.apply_tps} onChange={e => setForm(p => ({ ...p, apply_tps: e.target.checked }))} />
-              <span>TPS 5%</span>
-            </label>
-            <label className="tax-check">
-              <input type="checkbox" checked={form.apply_tvq} onChange={e => setForm(p => ({ ...p, apply_tvq: e.target.checked }))} />
-              <span>TVQ 9,975%</span>
-            </label>
             <label className="tax-check">
               <input type="checkbox" checked={form.is_recurring} onChange={e => setForm(p => ({ ...p, is_recurring: e.target.checked }))} />
               <span>Récurrente</span>

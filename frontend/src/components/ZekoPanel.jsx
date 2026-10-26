@@ -62,8 +62,8 @@ function ConvRow({ c, current, projects, showClient, onOpen, onMove, onRename, s
   useEffect(() => {
     if (!menu) return
     const off = e => { if (ref.current && !ref.current.contains(e.target)) setMenu(false) }
-    document.addEventListener('mousedown', off)
-    return () => document.removeEventListener('mousedown', off)
+    document.addEventListener('mousedown', off, true)       // capture : avant qu'un parent arrête l'événement
+    return () => document.removeEventListener('mousedown', off, true)
   }, [menu])
   const on = c.id === current
   return (

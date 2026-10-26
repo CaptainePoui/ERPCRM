@@ -98,8 +98,8 @@ class InvoiceCreate(BaseModel):
     issue_date: date | None = None
     due_date: date | None = None
     notes: str | None = None
-    apply_tps: bool = True
-    apply_tvq: bool = True
+    apply_tps: bool | None = None      # None = selon la fiche du client (taxes reglees dans le client)
+    apply_tvq: bool | None = None
     is_recurring: bool = False
     recurrence_frequency: str | None = None
 
@@ -316,6 +316,8 @@ async def create_invoice(payload: InvoiceCreate, db: AsyncSession = Depends(get_
         notes=payload.notes,
         apply_tps=payload.apply_tps if payload.apply_tps is not None else comp.is_taxable,
         apply_tvq=payload.apply_tvq if payload.apply_tvq is not None else comp.tvq_applicable,
+        tps_rate=Decimal(str(comp.tps_rate if comp.tps_rate is not None else 5.0)),
+        tvq_rate=Decimal(str(comp.tvq_rate if comp.tvq_rate is not None else 9.975)),
         is_recurring=payload.is_recurring,
         recurrence_frequency=payload.recurrence_frequency,
     )

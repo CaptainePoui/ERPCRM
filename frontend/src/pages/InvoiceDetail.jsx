@@ -81,6 +81,15 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const [editingLines, setEditingLines] = useState(false)   // TASK-005.20 : lignes seulement en « Modifier »
   const [openPayment, setOpenPayment] = useState(null)      // fiche du paiement (cheques)
   const [moreOpen, setMoreOpen] = useState(false)           // menu « ⋯ Autres actions »
+  const gearRef = useRef(null)
+  useEffect(() => {          // menu de l'engrenage : un clic à côté le ferme (un menu, pas une fenêtre de saisie)
+    if (!moreOpen) return
+    const off = e => { if (gearRef.current && !gearRef.current.contains(e.target)) setMoreOpen(false) }
+    const blur = () => setMoreOpen(false)                    // clic dans l'aperçu de la facture (cadre à part)
+    document.addEventListener('mousedown', off, true)       // capture : avant qu'un parent arrête l'événement
+    window.addEventListener('blur', blur)
+    return () => { document.removeEventListener('mousedown', off, true); window.removeEventListener('blur', blur) }
+  }, [moreOpen])
   const [actioning, setActioning] = useState(false)
   const [payments, setPayments] = useState([])
   const [paymentMethods, setPaymentMethods] = useState([])
@@ -297,7 +306,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
           {/* Options discretes (Philippe : « offert et échange dans un engrenage discret ») -- pas d'encaissement a la main :
               un paiement ne vient que du numerique (banque, Interac, carte) */}
           {gearItems.length > 0 && (
-            <div style={{ position: 'relative' }}>
+            <div ref={gearRef} style={{ position: 'relative' }}>
               <button className="btn-secondary" onClick={() => setMoreOpen(o => !o)} style={{ fontSize: 13, padding: '4px 9px' }} title="Options">⚙</button>
               {moreOpen && (
                 <div style={{ position: 'absolute', right: 0, top: '110%', zIndex: 50, background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.3)', minWidth: 260, padding: 4 }}>
@@ -392,18 +401,10 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
                 : <strong>{inv.recurrence_frequency}</strong>}
             </div>
           )}
+          {/* Taxes : réglées dans la fiche du client, pas de cases ici (Philippe, 2026-10-26) */}
           <div className="inv-info-row">
             <span>Taxes</span>
-            <div style={{ display: 'flex', gap: 12 }}>
-              <label className="tax-check">
-                <input type="checkbox" checked={inv.apply_tps} disabled={!editable} onChange={e => saveField('apply_tps', e.target.checked)} />
-                <span>TPS</span>
-              </label>
-              <label className="tax-check">
-                <input type="checkbox" checked={inv.apply_tvq} disabled={!editable} onChange={e => saveField('apply_tvq', e.target.checked)} />
-                <span>TVQ</span>
-              </label>
-            </div>
+            <strong>{[inv.apply_tps && `TPS ${inv.tps_rate} %`, inv.apply_tvq && `TVQ ${inv.tvq_rate} %`].filter(Boolean).join(' · ') || 'Aucune'}</strong>
           </div>
         </div>
 
