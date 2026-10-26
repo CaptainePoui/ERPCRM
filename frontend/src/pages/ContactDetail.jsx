@@ -24,6 +24,7 @@ import { askConfirm, showAlert } from '../components/Dialog'
 import FormerInfoSection from '../components/FormerInfoSection'
 import ConversationsSection from '../components/ConversationsSection'
 import VoiceSection from '../components/VoiceSection'
+import MergeModal from '../components/MergeModal'
 
 // ── Inline field (same pattern as CompanyDetail) ──────────────────────────────
 function InlineField({ label, value, onSave, type = 'text', multiline }) {
@@ -331,6 +332,7 @@ export default function ContactDetail({ isNew }) {
   const [showTicket, setShowTicket] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
+  const [showMerge, setShowMerge] = useState(false)      // fusionner avec une autre fiche (TASK-003.4)
   const [showJournal, setShowJournal] = useState(false)
   const [sipExt, setSipExt] = useState(null)
   const [sipExtLoading, setSipExtLoading] = useState(false)
@@ -1387,7 +1389,10 @@ export default function ContactDetail({ isNew }) {
 
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
               <button className="inv-del-btn" onClick={deleteContact}>Supprimer le contact</button>
+              <button className="btn-secondary" style={{ marginLeft: 10 }} onClick={() => setShowMerge(true)}>Fusionner avec une autre fiche</button>
             </div>
+            {showMerge && <MergeModal kind="contact" id={id} name={`${c.first_name} ${c.last_name}`.trim()} onClose={() => setShowMerge(false)}
+              onDone={keep => { setShowMerge(false); if (keep === id) load(); else navigate(`/contacts/${keep}`) }} />}
           </div>
         )}
       </div>

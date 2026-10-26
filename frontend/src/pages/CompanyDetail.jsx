@@ -28,6 +28,7 @@ import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
 import FormerInfoSection, { RenameCompanyModal } from '../components/FormerInfoSection'
 import ConversationsSection from '../components/ConversationsSection'
+import MergeModal from '../components/MergeModal'
 
 // Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
 const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Conversations', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
@@ -559,6 +560,7 @@ export default function CompanyDetail({ isNew }) {
   const [showTicket, setShowTicket] = useState(false)
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
+  const [showMerge, setShowMerge] = useState(false)      // fusionner avec une autre fiche (TASK-003.4)
   const [allContacts, setAllContacts] = useState([])
 
   useEffect(() => {
@@ -627,9 +629,12 @@ export default function CompanyDetail({ isNew }) {
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
             {!c.is_owner && <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>}
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
+            <button className="btn-secondary" title="Réunir une compagnie en double avec celle-ci" onClick={() => setShowMerge(true)}>Fusionner</button>
           </div>
         )}
       </div>
+      {showMerge && c && <MergeModal kind="company" id={id} name={c.name} onClose={() => setShowMerge(false)}
+        onDone={keep => { setShowMerge(false); if (keep === id) load(); else navigate(`/companies/${keep}`) }} />}
       {renaming && c && <RenameCompanyModal company={c} newName={renaming} onClose={() => setRenaming(null)} onDone={() => { setRenaming(null); load() }} />}
       {showTicket && c && (
         <NewTicketModal

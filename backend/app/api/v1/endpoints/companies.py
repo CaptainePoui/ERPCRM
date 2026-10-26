@@ -1707,3 +1707,32 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
         "transactions": rows,
     }
 
+
+# ── Fusion (TASK-003.4) ──────────────────────────────────────────────────────
+
+class MergeIn(BaseModel):
+    other_id: uuid.UUID
+    choices: dict[str, str] = {}       # champ -> "garde" (cette fiche) | "autre"
+
+
+@router.get("/{company_id}/merge-suggestions")
+async def company_merge_suggestions(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    c = await db.get(Company, company_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    found = await duplicates.similar_companies(db, c.name, c.office_phone)
+    return [m for m in found if m["id"] != str(company_id)]
+
+
+@router.get("/{company_id}/merge/{other_id}")
+async def company_merge_preview(company_id: uuid.UUID, other_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import merge
+    return await merge.company_preview(db, company_id, other_id)
+
+
+@router.post("/{company_id}/merge")
+async def company_merge(company_id: uuid.UUID, payload: MergeIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Garde cette fiche ; l'autre disparait et tout ce qui la concernait (factures, paiements, tickets...) passe ici."""
+    from app.core import merge
+    keep = await merge.merge_companies(db, company_id, payload.other_id, payload.choices, user)
+    return {"id": str(keep.id)}

@@ -70,6 +70,7 @@ ACTION_LABELS = {
     "photo_added": "Photo d'installation ajoutée",
     "photo_removed": "Photo d'installation retirée",
     "renamed": "Changement de nom",
+    "merged": "Fusion",
     "former_added": "Ancienne info ajoutée",
     "former_removed": "Ancienne info retirée",
     "created": "Création",

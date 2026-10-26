@@ -987,3 +987,34 @@ async def remove_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSe
     if es:
         await db.delete(es)
         await db.commit()
+
+
+# ── Fusion (TASK-003.4) ──────────────────────────────────────────────────────
+
+class MergeIn(BaseModel):
+    other_id: uuid.UUID
+    choices: dict[str, str] = {}       # champ -> "garde" (cette fiche) | "autre"
+
+
+@router.get("/{contact_id}/merge-suggestions")
+async def contact_merge_suggestions(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Fiches semblables a celle-ci (meme verification que l'avertissement de doublon) : proposees en premier."""
+    c = await db.get(Contact, contact_id)
+    if not c:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    found = await duplicates.similar_contacts(db, c.first_name, c.last_name, c.email, (c.phone, c.mobile, c.phone_other))
+    return [m for m in found if m["id"] != str(contact_id)]
+
+
+@router.get("/{contact_id}/merge/{other_id}")
+async def contact_merge_preview(contact_id: uuid.UUID, other_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import merge
+    return await merge.contact_preview(db, contact_id, other_id)
+
+
+@router.post("/{contact_id}/merge")
+async def contact_merge(contact_id: uuid.UUID, payload: MergeIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Garde cette fiche ; l'autre disparait et tout ce qui la concernait passe ici."""
+    from app.core import merge
+    keep = await merge.merge_contacts(db, contact_id, payload.other_id, payload.choices, user)
+    return {"id": str(keep.id)}
