@@ -29,6 +29,7 @@ export default function CompanySettingsPanel({ only = null }) {
         tax_lock_date: settings.tax_lock_date || '',
         tax_filing_frequency: settings.tax_filing_frequency || '',
         tax_reminder_user_id: settings.tax_reminder_user_id || '',
+        tax_portal_url: (settings.tax_portal_url || '').trim(),
       })
       setSettings(r.data)
       setMsg('Paramètres sauvegardés')
@@ -95,6 +96,11 @@ export default function CompanySettingsPanel({ only = null }) {
               <option value="">— Choisir —</option>
               {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
             </select>
+          </div>
+          {/* TASK-043.3 : ouvert en cliquant une declaration a produire (Impots et formulaires) */}
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 320px' }}>
+            <label>Portail pour produire la déclaration</label>
+            <input value={settings.tax_portal_url || ''} placeholder="https://…" onChange={e => setSettings(p => ({ ...p, tax_portal_url: e.target.value }))} />
           </div>
         </div>
         <button className="btn-primary" onClick={saveSettings} disabled={saving} style={{ marginTop: 16 }}>

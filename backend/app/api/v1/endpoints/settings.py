@@ -30,6 +30,9 @@ DEFAULTS = {
     # TASK-005.8 : fin de la derniere periode de taxes declaree (AAAA-MM-JJ, vide = aucune) --
     # une facture datee avant ne peut plus etre supprimee ni remise en brouillon (seulement creditee)
     "tax_lock_date": "",
+    "tax_lock_auto": "",             # TASK-043.3 : « versement|date d'avant » quand un versement TPS/TVQ a avance la date
+    # TASK-043.3 : portail ouvert pour produire la declaration (configurable : logiciel vendu a d'autres entreprises)
+    "tax_portal_url": "https://www.info.clicsequr.gouv.qc.ca/entreprises/",
     # Rappels de declaration TPS/TVQ (core/tax_reminders.py) : vide = desactive
     "tax_filing_frequency": "trimestrielle",  # mensuelle | trimestrielle | annuelle (vide = pas de rappel)
     "tax_reminder_user_id": "",      # utilisateur qui recoit la tache et les rappels
@@ -115,6 +118,7 @@ class SettingsOut(BaseModel):
     ticket_reminder_visual: bool
     fiscal_year_start_month: int
     tax_lock_date: str
+    tax_portal_url: str = ""
     tax_filing_frequency: str
     tax_reminder_user_id: str
     recurring_auto_sales: bool
@@ -150,6 +154,7 @@ class SettingsIn(BaseModel):
     ticket_reminder_visual: bool | None = None
     fiscal_year_start_month: int | None = Field(default=None, ge=1, le=12)
     tax_lock_date: str | None = Field(default=None, pattern=r"^(\d{4}-\d{2}-\d{2})?$")
+    tax_portal_url: str | None = Field(default=None, pattern=r"^(https://\S+)?$")
     tax_filing_frequency: str | None = Field(default=None, pattern=r"^(|mensuelle|trimestrielle|annuelle)$")
     tax_reminder_user_id: str | None = None
     recurring_auto_sales: bool | None = None
@@ -202,6 +207,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         ticket_reminder_visual=(await get_setting(db, "ticket_reminder_visual")) == "true",
         fiscal_year_start_month=int(await get_setting(db, "fiscal_year_start_month")),
         tax_lock_date=await get_setting(db, "tax_lock_date"),
+        tax_portal_url=await get_setting(db, "tax_portal_url"),
         tax_filing_frequency=await get_setting(db, "tax_filing_frequency"),
         tax_reminder_user_id=await get_setting(db, "tax_reminder_user_id"),
         recurring_auto_sales=(await get_setting(db, "recurring_auto_sales")) == "true",
@@ -270,7 +276,11 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         zeko.invalidate()
     if payload.fiscal_year_start_month is not None:
         await set_setting(db, "fiscal_year_start_month", str(payload.fiscal_year_start_month))
+    if payload.tax_portal_url is not None:
+        await set_setting(db, "tax_portal_url", payload.tax_portal_url.strip())
     if payload.tax_lock_date is not None:
+        if payload.tax_lock_date != (await get_setting(db, "tax_lock_date") or ""):
+            await set_setting(db, "tax_lock_auto", "")      # changee a la main : un versement retire ne la remet plus
         await set_setting(db, "tax_lock_date", payload.tax_lock_date)
         if payload.tax_lock_date:
             from datetime import date as _date

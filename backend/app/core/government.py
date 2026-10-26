@@ -44,7 +44,7 @@ def split(amount: Decimal, status: dict, kind: str, fallback_ratio: Decimal | No
     penalty = amount - applied
     tps = tvq = ZERO
     if kind == "tps_tvq":
-        if status["declared"] and (status["tps_due"] + status["tvq_due"]) > 0:
+        if status["declared"] and (status["tps_due"] + status["tvq_due"]) != 0:
             ratio = Decimal(str(status["tps_due"])) / Decimal(str(status["tps_due"] + status["tvq_due"]))
         else:
             ratio = fallback_ratio if fallback_ratio is not None else Decimal("5") / Decimal("14.975")

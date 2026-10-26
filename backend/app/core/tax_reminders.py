@@ -80,8 +80,8 @@ async def ensure_tax_filing_tasks(db: AsyncSession) -> int:
             description=(
                 f"La période de déclaration du {_fmt(start)} au {_fmt(end)} est terminée. "
                 f"Produire la déclaration TPS/TVQ (Revenu Québec) d'ici le {_fmt(due)}.\n"
-                f"Une fois produite : dans Paramètres, avancer « Taxes déclarées jusqu'au » au {end.isoformat()} "
-                f"(verrouille les factures de la période ; cette tâche se fermera d'elle-même)."
+                f"Une fois produite : rattacher le versement (ou le remboursement) dans Banque, ou cliquer « Marquer comme "
+                f"déclarée » dans Impôts et formulaires (verrouille les factures de la période ; cette tâche se fermera d'elle-même)."
             ),
             due_date=due, due_time="09:00", priority="haute",
             assigned_to_id=uuid.UUID(user_id), link_url=key,
@@ -97,6 +97,16 @@ async def ensure_tax_filing_tasks(db: AsyncSession) -> int:
     if created:
         await db.commit()
     return created
+
+
+async def reopen_declared_tasks(db: AsyncSession, lock: date | None) -> int:
+    """TASK-043.3 : la date « declarees jusqu'au » recule (versement retire) -> les taches des periodes apres se rouvrent."""
+    n = 0
+    for t in (await db.execute(select(Task).where(Task.link_url.like(f"{MARK}%"), Task.completed == True))).scalars().all():
+        if lock is None or date.fromisoformat(t.link_url[len(MARK):]) > lock:
+            t.completed, t.completed_at, t.status = False, None, "en_cours"
+            n += 1
+    return n
 
 
 async def complete_declared_tasks(db: AsyncSession, lock: date) -> int:

@@ -151,7 +151,31 @@ async def list_periods(frequency: str | None = None, count: int = 8, db: AsyncSe
     for start, end in _periods(today, freq, fiscal, max(1, min(count, 36))):
         out.append({"start": start, "end": end, "deadline": deadline(end, freq), "state": _state(start, end, lock, today),
                     **await _summary(db, start, end)})
-    return {"frequency": freq, "tax_lock_date": lock, "periods": out}
+    return {"frequency": freq, "tax_lock_date": lock, "periods": out, "portal_url": await get_setting(db, "tax_portal_url")}
+
+
+def _form_lines(s: dict, adjs: list) -> dict:
+    """Montants dans l'ordre de la declaration de Revenu Quebec (TASK-043.3, lignes du formulaire FP-500) :
+    101 ventes ; 103/203 taxe exigible ; 104/204 redressements (ajustements qui l'augmentent) ; 105/205 total ;
+    106/206 CTI/RTI des achats ; 107/207 redressements (ajustements qui la reduisent) ; 108/208 total ; 109/209 nette ;
+    111/211 autres remboursements (aucun dans ERPCRM) ; 113/213 a remettre (+) ou remboursement (-)."""
+    q = lambda v: Decimal(str(v)).quantize(Decimal("0.01"))
+    out = {"101": q(s["sales"])}
+    for tax, n in (("tps", "1"), ("tvq", "2")):
+        plus = sum((q(getattr(a, f"{tax}_amount")) for a in adjs if getattr(a, f"{tax}_amount") > 0), ZERO)
+        minus = -sum((q(getattr(a, f"{tax}_amount")) for a in adjs if getattr(a, f"{tax}_amount") < 0), ZERO)
+        l = {"03": q(s[f"{tax}_collected"]), "04": plus, "06": q(s[f"{tax}_credits"]), "07": minus}
+        l["05"] = l["03"] + l["04"]
+        l["08"] = l["06"] + l["07"]
+        l["09"] = l["05"] - l["08"]
+        l["11"] = ZERO
+        l["13"] = l["09"] - l["11"]
+        out.update({f"{n}{k}": v for k, v in l.items()})
+    total = out["113"] + out["213"]
+    out = {k: float(v) for k, v in out.items()}
+    out["solde"] = float(total) if total > 0 else 0.0
+    out["remboursement"] = float(-total) if total < 0 else 0.0
+    return out
 
 
 @router.get("/report")
@@ -170,7 +194,8 @@ async def period_report(start: date, end: date, db: AsyncSession = Depends(get_d
                              .order_by(TaxPayment.payment_date))).scalars().all()
     return {
         "start": start, "end": end, "state": _state(start, end, lock, clock.today()),
-        "summary": await _summary(db, start, end),
+        "summary": (sm := await _summary(db, start, end)),
+        "form": _form_lines(sm, adjs),
         "invoices": [{"id": str(i.id), "number": i.number, "issue_date": i.issue_date, "company_name": i.company.name, "company_id": str(i.company_id),
                       "status": i.status, "is_credit": i.credit_of_id is not None, "subtotal": float(i.subtotal),
                       "tps": float(i.tps_amount), "tvq": float(i.tvq_amount), "total": float(i.total)} for i in invs],
@@ -213,9 +238,41 @@ async def declare_period(payload: DeclareIn, db: AsyncSession = Depends(get_db),
     if lock and payload.end <= lock:
         raise HTTPException(status_code=400, detail=f"Déjà déclarée (taxes déclarées jusqu'au {lock})")
     await set_setting(db, "tax_lock_date", payload.end.isoformat())
+    await set_setting(db, "tax_lock_auto", "")
     if await complete_declared_tasks(db, payload.end):
         await db.commit()
     return {"tax_lock_date": payload.end}
+
+
+# ── Déclarée au versement (TASK-043.3, 2026-10-26) ────────────────────────────
+# Philippe : « comme les paiements, ça se fait quand on reçoit la transaction ». Un versement TPS/TVQ (retrait à
+# Revenu Québec) ou un remboursement (dépôt) rattaché à une période terminée marque la période déclarée. On n'avance
+# jamais par-dessus une période antérieure pas déclarée. Retirer ce versement remet la date d'avant, sauf si elle a
+# été changée à la main entre-temps (« tax_lock_auto » = versement|date d'avant).
+
+async def declare_from_payment(db: AsyncSession, tp: TaxPayment) -> date | None:
+    if tp.kind != "tps_tvq" or tp.period_end >= clock.today():
+        return None
+    _, lock, _ = await _context(db, None)
+    if lock and (tp.period_end <= lock or tp.period_start > lock + timedelta(days=1)):
+        return None
+    await set_setting(db, "tax_lock_date", tp.period_end.isoformat())
+    await set_setting(db, "tax_lock_auto", f"{tp.id}|{lock.isoformat() if lock else ''}")
+    if await complete_declared_tasks(db, tp.period_end):
+        await db.commit()
+    return tp.period_end
+
+
+async def undeclare_from_payment(db: AsyncSession, tp_id) -> None:
+    v = (await get_setting(db, "tax_lock_auto") or "").strip()
+    if not v.startswith(f"{tp_id}|"):
+        return
+    prev = v.split("|", 1)[1]
+    await set_setting(db, "tax_lock_date", prev)
+    await set_setting(db, "tax_lock_auto", "")
+    from app.core.tax_reminders import reopen_declared_tasks
+    if await reopen_declared_tasks(db, date.fromisoformat(prev) if prev else None):
+        await db.commit()
 
 
 # ── Ajustements fiscaux ──────────────────────────────────────────────────────
@@ -329,6 +386,7 @@ async def create_tax_payment(payload: TaxPaymentIn, db: AsyncSession = Depends(g
                    tps_amount=Decimal(str(payload.tps_amount)), tvq_amount=Decimal(str(payload.tvq_amount)), created_by=user.id)
     db.add(p)
     await db.commit()
+    await declare_from_payment(db, p)
     return _pay_out(p)
 
 
@@ -351,6 +409,7 @@ async def delete_tax_payment(pay_id: uuid.UUID, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=404, detail="Paiement introuvable")
     await db.delete(p)
     await db.commit()
+    await undeclare_from_payment(db, pay_id)
 
 
 # ── Montants declares et versements au gouvernement (TASK-043.1) ─────────────

@@ -60,6 +60,9 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
   const [showInvoices, setShowInvoices] = useState(false)
   const [showPurchases, setShowPurchases] = useState(false)
   const [error, setError] = useState(null)
+  const [filing, setFiling] = useState(null)        // periode dont la declaration est en train de se produire
+
+  function produce(p) { openPortal(data.portal_url); setFiling(p) }
 
   async function load(f = freq) {
     const r = await api.get('/v1/taxes/periods', { params: { count: 8, frequency: f || undefined } })
@@ -77,7 +80,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
   }, [selected?.start, selected?.end, refreshKey])
 
   async function declare() {
-    if (!await askConfirm(`Marquer la période du ${periodLabel(selected)} comme déclarée ?\n\nLes factures de cette période seront verrouillées (plus de suppression ni de retour en brouillon) et la tâche de rappel sera fermée.`)) return
+    if (!await askConfirm(`Marquer la période du ${periodLabel(selected)} comme déclarée ?\n\nLes factures de cette période seront verrouillées (plus de suppression ni de retour en brouillon) et la tâche de rappel sera fermée.\n\nÇa se fait aussi tout seul quand le versement (ou le remboursement) est rattaché dans Banque.`)) return
     setError(null)
     try { await api.post('/v1/taxes/declare', { end: selected.end }); await load() } catch (e) { setError(errText(e)) }
   }
@@ -87,6 +90,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {filing && <FilingHelper period={filing} portalUrl={data.portal_url} onClose={() => setFiling(null)} />}
       <div style={{ ...card, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
         <label style={{ fontSize: 13, color: C.muted, display: 'flex', gap: 8, alignItems: 'center' }}>
           Période de déclaration
@@ -108,7 +112,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
           {data.periods.map(p => {
             const active = selected && p.start === selected.start && p.end === selected.end
             return (
-              <tr key={p.start} onClick={() => setSelected(p)} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? 'var(--c-tint-blue)' : undefined }}>
+              <tr key={p.start} onClick={() => { setSelected(p); if (p.state === 'a_produire') produce(p) }} title={p.state === 'a_produire' ? 'Ouvre le portail du gouvernement et les montants à copier' : undefined} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? 'var(--c-tint-blue)' : undefined }}>
                 <td style={{ ...td, fontWeight: active ? 600 : 400, minWidth: 110 }}>{fmtD(p.start)}<div style={{ fontSize: 12, color: C.muted }}>au {fmtD(p.end)}</div></td>
                 <td style={td}><Badge state={p.state} /></td>
                 <td style={{ ...td, whiteSpace: 'nowrap', color: p.state === 'a_produire' ? 'var(--c-on-amber)' : undefined }}>{fmtD(p.deadline)}</td>
@@ -135,7 +139,8 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="btn-secondary" onClick={() => onAddAdjustment(selected)} disabled={selected.state === 'declaree'}>+ Ajustement</button>
               <button className="btn-secondary" onClick={() => onAddPayment(selected)}>+ Paiement de taxe</button>
-              {selected.state === 'a_produire' && <button className="btn-primary" onClick={declare}>Marquer comme déclarée</button>}
+              {selected.state === 'a_produire' && <button className="btn-secondary" onClick={declare} title="Se fait tout seul quand le versement ou le remboursement est rattaché dans Banque">Marquer comme déclarée</button>}
+              {selected.state === 'a_produire' && data.portal_url && <button className="btn-primary" onClick={() => produce(selected)}>Produire la déclaration</button>}
             </div>
           </div>
           {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 10 }}>{error}</div>}
@@ -215,6 +220,80 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Produire la déclaration (TASK-043.3, 2026-10-26) ───────────────────────
+// Le site du gouvernement ne se laisse ni afficher dans ERPCRM ni remplir par une autre page (protection du
+// navigateur) : on l'ouvre dans sa propre fenêtre, à droite, et cette fenêtre-ci, à gauche, donne chaque montant
+// dans l'ordre du formulaire avec son numéro de ligne et un bouton Copier. Ne se ferme que par son bouton.
+
+export function openPortal(url) {
+  if (!url) return
+  const w = Math.round(window.screen.availWidth * 0.62)
+  const h = window.screen.availHeight
+  window.open(url, 'erpcrm-declaration', `popup,width=${w},height=${h},left=${window.screen.availWidth - w},top=0`)
+}
+
+async function copyText(t) {
+  try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(t); return } } catch { /* refuse : ancienne methode */ }
+  const a = document.createElement('textarea')       // page non securisee (http) ou presse-papiers refuse
+  a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'
+  document.body.appendChild(a); a.select(); document.execCommand('copy'); a.remove()
+}
+
+const FORM_ROWS = [
+  ['101', 'Total des fournitures (ventes, sans les taxes)'],
+  null,
+  ['103', 'TPS exigible (perçue sur les ventes)'], ['104', 'Redressements de TPS'], ['105', 'Total : 103 + 104'],
+  ['106', 'CTI (TPS payée sur les achats)'], ['107', 'Redressements de CTI'], ['108', 'Total des CTI : 106 + 107'],
+  ['109', 'TPS nette : 105 − 108'], ['111', 'Autres remboursements de TPS'], ['113', 'TPS à remettre ou remboursement'],
+  null,
+  ['203', 'TVQ exigible (perçue sur les ventes)'], ['204', 'Redressements de TVQ'], ['205', 'Total : 203 + 204'],
+  ['206', 'RTI (TVQ payée sur les achats)'], ['207', 'Redressements de RTI'], ['208', 'Total des RTI : 206 + 207'],
+  ['209', 'TVQ nette : 205 − 208'], ['211', 'Autres remboursements de TVQ'], ['213', 'TVQ à remettre ou remboursement'],
+]
+
+function FilingHelper({ period, portalUrl, onClose }) {
+  const [form, setForm] = useState(null)
+  const [copied, setCopied] = useState(null)
+  useEffect(() => {
+    api.get('/v1/taxes/report', { params: { start: period.start, end: period.end } }).then(r => setForm(r.data.form))
+  }, [period.start, period.end])
+  const plain = v => v.toFixed(2).replace('.', ',')      // ce qu'on colle : 619,21 (sans espace ni $)
+  async function copy(k, v) { await copyText(plain(v)); setCopied(k) }
+  const btn = { fontSize: 12, padding: '3px 10px', minWidth: 74 }
+  const line = (k, label, v, strong) => (
+    <div key={k} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 0', borderTop: `1px solid ${C.border}`, fontWeight: strong ? 700 : 400 }}>
+      <span style={{ width: 38, color: C.muted, fontVariantNumeric: 'tabular-nums' }}>{k}</span>
+      <span style={{ flex: 1, minWidth: 0 }}>{label}</span>
+      <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtMoney(v)}</span>
+      <button className={copied === k ? 'btn-primary' : 'btn-secondary'} style={btn} onClick={() => copy(k, v)}>{copied === k ? '✓ Copié' : 'Copier'}</button>
+    </div>
+  )
+  return (
+    <div style={{ position: 'fixed', left: 16, top: 16, bottom: 16, width: 'min(34vw, calc(100vw - 32px))', minWidth: 'min(420px, calc(100vw - 32px))', zIndex: 1200,
+                  display: 'flex', flexDirection: 'column', background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,.35)' }}>
+      <div style={{ padding: '14px 16px 8px' }}>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>Déclaration du {periodLabel(period)}</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Le portail est ouvert dans sa fenêtre. Copie chaque montant dans la case du même numéro.</div>
+      </div>
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px', fontSize: 13 }}>
+        {!form ? <div style={{ color: C.muted }}>Calcul...</div> : <>
+          {FORM_ROWS.map((r, i) => r ? line(r[0], r[1], form[r[0]], ['113', '213'].includes(r[0])) : <div key={i} style={{ height: 10 }} />)}
+          <div style={{ height: 10 }} />
+          {form.remboursement > 0 ? line('Remb.', 'Remboursement demandé (113 + 213)', form.remboursement, true) : line('Solde', 'Solde à remettre (113 + 213)', form.solde, true)}
+          <div style={{ fontSize: 12, color: C.muted, margin: '12px 0' }}>
+            Numéros de lignes du formulaire de Revenu Québec (FP-500). Les redressements 104/204 et 107/207 viennent des ajustements fiscaux de la période.
+            Une fois le versement (ou le remboursement) rattaché dans Banque, la période se marque déclarée toute seule.
+          </div>
+        </>}
+      </div>
+      <div className="modal-actions" style={{ padding: '10px 16px', margin: 0 }}>
+        <button className="btn-secondary" onClick={() => openPortal(portalUrl)}>Rouvrir le portail</button>
+        <button className="btn-primary" onClick={onClose}>Fermer</button>
+      </div>
     </div>
   )
 }

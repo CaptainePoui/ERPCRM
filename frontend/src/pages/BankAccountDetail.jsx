@@ -447,7 +447,8 @@ function guessKind(tx) {
   return 'tps_tvq'
 }
 function GovernmentForm({ tx, onDone }) {
-  const [kind, setKind] = useState(guessKind(tx))
+  const refund = tx.amount > 0                      // TASK-043.3 : depot = remboursement de TPS/TVQ
+  const [kind, setKind] = useState(refund ? 'tps_tvq' : guessKind(tx))
   const [periods, setPeriods] = useState([])
   const [sel, setSel] = useState('')
   const [declared, setDeclared] = useState({ tps_due: '', tvq_due: '', amount_due: '' })
@@ -485,7 +486,7 @@ function GovernmentForm({ tx, onDone }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div className="form-grid">
         <div className="form-group"><label>Type de versement</label>
-          <select value={kind} onChange={e => setKind(e.target.value)}>{GOV_KINDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></div>
+          <select value={kind} disabled={refund} onChange={e => setKind(e.target.value)}>{GOV_KINDS.filter(([v]) => !refund || v === 'tps_tvq').map(([v, l]) => <option key={v} value={v}>{refund ? 'Remboursement de TPS/TVQ (trimestre)' : l}</option>)}</select></div>
         <div className="form-group"><label>Période</label>
           <select value={sel} onChange={e => setSel(e.target.value)}>
             {periods.map(p => <option key={p.start} value={p.start}>{fmtD(p.start)} au {fmtD(p.end)}{p.declared ? ` — déclaré ${fmtMoney(p.due)}, reste ${fmtMoney(p.remaining)}` : p.paid ? ` — déjà payé ${fmtMoney(p.paid)}` : ''}</option>)}
@@ -505,14 +506,15 @@ function GovernmentForm({ tx, onDone }) {
       )}
       {pv && (
         <div style={{ fontSize: 13 }}>
-          Ce versement de <strong>{fmtMoney(-tx.amount)}</strong> :
-          {' '}paie le dû <strong>{fmtMoney(pv.applied)}</strong>{kind === 'tps_tvq' ? ` (TPS ${fmtMoney(pv.tps)}, TVQ ${fmtMoney(pv.tvq)})` : ''}
+          {refund ? <>Ce remboursement de <strong>{fmtMoney(tx.amount)}</strong> : TPS {fmtMoney(-pv.tps)}, TVQ {fmtMoney(-pv.tvq)} remboursées</>
+            : <>Ce versement de <strong>{fmtMoney(-tx.amount)}</strong> : paie le dû <strong>{fmtMoney(pv.applied)}</strong>{kind === 'tps_tvq' ? ` (TPS ${fmtMoney(pv.tps)}, TVQ ${fmtMoney(pv.tvq)})` : ''}</>}
           {pv.penalty > 0 && <> · <strong style={{ color: C.red }}>pénalités et intérêts {fmtMoney(pv.penalty)}</strong> (non déductibles)</>}
-          {!pv.declared && <div style={{ color: 'var(--c-on-amber)', fontSize: 12 }}>Sans montant déclaré, tout est compté comme paiement du dû ; saisissez le déclaré pour reconnaître les frais de retard.</div>}
+          {!pv.declared && !refund && <div style={{ color: 'var(--c-on-amber)', fontSize: 12 }}>Sans montant déclaré, tout est compté comme paiement du dû ; saisissez le déclaré pour reconnaître les frais de retard.</div>}
         </div>
       )}
       {error && <div style={{ color: C.red, fontSize: 13 }}>{error}</div>}
-      <div style={{ textAlign: 'right' }}><button className="btn-primary" disabled={!period || saving} onClick={link}>Rattacher le versement</button></div>
+      {kind === 'tps_tvq' && period && <div style={{ fontSize: 12, color: C.muted }}>Si la période est terminée et pas encore déclarée, elle se marque déclarée (Impôts et formulaires).</div>}
+      <div style={{ textAlign: 'right' }}><button className="btn-primary" disabled={!period || saving} onClick={link}>{refund ? 'Rattacher le remboursement' : 'Rattacher le versement'}</button></div>
     </div>
   )
 }
@@ -681,6 +683,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
   const companies = useCompanies()
   const refs = useRefs()
   const [d, setD] = useState(null)
+  const [govRefund, setGovRefund] = useState(null)   // depot : paiement d'un client ou remboursement du gouvernement
   const [error, setError] = useState(null)
   const [pay, setPay] = useState(null)          // TASK-005.24 : fiche du paiement lie (cheques)
   const load = async () => setD((await api.get(`/v1/bank/transactions/${txId}/detail`)).data)
@@ -691,6 +694,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
   }
   if (!d) return <div className="modal-overlay"><div className="modal-box"><div className="loading">Chargement...</div></div></div>
   const deposit = d.amount > 0
+  const refundMode = govRefund ?? /REVENU QUEBEC|ARC -|RECEIVER GENERAL|RECEVEUR/i.test(`${d.payee || ''} ${d.description || ''}`)
   const row = (label, value) => value ? <div style={{ display: 'flex', gap: 12, fontSize: 13, padding: '3px 0' }}><span style={{ color: C.muted, minWidth: 150 }}>{label}</span><span>{value}</span></div> : null
   const statusLabel = d.status === 'matched' ? `Associée${d.auto_matched ? ' automatiquement (correspondance sûre)' : ''}` : d.status === 'excluded' ? 'Exclue' : 'Non classée'
   const box = { border: `1px solid ${C.border}`, borderRadius: 8, padding: 12 }
@@ -748,7 +752,7 @@ function TransactionModal({ txId, onClose, onChanged }) {
                 <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px', marginLeft: 8 }} onClick={() => setPay(d.linked.payment_id)}>Paiement et chèques</button></>}
               {d.linked.kind === 'expense' && <>Dépense du {fmtD(d.linked.date)} · {d.linked.category || 'sans compte'}{d.linked.vendor ? ` · ${d.linked.vendor}` : ''} · {fmtMoney(d.linked.amount)} (TPS {fmtMoney(d.linked.tps)}, TVQ {fmtMoney(d.linked.tvq)}){d.linked.created_by_link ? ' — créée par l\'association' : ''}</>}
               {d.linked.kind === 'vendor_payment' && <>Paiement fournisseur du {fmtD(d.linked.date)} · {d.linked.payee} · {fmtMoney(d.linked.amount)}</>}
-              {d.linked.kind === 'government' && <>Versement — {d.linked.type}, période du {fmtD(d.linked.period_start)} au {fmtD(d.linked.period_end)} · paie le dû {fmtMoney(d.linked.applied)}{d.linked.tps || d.linked.tvq ? ` (TPS ${fmtMoney(d.linked.tps)}, TVQ ${fmtMoney(d.linked.tvq)})` : ''}{d.linked.penalty > 0 && <strong style={{ color: C.red }}> · pénalités et intérêts {fmtMoney(d.linked.penalty)}</strong>}</>}
+              {d.linked.kind === 'government' && <>{deposit ? 'Remboursement' : 'Versement'} — {d.linked.type}, période du {fmtD(d.linked.period_start)} au {fmtD(d.linked.period_end)} · {deposit ? 'montant' : 'paie le dû'} {fmtMoney(deposit ? -d.linked.applied : d.linked.applied)}{d.linked.tps || d.linked.tvq ? ` (TPS ${fmtMoney(d.linked.tps)}, TVQ ${fmtMoney(d.linked.tvq)})` : ''}{d.linked.penalty > 0 && <strong style={{ color: C.red }}> · pénalités et intérêts {fmtMoney(d.linked.penalty)}</strong>}</>}
               {(d.linked.items || []).map(i => <div key={i.id} style={{ color: C.muted }}>• {i.number || 'facture'} du {fmtD(i.date)}{i.vendor ? ` · ${i.vendor}` : ''} : {fmtMoney(i.amount)}{i.total != null && Math.abs(i.total - i.amount) > 0.004 ? ` payés ici, sur une facture de ${fmtMoney(i.total)}` : ''}</div>)}
             </div>
           </div>
@@ -757,7 +761,13 @@ function TransactionModal({ txId, onClose, onChanged }) {
         {d.status === 'unclassified' && (
           <div style={box}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Lier ou classer</div>
-            {deposit
+            {deposit && <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button className={`filter-tab${!refundMode ? ' active' : ''}`} onClick={() => setGovRefund(false)}>Paiement d'un client</button>
+              <button className={`filter-tab${refundMode ? ' active' : ''}`} onClick={() => setGovRefund(true)}>Remboursement de TPS/TVQ</button>
+            </div>}
+            {deposit && refundMode
+              ? <GovernmentForm tx={d} onDone={async () => { await load(); await onChanged() }} />
+              : deposit
               ? <MatchModal key={d.company_id || 'none'} tx={d} embedded onClose={onClose} onDone={async () => { await load(); await onChanged() }} />
               : <WithdrawalModal key={d.vendor_id || 'none'} tx={d} embedded onClose={onClose} onDone={async () => { await load(); await onChanged() }} />}
           </div>

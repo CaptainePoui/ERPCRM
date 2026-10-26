@@ -881,6 +881,9 @@ async def unmatch_transaction(tx_id: uuid.UUID, db: AsyncSession = Depends(get_d
             await db.delete(tp)
         tx.status, tx.matched_at, tx.payment_created, tx.auto_matched = "unclassified", None, False, False
         await db.commit()
+        if tp:
+            from app.api.v1.endpoints.taxes import undeclare_from_payment
+            await undeclare_from_payment(db, tp.id)
         return await _tx_out(tx, db)
     if tx.status == "matched" and (tx.expense_id or tx.vendor_payment_id):
         return await _unmatch_withdrawal(tx, db)
@@ -1196,6 +1199,14 @@ async def transaction_detail(tx_id: uuid.UUID, db: AsyncSession = Depends(get_db
     return out
 
 
+def _gov_sign_ok(tx: BankTransaction, kind: str) -> None:
+    """Un retrait = versement ; un depot = remboursement de TPS/TVQ seulement (TASK-043.3)."""
+    if tx.amount > 0 and kind != "tps_tvq":
+        raise HTTPException(status_code=400, detail="Un dépôt ne peut être qu'un remboursement de TPS/TVQ")
+    if tx.amount == 0:
+        raise HTTPException(status_code=400, detail="Transaction de 0 $")
+
+
 class GovernmentMatchIn(BaseModel):
     kind: str
     period_start: date
@@ -1211,7 +1222,7 @@ async def _government_preview(db: AsyncSession, tx: BankTransaction, p: Governme
     if p.kind == "tps_tvq" and not st["declared"]:      # sans montant declare : proportion TPS/TVQ calculee par ERPCRM
         from app.api.v1.endpoints.taxes import _summary
         sm = await _summary(db, p.period_start, p.period_end)
-        if sm["tps_net"] + sm["tvq_net"] > 0:
+        if sm["tps_net"] + sm["tvq_net"] != 0:          # != : un remboursement (taxe nette negative) aussi
             ratio = Decimal(str(sm["tps_net"])) / Decimal(str(sm["tps_net"] + sm["tvq_net"]))
     return {**st, **split(-Decimal(tx.amount), st, p.kind, ratio), "kind_label": KINDS[p.kind]}
 
@@ -1219,8 +1230,7 @@ async def _government_preview(db: AsyncSession, tx: BankTransaction, p: Governme
 @router.post("/transactions/{tx_id}/government-preview")
 async def government_preview(tx_id: uuid.UUID, p: GovernmentMatchIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     tx = await _get_tx(tx_id, db)
-    if tx.amount >= 0:
-        raise HTTPException(status_code=400, detail="Seul un retrait est un versement")
+    _gov_sign_ok(tx, p.kind)
     return await _government_preview(db, tx, p)
 
 
@@ -1230,8 +1240,9 @@ async def match_government(tx_id: uuid.UUID, p: GovernmentMatchIn, db: AsyncSess
     « Payé » de la declaration), avec la part penalites et interets si le versement depasse le du."""
     from app.models.tax import TaxPayment
     tx = await _get_tx(tx_id, db)
-    if tx.status != "unclassified" or tx.amount >= 0:
-        raise HTTPException(status_code=400, detail="Seul un retrait non classé peut devenir un versement")
+    if tx.status != "unclassified":
+        raise HTTPException(status_code=400, detail="Seule une transaction non classée peut devenir un versement")
+    _gov_sign_ok(tx, p.kind)
     pv = await _government_preview(db, tx, p)
     tp = TaxPayment(kind=p.kind, payment_date=tx.posted_date, period_start=p.period_start, period_end=p.period_end,
                     tps_amount=Decimal(str(pv["tps"])), tvq_amount=Decimal(str(pv["tvq"])), amount=Decimal(str(pv["amount"])),
@@ -1243,6 +1254,8 @@ async def match_government(tx_id: uuid.UUID, p: GovernmentMatchIn, db: AsyncSess
     await db.flush()
     tx.tax_payment_id, tx.status, tx.matched_at, tx.payment_created = tp.id, "matched", datetime.now(timezone.utc), True
     await db.commit()
+    from app.api.v1.endpoints.taxes import declare_from_payment
+    await declare_from_payment(db, tp)          # TASK-043.3 : le versement (ou le remboursement) marque la periode declaree
     return await _tx_out(tx, db, with_suggestion=False)
 
 
