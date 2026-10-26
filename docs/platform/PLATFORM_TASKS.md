@@ -924,6 +924,11 @@ Date(s) de travail : 2026-10-17, 2026-10-18
   - Zéko a accès à tout (« pas de codage mais à la configuration de tout pour moi le gestionnaire ») ; pour un employé, selon ses privilèges (voir TASK-007.4).
 - Proposé (premier jet), remplacé par la demande élargie : outil agenda (créer un RDV ou un appel, toujours lié à un ticket et à une compagnie comme TASK-015.19, après une question « Je mets… ? » et un oui, admin/gestionnaire) ; réponse de Zéko qui continue sur le serveur même si la page se ferme, et s'affiche au retour.
 
+### TASK-006.8 [ ] Zéko : bouton « hamburger » sous le Z pour montrer/cacher la liste des conversations + projets pour les classer (comme ChatGPT)
+- **Date de demande** : 2026-10-26 (Philippe : « est-ce que je peux avoir un petit bouton hamburger juste sous le Z de Zéko pour mettre et enlever les conversations, aussi j'aimerais avoir la possibilité de faire des projets comme dans ChatGPT pour pouvoir classer les conversations »)
+- **Date(s) de travail** : —
+- Constat : la liste des conversations (220 px, toujours affichée) est dans `components/ZekoPanel.jsx` ; `zeko_conversations` n'a pas de projet. En attente du GO sur le plan.
+
 ## TASK-007 [ERPCRM] [x] Employés — depuis contacts, salaires, confirmation Interac
 Classification: HISTORICAL
 
