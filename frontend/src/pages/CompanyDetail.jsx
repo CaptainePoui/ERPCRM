@@ -445,7 +445,12 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
   const reload = () => api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions))
   useEffect(() => { reload() }, [companyId])
   const live = t => t.status !== 'brouillon' && t.status !== 'annulee'
+  // Avoir entièrement appliqué aux factures de la liste : montré sur la ligne de sa facture, pas sur une ligne à part
+  // (2026-10-26, Philippe : « j'aimerais voir le crédit sur la même ligne que la facture ») -- sauf dans « Avoirs »
+  const ids = new Set((rows || []).map(t => t.id))
+  const folded = t => t.kind === 'credit' && t.remaining <= 0.005 && t.applied_to?.length > 0 && t.applied_to.every(a => ids.has(a.id))
   const shown = (rows || []).filter(t => {
+    if (filter !== 'avoirs' && folded(t)) return false
     if (filter === 'ouvertes') return t.kind === 'invoice' && live(t) && t.remaining > 0.005
     if (filter === 'payees') return (t.kind === 'invoice' || t.kind === 'lost') && live(t) && t.remaining <= 0.005
     if (filter === 'retard') return t.overdue
@@ -497,6 +502,17 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
                     {t.kind === 'credit' && <span className="cd-tx-credit">Avoir</span>}
                     {t.kind === 'lost' ? <span title="Facture de l'ancien logiciel dont le document n'a pas été conservé">{t.number ? `#${t.number} ` : ''}<span style={{ fontWeight: 500, color: 'var(--c-muted)' }}>Facture perdue (ancien logiciel)</span>{t.document_count > 0 && <span style={{ fontWeight: 400, fontSize: 11, color: 'var(--c-faint)' }}> · chèque</span>}</span> : t.number}
                     {t.site_label && <div style={{ fontSize: 11, color: 'var(--c-faint)', fontWeight: 400 }}>{t.site_label}</div>}
+                    {(t.credits || []).map(c => (
+                      <div key={c.id} style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-muted)' }}>
+                        <span className="cd-tx-credit">Avoir</span>
+                        <span style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onOpenInvoice(c.id) }}>{c.number}</span> −{money(c.amount)}
+                      </div>
+                    ))}
+                    {filter === 'avoirs' && (t.applied_to || []).map(a => (
+                      <div key={a.id} style={{ fontSize: 12, fontWeight: 500, color: 'var(--c-muted)' }}>
+                        appliqué à <span style={{ color: 'var(--brand)', cursor: 'pointer' }} onClick={e => { e.stopPropagation(); onOpenInvoice(a.id) }}>{a.number}</span> ({money(a.amount)})
+                      </div>
+                    ))}
                   </td>
                   <td>
                     <span className="cd-tx-badge" style={{ color: st.color, borderColor: st.color }}>{st.label}</span>
@@ -561,6 +577,8 @@ export default function CompanyDetail({ isNew }) {
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
   const [showMerge, setShowMerge] = useState(false)      // fusionner avec une autre fiche (TASK-003.4)
+  const [twins, setTwins] = useState([])                  // fiches semblables : le bouton Fusionner n'apparaît que s'il y en a
+  useEffect(() => { if (id && !isNew) api.get(`/v1/companies/${id}/merge-suggestions`).then(r => setTwins(r.data)).catch(() => setTwins([])) }, [id])
   const [allContacts, setAllContacts] = useState([])
 
   useEffect(() => {
@@ -629,12 +647,12 @@ export default function CompanyDetail({ isNew }) {
             <button className="btn-secondary" onClick={() => setShowTicket(true)}>+ Ticket</button>
             {!c.is_owner && <button className="btn-secondary" onClick={() => setShowInvoice(true)}>+ Facture</button>}
             <button className="btn-secondary" onClick={() => setShowTask(true)}>+ Tâche</button>
-            <button className="btn-secondary" title="Réunir une compagnie en double avec celle-ci" onClick={() => setShowMerge(true)}>Fusionner</button>
+            {twins.length > 0 && <button className="btn-secondary" title={`Semblable : ${twins.map(t => t.nom).join(', ')}`} onClick={() => setShowMerge(true)}>Fusionner ({twins.length === 1 ? 'semblable' : `${twins.length} semblables`})</button>}
           </div>
         )}
       </div>
       {showMerge && c && <MergeModal kind="company" id={id} name={c.name} onClose={() => setShowMerge(false)}
-        onDone={keep => { setShowMerge(false); if (keep === id) load(); else navigate(`/companies/${keep}`) }} />}
+        onDone={keep => { setShowMerge(false); setTwins([]); if (keep === id) load(); else navigate(`/companies/${keep}`) }} />}
       {renaming && c && <RenameCompanyModal company={c} newName={renaming} onClose={() => setRenaming(null)} onDone={() => { setRenaming(null); load() }} />}
       {showTicket && c && (
         <NewTicketModal

@@ -1641,6 +1641,14 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
     credited = dict((await db.execute(
         select(CreditAllocation.invoice_id, func.sum(CreditAllocation.amount))
         .where(CreditAllocation.invoice_id.in_(ids)).group_by(CreditAllocation.invoice_id))).all()) if ids else {}
+    # Avoir et facture sur la meme ligne (2026-10-26) : quels avoirs paient quelle facture
+    numbers = {i.id: i.number for i in invs}
+    links_inv, links_cr = {}, {}
+    if ids:
+        for inv_id, cr_id, amt in (await db.execute(select(CreditAllocation.invoice_id, CreditAllocation.credit_invoice_id, CreditAllocation.amount)
+                                                   .where(CreditAllocation.invoice_id.in_(ids) | CreditAllocation.credit_invoice_id.in_(ids)))).all():
+            links_inv.setdefault(inv_id, []).append({"id": str(cr_id), "number": numbers.get(cr_id), "amount": float(amt)})
+            links_cr.setdefault(cr_id, []).append({"id": str(inv_id), "number": numbers.get(inv_id), "amount": float(amt)})
 
     today = clock.today()
     month = int(await get_setting(db, "fiscal_year_start_month") or 1)
@@ -1674,7 +1682,9 @@ async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_
                      "credited": float(credited.get(i.id) or 0) if not is_credit else 0.0, "remaining": float(remaining),
                      "overdue": (not is_credit and live and remaining > 0 and bool(i.due_date and i.due_date < today)),
                      "site_label": i.site_label_snapshot, "barter_settlement": i.barter_settlement,
-                     "late_fee": i.late_fee_for_id is not None, "offered": i.offered_at is not None})
+                     "late_fee": i.late_fee_for_id is not None, "offered": i.offered_at is not None,
+                     "transmission_status": i.transmission_status,
+                     "credits": links_inv.get(i.id, []) if not is_credit else [], "applied_to": links_cr.get(i.id, []) if is_credit else []})
 
     # TASK-005.24 : paiements de factures perdues de l'ancien logiciel (pas de facture dans ERPCRM, hors totaux)
     from app.models.client_payment import PaymentDocument

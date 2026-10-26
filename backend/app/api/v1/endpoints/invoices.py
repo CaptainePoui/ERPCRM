@@ -193,6 +193,21 @@ async def _check_can_revert_to_draft(inv: Invoice, db: AsyncSession) -> None:
         raise HTTPException(status_code=400, detail=f"Facture datée dans une période de taxes déjà déclarée (jusqu'au {lock}) : elle ne peut plus revenir en brouillon, seulement être créditée")
 
 
+async def _check_can_delete_issued(inv: Invoice, db: AsyncSession) -> None:
+    from app.models.client_payment import ClientPayment, PaymentAllocation, CreditAllocation
+    from app.models.barter import BarterApplication
+    lock = await _tax_lock_date(db)
+    if lock and inv.issue_date <= lock:
+        raise HTTPException(status_code=400, detail=f"{inv.number} est datée dans une période de taxes déjà déclarée (jusqu'au {lock}) : elle ne se supprime pas, elle se crédite par un avoir")
+    if (await db.execute(select(func.count()).select_from(PaymentAllocation).join(ClientPayment, ClientPayment.id == PaymentAllocation.payment_id)
+                         .where(PaymentAllocation.invoice_id == inv.id))).scalar():
+        raise HTTPException(status_code=400, detail=f"{inv.number} a un paiement : retirez d'abord le paiement")
+    if (await db.execute(select(func.count()).select_from(CreditAllocation).where(CreditAllocation.invoice_id == inv.id))).scalar():
+        raise HTTPException(status_code=400, detail=f"{inv.number} a un avoir appliqué : retirez d'abord l'avoir")
+    if (await db.execute(select(func.count()).select_from(BarterApplication).where(BarterApplication.invoice_id == inv.id))).scalar():
+        raise HTTPException(status_code=400, detail=f"{inv.number} est réglée en partie par un échange : retirez-la d'abord de l'échange")
+
+
 async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
     stats = await get_open_stats(db, "invoice", [inv.id])
     last_opened_at, open_count = stats.get(inv.id, (None, 0))
@@ -439,8 +454,13 @@ async def _apply_credit_to_origin(db: AsyncSession, credit: Invoice) -> None:
 @router.delete("/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
-    if inv.status not in ("brouillon",):
-        raise HTTPException(status_code=400, detail="Seules les factures en brouillon peuvent être supprimées")
+    if inv.status != "brouillon":
+        # Facture emise (2026-10-26, Philippe : « le refus de supprimer les factures, c'est seulement si elles ont ete
+        # entrees dans un rapport de taxes complete ») : supprimable si elle n'est pas datee dans une periode declaree
+        # (tax_lock_date) et que rien ne s'y rattache (paiement, avoir, troc : a retirer d'abord). Un avoir emis : non.
+        if inv.credit_of_id is not None:
+            raise HTTPException(status_code=400, detail="Un avoir émis ne se supprime pas : retirez son application ou annulez-le")
+        await _check_can_delete_issued(inv, db)
     # Pas de verrou de periode declaree ici (2026-10-07, Philippe : « s'ils sont en brouillon, ils ne faisaient pas
     # partie des taxes ou impots ») : un brouillon n'entre jamais dans les rapports de taxes ; une facture emise d'une
     # periode declaree ne peut toujours pas revenir en brouillon (_check_can_revert_to_draft), donc jamais etre supprimee.

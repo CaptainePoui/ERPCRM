@@ -317,6 +317,8 @@ Classification: CURRENT
 
 **Description (table) :** Catalogue — items, types, linked_to_hourly_rate
 
+- 2026-10-26 (Philippe : « le bouton fusionner tu l'as mis dans chacun des contacts, mais ce que je veux c'est si un contact est pareil j'ai l'option de le fusionner, pas toujours ») : le bouton n'apparaît que s'il existe une fiche semblable (même comparaison que TASK-003.3) : « Fusionner (semblable : Papa Normandeau) » sur le contact, « Fusionner (semblable) » sur la compagnie.
+
 ### TASK-004.1 [x] Catalogue -- 3e famille "Connaissance" + écran de classement en masse + import descriptions Zoho
 
 Demande (2026-08-08) : la checkbox "Connaissance Simple IP (lié au taux
@@ -687,6 +689,15 @@ Date(s) de travail : 2026-10-25
 - `InvoiceDetail.jsx` : le menu ⚙ se ferme au clic à côté (mousedown en capture sur la page, et `blur` de la fenêtre pour un clic dans l'aperçu de la facture, qui est un cadre à part) ; même fermeture pour le menu ⋯ des conversations Zéko. Exception à la règle « jamais fermé au clic extérieur », qui reste entière pour les fenêtres avec saisie (mémoire mise à jour).
 - Taxes : cases TPS/TVQ retirées de la fiche de la facture (remplacées par « Taxes : TPS 5 % · TVQ 9.975 % », en lecture) et de « Nouvelle facture ». `InvoiceCreate.apply_tps/apply_tvq` : défaut `None` = selon la fiche du client (`is_taxable`, `tvq_applicable`) — avant, le défaut `True` ignorait la fiche du client ; taux TPS/TVQ pris dans la fiche du client à la création. Vérifié : aucune compagnie non taxable aujourd'hui, aucune facture récente différente de sa fiche client.
 - Preuve (1920, INV-112273) : menu ouvert puis fermé par un clic à côté et par un clic dans l'aperçu ; 0 case à cocher ; pas de défilement horizontal.
+
+
+### TASK-005.29 [x] Supprimer une facture émise hors période déclarée (proposer l'avoir si elle a été envoyée) ; avoir sur la ligne de sa facture
+- **Date de demande** : 2026-10-26 (Philippe, sur CNJ : « je sélectionne les 2 factures de retard et en bas je n'ai pas l'option de les supprimer » ; « le refus de supprimer les factures, c'est seulement si elles ont été entrées dans un rapport de taxes complété » ; « si je veux supprimer une facture qui a été envoyée, juste un pop-up pour me dire cette facture a été envoyée, voulez-vous faire un crédit » ; « dans Transactions, onglet Tout, les crédits appliqués et les factures créditées ne sont pas liés : j'aimerais voir le crédit sur la même ligne que la facture »)
+- **Date(s) de travail** : 2026-10-26
+- `DELETE /invoices/{id}` : une facture émise se supprime si elle n'est pas datée dans la période de taxes déclarée (`tax_lock_date`, aujourd'hui 2026-06-30) et que rien ne s'y rattache (paiement, avoir appliqué, échange : à retirer d'abord — sinon le paiement resterait sans facture) ; un avoir émis ne se supprime pas. Avant : brouillons seulement. Messages précis (« INV-112264 a un paiement… », « INV-112131 est datée dans une période de taxes déjà déclarée (jusqu'au 2026-06-30)… »).
+- Écran : « Supprimer » dans la facture émise et dans la barre de sélection (Transactions, listes) ; facture envoyée (Envoi = courriel ou remise autrement) → « La facture … a été envoyée au client. Voulez-vous plutôt faire un avoir (crédit) ? » Annuler / Supprimer quand même / Faire un avoir (barre : Créditer le reste).
+- Transactions (`/companies/{id}/finance` : `credits` par facture, `applied_to` par avoir, `transmission_status`) : l'avoir entièrement appliqué à une facture de la liste s'affiche sur la ligne de sa facture (« Avoir CN-00305 −14,15 $ », cliquable) au lieu d'une ligne à part ; l'onglet Avoirs garde les avoirs avec « appliqué à INV-… ».
+- Preuve : refus vérifiés par l'API (payée, période déclarée) ; INV-112230 et INV-112232 (frais de retard CNJ de l'ancien logiciel, 18 et 19 sept.) passent les contrôles sans avoir été supprimées (laissées à Philippe) ; navigateur 1920 : lignes INV-112131/112132 avec leur avoir, sélection des 2 frais de retard → fenêtre « Ces 2 factures ont été envoyées… » (Annulé).
 
 ### TASK-005.26 [x] « Ententes » remplacent « Échanges » : sans frais de retard, factures périodiques, pause de facturation
 Date de demande : 2026-10-16 (Philippe : « je trouve plus difficile de gérer les échanges que de me faire payer… j'aime le principe que je peux choisir qu'une entreprise ne paie pas de frais de retard ; au lieu d'échange on va mettre entente, dans cette fenêtre je peux désactiver les frais de retard pour cette entreprise… facture périodique devient un rassemblement des ententes, je veux facture périodique dans entente ; il me faudrait aussi l'option de mettre une pause à leur facturation périodique, ex. donner 8 mois et 12 jours gratuits… je n'en suis pas sûr alors garde un backup de ce qu'on a avant de changer, mais j'aimerais voir ce que ça donne »)

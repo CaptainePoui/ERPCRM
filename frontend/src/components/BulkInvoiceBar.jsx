@@ -9,6 +9,7 @@ import useFeatures from '../hooks/useFeatures'
 import { BarterModal } from '../pages/barter/BarterTab'
 import { C, fmtMoney } from '../pages/Bank'
 import { todayIso } from '../utils/date'
+import { askConfirm, askChoice } from './Dialog'
 
 const errText = e => e.response?.data?.detail || 'Erreur'
 const live = i => !i.is_credit && i.status !== 'brouillon' && i.status !== 'annulee'
@@ -39,6 +40,27 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
       const r = await api.post('/v1/invoices/bulk/barter-flag', { ids: flaggable.map(i => i.id), value })
       await done(`${r.data.done} facture${r.data.done > 1 ? 's' : ''} ${value ? 'marquée(s)' : 'retirée(s)'} « À régler en troc »`)
     } catch (e) { setMsg(errText(e)) } finally { setBusy(false) }
+  }
+
+  // Supprimer (2026-10-26) : le serveur refuse une facture d'une période de taxes déclarée, payée ou créditée
+  const deletable = items.filter(i => !i.is_credit)
+  async function removeAll() {
+    const list = deletable.map(i => i.number).join(', ')
+    const sent = deletable.filter(i => ['courriel', 'autre'].includes(i.transmission_status))
+    if (sent.length) {            // envoyées au client : proposer l'avoir plutôt que la suppression
+      const k = await askChoice(`${sent.length > 1 ? `Ces ${sent.length} factures ont été envoyées` : `La facture ${sent[0].number} a été envoyée`} au client : ${sent.map(i => i.number).join(', ')}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
+        [['cancel', 'Annuler'], ['delete', 'Supprimer quand même'], ['credit', 'Faire un avoir']])
+      if (k === 'credit') { setModal('credit'); return }
+      if (k !== 'delete') return
+    } else if (!(await askConfirm(`Supprimer ${deletable.length > 1 ? `ces ${deletable.length} factures` : 'cette facture'} ?\n${list}\nUne facture émise a peut-être été reçue par le client ; elle disparaît du solde et des taxes.`, { okLabel: 'Supprimer', danger: true }))) return
+    setBusy(true)
+    const refus = []
+    let n = 0
+    for (const i of deletable) {
+      try { await api.delete(`/v1/invoices/${i.id}`); n++ } catch (e) { refus.push(errText(e)) }
+    }
+    setBusy(false)
+    await done(`${n} facture${n > 1 ? 's' : ''} supprimée${n > 1 ? 's' : ''}${refus.length ? ` · refusé : ${refus.join(' ; ')}` : ''}`)
   }
 
   async function openBarter() {
@@ -76,6 +98,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
             <button className="btn-secondary" style={btn} disabled={busy || !open.length} title={open.length ? '' : 'Aucune facture avec un reste à payer'} onClick={() => setModal('credit')}>Créditer le reste</button>
             {/* TASK-002.4 : plusieurs compagnies permises si c'est une maison mère et ses succursales (le serveur vérifie) */}
             <button className="btn-secondary" style={btn} disabled={busy || !open.length} title={open.length ? '' : 'Aucune facture avec un reste à payer'} onClick={() => setModal('payment')}>Paiement groupé</button>
+            {deletable.length > 0 && <button className="btn-danger" style={btn} disabled={busy} onClick={removeAll}>Supprimer</button>}
             <button onClick={onClear} style={{ background: 'none', border: 'none', color: 'var(--c-faint)', cursor: 'pointer', fontSize: 13 }}>✕ Désélectionner</button>
             {msg && <span style={{ fontSize: 12, color: '#FCA5A5' }}>{msg}</span>}
           </>

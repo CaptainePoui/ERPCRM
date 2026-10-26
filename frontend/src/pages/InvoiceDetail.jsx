@@ -205,9 +205,23 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   }
 
   async function deleteInvoice() {
-    if (!await askConfirm(inv.credit_of_id ? 'Supprimer ce brouillon d\'avoir ? Rien ne sera créé.' : 'Supprimer ce brouillon de facture ?')) return
-    await api.delete(`/v1/invoices/${id}`)
-    back()
+    const issued = inv.status !== 'brouillon'
+    // Facture envoyée au client (2026-10-26, Philippe) : proposer l'avoir plutôt que la suppression
+    if (issued && !inv.credit_of_id && ['courriel', 'autre'].includes(inv.transmission_status)) {
+      const k = await askChoice(`La facture ${inv.number} a été envoyée au client${inv.transmission_status === 'courriel' ? ' par courriel' : ''}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
+        [['cancel', 'Annuler'], ['delete', 'Supprimer quand même'], ['credit', 'Faire un avoir']])
+      if (k === 'credit') { createCredit(); return }
+      if (k !== 'delete') return
+      try { await api.delete(`/v1/invoices/${id}`); back() } catch (e) { showAlert(e.response?.data?.detail || 'Suppression impossible') }
+      return
+    }
+    if (!await askConfirm(inv.credit_of_id ? 'Supprimer ce brouillon d\'avoir ? Rien ne sera créé.'
+      : issued ? `Supprimer la facture ${inv.number} ?\nElle a été émise : le client l'a peut-être reçue. Elle disparaît du solde et des taxes.` : 'Supprimer ce brouillon de facture ?',
+      issued ? { okLabel: 'Supprimer', danger: true } : {})) return
+    try {
+      await api.delete(`/v1/invoices/${id}`)
+      back()
+    } catch (e) { showAlert(e.response?.data?.detail || 'Suppression impossible') }
   }
 
   async function toggleOpens() {
@@ -319,7 +333,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
             </div>
           )}
           <HistoryButton objectType="invoices" objectId={id} title={inv.number} compact />
-          {editable && !isCredit && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
+          {!isCredit && <button className="btn-danger" onClick={deleteInvoice}>Supprimer</button>}
           {/* avoir en brouillon = creation en cours : « Annuler » l'arrete, rien ne reste (numero rendu), retour a la facture */}
           {editable && isCredit && inv.credit_of_id && <>
             <button className="btn-danger" onClick={async () => { if (await askConfirm("Supprimer ce brouillon d'avoir ?")) cancelCredit() }}>Supprimer</button>

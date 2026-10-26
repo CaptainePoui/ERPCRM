@@ -333,6 +333,8 @@ export default function ContactDetail({ isNew }) {
   const [showInvoice, setShowInvoice] = useState(false)
   const [showTask, setShowTask] = useState(false)
   const [showMerge, setShowMerge] = useState(false)      // fusionner avec une autre fiche (TASK-003.4)
+  const [twins, setTwins] = useState([])                  // fiches semblables : le bouton Fusionner n'apparaît que s'il y en a
+  useEffect(() => { if (id && !isNew) api.get(`/v1/contacts/${id}/merge-suggestions`).then(r => setTwins(r.data)).catch(() => setTwins([])) }, [id])
   const [showJournal, setShowJournal] = useState(false)
   const [sipExt, setSipExt] = useState(null)
   const [sipExtLoading, setSipExtLoading] = useState(false)
@@ -1389,10 +1391,11 @@ export default function ContactDetail({ isNew }) {
 
             <div style={{ marginTop: 32, paddingTop: 16, borderTop: '1px solid var(--c-border)' }}>
               <button className="inv-del-btn" onClick={deleteContact}>Supprimer le contact</button>
-              <button className="btn-secondary" style={{ marginLeft: 10 }} onClick={() => setShowMerge(true)}>Fusionner avec une autre fiche</button>
+              {twins.length > 0 && <button className="btn-secondary" style={{ marginLeft: 10 }} onClick={() => setShowMerge(true)}
+                title={`Semblable : ${twins.map(t => t.nom).join(', ')}`}>Fusionner ({twins.length === 1 ? `semblable : ${twins[0].nom}` : `${twins.length} fiches semblables`})</button>}
             </div>
             {showMerge && <MergeModal kind="contact" id={id} name={`${c.first_name} ${c.last_name}`.trim()} onClose={() => setShowMerge(false)}
-              onDone={keep => { setShowMerge(false); if (keep === id) load(); else navigate(`/contacts/${keep}`) }} />}
+              onDone={keep => { setShowMerge(false); setTwins([]); if (keep === id) load(); else navigate(`/contacts/${keep}`) }} />}
           </div>
         )}
       </div>
