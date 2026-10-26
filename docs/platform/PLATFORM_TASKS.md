@@ -298,6 +298,12 @@ Reste à faire : rien.
 - Preuve (1920) : « papa Normendau » → les 2 Papa Normandeau proposés ; « Simple-IP » et « M-C simple ip » → Simple IP inc., « Aller à cette compagnie » ouvre sa fiche ; « Créer quand même » (API) crée, contact de test supprimé. Tests de la comparaison : MC crystal = M-C Chrystal = MCCrystal, Physotech = Physiotech, Bell ≠ Bel, Paul Vital ≠ Paul Martin.
 - Limites : création automatique (courriel reçu d'un inconnu, prise de rendez-vous en ligne) non concernée — pas d'écran pour demander ; renommer une fiche existante n'avertit pas.
 
+
+### TASK-003.4 [ ] Fusionner deux contacts (tickets, tâches, conversations… réunis, journal de la fusion)
+- **Date de demande** : 2026-10-26 (Philippe : « j'aimerais avoir à côté de supprimer ce contact fusionner, qui va permettre que si des tickets, factures, conversations, etc. ont été faits dans un et l'autre, tout va être fusionné (log qui dit que les 2 contacts ont été fusionnés, c'est parfait) »)
+- **Date(s) de travail** : —
+- En attente du GO sur le plan.
+
 ## TASK-004 [ERPCRM] [x] Catalogue — items, types, linked_to_hourly_rate
 Classification: CURRENT
 
