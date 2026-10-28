@@ -9,7 +9,7 @@ import logging
 
 from sqlalchemy import select, text, update
 
-from app.core import mail_match, mail_store, zeko, zeko_mail
+from app.core import mail_junk, mail_match, mail_store, zeko, zeko_mail
 from app.core.database import AsyncSessionLocal, engine
 
 log = logging.getLogger("mail_sync")
@@ -34,6 +34,15 @@ async def syncable(db) -> list:
 
 async def _sync_box(mb_id) -> int:
     from app.models.mailbox import Mailbox, MailMessage
+    async with AsyncSessionLocal() as db:            # TASK-047.7 : « A jeter » -- la vraie boite suit (avant la copie)
+        mb = await db.get(Mailbox, mb_id)
+        if mb.uidvalidity:
+            try:
+                await mail_junk.run_for_box(db, mb, _box(mb))
+                await db.commit()
+            except Exception as exc:
+                await db.rollback()
+                log.warning("« %s » de %s : %s", mail_junk.FOLDER, mb.email, exc)
     async with AsyncSessionLocal() as db:
         mb = await db.get(Mailbox, mb_id)
         push = dict((await db.execute(select(MailMessage.uid, MailMessage.is_read).where(
@@ -64,6 +73,7 @@ async def _sync_box(mb_id) -> int:
                     MailMessage.mailbox_id == mb.id, MailMessage.uidvalidity == mb.uidvalidity, MailMessage.uid == uid,
                     MailMessage.is_read.is_not(seen), MailMessage.flag_pending.is_(False)).values(is_read=seen))
         n = 0
+        blocked = await mail_junk.patterns(db)
         for uid, raw, seen in res["new"]:
             exists = (await db.execute(select(MailMessage.id).where(MailMessage.mailbox_id == mb.id,
                                                                     MailMessage.uidvalidity == mb.uidvalidity, MailMessage.uid == uid))).first()
@@ -73,6 +83,10 @@ async def _sync_box(mb_id) -> int:
                                   **mail_store.parse(raw))
                 db.add(msg)
                 await db.flush()
+                if mail_junk.match(msg.from_email, blocked):     # TASK-047.7 : liste noire -> « A jeter », rien d'autre
+                    mail_junk.put_in_junk(msg)
+                    n += 1
+                    continue
                 try:
                     async with db.begin_nested():
                         await mail_match.classify(db, msg, own, mb.email)

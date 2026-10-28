@@ -122,8 +122,70 @@ export default function MailboxesPanel() {
         )}
       </div>
 
+      <BlocklistPanel />
+
       {edit && <MailboxModal box={edit} functions={data.functions} defaultHost={data.default_host}
         onClose={() => setEdit(null)} onSaved={() => { setEdit(null); load() }} />}
+    </div>
+  )
+}
+
+// TASK-047.7 : liste noire -- adresse ou domaine ; ses courriels vont dans « A jeter », ici et dans la vraie boite
+function BlocklistPanel() {
+  const [items, setItems] = useState(null)
+  const [pattern, setPattern] = useState('')
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  useEffect(() => { api.get('/v1/mail/blocklist').then(r => setItems(r.data.items)) }, [])
+  if (!items) return null
+
+  async function add(e) {
+    e.preventDefault()
+    setBusy(true); setMsg('')
+    try {
+      const r = await api.post('/v1/mail/blocklist', { pattern })
+      setItems(r.data.items); setPattern('')
+      setMsg(`Ajouté : ${r.data.moved} courriel${r.data.moved > 1 ? 's' : ''} mis dans « À jeter ».`)
+    } catch (e) { setMsg(errText(e)) } finally { setBusy(false) }
+  }
+  async function remove(b) {
+    if (!await askConfirm(`Retirer « ${b.pattern} » de la liste noire ? Ses ${b.count} courriel(s) reviennent dans la boîte de réception, ici et dans la vraie boîte.`)) return
+    setMsg('')
+    try {
+      const r = await api.delete(`/v1/mail/blocklist/${b.id}`)
+      setItems(r.data.items)
+      setMsg(`Retiré : ${r.data.restored} courriel${r.data.restored > 1 ? 's' : ''} remis dans la boîte de réception.`)
+    } catch (e) { setMsg(errText(e)) }
+  }
+
+  return (
+    <div style={{ marginTop: 16, padding: 14, border: '1px solid var(--c-border)', borderRadius: 10, background: 'var(--c-surface)' }}>
+      <strong style={{ fontSize: 14 }}>Liste noire</strong>
+      <span style={{ display: 'block', color: 'var(--c-muted)', fontSize: 13, marginTop: 2 }}>
+        Les courriels de ces expéditeurs vont directement dans « À jeter » : dans Courriels et dans la vraie boîte (dossier « À jeter »).
+        Ils ne sont ni classés ni lus par Zéko, et sont effacés après 1 an, ici et dans la boîte (sauf un courriel relié à un ticket, une tâche ou un paiement).
+        Une adresse (calendar-notification@google.com) ou un domaine entier (google.com).
+      </span>
+      <form onSubmit={add} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 10 }}>
+        <input value={pattern} onChange={e => setPattern(e.target.value)} placeholder="adresse@exemple.com ou exemple.com" style={{ minWidth: 280 }} />
+        <button className="btn-primary" disabled={busy || !pattern.trim()}>{busy ? '…' : 'Ajouter'}</button>
+        {msg && <span style={{ fontSize: 13, color: msg.startsWith('Ajouté') || msg.startsWith('Retiré') ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </form>
+      {items.length > 0 && (
+        <table className="adm-table" style={{ marginTop: 10 }}>
+          <thead><tr><th>Expéditeur</th><th>Courriels « À jeter »</th><th>Ajouté le</th><th></th></tr></thead>
+          <tbody>
+            {items.map(b => (
+              <tr key={b.id}>
+                <td style={{ fontWeight: 600 }}>{b.pattern}{!b.pattern.includes('@') && <span style={{ fontWeight: 400, color: 'var(--c-muted)' }}> · domaine entier</span>}</td>
+                <td>{b.count}</td>
+                <td style={{ fontSize: 12 }}>{b.created_at ? new Date(b.created_at).toLocaleDateString('fr-CA') : ''}</td>
+                <td style={{ textAlign: 'right' }}><button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => remove(b)}>Retirer</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }

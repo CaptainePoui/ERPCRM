@@ -342,7 +342,8 @@ async def _run(name, args, db, user_id=None) -> str:
         user = await db.get(User, user_id) if user_id else None
         if not user:
             return _out("courriels non disponibles ici")
-        base = select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user))
+        base = select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user),
+                                                                                    MailMessage.junk_at.is_(None))  # TASK-047.7
         if name == "chercher_courriels":
             q = base
             if args.get("client"):

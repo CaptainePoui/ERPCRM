@@ -139,6 +139,38 @@ function CompanyAskModal({ mail, onDone }) {
   )
 }
 
+// TASK-047.7 : « Mettre en liste noire » -- l'expediteur et tous ses courriels vont dans « A jeter », ici et dans la
+// vraie boite ; efface apres 1 an. Ferme seulement par Annuler / Mettre en liste noire.
+function BlockModal({ mail, onClose, onDone }) {
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function save() {
+    setSaving(true); setErr('')
+    try {
+      const r = await api.put(`/v1/mail/${mail.id}/block`)
+      onDone(r.data)
+    } catch (e) { setErr(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Mettre {mail.from_email} en liste noire ?</h3>
+        <p style={{ fontSize: 13, color: 'var(--c-text-2)', marginTop: -6 }}>
+          Ce courriel, ses autres courriels et les prochains iront directement dans « À jeter », ici et dans la vraie boîte.
+          Ils sont effacés après 1 an. Vous pouvez le retirer de la liste en tout temps : ses courriels reviennent.
+        </p>
+        {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose} disabled={saving}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Mettre en liste noire'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // TASK-026.6 : ce que Zeko a prepare a partir du courriel du client (rien n'est fait sans ce clic)
 function ZekoRdvBox({ mail, onDone }) {
   const p = mail.zeko_rdv_proposal
@@ -196,7 +228,7 @@ function ZekoRdvBox({ mail, onDone }) {
   )
 }
 
-function Reader({ id, onChanged, onClose, onOpen, onSent }) {
+function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved }) {
   const navigate = useNavigate()
   const [m, setM] = useState(null)
   const [err, setErr] = useState('')
@@ -205,9 +237,11 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
   const [compose, setCompose] = useState(null)     // 'reply' | 'reply_all' | 'forward'
   const [sentMsg, setSentMsg] = useState('')
   const [askCompany, setAskCompany] = useState(false)   // TASK-047.4 : seulement a l'ouverture du courriel
+  const [blocking, setBlocking] = useState(false)       // TASK-047.7
+  const [junkMsg, setJunkMsg] = useState('')
 
   useEffect(() => {
-    setM(null); setErr(''); setAskCompany(false)
+    setM(null); setErr(''); setAskCompany(false); setJunkMsg('')
     api.get(`/v1/mail/${id}`).then(r => { setM(r.data); onChanged?.({ ...r.data, is_read: true }); setAskCompany(r.data.company_choices?.length > 1) })
       .catch(e => setErr(e.response?.data?.detail || 'Courriel introuvable'))
   }, [id])   // eslint-disable-line
@@ -261,6 +295,24 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
     update({ is_read: r.data.is_read })
   }
 
+  async function blocked(d) {
+    setBlocking(false)
+    const fresh = await api.get(`/v1/mail/${m.id}`)
+    update(fresh.data)
+    setJunkMsg(`${m.from_email} est en liste noire : ${d.moved} courriel${d.moved > 1 ? 's' : ''} dans « À jeter ».`)
+    onMoved?.()
+  }
+
+  async function unblock() {
+    try {
+      const r = await api.delete(`/v1/mail/blocklist/${m.junk_block.id}`)
+      const fresh = await api.get(`/v1/mail/${m.id}`)
+      update(fresh.data)
+      setJunkMsg(`« ${m.junk_block.pattern} » retiré de la liste noire : ${r.data.restored} courriel${r.data.restored > 1 ? 's' : ''} remis dans la boîte de réception.`)
+      onMoved?.()
+    } catch (e) { setJunkMsg(e.response?.data?.detail || 'Erreur') }
+  }
+
   async function toggleShare() {
     const r = await api.put(`/v1/mail/${m.id}/share`, { shared: !m.shared })
     update({ shared: r.data.shared })
@@ -289,8 +341,8 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
               {m.classified_by === 'zeko' && <span style={{ ...chip, marginLeft: 6 }} title="Classé par Zéko : « Changer » si c'est faux">par Zéko</span>}
               {m.contact_created && <span style={{ ...chip, marginLeft: 6, background: 'var(--c-tint-green)', color: 'var(--c-on-green)' }}>contact créé à partir de ce courriel</span>}
             </span>
-          ) : <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
-          <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setClassify(true)}>{company || contact ? 'Changer' : 'Classer'}</button>
+          ) : !m.junk_at && <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
+          {!m.junk_at && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setClassify(true)}>{company || contact ? 'Changer' : 'Classer'}</button>}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" onClick={() => setCompose('reply')}>↩ Répondre</button>
@@ -319,7 +371,18 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
             : <button className="btn-secondary" onClick={() => setMaking('task')}>✅ Faire une tâche</button>}
           {!out && <button className="btn-secondary" onClick={toggleRead}>{m.is_read ? 'Marquer non lu' : 'Marquer lu'}</button>}
           {m.can_share && <button className="btn-secondary" onClick={toggleShare}>{m.shared ? '🔒 Ne plus partager' : '👥 Partager avec l\'équipe'}</button>}
+          {!out && !m.junk_at && <button className="btn-secondary" onClick={() => setBlocking(true)}>🚫 Mettre en liste noire</button>}
         </div>
+        {m.junk_at && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 13 }}>
+            <span style={{ ...chip, background: 'var(--c-tint-red)', color: 'var(--c-on-red)' }}>
+              🗑 À jeter{m.junk_block ? ` — liste noire : ${m.junk_block.pattern}` : ''} · effacé le {new Date(new Date(m.junk_at).getTime() + 365 * 86400000).toLocaleDateString('fr-CA')}
+            </span>
+            {m.junk_block && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={unblock}>Retirer de la liste noire</button>}
+            {m.junk_error && <span style={{ fontSize: 12, color: 'var(--c-on-amber)' }}>Pas encore déplacé dans la vraie boîte : {m.junk_error}</span>}
+          </div>
+        )}
+        {junkMsg && <div style={{ fontSize: 13, marginTop: 8, color: 'var(--c-on-green)' }}>✓ {junkMsg}</div>}
         {m.attachments?.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
             {m.attachments.map(a => (
@@ -332,6 +395,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
       <MailBody html={m.body_html} text={m.body_text} />
 
       {compose && <MailCompose mode={compose} source={m} onClose={() => setCompose(null)} onSent={sent} />}
+      {blocking && <BlockModal mail={m} onClose={() => setBlocking(false)} onDone={blocked} />}
       {askCompany && <CompanyAskModal mail={m} onDone={d => { setAskCompany(false); if (d) update({ ...d, company_choices: [] }) }} />}
       {classify && <ClassifyModal mail={m} onClose={() => setClassify(false)}
         onSaved={d => { setClassify(false); update(d) }} />}
@@ -397,7 +461,7 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
               </div>
               <div style={{ fontSize: 13, fontWeight: m.is_read ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject || '(sans objet)'}</div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {m.company_name || m.contact_name
+                {m.junk_at ? <span style={{ color: 'var(--c-on-red)' }}>À jeter</span> : m.company_name || m.contact_name
                   ? <span style={{ color: 'var(--c-on-green)' }}>{[m.company_name, m.contact_name].filter(Boolean).join(' · ')}</span>
                   : <span style={{ color: 'var(--c-on-amber)' }}>À classer</span>}
                 {!filter.mailbox_id && <span> · {m.mailbox.split('@')[0]}@</span>}
@@ -413,7 +477,8 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
           )}
         </div>
       </div>
-      {open && <div style={{ flex: 1, minWidth: 0 }}><Reader id={open} onChanged={changed} onClose={() => setOpen(null)} onOpen={setOpen} onSent={() => load(0)} /></div>}
+      {open && <div style={{ flex: 1, minWidth: 0 }}><Reader id={open} onChanged={changed} onClose={() => setOpen(null)} onOpen={setOpen} onSent={() => load(0)}
+        onMoved={() => { load(0); onCounts?.() }} /></div>}
       {writing && <MailCompose mode="new" defaults={{ mailbox_id: filter.mailbox_id, company_id: filter.company_id, contact_id: filter.contact_id, ...composeDefaults }}
         onClose={() => setWriting(false)} onSent={r => { setWriting(false); load(0); setOpen(r.id) }} />}
     </div>

@@ -17,13 +17,13 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.auth import get_current_user
-from app.core import mail_match, mail_send, mail_store
+from app.core import mail_junk, mail_match, mail_send, mail_store
 from app.core import mailboxes as mbx
 from app.core import zeko
 from app.core.database import get_db
 from app.models.company import Company
 from app.models.contact import Contact
-from app.models.mailbox import Mailbox, MailMessage
+from app.models.mailbox import Mailbox, MailBlock, MailMessage
 from app.models.user import User
 
 router = APIRouter()
@@ -69,14 +69,16 @@ def _row(m: MailMessage, box: Mailbox, companies: dict, contacts: dict) -> dict:
             "contact_created": m.contact_created, "shared": m.shared,
             "ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None,
             "direction": m.direction, "to_addrs": m.to_addrs, "answered_at": m.answered_at, "copy_error": m.copy_error,
-            "zeko_rdv_pending": bool(m.zeko_rdv_proposal and m.zeko_rdv_proposal.get("status") == "pending")}
+            "zeko_rdv_pending": bool(m.zeko_rdv_proposal and m.zeko_rdv_proposal.get("status") == "pending"),
+            "junk_at": m.junk_at, "junk_error": m.junk_error}
 
 
 @router.get("/folders")
 async def folders(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     """Boites que l'utilisateur voit, avec le nombre de non lus ; et le nombre « A classer »."""
     base = select(MailMessage.mailbox_id, func.count(), func.count().filter(MailMessage.is_read.is_(False))) \
-        .join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user)).group_by(MailMessage.mailbox_id)
+        .join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user), MailMessage.junk_at.is_(None)) \
+        .group_by(MailMessage.mailbox_id)
     counts = {mid: (n, u) for mid, n, u in (await db.execute(base)).all()}
     boxes = (await db.execute(select(Mailbox).where(Mailbox.kind.in_(("shared", "personal"))).order_by(Mailbox.kind.desc(), Mailbox.email))).scalars().all()
     out = []
@@ -90,17 +92,22 @@ async def folders(db: AsyncSession = Depends(get_db), user: User = Depends(get_c
                     "mine": b.owner_user_id == user.id, "total": n, "unread": u, "is_active": b.is_active,
                     "last_sync_at": b.last_sync_at, "sync_error": b.sync_error, "has_password": bool(b.password_enc)})
     unclassified = (await db.execute(select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
-                                     .where(_visible(user), MailMessage.company_id.is_(None), MailMessage.contact_id.is_(None)))).scalar()
-    return {"folders": out, "unclassified": unclassified}
+                                     .where(_visible(user), MailMessage.junk_at.is_(None), MailMessage.company_id.is_(None),
+                                            MailMessage.contact_id.is_(None)))).scalar()
+    junk = (await db.execute(select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
+                             .where(_visible(user), MailMessage.junk_at.is_not(None)))).scalar()
+    return {"folders": out, "unclassified": unclassified, "junk": junk}
 
 
 @router.get("")
-async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all", pattern="^(all|unread|unclassified)$"),
+async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all", pattern="^(all|unread|unclassified|junk)$"),
                     company_id: uuid.UUID | None = None, contact_id: uuid.UUID | None = None, q: str | None = None,
                     direction: str | None = Query(None, pattern="^(in|out)$"),
                     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
                     db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     qry = select(MailMessage, Mailbox).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(_visible(user))
+    # TASK-047.7 : « A jeter » n'apparait nulle part ailleurs que dans son dossier
+    qry = qry.where(MailMessage.junk_at.is_not(None) if view == "junk" else MailMessage.junk_at.is_(None))
     if mailbox_id:
         qry = qry.where(MailMessage.mailbox_id == mailbox_id)
     if direction:
@@ -254,6 +261,73 @@ async def _set_seen(db, m: MailMessage, seen: bool) -> None:
         pass
 
 
+# ── Liste noire -> « A jeter » (TASK-047.7, core/mail_junk.py) ──────────────────────────────────────────────────
+
+class BlockIn(BaseModel):
+    pattern: str
+
+
+async def _blocks_out(db) -> list:
+    rows = (await db.execute(select(MailBlock).order_by(MailBlock.pattern))).scalars().all()
+    junk = (await db.execute(select(MailMessage.from_email).where(MailMessage.junk_at.is_not(None)))).scalars().all()
+    pats = [b.pattern for b in rows]
+    count = {}
+    for addr in junk:
+        p = mail_junk.match(addr, pats)
+        count[p] = count.get(p, 0) + 1
+    return [{"id": str(b.id), "pattern": b.pattern, "created_at": b.created_at, "count": count.get(b.pattern, 0)} for b in rows]
+
+
+@router.get("/blocklist")
+async def get_blocklist(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    return {"items": await _blocks_out(db)}
+
+
+async def _add_block(db, pattern: str, user: User) -> int:
+    try:
+        p = mail_junk.normalize(pattern)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if (await db.execute(select(MailBlock.id).where(MailBlock.pattern == p))).first():
+        raise HTTPException(status_code=409, detail=f"« {p} » est déjà dans la liste noire")
+    db.add(MailBlock(pattern=p, created_by_user_id=user.id))
+    return await mail_junk.block(db, p)
+
+
+@router.post("/blocklist", status_code=201)
+async def add_blocklist(p: BlockIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    moved = await _add_block(db, p.pattern, user)
+    await db.commit()
+    return {"items": await _blocks_out(db), "moved": moved}
+
+
+@router.delete("/blocklist/{bid}")
+async def remove_blocklist(bid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    b = await db.get(MailBlock, bid)
+    if not b:
+        raise HTTPException(status_code=404, detail="Introuvable dans la liste noire")
+    remaining = [x for x in await mail_junk.patterns(db) if x != b.pattern]
+    back = await mail_junk.unblock(db, b.pattern, remaining)
+    await db.delete(b)
+    await db.commit()
+    return {"items": await _blocks_out(db), "restored": back}
+
+
+@router.put("/{mid}/block")
+async def block_sender(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Bouton « Mettre en liste noire » d'un courriel recu : son expediteur, et tous ses courriels -> « A jeter »."""
+    m = await _get(db, mid, user)
+    if m.direction == "out" or not m.from_email:
+        raise HTTPException(status_code=422, detail="Seul un courriel reçu peut mettre son expéditeur en liste noire")
+    hit = mail_junk.match(m.from_email, await mail_junk.patterns(db))
+    if hit:
+        raise HTTPException(status_code=409, detail=f"Déjà dans la liste noire (« {hit} »)")
+    moved = await _add_block(db, m.from_email, user)
+    await db.commit()
+    companies, contacts = await _names(db, [m])
+    return {**_row(m, await db.get(Mailbox, m.mailbox_id), companies, contacts), "moved": moved}
+
+
 @router.get("/{mid}")
 async def get_mail(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     m = await _get(db, mid, user)
@@ -261,6 +335,10 @@ async def get_mail(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: Use
     await _set_seen(db, m, True)
     companies, contacts = await _names(db, [m])
     out = _row(m, box, companies, contacts)
+    if m.junk_at:                            # TASK-047.7 : quel element de la liste noire l'a mis « A jeter »
+        hit = mail_junk.match(m.from_email, await mail_junk.patterns(db))
+        bid = (await db.execute(select(MailBlock.id).where(MailBlock.pattern == hit))).scalar() if hit else None
+        out["junk_block"] = {"id": str(bid), "pattern": hit} if bid else None
     replies = (await db.execute(select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id).where(
         MailMessage.direction == "out", MailMessage.in_reply_to == m.message_id, _visible(user))
         .order_by(MailMessage.sent_at))).scalars().all() if m.message_id else []

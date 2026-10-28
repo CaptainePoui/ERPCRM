@@ -35,7 +35,7 @@ from app.models.purchases import ExpenseLine, ReceiptDocument
 from app.models.purchases import Vendor, ExpenseCategory, Expense, RecurringExpense, Bill, BillLine, RecurringBill, RecurringBillLine, VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation
 from app.models.document_counter import DocumentCounter
 from app.models.barter import BarterExchange, BarterDeduction, BarterFile, BarterApplication
-from app.models.mailbox import Mailbox, MailMessage
+from app.models.mailbox import Mailbox, MailBlock, MailMessage
 from app.models.zeko import ZekoProject, ZekoConversation, ZekoMessage, ZekoInvocation, ZekoRule, ZekoMailScan, ZekoProposal, ZekoDrop
 from app.models.sales_rep import SalesRep, CommissionEntry
 from app.models.former_info import FormerInfo

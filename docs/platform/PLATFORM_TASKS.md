@@ -6811,7 +6811,7 @@ courriels reconstitué ; route PUT en ligne (401 sans session) ; build contient 
 État actuel : 1 seul contact à plusieurs compagnies, 0 courriel en attente.
 Pas testé connecté dans le navigateur. Services backend (x2) + frontend redémarrés.
 
-### TASK-047.5 [~] Classer les courriels actuels "À classer" (règles, puis Zéko) (2026-10-27)
+### TASK-047.5 [x] Classer les courriels actuels "À classer" (règles, puis Zéko) (2026-10-27)
 Date de demande : 2026-10-27
 Date(s) de travail : 2026-10-27
 Demande de Philippe : classer les courriels déjà reçus, Zéko les place à la bonne place.
@@ -6858,12 +6858,40 @@ nôtre (mots entiers, sans inc/ltée : Simple IP inc., Simple IP Rose, SIMPLE-IP
 rapports Authorize.net, Revenu Québec, Digitech, Microcomp) ; 7 classés : 5 justes (reçus Authorize.net où « Company : » = Talentech,
 HB Architectes, Waterco, Kiko Mufflers ; rebond Zoho de INV-112107 = facture de CIBLE RETOUR À L'EMPLOI) ; 2 douteux : robert@isptelecom.net
 (ISP Telecom, Toronto, MSA) mis dans « IP Télécom » (t1055 : richardhandfield@hotmail.com, 450-916-3123) -- noms proches, probablement
-deux compagnies ; laissés tels quels en attendant Philippe. Les 33 restants relancés.
+deux compagnies ; laissés tels quels en attendant Philippe. Les 37 restants relancés (2026-10-28).
+Fin 2026-10-28 : 37 refaits -> 9 classés (KIKO x2 selon « Company : » du reçu ; Mc Crystal x6 : Wildrose/Tom Harris, portabilité du
+403-347-5937 ; IP Télécom x1, même doute ISP Telecom) ; 28 « À classer » (BNC, Bell, Interac inconnu, Microcomp, plani-impot, Max
+Construction, Groupe Idéal, proxyswag, rapports Google/Authorize.net ; quelques courriels de Wildrose aussi). Bilan : 108 classés par
+Zéko, 0 dans nos compagnies, 187 courriels reçus « À classer », file vide. À trancher par Philippe : ISP Telecom ≠ IP Télécom ?
+- 2026-10-28 : Philippe : « ISP Telecom n'est pas IP Télécom… créé la compagnie ISP Telecom, c'est mon futur fournisseur de ligne ». Créée par l'API (t1105, site isptelecom.net, « Créer quand même » : la détection de doublons la croyait égale à IP Télécom) ; les 6 courriels de robert@isptelecom.net y sont classés par « Corriger » (contact Robert Quance créé). IP Télécom (t1055) n'a plus aucun courriel de Robert.
+- 2026-10-28 : Philippe : « je ne veux qu'un Gouvernement avec une succursale pour Gouvernement Québec, histoire de classer les courriels qu'il m'envoie » ; DEC/CED : « c'était pour des subventions mais mon entreprise ne cadre pas ». Constaté : t1047 et t1048 créées à la main dans ERPCRM le 2026-08-28 (pas Zoho). Fait par l'API : t1048 renommée « Gouvernement » (garde sa tâche « Attendre un appel ») ; « Gouvernement du Québec » créée (t1106), succursale de t1048 ; t1047 désactivée (jamais supprimée) après déplacement de son courriel ; adresses ajoutées aux fiches pour le classement automatique (cra-arc.gc.ca, crtc.gc.ca, dec-ced.gc.ca → Gouvernement ; revenuquebec.ca → Gouvernement du Québec) ; les 12 courriels du gouvernement classés (contact Eric Souillac, DEC, créé). Vérifié : un futur courriel de ces domaines va dans la bonne fiche.
+- 2026-10-28 : Philippe : « Gouvernement du Québec pourquoi tu ne l'as pas mis T1047 » → GO pour l'échange des numéros : Gouvernement du Québec t1106 → t1047, ancienne « Gouvernement (DEC/CED) » (désactivée) t1047 → t1106, par l'API avec un numéro temporaire « t1047-echange » (la modification de fiche ne vérifie pas si un numéro est déjà pris). Les 3 changements sont au journal des fiches ; aucune donnée déplacée.
+- 2026-10-28 : Philippe : « même que je mettrais t1048 Québec et t1047 Canada » → même échange par l'API (« t1048-echange » temporaire) : Gouvernement t1048 → t1047, Gouvernement du Québec t1047 → t1048. Résultat : t1047 Gouvernement (maison mère), t1048 Gouvernement du Québec (succursale), t1106 ancienne DEC/CED désactivée. Courriels et adresses inchangés, vérifié.
+- 2026-10-28 : Philippe : « oui ferme la tâche ; inscris Gouvernement Canada / Qc comme ça on va savoir que la succursale Québec est dedans (juste pour le gouvernement, ce n'est pas une règle pour les autres succursales) » → t1047 renommée « Gouvernement Canada / Qc » ; tâche « Attendre un appel » (DEC) terminée. Vérifié dans la base.
 
 
 ### TASK-047.6 [ ] Cloche de notifications à côté de Zéko (en attente du GO)
 Date de demande : 2026-10-27 (Philippe : « peut-être mettre une icône de cloche pour les notifications à savoir, à côté de Zéko une cloche avec le nombre de notifications (ex. : si un courriel n'a pas de client, la notification me dit tel courriel, est-ce que je crée le client... ou tel courriel donne un autre nom de compagnie, est-ce que je change le nom... etc.) »)
 Date(s) de travail : —
+- Exemple ajouté le 2026-10-28 (Philippe) : être averti quand Revenu Québec signale une communication déposée dans clicSÉQUR Entreprises (« si je dois remplir un truc »).
+
+### TASK-047.7 [x] Liste noire d'expéditeurs → dossier « À jeter » (aussi dans la vraie boîte)
+Date de demande : 2026-10-28 (Philippe : « Les notifications Google Agenda me font chier, je les mettrais dans un dossier à jeter et il s'efface après 1 mois » ; puis : « pour les à jeter aussi dans la vraie boîte, c'est moi qui va les jeter, et j'aimerais avoir une façon de mettre des courriels en blacklist pour qu'ils aillent direct en à jeter »)
+Date(s) de travail : 2026-10-28
+
+- Constaté : la copie des courriels ne lit que la boîte de réception (INBOX) du serveur, par numéro (UID) ; aucun dossier « À jeter » n'existe ni dans ERPCRM ni sur le serveur ; rien ne déplace un courriel sur le serveur.
+- À confirmer par Philippe : l'effacement automatique après 1 mois reste-t-il dans ERPCRM, puisque dans la vraie boîte c'est lui qui vide « À jeter » ?
+- 2026-10-28 : Philippe : « est-ce que c'est lourd les courriels, on pourrait les garder 1 an » → dans ERPCRM, les courriels « À jeter » gardés 1 an puis effacés. Mesuré : 404 courriels = 48 Mo de fichiers + 23 Mo en base, disque 99 Go libres.
+- 2026-10-28 : Philippe : « oui oui, la vraie boîte suit, je ne veux pas avoir à gérer mes boîtes courriel une 2e fois » (GO) → l'effacement après 1 an se fait aussi dans la vraie boîte.
+- Fait :
+  - Base (migration f3b8c1d6a2e4) : table `mail_blocks` (adresse ou domaine, sous-domaines compris) ; `mail_messages.junk_at` / `junk_server` (move | done | restore) / `junk_uid` / `junk_error`.
+  - `app/core/mail_junk.py` : ajouter un expéditeur met aussi ses anciens courriels dans « À jeter » ; le retirer les remet dans la boîte de réception (sauf ceux visés par un autre élément). Zéko ne les lit pas (file vidée), ils ne sont pas classés.
+  - Vraie boîte, à chaque tour de copie (`mail_sync._sync_box`, avant la copie) : déplacé dans le dossier « À jeter » (IMAP MOVE, créé au besoin, nom UTF-7 `INBOX.&AMA- jeter` sous Dovecot) ; remis dans INBOX avec son nouveau numéro (COPYUID) pour ne jamais être recopié en double ; après 1 an, effacé là-bas (par Message-ID) puis ici (ligne + .eml). Jamais effacé : courriel relié à un ticket, une tâche, un reçu de carte ou une proposition de paiement Zéko (ces liens effaceraient la preuve en cascade). Erreur IMAP → `junk_error`, réessayé au tour suivant.
+  - Courriel reçu d'un expéditeur de la liste : directement « À jeter », sans classement ni Zéko.
+  - « À jeter » exclu partout ailleurs : Tous les courriels, À classer, boîtes et leurs compteurs, onglet Courriels des fiches, recherche de Zéko.
+  - Écran : dossier « 🗑 À jeter » dans Courriels ; bouton « 🚫 Mettre en liste noire » sur un courriel reçu (popup fermé seulement par Annuler / Mettre en liste noire) ; bande « À jeter — liste noire : … · effacé le … » + « Retirer de la liste noire » ; Administration → Intégrations → « Liste noire » (ajouter une adresse ou un domaine, retirer).
+- Vérifié pour vrai (boîte service@) : calendar-notification@google.com ajouté → 9 courriels « À jeter » (4 déjà jetés par Philippe dans la boîte), les 5 encore dans INBOX déplacés dans « À jeter » du serveur ; retiré → les 5 remis dans INBOX, toujours 9 courriels dans ERPCRM après 2 tours (aucun double) ; remis en liste noire (état final). Effacement testé sur un courriel de test déposé dans « À jeter » (seul lui effacé). Sélection d'un an vérifiée à blanc : les 9 effaçables, les 61 courriels protégés de la base exclus. Navigateur : dossier, bande, bouton, panneau Administration, aucune erreur ; plus aucune notification Google Agenda dans « Tous les courriels ».
+- Seule l'adresse calendar-notification@google.com est en liste noire (pas google.com : les avis de sécurité du compte Google en viennent aussi).
 
 ## TASK-048 [ERPCRM+SIPV] [ ] Installation chez un client : un seul endroit pour savoir quoi changer
 Date de demande : 2026-10-09 (Philippe, après TASK-S055.8 : « c'est important d'être dynamique : si on installe chez un client, il faut savoir quoi changer et ne pas chercher partout dans le projet »)

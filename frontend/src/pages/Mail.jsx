@@ -1,12 +1,13 @@
 // Boite de reception (TASK-047.2, 2026-10-09) : toutes les boites au meme endroit -- partagees (service@,
 // facturation@, portabilite@) pour toute l'equipe, personnelles (philippe@) pour leur proprietaire et le patron.
 // support@ n'y est pas : ses courriels deviennent des tickets. « Envoyes d'ici » : courriels envoyes depuis ERPCRM (TASK-047.3).
+// « A jeter » : expediteurs en liste noire (TASK-047.7), effaces apres 1 an.
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 import MailBrowser from '../components/MailBrowser'
 
 export default function Mail() {
-  const [data, setData] = useState({ folders: [], unclassified: 0 })
+  const [data, setData] = useState({ folders: [], unclassified: 0, junk: 0 })
   const [sel, setSel] = useState({ view: 'all', mailbox_id: '' })
   const [syncing, setSyncing] = useState(false)
 
@@ -44,6 +45,7 @@ export default function Mail() {
           {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', unread)}
           {item(sel.view === 'unclassified', () => setSel({ view: 'unclassified', mailbox_id: '' }), 'À classer', data.unclassified)}
           {item(sel.view === 'sent', () => setSel({ view: 'sent', mailbox_id: '' }), 'Envoyés d’ici', 0)}
+          {item(sel.view === 'junk', () => setSel({ view: 'junk', mailbox_id: '' }), '🗑 À jeter', 0, data.junk ? `· ${data.junk}` : '')}
           <div style={{ fontSize: 11, textTransform: 'uppercase', color: 'var(--c-faint)', margin: '12px 10px 4px' }}>Boîtes</div>
           {data.folders.map(f => item(sel.mailbox_id === f.id, () => setSel({ view: 'all', mailbox_id: f.id }),
             f.email.split('@')[0] + '@', f.unread, f.personal ? (f.mine ? '· à moi' : '· personnelle') : '',
@@ -52,7 +54,7 @@ export default function Mail() {
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <MailBrowser filter={sel.view === 'sent' ? { direction: 'out' }
-            : { view: sel.view, mailbox_id: sel.mailbox_id, ...(sel.view === 'unclassified' ? {} : { direction: 'in' }) }} onCounts={loadFolders} />
+            : { view: sel.view, mailbox_id: sel.mailbox_id, ...(sel.view === 'unclassified' || sel.view === 'junk' ? {} : { direction: 'in' }) }} onCounts={loadFolders} />
         </div>
       </div>
     </div>

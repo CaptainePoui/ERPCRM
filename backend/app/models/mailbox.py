@@ -88,5 +88,24 @@ class MailMessage(Base):
     shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # boite personnelle : partage avec l'equipe
     ticket_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="SET NULL"))
     task_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("tasks.id", ondelete="SET NULL"))
+    # TASK-047.7 : « A jeter » (expediteur en liste noire) depuis junk_at ; la vraie boite suit (core/mail_junk.py) :
+    # junk_server = move (a deplacer dans « A jeter » de la boite) | done (deplace ; junk_uid = son numero la-bas)
+    # | restore (a remettre dans la boite de reception) ; junk_error = dernier echec (reessaye a chaque tour) ;
+    # efface ici et dans la boite apres 1 an.
+    junk_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    junk_server: Mapped[str | None] = mapped_column(String(10))
+    junk_uid: Mapped[int | None] = mapped_column(BigInteger)
+    junk_error: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class MailBlock(Base):
+    """Liste noire (TASK-047.7, 2026-10-28) : une adresse (calendar-notification@google.com) ou un domaine entier
+    (google.com, et ses sous-domaines) -- ses courriels vont directement dans « A jeter », ici et dans la vraie boite."""
+    __tablename__ = "mail_blocks"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    pattern: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)     # en minuscules, sans « @ » devant
+    created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

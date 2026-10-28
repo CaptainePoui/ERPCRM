@@ -1288,3 +1288,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : proposée, en attente du GO (retirer nos compagnies de la liste de Zéko ; les 64 remis « À classer » seulement sur demande explicite).
 
 **Leçon (à ne pas refaire)** : avant de lancer un classement en masse par l'IA, le faire sur un petit échantillon réel et relire chaque réponse ; ne jamais offrir comme choix la compagnie qui reçoit le courriel.
+
+
+## TASK-047.7 — Test navigateur fait sur l'ancienne version de l'écran
+
+**2026-10-28 — vérification du dossier « À jeter »**
+
+**On croyait** : que `systemctl --user restart erpcrm-frontend.service` suffisait pour que le nouvel écran soit servi (la compilation de contrôle avait été faite dans un autre dossier).
+
+**Preuve** : capture Playwright de /mail sans le dossier « À jeter » ; `curl /src/pages/Mail.jsx` ne contenait pas « jeter ».
+
+**Cause réelle** : le frontend est servi par `vite preview` (le dossier `dist/` compilé), pas par un serveur de développement : sans `npm run build`, le redémarrage relance l'ancienne version. Déjà écrit dans la mémoire « Infrastructure serveurs », pas relu avant ce redémarrage.
+
+**Correction** : `npm run build` puis redémarrage ; test refait, l'écran est bon.
+
+**Leçon (à ne pas refaire)** : tout changement frontend ERPCRM = `npm run build` dans `frontend/` PUIS `systemctl --user restart erpcrm-frontend.service`, et vérifier dans le navigateur avant d'affirmer.

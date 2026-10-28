@@ -2,7 +2,8 @@
 
 La boite reste la source : chaque courriel est garde tel quel (.eml, storage/mail/<boite>/), ses pieces jointes sont
 lues dans ce fichier au besoin. Lu/non lu suit dans les deux sens : ouvrir un courriel ici le marque lu dans la boite
-(Outlook et cellulaire suivent), et ce qui est lu ailleurs devient lu ici. Rien n'est jamais efface ni deplace.
+(Outlook et cellulaire suivent), et ce qui est lu ailleurs devient lu ici. Rien n'est efface ni deplace, sauf « A jeter »
+(expediteur en liste noire, TASK-047.7 : core/mail_junk.py).
 """
 from __future__ import annotations
 
