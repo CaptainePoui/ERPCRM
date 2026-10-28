@@ -51,6 +51,79 @@ async def _company_of_contact(db, contact_id):
     return primary[0].company_id if len(primary) == 1 else None
 
 
+async def contact_companies(db, contact_id) -> list[tuple]:
+    """(id, nom) des compagnies actives d'un contact."""
+    from app.models.company import Company
+    from app.models.contact_company import ContactCompany
+    return list((await db.execute(select(Company.id, Company.name).join(ContactCompany, ContactCompany.company_id == Company.id)
+                                  .where(ContactCompany.contact_id == contact_id, ContactCompany.is_active.is_(True))
+                                  .order_by(Company.name))).all())
+
+
+def _norm(text: str | None) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFKD", (text or "").lower())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", "".join(ch for ch in t if not unicodedata.combining(ch))).split())
+
+
+_LEGAL = re.compile(r"\b(inc|incorporee|ltee|limitee|ltd|llc|enr|senc|s e n c|corp|corporation|cie)\b")
+
+
+async def thread_ids(db, msg, limit: int = 200) -> set:
+    """Courriels du meme fil (In-Reply-To / Message-ID), dans les deux sens."""
+    from app.models.mailbox import MailMessage
+    seen, ids, todo = set(), {msg.id}, [(msg.message_id, msg.in_reply_to)]
+    while todo and len(ids) < limit:
+        mid, parent = todo.pop()
+        conds = []
+        if mid and mid not in seen:
+            seen.add(mid)
+            conds.append(MailMessage.in_reply_to == mid)
+            conds.append(MailMessage.message_id == mid)
+        if parent and parent not in seen:
+            seen.add(parent)
+            conds.append(MailMessage.message_id == parent)
+            conds.append(MailMessage.in_reply_to == parent)
+        for c in conds:
+            for row in (await db.execute(select(MailMessage.id, MailMessage.message_id, MailMessage.in_reply_to).where(c))).all():
+                if row.id not in ids:
+                    ids.add(row.id)
+                    todo.append((row.message_id, row.in_reply_to))
+    return ids
+
+
+async def company_for_contact(db, msg, contact_id):
+    """TASK-047.4 : contact lie a plusieurs compagnies -> 1) compagnie deja choisie dans ce fil ; 2) une seule de ses
+    compagnies nommee dans le sujet ou le texte du courriel. Sinon None (popup a la lecture)."""
+    from app.models.mailbox import MailMessage
+    mine = {cid: name for cid, name in await contact_companies(db, contact_id)}
+    if len(mine) < 2:
+        return None
+    ids = await thread_ids(db, msg)
+    found = {c for c in (await db.execute(select(MailMessage.company_id).where(
+        MailMessage.id.in_(ids), MailMessage.contact_id == contact_id, MailMessage.company_id.is_not(None)))).scalars().all()
+        if c in mine}
+    if len(found) == 1:
+        return found.pop()
+    hay = f" {_norm(msg.subject)} {_norm(msg.body_text)} "
+    hits = {}                                          # compagnie -> nom le plus long trouve
+    for cid, name in mine.items():
+        full = _norm(name)
+        short = " ".join(_LEGAL.sub(" ", full).split())
+        found_n = [n for n in {full, short} if n and len(n) >= 3 and f" {n} " in hay]
+        if found_n:
+            hits[cid] = max(found_n, key=len)
+    # « Simple IP » est contenu dans « Simple IP Rose » : ne compte que s'il est aussi nomme seul ailleurs
+    def alone(c, n):
+        rest = hay
+        for o, on in hits.items():
+            if o != c and f" {n} " in f" {on} ":
+                rest = rest.replace(f" {on} ", " ")
+        return f" {n} " in rest
+    hits = {c: n for c, n in hits.items() if alone(c, n)}
+    return next(iter(hits)) if len(hits) == 1 else None
+
+
 async def by_address(db, addr: str):
     """(company_id, contact_id) d'une adresse deja connue, sinon (None, None)."""
     from app.models.communication import ChannelType, CommunicationChannel
@@ -145,6 +218,8 @@ async def classify(db, msg, own_domains: set[str], box_email: str) -> None:
     if not addr or not dom or dom in own_domains:
         return
     company_id, contact_id = await by_address(db, addr)
+    if contact_id and not company_id:                  # TASK-047.4 : plusieurs compagnies -> fil, puis contenu
+        company_id = await company_for_contact(db, msg, contact_id)
     if company_id or contact_id:
         msg.company_id, msg.contact_id, msg.classified_by = company_id, contact_id, "auto"
         return

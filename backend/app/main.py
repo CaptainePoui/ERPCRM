@@ -9,7 +9,7 @@ from app.core.seed import seed_defaults
 import app.models
 from app.core import privileges   # verrou des privileges sur toutes les routes (TASK-007.4)
 from app.core.audit import ActorMiddleware   # journal des actions (TASK-049) : les evenements s'inscrivent a l'import
-from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, zeko_drops as zeko_drops_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
+from app.api.v1.endpoints import auth, companies, contacts, ref_data, logs, search, catalogue, invoices, payments, tickets, maintenance, equipment, telephony, purchase_orders, admin, portal, ecom, settings as settings_router, employees, tasks, tracking, devis, appointments, google_oauth, server as server_router, knowledge_graph, mailboxes as mailboxes_router, mail as mail_router, migration as migration_router, zeko as zeko_router, zeko_drops as zeko_drops_router, zeko_public as zeko_public_router, sales_reps as sales_reps_router, former_infos as former_infos_router, speech as speech_router, conversations as conversations_router
 from app.api.v1.endpoints import sipv_events
 from app.api.v1.endpoints import recurring_billing
 from app.api.v1.endpoints import backup as backup_router
@@ -93,6 +93,7 @@ app.include_router(payments.router, prefix="/api/v1/payments", tags=["payments"]
 app.include_router(tickets.router, prefix="/api/v1/tickets", tags=["tickets"])
 app.include_router(zeko_drops_router.router, prefix="/api/v1/zeko/drops", tags=["zeko"])   # TASK-006.9
 app.include_router(zeko_router.router, prefix="/api/v1/zeko", tags=["zeko"])
+app.include_router(zeko_public_router.router, prefix="/api/v1/public/zeko", tags=["zeko"])   # TASK-026.9, sans connexion
 app.include_router(maintenance.router, prefix="/api/v1/maintenance", tags=["maintenance"])
 app.include_router(equipment.router, prefix="/api/v1/equipment", tags=["equipment"])
 app.include_router(telephony.router, prefix="/api/v1/telephony", tags=["telephony"])

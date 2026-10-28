@@ -6,6 +6,22 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 ---
 
+## TASK-003.5 — Tâches de la session écrites dans l'archive TASKERPCRM.md, numéro en collision
+
+**Date** : 2026-10-27
+
+**On croyait** : que `TASKERPCRM.md` était le fichier de tâches actif (la mémoire persistante `feedback_workflow_rules` le disait encore) ; que `TASK-003.4` était libre parce qu'absent de `TASKERPCRM.md`.
+
+**Preuve** : `CLAUDE.md` (lu en fin de session) : `TASKERPCRM.md` est archivé depuis 2026-08-21/22, source active = `docs/platform/PLATFORM_TASKS.md` ; `TASK-003.4` y existe (fusion de contacts, déjà cité dans le code `merge.py`/`MergeModal.jsx`).
+
+**Cause réelle** : mémoire persistante périmée prise pour la règle, sans recouper avec `CLAUDE.md` du dépôt ; recherche de numéro libre faite dans l'archive.
+
+**Correction** : 7 entrées transférées dans `PLATFORM_TASKS.md` (TASK-003.4 renommée TASK-003.5, commentaires du code corrigés), ajouts retirés de l'archive (`git checkout TASKERPCRM.md`), mémoire corrigée.
+
+**Leçon (à ne pas refaire)** : avant la première entrée de tâche d'une session, lire `CLAUDE.md` du dépôt ; chercher un numéro libre dans `PLATFORM_TASKS.md` (tous niveaux de `#`) ET dans le code (`grep -rn TASK-XXX.Y`), jamais dans l'archive.
+
+---
+
 ## TASK-044 — Répartition d'un paiement différente de ce qui avait été convenu en conversation
 
 **Date** : 2026-10-15 (erreur), 2026-10-21 (vue par Philippe)
@@ -1258,3 +1274,17 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 
 **Leçon (à ne pas refaire)** : tester le geste que Philippe va réellement faire (ici la case, puisqu'il a demandé des cases partout), pas seulement un chemin équivalent ; dans un composant React, ne jamais lire un `ref` modifié juste après dans une fonction de mise à jour d'état.
 
+
+## TASK-047.5 — Zéko classe 64 courriels dans notre propre compagnie
+
+**2026-10-27 — fin de la file Zéko (247 courriels)**
+
+**On croyait** : qu'en donnant à Zéko la liste des compagnies actives et en n'acceptant que les réponses « certain », un courriel sans compagnie concernée resterait « À classer ».
+
+**Preuve** : 156 classés par Zéko, dont 64 dans « Simple IP inc. » : reçus Authorize.net, avis BNC, facture Bell, ISP Telecom, Microcomp, Digitech, Revenu Québec, prospects (IPv4, LS3). Tous nous sont adressés : Zéko a répondu « le destinataire », pas l'expéditeur.
+
+**Cause réelle** : notre propre compagnie est dans la liste ; tout courriel reçu « parle » de Simple IP, donc Zéko la juge « clairement concernée ». Le test de départ (4 courriels RDV) n'a jamais vérifié le classement sur un échantillon réel avant de lancer les 247.
+
+**Correction** : proposée, en attente du GO (retirer nos compagnies de la liste de Zéko ; les 64 remis « À classer » seulement sur demande explicite).
+
+**Leçon (à ne pas refaire)** : avant de lancer un classement en masse par l'IA, le faire sur un petit échantillon réel et relire chaque réponse ; ne jamais offrir comme choix la compagnie qui reçoit le courriel.

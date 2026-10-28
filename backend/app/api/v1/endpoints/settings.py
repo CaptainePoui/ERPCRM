@@ -45,6 +45,8 @@ DEFAULTS = {
     "late_fee_monthly_rate": "2",
     "late_fee_admin": "9.95",
     "late_fee_grace_days": "15",
+    # Reponses de Zeko aux clients (TASK-026.9) -- eteintes au depart
+    "zeko_client_replies_enabled": "false",
     "late_fee_interval_days": "30",   # fuseau de l'entreprise (Montreal) : quel jour on est (core/clock.py)
     # Option Echanges (troc), Administration -> Integrations (2026-10-08) : decochee par defaut pour un acheteur du
     # logiciel ; decochee, toutes les options d'echange disparaissent de l'ecran (les echanges deja faits s'appliquent)
@@ -125,6 +127,7 @@ class SettingsOut(BaseModel):
     recurring_auto_purchases: bool
     business_timezone: str
     late_fees_enabled: bool
+    zeko_client_replies_enabled: bool = False
     late_fee_monthly_rate: float
     late_fee_admin: float
     late_fee_grace_days: int
@@ -161,6 +164,7 @@ class SettingsIn(BaseModel):
     recurring_auto_purchases: bool | None = None
     business_timezone: str | None = None
     late_fees_enabled: bool | None = None
+    zeko_client_replies_enabled: bool | None = None
     late_fee_monthly_rate: float | None = Field(default=None, ge=0, le=10)
     late_fee_admin: float | None = Field(default=None, ge=0, le=1000)
     late_fee_grace_days: int | None = Field(default=None, ge=0, le=365)
@@ -214,6 +218,7 @@ async def get_settings(db: AsyncSession = Depends(get_db), _: User = Depends(get
         recurring_auto_purchases=(await get_setting(db, "recurring_auto_purchases")) == "true",
         business_timezone=await get_setting(db, "business_timezone"),
         late_fees_enabled=(await get_setting(db, "late_fees_enabled")) == "true",
+        zeko_client_replies_enabled=(await get_setting(db, "zeko_client_replies_enabled")) == "true",
         late_fee_monthly_rate=float(await get_setting(db, "late_fee_monthly_rate")),
         late_fee_admin=float(await get_setting(db, "late_fee_admin")),
         late_fee_grace_days=int(await get_setting(db, "late_fee_grace_days")),
@@ -303,6 +308,8 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "barter_enabled", "true" if payload.barter_enabled else "false")
     if payload.ui_theme is not None:
         await set_setting(db, "ui_theme", payload.ui_theme)
+    if payload.zeko_client_replies_enabled is not None:
+        await set_setting(db, "zeko_client_replies_enabled", "true" if payload.zeko_client_replies_enabled else "false")
     if payload.late_fees_enabled is not None:
         await set_setting(db, "late_fees_enabled", "true" if payload.late_fees_enabled else "false")
     for key in ("late_fee_monthly_rate", "late_fee_admin", "late_fee_grace_days", "late_fee_interval_days"):
@@ -432,3 +439,20 @@ async def update_numbering(key: str, p: NumberingIn, db: AsyncSession = Depends(
 
 # Courriels Interac (TASK-042.5) : reglages et lecture deplaces dans endpoints/mailboxes.py (TASK-047.1) --
 # les avis sont lus dans toutes les boites de courriel (Administration -> Integrations).
+
+
+# ── Agenda (TASK-026.10) : options d'agenda reglables, Administration -> Configuration generale -> Agenda ─────────
+
+@router.get("/agenda")
+async def get_agenda(_: User = Depends(get_current_user)):
+    from app.core import agenda_config
+    return {**await agenda_config.load(fresh=True), "defaults": agenda_config.DEFAULTS}
+
+
+@router.put("/agenda")
+async def put_agenda(payload: dict, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import agenda_config
+    try:
+        return await agenda_config.save(db, {k: v for k, v in payload.items() if k != "defaults"})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))

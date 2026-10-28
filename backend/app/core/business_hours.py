@@ -1,27 +1,43 @@
 """
 Heures d'ouverture + jours feries du Quebec pour le module RDV en ligne (TASK-026).
 
-Horaire : lundi-jeudi 7h30-16h30, vendredi 7h30-12h00, ferme samedi/dimanche.
+Horaire : reglable (TASK-026.10) ; par defaut lundi-jeudi 7h30-16h30, vendredi 7h30-12h00, ferme samedi/dimanche.
 Feries : les 8 conges statutaires prevus par la Loi sur les normes du travail du
 Quebec (Vendredi saint retenu plutot que Lundi de Paques, choix le plus courant).
 """
 from datetime import date, time, timedelta
 from dateutil.easter import easter
 
-BUSINESS_HOURS: dict[int, tuple[time, time]] = {
-    0: (time(7, 30), time(16, 30)),  # lundi
-    1: (time(7, 30), time(16, 30)),  # mardi
-    2: (time(7, 30), time(16, 30)),  # mercredi
-    3: (time(7, 30), time(16, 30)),  # jeudi
-    4: (time(7, 30), time(12, 0)),   # vendredi
-    # 5 (samedi), 6 (dimanche) : absents = ferme
-}
+# Heures d'ouverture, 1re heure de RDV et pas des plages : reglables (TASK-026.10, core/agenda_config.py) ;
+# valeurs par defaut = lundi-jeudi 7h30-16h30, vendredi 7h30-12h00, ferme la fin de semaine, RDV pas avant 9h30,
+# pas de 30 min.
 
-SLOT_GRANULARITY_MINUTES = 30
 
-# Heure de debut la plus tot pour un RDV (visite) -- un Appel peut demarrer des
-# l'ouverture, un RDV pas avant 9h30.
-RDV_EARLIEST_START = time(9, 30)
+def _t(hhmm: str) -> time:
+    h, m = hhmm.split(":")
+    return time(int(h), int(m))
+
+
+def hours_map() -> dict[int, tuple[time, time]]:
+    from app.core.agenda_config import current
+    return {int(d): (_t(h[0]), _t(h[1])) for d, h in current()["hours"].items() if h}
+
+
+def lunch_for(d: date) -> tuple[time, time] | None:
+    """Diner de ce jour (TASK-026.13), ou None."""
+    from app.core.agenda_config import current
+    l = current()["lunch"].get(str(d.weekday()))
+    return (_t(l[0]), _t(l[1])) if l else None
+
+
+def rdv_earliest_start() -> time:
+    from app.core.agenda_config import current
+    return _t(current()["rdv_earliest_start"])
+
+
+def slot_minutes() -> int:
+    from app.core.agenda_config import current
+    return int(current()["slot_minutes"])
 
 
 def _nth_weekday(year: int, month: int, weekday: int, n: int) -> date:
@@ -57,10 +73,10 @@ def quebec_holidays(year: int) -> set[date]:
 
 
 def is_business_day(d: date) -> bool:
-    return d.weekday() in BUSINESS_HOURS and d not in quebec_holidays(d.year)
+    return d.weekday() in hours_map() and d not in quebec_holidays(d.year)
 
 
 def business_hours_for(d: date) -> tuple[time, time] | None:
     if not is_business_day(d):
         return None
-    return BUSINESS_HOURS[d.weekday()]
+    return hours_map()[d.weekday()]

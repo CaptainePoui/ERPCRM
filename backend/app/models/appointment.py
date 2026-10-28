@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
 
-APPOINTMENT_TYPES = ["appel", "rdv"]
+APPOINTMENT_TYPES = ["appel", "distance", "rdv"]   # distance = assistance a distance (TASK-026.11)
 APPOINTMENT_STATUSES = ["confirme", "annule"]
 
 
@@ -14,7 +14,7 @@ class Appointment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    type: Mapped[str] = mapped_column(String(10), nullable=False)  # appel | rdv
+    type: Mapped[str] = mapped_column(String(10), nullable=False)  # appel | distance | rdv
     status: Mapped[str] = mapped_column(String(10), default="confirme")
 
     start_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -9,7 +9,7 @@ import logging
 
 from sqlalchemy import select, text, update
 
-from app.core import mail_match, mail_store
+from app.core import mail_match, mail_store, zeko, zeko_mail
 from app.core.database import AsyncSessionLocal, engine
 
 log = logging.getLogger("mail_sync")
@@ -17,6 +17,7 @@ log = logging.getLogger("mail_sync")
 _INTERVAL = 60
 _LOCK = 47_0247                          # verrou PostgreSQL de la copie des courriels
 _SIG_LOCK = 47_0248                      # verrou de la lecture des signatures (separee : l'IA peut prendre des minutes)
+_ZEKO_LOCK = 47_0249                     # verrou de Zeko sur les courriels (classement, RDV) -- TASK-047.5 / TASK-026.6
 
 
 def _box(mb) -> dict:
@@ -77,6 +78,9 @@ async def _sync_box(mb_id) -> int:
                         await mail_match.classify(db, msg, own, mb.email)
                 except Exception as exc:
                     log.warning("Classement du courriel %s impossible : %s", uid, exc)
+                # TASK-026.6 : courriel d'un client -> Zeko regarde s'il change un de ses RDV (proposition a confirmer)
+                if (msg.company_id or msg.contact_id) and mail_match.domain_of(msg.from_email) not in own and await zeko.enabled():
+                    msg.zeko_rdv = "pending"
                 n += 1
         mb.last_uid = max(mb.last_uid, res["last_uid"])
         mb.last_sync_at, mb.sync_error = mail_store.now(), None
@@ -135,10 +139,59 @@ async def run_signatures() -> None:
         await asyncio.sleep(20)
 
 
+async def _zeko_one() -> bool:
+    """Un courriel a la fois : d'abord les RDV (urgents), puis le classement des anciens « A classer »."""
+    from app.models.mailbox import MailMessage
+    async with AsyncSessionLocal() as db:
+        msg = (await db.execute(select(MailMessage).where(MailMessage.zeko_rdv == "pending")
+                                .order_by(MailMessage.sent_at.desc()).limit(1))).scalar_one_or_none()
+        kind = "rdv"
+        if not msg:
+            msg = (await db.execute(select(MailMessage).where(MailMessage.zeko_classify == "pending")
+                                    .order_by(MailMessage.sent_at.desc()).limit(1))).scalar_one_or_none()
+            kind = "classify"
+        if not msg:
+            return False
+        try:
+            if kind == "rdv":
+                await zeko_mail.rdv_with_zeko(db, msg)
+            else:
+                await zeko_mail.classify_with_zeko(db, msg)
+        except zeko.ZekoUnavailable as exc:
+            log.info("Zeko occupe ou desactive : %s", exc)
+            return False
+        except Exception as exc:
+            log.warning("Zeko sur le courriel %s (%s) : %s", msg.id, kind, exc)
+            if kind == "rdv":
+                msg.zeko_rdv = "failed"
+            else:
+                msg.zeko_classify = "failed"
+        await db.commit()
+        return True
+
+
+async def run_zeko_mail() -> None:
+    await asyncio.sleep(40)
+    while True:
+        worked = False
+        try:
+            async with engine.connect() as lock:
+                if await lock.scalar(text("select pg_try_advisory_lock(:k)"), {"k": _ZEKO_LOCK}):
+                    try:
+                        worked = await _zeko_one()
+                    finally:
+                        await lock.execute(text("select pg_advisory_unlock(:k)"), {"k": _ZEKO_LOCK})
+                        await lock.commit()
+        except Exception as exc:
+            log.error("Zeko sur les courriels : %s", exc)
+        await asyncio.sleep(2 if worked else 20)
+
+
 async def run_mail_sync() -> None:
     log.info("Copie des boites de courriel demarree (intervalle %ds)", _INTERVAL)
     await asyncio.sleep(20)
     asyncio.create_task(run_signatures())
+    asyncio.create_task(run_zeko_mail())
     while True:
         try:
             await sync_all()

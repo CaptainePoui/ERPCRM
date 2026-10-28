@@ -63,6 +63,52 @@ function InlineField({ label, value, onSave, type = 'text', multiline }) {
   )
 }
 
+// TASK-003.5 : fonctions du contact dans une compagnie (ex. comptes payables), modifiables depuis la fiche contact
+function ContactFunctionsEditor({ companyId, contactId, current, onSaved }) {
+  const [editing, setEditing] = useState(false)
+  const [all, setAll] = useState([])
+  const [picked, setPicked] = useState([])
+  const [saving, setSaving] = useState(false)
+
+  async function open() {
+    const r = await api.get('/v1/ref/functions')
+    setAll(r.data)
+    setPicked(r.data.filter(fn => current.includes(fn.name)).map(fn => fn.id))
+    setEditing(true)
+  }
+
+  async function save() {
+    setSaving(true)
+    try {
+      await api.patch(`/v1/companies/${companyId}/contacts/${contactId}`, { function_ids: picked })
+      setEditing(false)
+      await onSaved()
+    } catch (e) {
+      showAlert(e.response?.data?.detail || 'Enregistrement impossible')
+    } finally { setSaving(false) }
+  }
+
+  if (!editing) return (
+    <span className="ifield-view" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }} onClick={open} title="Modifier les fonctions">
+      {current.length > 0 ? <span className="comm-label">{current.join(', ')}</span> : <span className="ifield-empty" style={{ fontSize: 12 }}>Aucune fonction</span>}
+      <span className="ifield-pencil" style={{ fontSize: 11 }}>✎</span>
+    </span>
+  )
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '4px 12px' }}>
+      {all.map(fn => (
+        <label key={fn.id} style={{ fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
+          <input type="checkbox" checked={picked.includes(fn.id)}
+            onChange={e => setPicked(p => e.target.checked ? [...p, fn.id] : p.filter(x => x !== fn.id))} />
+          {fn.name}
+        </label>
+      ))}
+      <button className="ifield-ok" onClick={save} disabled={saving}>✓</button>
+      <button className="ifield-x" onClick={() => setEditing(false)}>✕</button>
+    </div>
+  )
+}
+
 // ── Status selector (same as CompanyDetail) ───────────────────────────────────
 function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath }) {
   const [current, setCurrent] = useState(initialStatuses)
@@ -315,7 +361,7 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
   )
 }
 
-const CONTACT_TABS = ['Général', 'CDR', 'Courriels', 'Provisionnement']
+const CONTACT_TABS = ['Général', 'Téléphonie', 'Courriels', 'Provisionnement']
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
@@ -379,6 +425,7 @@ export default function ContactDetail({ isNew }) {
   // enfoui au milieu de la fiche) -- meme pattern detail-tabs/tab-btn que
   // CompanyDetail.jsx.
   const [tab, setTab] = useState(0)
+  const [showOtherEmail, setShowOtherEmail] = useState(false)   // TASK-003.5
 
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
 
@@ -881,35 +928,14 @@ export default function ContactDetail({ isNew }) {
           <MailBrowser filter={{ contact_id: id }} height="calc(100vh - 260px)"
             composeDefaults={{ to: c.email ? `${`${c.first_name || ''} ${c.last_name || ''}`.trim()} <${c.email}>`.trim() : '' }} />
         ) : tab === 1 ? (
-          <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
-        ) : (
           <div>
-            <div className="ifield-section-title">Pastilles</div>
-            <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts" />
-
-            <div className="ifield-section-title" style={{ marginTop: 20 }}>Coordonnées</div>
-            <div className="ifields-grid">
-              <InlineField label="Prénom" value={c.first_name} onSave={v => saveField('first_name', v)} />
-              <InlineField label="Nom" value={c.last_name} onSave={v => saveField('last_name', v)} />
-              <InlineField label="Téléphone bureau" value={c.phone} onSave={v => savePhone(v)} />
-              <InlineField label="Poste SIP" value={c.extension} onSave={v => saveField('extension', v)} />
-              <InlineField label="Cellulaire" value={c.mobile} onSave={v => saveField('mobile', v)} />
-              <InlineField label="Autre numéro" value={c.phone_other} onSave={v => saveField('phone_other', v)} />
-              <InlineField label="Courriel" value={c.email} onSave={v => saveField('email', v)} />
-              <div className="ifield-full">
-                <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
-              </div>
-            </div>
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Voix</div>
             <VoiceSection contactId={c.id} name={`${c.first_name} ${c.last_name}`.trim()} />
 
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Conversations enregistrées</div>
             <ConversationsSection contactId={c.id} />
 
-            <div className="ifield-section-title" style={{ marginTop: 20 }}>Anciennes coordonnées</div>
-            <FormerInfoSection entityId={c.id} kinds={['email', 'phone', 'name']} />
-
-            <div className="ifield-section-title" style={{ marginTop: 20 }}>Téléphonie</div>
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Synchronisation SIPV</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>
               <input
                 type="checkbox"
@@ -1360,13 +1386,50 @@ export default function ContactDetail({ isNew }) {
               </div>
             )}
 
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>CDR</div>
+            <ContactCdrTab id={id} companyId={companyId} sipExt={sipExt} sipExtLoading={sipExtLoading} />
+          </div>
+        ) : (
+          <div>
+            <div className="ifield-section-title">Pastilles</div>
+            <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts" />
+
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Coordonnées</div>
+            <div className="ifields-grid">
+              <InlineField label="Prénom" value={c.first_name} onSave={v => saveField('first_name', v)} />
+              <InlineField label="Nom" value={c.last_name} onSave={v => saveField('last_name', v)} />
+              <InlineField label="Téléphone bureau" value={c.phone} onSave={v => savePhone(v)} />
+              <InlineField label="Poste SIP" value={c.extension} onSave={v => saveField('extension', v)} />
+              <InlineField label="Cellulaire" value={c.mobile} onSave={v => saveField('mobile', v)} />
+              <InlineField label="Autre numéro" value={c.phone_other} onSave={v => saveField('phone_other', v)} />
+              <div>
+                <InlineField label="Courriel" value={c.email} onSave={v => saveField('email', v)} />
+                {/* TASK-003.5 : courriel supplementaire (contacts.email_other) juste sous le courriel */}
+                {(c.email_other || showOtherEmail)
+                  ? <InlineField label="Autre courriel" type="email" value={c.email_other} onSave={v => { saveField('email_other', v || null); if (!v) setShowOtherEmail(false) }} />
+                  : <button className="btn-link" style={{ fontSize: 12, background: 'none', border: 'none', padding: '2px 0', color: 'var(--brand)', cursor: 'pointer' }} onClick={() => setShowOtherEmail(true)}>+ Ajouter un courriel</button>}
+              </div>
+              <div className="ifield-full">
+                <InlineField label="Notes internes" value={c.notes_internal} multiline onSave={v => saveField('notes_internal', v)} />
+              </div>
+            </div>
+            {/* TASK-026.9 : case discrete -- le client peut aussi la decocher lui-meme par le lien au bas des courriels de Zeko */}
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--c-muted)', marginTop: 8, cursor: 'pointer' }}
+              title="Décochée : Zéko n'écrit jamais à ce contact (le client peut la décocher lui-même par le lien au bas des courriels de Zéko)">
+              <input type="checkbox" checked={!c.zeko_replies_off} onChange={e => saveField('zeko_replies_off', !e.target.checked)} style={{ width: 13, height: 13 }} />
+              Zéko peut répondre à ce contact
+            </label>
+            <div className="ifield-section-title" style={{ marginTop: 20 }}>Anciennes coordonnées</div>
+            <FormerInfoSection entityId={c.id} kinds={['email', 'phone', 'name']} />
+
+
             {c.companies.length > 0 && (
               <>
                 <div className="ifield-section-title" style={{ marginTop: 20 }}>Compagnies</div>
                 {c.companies.map(co => (
                   <div key={co.contact_company_id} className="comm-row">
                     <button className="contact-name-link" onClick={() => navigate(`/companies/${co.company_id}`)}>{co.company_name}</button>
-                    {co.functions.length > 0 && <span className="comm-label">{co.functions.join(', ')}</span>}
+                    <ContactFunctionsEditor companyId={co.company_id} contactId={id} current={co.functions} onSaved={load} />
                     {co.is_primary && <span className="primary-badge">Principal</span>}
                   </div>
                 ))}

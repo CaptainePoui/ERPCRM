@@ -1,45 +1,163 @@
-.rdv-page { min-height: 100vh; background: var(--c-surface-2); }
-.rdv-topbar { background: var(--brand); color: #fff; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-.rdv-brand { font-size: 18px; font-weight: 800; }
-.rdv-back-btn { background: rgba(255,255,255,.15); color: #fff; border: none; border-radius: 6px; padding: 8px 14px; cursor: pointer; font-size: 14px; }
-.rdv-back-btn:hover { background: rgba(255,255,255,.25); }
+/* Prise de RDV en ligne (TASK-026.11) -- carte facon Calendly/Cal.com : resume a gauche, etapes a droite ; empile sur cellulaire */
+/* TASK-026.12 : bandeau bleu derriere le haut de page, logo en grand, la carte deborde sur le bandeau */
+.rdv-page { min-height: 100vh; box-sizing: border-box; font-family: inherit; padding: 0 16px 48px;
+  background: linear-gradient(180deg, #0B2A55 0, #0F4C9A 300px, var(--c-surface-2) 300px); }
+.rdv-page button, .rdv-page input, .rdv-page textarea { font-family: inherit; }
+.rdv-brand { max-width: 1000px; margin: 0 auto; display: flex; align-items: center; gap: 22px; padding: 36px 4px 34px; }
+.rdv-brand-logo { flex: 0 0 auto; background: #fff; border-radius: 18px; padding: 10px 16px; display: inline-flex;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .18); }
+.rdv-brand-logo img { height: 96px; width: auto; display: block; }
+.rdv-brand-text { display: flex; flex-direction: column; gap: 4px; }
+.rdv-brand-name { color: #fff; font-size: 34px; font-weight: 800; letter-spacing: -.5px; line-height: 1.1; }
+.rdv-brand-sub { color: rgba(255, 255, 255, .78); font-size: 16px; font-weight: 500; }
+.rdv-shell { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 300px 1fr; background: var(--c-surface);
+  border-radius: 20px; box-shadow: 0 18px 50px rgba(10, 25, 41, .18); overflow: hidden; }
+@media (max-width: 820px) {
+  .rdv-page { padding: 0 12px 28px; background: linear-gradient(180deg, #0B2A55 0, #0F4C9A 220px, var(--c-surface-2) 220px); }
+  .rdv-brand { gap: 14px; padding: 22px 2px 20px; }
+  .rdv-brand-logo { border-radius: 14px; padding: 6px 10px; }
+  .rdv-brand-logo img { height: 64px; }
+  .rdv-brand-name { font-size: 24px; }
+  .rdv-brand-sub { font-size: 14px; }
+  .rdv-shell { grid-template-columns: 1fr; }
+}
 
-.rdv-body { max-width: 640px; margin: 0 auto; padding: 32px 24px; }
-.rdv-loading, .rdv-empty { text-align: center; color: var(--c-muted); padding: 40px 0; }
+.rdv-summary { padding: 32px 28px; background: #0B2A55; color: #fff; display: flex; flex-direction: column; }
+@media (max-width: 820px) { .rdv-summary { padding: 22px 20px; } .rdv-trust { margin-bottom: 12px; } }
+.rdv-title { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 6px; line-height: 1.2; }
+.rdv-trust { margin: 0 0 22px; font-size: 13px; color: rgba(255, 255, 255, .7); }
+.rdv-facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 10px 14px; font-size: 14px; }
+.rdv-facts dt { color: rgba(255, 255, 255, .6); font-weight: 600; }
+.rdv-facts dd { margin: 0; color: #fff; font-weight: 700; }
+.rdv-tz { margin-top: auto; padding-top: 24px; font-size: 12px; color: rgba(255, 255, 255, .55); }
+@media (max-width: 820px) { .rdv-tz { padding-top: 12px; } }
 
-.rdv-step-title { font-size: 20px; font-weight: 700; color: var(--c-text); margin: 0 0 20px; text-align: center; }
+.rdv-main { padding: 28px 32px 36px; min-width: 0; }
+@media (max-width: 820px) { .rdv-main { padding: 20px 18px 28px; } }
 
-.rdv-type-cards { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 560px) { .rdv-type-cards { grid-template-columns: 1fr; } }
-.rdv-type-card { background: var(--c-surface); border: 2px solid var(--c-border); border-radius: 12px; padding: 24px 20px; cursor: pointer; text-align: center; transition: border-color .15s; }
-.rdv-type-card:hover { border-color: var(--brand); }
-.rdv-type-icon { font-size: 36px; margin-bottom: 10px; }
-.rdv-type-name { font-weight: 700; font-size: 16px; color: var(--c-text); margin-bottom: 8px; }
-.rdv-type-desc { font-size: 13px; color: var(--c-muted); line-height: 1.5; }
+.rdv-progress { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+.rdv-progress-step { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--c-faint);
+  padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--c-surface-2); }
+.rdv-progress-step span { width: 20px; height: 20px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--c-surface-3); color: var(--c-muted); font-size: 11px; }
+.rdv-progress-step.current { color: var(--brand); background: var(--brand-bg); }
+.rdv-progress-step.current span { background: var(--brand); color: #fff; }
+.rdv-progress-step.done { color: var(--c-text-2); }
+.rdv-progress-step.done span { background: var(--c-text-2); color: var(--c-surface); }
 
-.rdv-duration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
-.rdv-duration-btn { background: var(--c-surface); border: 2px solid var(--c-border); border-radius: 8px; padding: 12px 8px; cursor: pointer; font-weight: 600; color: var(--c-text-2); }
-.rdv-duration-btn:hover { border-color: var(--brand); }
-.rdv-duration-btn.selected { border-color: var(--brand); background: var(--brand-bg); color: var(--brand); }
+.rdv-back { background: none; border: none; color: var(--c-muted); font-size: 13px; cursor: pointer; padding: 0; margin-bottom: 10px; }
+.rdv-back:hover { color: var(--brand); }
+.rdv-h2 { font-size: 20px; font-weight: 800; color: var(--c-text); margin: 0 0 18px; }
+.rdv-hint { font-size: 13px; color: var(--c-muted); margin: -8px 0 16px; }
+.rdv-loading, .rdv-empty { text-align: center; color: var(--c-muted); padding: 48px 12px; line-height: 1.7; font-size: 15px; }
+.rdv-empty b { color: var(--c-text); }
+.rdv-error { background: var(--c-tint-red, #FEF2F2); color: #B91C1C; border-radius: 10px; padding: 10px 14px; font-size: 13px; margin-bottom: 14px; }
 
-.rdv-day-scroller { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; margin-bottom: 16px; }
-.rdv-day-chip { flex: 0 0 auto; background: var(--c-surface); border: 2px solid var(--c-border); border-radius: 20px; padding: 8px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--c-text-2); white-space: nowrap; }
-.rdv-day-chip:hover { border-color: var(--brand); }
-.rdv-day-chip.selected { border-color: var(--brand); background: var(--brand); color: #fff; }
+.rdv-primary { margin-top: 20px; width: 100%; background: var(--brand); color: #fff; border: none; border-radius: 12px; padding: 14px 18px;
+  font-size: 15px; font-weight: 700; cursor: pointer; transition: filter .15s; }
+.rdv-primary:hover { filter: brightness(1.08); }
+.rdv-primary:disabled { opacity: .6; cursor: default; }
 
-.rdv-slot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 8px; }
-.rdv-slot-btn { background: var(--c-surface); border: 2px solid var(--c-border); border-radius: 6px; padding: 10px 6px; cursor: pointer; font-weight: 600; color: var(--c-text-2); font-size: 14px; }
-.rdv-slot-btn:hover { border-color: var(--brand); background: var(--brand-bg); color: var(--brand); }
+/* Techniciens */
+.rdv-tech-list { display: flex; flex-direction: column; gap: 10px; max-width: 460px; }
+.rdv-tech { display: flex; align-items: center; gap: 14px; text-align: left; background: var(--c-surface); border: 1.5px solid var(--c-border);
+  border-radius: 14px; padding: 14px 16px; cursor: pointer; transition: border-color .15s, box-shadow .15s; color: var(--c-text); }
+.rdv-tech:hover { border-color: var(--brand); box-shadow: 0 4px 14px rgba(10, 25, 41, .07); }
+.rdv-avatar { flex: 0 0 44px; height: 44px; border-radius: 50%; background: var(--brand-bg); color: var(--brand); font-weight: 800; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; letter-spacing: .5px; }
+.rdv-avatar.any { background: var(--brand); color: #fff; font-size: 13px; }
+.rdv-tech.selected { border-color: var(--brand); background: var(--brand-bg); }
+.rdv-tech-name { display: block; font-weight: 700; font-size: 15px; }
+.rdv-tech-sub { display: block; font-size: 12px; color: var(--c-muted); margin-top: 2px; }
 
-.rdv-form-step .rdv-recap { background: var(--brand-bg); border: 1px solid var(--brand-border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; font-weight: 600; color: var(--brand); text-align: center; }
-.rdv-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; }
+/* Calendrier + heures */
+.rdv-slot-layout { display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 28px; align-items: start; }
+@media (max-width: 680px) { .rdv-slot-layout { grid-template-columns: 1fr; gap: 18px; } }
+.rdv-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.rdv-cal-month { font-weight: 700; font-size: 15px; color: var(--c-text); text-transform: capitalize; }
+.rdv-cal-nav { width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--c-border); background: var(--c-surface); color: var(--c-text);
+  font-size: 18px; cursor: pointer; line-height: 1; }
+.rdv-cal-nav:disabled { opacity: .3; cursor: default; }
+.rdv-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.rdv-cal-dow { text-align: center; font-size: 11px; font-weight: 700; color: var(--c-faint); padding: 6px 0; }
+.rdv-cal-day { aspect-ratio: 1; border: none; border-radius: 50%; background: none; color: var(--c-faint); font-size: 14px; cursor: default; }
+.rdv-cal-day.free { background: var(--brand-bg); color: var(--brand); font-weight: 700; cursor: pointer; }
+.rdv-cal-day.free:hover { filter: brightness(.96); }
+.rdv-cal-day.selected { background: var(--brand); color: #fff; }
+.rdv-times-day { font-weight: 700; font-size: 14px; color: var(--c-text); margin-bottom: 10px; }
+.rdv-times-label { font-size: 11px; font-weight: 700; color: var(--c-faint); text-transform: uppercase; letter-spacing: .6px; margin: 12px 0 6px; }
+.rdv-time-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.rdv-time { border: 1.5px solid transparent; color: var(--brand); background: var(--brand-bg); border-radius: 10px; padding: 10px 6px;
+  font-weight: 700; font-size: 14px; cursor: pointer; transition: background .15s, color .15s; }
+.rdv-time:hover { background: var(--brand); color: #fff; }
+.rdv-time.selected { background: var(--brand); color: #fff; box-shadow: 0 0 0 3px var(--brand-border); }
+
+/* Type de service */
+.rdv-type-list { display: flex; flex-direction: column; gap: 10px; }
+.rdv-type { text-align: left; background: var(--c-surface); border: 1.5px solid var(--c-border); border-radius: 14px; padding: 16px 18px; cursor: pointer;
+  color: var(--c-text); transition: border-color .15s; }
+.rdv-type:hover:not(:disabled) { border-color: var(--brand); }
+.rdv-type.selected { border-color: var(--brand); background: var(--brand-bg); }
+.rdv-type:disabled { opacity: .5; cursor: default; }
+.rdv-type-name { display: block; font-weight: 700; font-size: 15px; }
+.rdv-type-desc { display: block; font-size: 13px; color: var(--c-muted); margin-top: 3px; }
+
+/* Coordonnees */
+.rdv-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
 @media (max-width: 560px) { .rdv-form-grid { grid-template-columns: 1fr; } }
-.rdv-error { background: var(--c-tint-red); color: #DC2626; border: 1px solid #FECACA; border-radius: 6px; padding: 10px; font-size: 13px; margin-bottom: 12px; }
-.rdv-submit-btn { display: block; width: 100%; padding: 14px; background: var(--brand); color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 8px; }
-.rdv-submit-btn:hover:not(:disabled) { background: var(--brand-hover); }
-.rdv-submit-btn:disabled { opacity: .6; cursor: not-allowed; }
+.rdv-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.rdv-form-grid .rdv-field { margin-bottom: 0; }
+.rdv-field span { font-size: 12px; font-weight: 700; color: var(--c-text-2); }
+.rdv-field input, .rdv-field textarea { border: 1.5px solid var(--c-border-strong); border-radius: 10px; padding: 11px 12px; font-size: 15px;
+  font-family: inherit; background: var(--c-surface); color: var(--c-text); outline: none; box-sizing: border-box; width: 100%; }
+.rdv-field input:focus, .rdv-field textarea:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-bg); }
+.rdv-form-grid + .rdv-field { margin-top: 12px; }
 
-.rdv-confirm { text-align: center; max-width: 480px; margin: 48px auto; }
-.rdv-confirm-icon { width: 64px; height: 64px; background: var(--c-tint-green); color: #059669; border-radius: 50%; font-size: 32px; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
-.rdv-confirm h2 { font-size: 22px; font-weight: 700; margin-bottom: 12px; color: var(--c-text); }
-.rdv-confirm p { color: var(--c-text-2); font-size: 15px; line-height: 1.6; }
+.rdv-confirm { text-align: center; padding: 30px 8px; }
+.rdv-confirm p { font-size: 15px; color: var(--c-text-2); line-height: 1.6; }
+
+/* TASK-026.13 : Urgence (rouge, contour bleu Simple IP), Annuler, plusieurs plages, techniciens libres pour la plage */
+.rdv-urgent { margin-top: 18px; width: 100%; max-width: 460px; background: #DC2626; color: #fff; border: 3px solid var(--brand);
+  border-radius: 14px; padding: 14px 18px; cursor: pointer; text-align: center; transition: filter .15s; }
+.rdv-urgent:hover { filter: brightness(1.08); }
+.rdv-urgent-name { display: block; font-weight: 800; font-size: 17px; letter-spacing: .3px; }
+.rdv-nav { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.rdv-nav .rdv-back { margin-bottom: 0; }
+.rdv-cancel { background: none; border: 1px solid var(--c-border-strong); color: var(--c-text-2); font-size: 13px; font-weight: 600;
+  border-radius: 999px; padding: 5px 14px; cursor: pointer; }
+.rdv-cancel:hover { border-color: #DC2626; color: #DC2626; }
+.rdv-secondary { background: var(--c-surface); color: var(--c-text-2); border: 1.5px solid var(--c-border-strong); border-radius: 12px;
+  padding: 14px 18px; font-size: 15px; font-weight: 700; cursor: pointer; }
+.rdv-secondary:hover { border-color: var(--c-text-2); }
+.rdv-actions { display: flex; gap: 12px; margin-top: 20px; }
+.rdv-actions .rdv-primary { margin-top: 0; flex: 1; }
+.rdv-h3 { font-size: 16px; font-weight: 800; color: var(--c-text); margin: 26px 0 12px; }
+.rdv-h3 + .rdv-hint { margin-top: -6px; }
+.rdv-field-desc { margin-top: 18px; }
+.rdv-facts dd.rdv-facts-urgent { color: #FCA5A5; }
+.rdv-range-techs { margin-top: 24px; padding-top: 18px; border-top: 1px solid rgba(255, 255, 255, .15); display: flex; flex-direction: column; gap: 8px; }
+.rdv-range-label { font-size: 11px; font-weight: 700; color: rgba(255, 255, 255, .6); text-transform: uppercase; letter-spacing: .6px; }
+.rdv-range-hint { font-size: 13px; color: rgba(255, 255, 255, .7); line-height: 1.5; }
+.rdv-range-tech { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: rgba(255, 255, 255, .08);
+  border: 1.5px solid rgba(255, 255, 255, .18); border-radius: 12px; padding: 8px 12px; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer; }
+.rdv-range-tech:hover { border-color: rgba(255, 255, 255, .5); }
+.rdv-range-tech.selected { background: #fff; color: #0B2A55; border-color: #fff; }
+.rdv-range-tech .rdv-avatar { flex-basis: 32px; height: 32px; font-size: 12px; }
+@media (max-width: 820px) { .rdv-range-techs { min-height: 110px; align-content: start; } }
+
+.rdv-modal-overlay { position: fixed; inset: 0; background: rgba(10, 25, 41, .55); display: flex; align-items: center; justify-content: center;
+  padding: 16px; z-index: 1000; }
+.rdv-modal { background: var(--c-surface); border-radius: 18px; border-top: 6px solid #DC2626; max-width: 460px; width: 100%;
+  padding: 26px 26px 22px; box-shadow: 0 20px 60px rgba(0, 0, 0, .3); box-sizing: border-box; }
+.rdv-modal-title { margin: 0 0 12px; font-size: 22px; font-weight: 800; color: #DC2626; }
+.rdv-modal p { margin: 0 0 10px; font-size: 15px; line-height: 1.55; color: var(--c-text); }
+.rdv-modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+.rdv-urgent-yes { background: #DC2626; color: #fff; border: none; border-radius: 12px; padding: 14px 18px; font-size: 15px; font-weight: 700; cursor: pointer; }
+.rdv-nowrap { white-space: nowrap; }
+.rdv-urgent-notice { background: #FEF2F2; color: #991B1B; border: 1.5px solid #FCA5A5; border-left: 5px solid #DC2626; border-radius: 10px;
+  padding: 12px 14px; font-size: 14px; line-height: 1.5; margin-bottom: 16px; }
+@media (max-width: 820px) { .rdv-facts { min-height: 150px; align-content: start; } }
+.rdv-client { font-size: 13px !important; font-weight: 500 !important; color: var(--c-muted) !important; }
+.rdv-client.known { color: #047857 !important; }
+.rdv-recognized { font-style: normal; margin-left: 8px; background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; border-radius: 999px;
+  padding: 1px 8px; font-size: 11px; font-weight: 700; }

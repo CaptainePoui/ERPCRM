@@ -310,6 +310,37 @@ Reste à faire : rien.
 - Preuve : API — contacts (tâche, conversation Zéko, 2 compagnies dont une commune réunies ; courriel choisi « autre », ancien courriel et ancien nom en anciennes coordonnées ; l'autre fiche 404) ; compagnies (tâche, conversation, contact lié, site web complété, ancienne fiche 404, journal) ; navigateur 1920 — fusion d'un contact de bout en bout, aperçu d'une compagnie avec blocage téléphonie (AAA Compagnie test, non fusionnée) ; aucun bouton qui déborde, pas de défilement horizontal.
 - Données de test : contacts et tâche supprimés ; les compagnies de test ont pris les numéros de compte t1101 et t1102 (t1102 fusionnée, n'existe plus) ; « ZZ Test Fusion Alpha » (t1101) reste, désactivée (une compagnie ne se supprime pas).
 
+### TASK-003.5 [x] Contact : courriel supplémentaire, onglet Téléphonie, fonctions modifiables (2026-10-27)
+Date de demande : 2026-10-27 (deux demandes dictées le même jour)
+Date(s) de travail : 2026-10-27
+Demandes de Philippe (dictées, 2 messages) :
+1. Carte contact (onglet Contacts de la compagnie, `CompanyDetail.jsx`) : retirer le
+   "✉ Ajouter courriel" affiché quand le contact n'a pas de courriel.
+2. Fiche contact, onglet Général : juste sous le courriel, un lien "+ Ajouter un
+   courriel" (PAS d'onglet, PAS de types de courriel -- refusé : il préfère des
+   contacts séparés, ex. contact "Virement Interac" fonction comptes payables).
+   Stockage : champ existant `contacts.email_other` (déjà en base, déjà utilisé par
+   mail_match/duplicates/merge et rempli par companies.py billing_email, mais jamais
+   affiché dans la fiche).
+3. Onglet "CDR" renommé "Téléphonie" ; y déplacer depuis Général : Voix,
+   Conversations enregistrées, Synchronisation SIPV (section Téléphonie) + CDR.
+4. Section Compagnies de l'onglet Général : les fonctions (ex. "comptes payables"
+   chez Nanotech) doivent être modifiables là (affichées en texte seulement avant).
+   API existante : PATCH /v1/companies/{company_id}/contacts/{contact_id} function_ids,
+   liste GET /v1/ref/functions.
+Refusé : courriels typés (professionnel/personnel/facturation/ticket).
+Bug trouvé et corrigé en cours de route : `ContactCompanyUpdate.function_ids` valait
+`[]` par défaut -> le PATCH envoyé par la carte contact (CompanyDetail saveEmail) et
+TicketDetail (courriel seul) EFFAÇAIT toutes les fonctions du contact. Maintenant
+`None` = fonctions inchangées. Données déjà perdues : non vérifiable (pas journalisé),
+aucune correction manuelle en base.
+Fichiers : `frontend/src/pages/ContactDetail.jsx` (onglet Téléphonie, courriel
+supplémentaire, composant ContactFunctionsEditor), `frontend/src/pages/CompanyDetail.jsx`
+(carte contact), `backend/app/schemas/contact.py`. Aucune migration.
+Build + erpcrm-frontend redémarré ; erpcrm-backend + erpcrm-backend-tls redémarrés.
+Vérifié : build servi contient les changements, schéma (courriel seul -> function_ids
+None). Pas testé connecté dans le navigateur (pas d'identifiants côté Claude).
+
 ## TASK-004 [ERPCRM] [x] Catalogue — items, types, linked_to_hourly_rate
 Classification: CURRENT
 
@@ -3396,6 +3427,102 @@ Non testé visuellement dans un vrai navigateur par Claude (pas d'outil de test 
 
 ---
 
+### TASK-026.6 [~] Zéko lit les courriels de changement de RDV et gère l'agenda (2026-10-27)
+Date de demande : 2026-10-27
+Date(s) de travail : 2026-10-27
+Demande de Philippe (exemple réel : jeff.gagnon@mdi-innovations.com, 2026-10-27 08:02,
+"RE: Appel de service", arrive vers 9h45 au lieu de l'heure prévue) :
+1. Zéko lit un courriel client qui reporte/déplace un RDV et modifie le RDV dans
+   l'agenda (Google Calendar, déjà branché : lecture/création/modif/suppression).
+2. Si pas de disponibilité : Zéko écrit au client en se présentant ("Je suis Zéko, l'IA
+   de Simple IP, Philippe (ou l'employé responsable, futur multi-employés) ne semble pas
+   disponible...") et propose la prochaine plage de même durée que le RDV, avec 30 min
+   libres avant et après.
+3. + lien vers l'agenda pour choisir sa plage. Existant : page publique /rdv (TASK-026
+   [~]) -- crée toujours un NOUVEAU client, pas reliée au RDV à déplacer ; accès
+   externe bloqué (port forwarding / migration serveur prévue).
+Vérifié : table appointments vide (RDV saisis directement dans Google, sans lien
+compagnie/contact) -> retrouver le bon RDV d'un client est le point dur.
+GO 2026-10-27, mode "Zéko prépare, Philippe confirme en un clic". Fait :
+- À l'arrivée d'un courriel client classé -> zeko_rdv = pending ; `rdv_with_zeko` : RDV à
+  venir du client = tickets liés à un événement Google (TASK-026.8) ; Zéko dit lequel,
+  action (deplacer/retard/annuler), nouvelle date/heure ; proposition :
+  move (plage libre, même durée, 30 min avant/après, heures d'ouverture) ; retard -> début
+  décalé fin inchangée ; email (pas libre -> prochaine plage libre + texte signé Zéko +
+  lien {PUBLIC_BASE_URL}/rdv, {responsable} = employé assigné au ticket sinon celui qui
+  confirme) ; info (annulation, rien changé).
+- PUT /v1/mail/{id}/zeko-rdv (apply/dismiss) ; envoi = réponse dans le fil depuis la boîte
+  qui a reçu, copie classée. Encadré "🤖 Zéko a lu ce courriel" + 🤖 dans la liste.
+Reste : lien personnel de reprogrammation (/rdv crée un nouveau client) ; accès externe.
+Test 2026-10-27 (vrai Zéko gpt-oss:20b sur CPU, vraie dispo Google, RDV fictifs en mémoire,
+rien écrit dans l'agenda ni envoyé au client ; 4 résultats envoyés à philippe@ pour
+lecture, sujets "[Test Zéko RDV n/4]") : 1) vrai courriel de Jeff (arrive 9h45) -> retard,
+début 9h45 fin 10h00 inchangée (90 s) ; 2) déplacer à vendredi 30 13h30 -> hors heures
+(fermé après midi) -> courriel préparé, plage proposée lundi 2 nov 9h30 (157 s) ;
+3) mardi 3 nov 11h -> libre (vérifié dans Google) -> déplacement proposé (163 s) ;
+4) annulation -> info (150 s). Compréhension correcte dans les 4 cas.
+
+### TASK-026.7 [x] RDV : contacts filtrés par compagnie dans les deux ordres + "Créer un RDV" depuis un courriel (2026-10-27)
+Date de demande : 2026-10-27
+Date(s) de travail : 2026-10-27
+Demande de Philippe : lier le client à la création du RDV ; si la compagnie est mise
+après le contact, seulement les contacts de la compagnie ; bouton "Créer un RDV" en haut
+d'un courriel (contact, compagnie, contenu du courriel en description).
+Existant vérifié : GoogleEventModal (Tasks.jsx) avait déjà Compagnie/Contact (ticket
+créé et lié à l'événement Google) et filtrait les contacts SI la compagnie était choisie
+en premier. Manquait : compagnie choisie après -> contact d'une autre compagnie restait.
+Fait :
+- `pages/Tasks.jsx` : GoogleEventModal exporté ; prérempli `data.company/contact` ;
+  pickCompany (retire un contact hors compagnie), pickContact (remplit la compagnie s'il
+  n'en a qu'une) ; `data.onTicket(ticket_id)` après création.
+- `components/MailBrowser.jsx` : bouton "📅 Créer un RDV" (Reader) -> titre "RDV - sujet"
+  (RE:/TR: retirés), description = texte du courriel (8000 car.), aujourd'hui à l'heure
+  suivante, 1 h ; après création le courriel est lié au ticket du RDV (PUT /mail/{id}/link).
+Build + erpcrm-frontend redémarré. Pas testé connecté dans le navigateur.
+Non fait (à proposer) : lier un client à un RDV déjà existant dans Google (mode édition).
+
+### TASK-026.8 [x] Lier un client à un RDV déjà dans Google + fix "Ticket lié" introuvable (2026-10-27)
+Date de demande : 2026-10-27
+Date(s) de travail : 2026-10-27
+GO de Philippe. RDV écrit directement dans Google -> "Modifier un événement" montre
+Compagnie/Contact + "Lier au client" (POST /v1/google-calendar/events/link, crée le ticket
+lié comme une création). Bug corrigé : les RDV créés ici sont enregistrés avec
+calendar_id "primary" mais Google les relit sous "agenda@simpleip.tel" -> le "Ticket lié"
+(GET .../ticket) et la synchro titre/description (PUT /events) ne les trouvaient jamais ;
+les deux ids sont acceptés (`_event_ticket_where`). Fichiers : google_oauth.py, Tasks.jsx.
+
+### TASK-026.9 [x] Réponses de Zéko aux clients : interrupteur Allumé/Éteint + refus par contact (lien de désinscription)
+Date de demande : 2026-10-27 (Philippe : « la réponse de Zéko au client, mets un bouton allumer comme les frais de retard […] un check box discret dans les contacts […] un lien de désactivation (personnel au contact) "vous ne voulez plus que Zéko, l'IA de Simple IP vous réponde, cliquez ce lien" »)
+Date(s) de travail : 2026-10-27
+- Réglage `zeko_client_replies_enabled` (éteint au départ), Administration → Zéko → Réglages, comme les frais de retard.
+- `contacts.zeko_replies_off` : case discrète dans la fiche contact ; décochée par le client via le lien personnel ajouté au bas de chaque courriel de Zéko (lien signé, sans connexion), noté au journal du contact.
+- Éteint, refusé, ou courriel sans contact : Zéko n'écrit pas au client, il montre seulement la prochaine plage libre à Philippe.
+- Fait : setting dans settings.py (GET/PUT /v1/settings) ; `contacts.zeko_replies_off` (migration d5e2a7c9f1b8), ContactOut/ContactUpdate (journal via PUT) ; `zeko_mail.replies_blocked/optout_url/optout_ok` (HMAC SECRET_KEY) ; proposition `suggest` quand bloqué ; revérifié à l'envoi (409) ; pied de courriel non modifiable avec le lien ; route publique `endpoints/zeko_public.py` -> GET /api/v1/public/zeko/optout/{contact}/{sig} (page « C'est noté », journal du contact). Front : `ZekoClientRepliesSection` (Admin.jsx, onglet Zéko → Réglages, demande de Philippe), case « Zéko peut répondre à ce contact » (ContactDetail.jsx, sous Coordonnées), cas `suggest` dans MailBrowser.
+- Vérifié : route publique en ligne (aussi par portail.simpleip.tel) ; lien falsifié refusé ; lien valide -> case décochée (transaction annulée, base vérifiée intacte) ; les 3 raisons de blocage ; réglage actuel : éteint. Pas testé connecté dans le navigateur.
+
+### TASK-026.10 [x] Onglet Agenda dans Configuration générale : toutes les options d'agenda réglables
+Date de demande : 2026-10-27 (Philippe : « prochaine plage libre (même durée, 30 min avant et après) ça c'est des settings pour portail.simpleip.tel/admin?tab=configuration, un nouvel onglet Agenda (mets les options d'agenda là) »)
+Date(s) de travail : 2026-10-27
+- Avant : tout codé en dur (`core/business_hours.py` : heures d'ouverture, 1re heure de RDV 9h30, pas de 30 min ; `appointments.py` : durées appel/RDV, délais +1 h / lendemain, horizon 45 jours ; `zeko_mail.py` : marge 30 min, même durée).
+- Plan : `core/agenda_config.py` (un réglage JSON `agenda_config`, valeurs par défaut = valeurs actuelles, relu au plus toutes les 20 s dans chaque service) ; ces modules lisent le réglage ; `GET/PUT /v1/settings/agenda` ; sous-onglet « Agenda » (Administration → Configuration générale). Fériés du Québec : inchangés (affichés seulement).
+- Fait : `core/agenda_config.py` (DEFAULTS, load/current/validate/save) ; `business_hours.py` (hours_map, rdv_earliest_start, slot_minutes) ; `appointments.py` (durées, délais, horizon) ; `zeko_mail.py` (marge avant/après séparées, durée proposée = même durée ou fixe) ; `GET/PUT /v1/settings/agenda` ; `AgendaSettingsPanel` (Admin.jsx, Configuration générale → Agenda : heures par jour, plages, durées, Zéko, « Valeurs d'origine »).
+- Vérifié : réglage en base = défauts ; jeudi 7h30-16h30, vendredi 7h30-12h, samedi et Noël fermés ; plages RDV 60 min jeudi 9h30→15h30 (13) ; /rdv/config et /rdv/availability identiques à avant ; 5 valeurs absurdes refusées. Pas testé connecté dans le navigateur.
+
+### TASK-026.11 [x] Page publique de prise de RDV : choix du technicien, disponibilités seulement, marges par employé
+Date de demande : 2026-10-27 (Philippe : « une page que le client va pouvoir consulter avec le choix du tech et leurs disponibilités, un petit module cute, guide-toi des modules de prise de RDV récents sur le net, tu me donneras le lien ; je ne veux pas que le client voie les RDV, juste les disponibilités avec les settings de 30 min avant et 30 min après ; ça c'est pour moi, les employés eux ça va être 0 min (mets l'option aussi au cas où je veux changer) »)
+Date(s) de travail : 2026-10-27
+- Marge avant/après par employé (Philippe 30/30, les autres 0 par défaut, modifiable).
+- GO 2026-10-27 + « relie le client existant par son courriel » (remplace le choix TASK-026 « toujours un nouveau client »).
+- Plan : employé -> réservable en ligne, nom affiché, marges, agendas Google qui le rendent occupé (Employés → 📅 Agenda) ;
+  occupé d'un tech = événements de ses agendas + événements dont le ticket lui est assigné ; page /rdv refaite (type/durée,
+  choix du tech ou « Premier disponible », calendrier du mois, heures libres seulement, formulaire, confirmation) ;
+  réservation : client reconnu par courriel (mail_match.by_address), ticket assigné au tech ; Zéko : marges du tech
+  assigné au RDV (celles de l'onglet Agenda = par défaut, RDV sans tech).
+- Révision même jour (Philippe : « je ne veux pas tes petits bonshommes et icônes […] le choix de tech, mets-en 3 de plus que moi (noms crédibles fictifs, 2 hommes une femme) mais jamais disponibles […] pas de disponibilité avant (2,7 mois plus tard) […] c'est après avoir choisi la plage qu'il demande appel, RDV ou assistance à distance, RDV à la fin ») : aucune icône ; ordre technicien → date et heure → type (appel, assistance à distance [nouveau type `distance`, règles comme un appel], RDV sur place en dernier, grisé si l'heure ne le permet pas) → coordonnées ; plages calculées sur `online_slot_minutes` (60) ; techniciens affichés jamais disponibles `demo_techs` (Marc-André Lavoie, Julien Côté, Sophie Bélanger) : « Aucune disponibilité avant le » aujourd'hui + `demo_months` (2,7), reporté au prochain jour ouvrable ; réservation refusée (409). Réglables dans Configuration générale → Agenda.
+- Fait : `employees` booking_enabled/booking_name/buffer_before/buffer_after/busy_calendars (migration e7a4b2c8d3f9) ; `GET /v1/employees/calendars`, `GET/PUT /v1/employees/{id}/booking` ; `core/booking.py` (freebusy des agendas du tech + RDV qui lui sont assignés, marge, cache 60 s) ; `/v1/rdv/techs`, `/v1/rdv/availability?tech=`, `/v1/rdv/book` (tech_id, client reconnu par courriel via mail_match.by_address, ticket assigné, titre « avec … ») ; Zéko : agendas et marge du tech assigné ; Employés → 📅 Agenda (AgendaModal) ; `pages/RDV.jsx` + `RDV.css` refaits.
+- Fiche de Philippe réglée à sa demande : réservable, 30/30, agendas agenda@simpleip.tel + agenda perso.
+- Vérifié : marges (jeudi 29 occupé 15h30 -> dernière plage 14h ; mardi 3 RDV 8h-9h -> première 9h30 ; aujourd'hui Joliette fin 14h30 -> 15h) ; technicien fictif -> [] et réservation 409 ; client : courriel de Jeff en majuscules -> MDI innovations + sa fiche, 0 compagnie créée ; courriel inconnu -> nouvelle compagnie (transaction annulée, base intacte) ; parcours complet dans Chromium 1440×900 et 390×844 sans erreur JS ni défilement de côté ; lien public https://portail.simpleip.tel/rdv = 200. Pas fait : vraie réservation de bout en bout (créerait un vrai ticket, un événement Google et un courriel).
+
 ## TASK-027 [ERPCRM] [ ] Architecture 3 couches SIPV/ERPCRM — backlog validé, rien construit côté ERPCRM
 Classification: CURRENT
 
@@ -3416,6 +3543,66 @@ Impact ERPCRM le plus concret si/quand on y revient :
   dans le même sens que le "+ Ajouter une option" décrit dans cette
   architecture — déjà aligné, juste à enrichir progressivement.
   Démarré : voir TASK-023.28.
+
+### TASK-026.12 [x] Page /rdv : logo Simple IP bien en évidence, visuel plus soigné
+Date de demande : 2026-10-27 (Philippe : « avant de commit tout ça et push tout ça, je veux avoir mon logo bien en évidence pour la prise de RDV... est-ce que c'est le meilleur visuel que tu pouvais faire, il est pas super »)
+Date(s) de travail : 2026-10-27 (GO)
+- Logo réel : backend/storage/branding/invoice_logo.png (câble réseau « SIP », 200x138), servi sans connexion par GET /api/v1/rdv/logo (même fichier que les factures, une seule copie ; 404 si absent, la page cache alors la tuile).
+- Bandeau bleu en haut de page : logo en grand (96 px, 64 px sur cellulaire) sur tuile blanche, « Simple IP » et « Prise de rendez-vous en ligne ».
+- Résumé de gauche en bleu foncé, texte blanc, ligne « Confirmation envoyée par courriel » ; boutons d'heure pâles (bleu plein au survol) ; police héritée sur les boutons.
+- Vérifié : Playwright 1440x900 et 390x844, aucune erreur JS, aucun défilement horizontal ; https://portail.simpleip.tel/api/v1/rdv/logo = 200 image/png.
+- Commit/push de la session : sur demande.
+
+### TASK-026.13 [x] Page /rdv, refonte du parcours : techniciens à la verticale, plages de 30 min à sélection multiple, marges sur les heures d'ouverture et le dîner, urgence, coordonnées sur la même page, bouton Annuler
+Date de demande : 2026-10-27 (Philippe : « je veux les avoir tous à la verticale avec moi en 2e... j'ai essayé le premier, je ne suis pas supposé avoir le 7h30 vu que le setting de 30 min avant 30 min après est setté, ça doit donner de 8h à 11h (11h30 à la limite, 30 min avant mon midi) et de 13h30 à 15h30... une fois choisi la plage horaire, je veux pouvoir en choisir plus, admettons je choisis 9h30, 10h00, 10h30 ; si je veux en enlever un, je reclique dessus ; et quand je sélectionne 1 h, je veux avoir en bas du calendrier les techniciens disponibles pour cette plage... page 3 "Comment voulez-vous être servi" ça a pas d'allure, il faudrait que ce soit "Écrivez-nous une brève description" avec les 3 choix appel téléphonique, assistance à distance, rendez-vous sur place ; j'aimerais avoir un bouton urgence, un pop-up : attention, une urgence dont Simple IP n'est pas responsable, c'est 300 $ de l'heure, 2 h minimum, voulez-vous continuer oui ou non ; les coordonnées avec la page 3 (type de RDV, court résumé, identifiants) ; si un client prend RDV à partir de son portail, les coordonnées sont remplies » ; puis : « n'oublie pas de mettre un bouton Annuler, on ne peut pas annuler ni revenir en arrière sauf fermer »)
+Date(s) de travail : 2026-10-27 (GO : « oui 12h à 13h, urgence marqué urgent sur le ticket, GO... les 3 choix avant la brève description, juste au-dessus ; appel d'urgence juste en dessous de la première page "avec qui", un bouton rouge avec un contour bleu Simple IP »)
+- Constat vérifié (API réelle) : la marge 30/30 ne s'appliquait qu'autour des événements de l'agenda, pas aux heures d'ouverture ; aucun dîner défini -> 7h30 et 12h00 offerts.
+- Dîner réglable par jour (Configuration générale -> Agenda), défaut lundi-jeudi 12h00-13h00, vendredi aucun (fermé à midi) ; validé dans les heures d'ouverture du jour.
+- appointments.closed_blocks : avant l'ouverture, le dîner et après la fermeture = occupés, élargis de la marge du technicien ; utilisé par _day_slots (page /rdv) ET par Zéko (next_free, is_free ; marge du technicien sinon celle de Zéko).
+- /rdv : techniciens à la verticale (Premier disponible, Philippe, puis les fictifs) ; bouton rouge « Urgence » contour bleu sous la liste -> popup (Oui/Non seulement) « Une urgence pour un problème dont Simple IP n'est pas responsable est facturée 300 $ de l'heure, 2 heures minimum. Voulez-vous continuer ? » -> Oui = premier disponible, ticket priorité « urgent », titre « URGENCE — … », mention de l'acceptation dans la description.
+- Plages de 30 min (pas des plages de l'onglet Agenda), plusieurs qui se suivent ; recliquer pour enlever (au milieu : garde ce qui est avant). GET /api/v1/rdv/availability?appointment_type=plage, GET /api/v1/rdv/availability/techs (techniciens libres pour toute la plage, sous le calendrier ; Continuer bloqué si aucun).
+- Étape 3 « Votre demande » : 3 types (grisés avec la raison si la durée ou l'heure ne convient pas), « Écrivez-nous une brève description », coordonnées, Annuler + Confirmer. 4 étapes -> 3.
+- Bouton Annuler (efface tout, retour au début) à côté de « ← Retour » et au bas de l'étape 3.
+- Portail : GET /api/v1/portal/rdv-prefill (jeton portail) -> coordonnées remplies sur /rdv (le lien « Prendre rendez-vous » du portail existait déjà).
+- « Durée d'une plage réservée » (online_slot_minutes) retirée de l'écran Agenda : la page n'en dépend plus (la valeur reste stockée, sans effet).
+- Vérifié : API réelle (Philippe 30/30) = 8h00-11h00 et 13h30-15h30, vendredi 8h00-11h00 ; Zéko is_free 4 nov : 7h30 non, 8h00 oui, 11h30 non, 12h30 non, 13h30 oui. Playwright 1440x900 et 390x844 : ordre des techniciens, popup qui ne se ferme pas au clic à côté, Non/Oui, Annuler, 9h30+10h00+10h30 = 1 h 30 puis reclic = 1 h, techniciens libres affichés, aucune erreur JS ni défilement horizontal ; pré-remplissage portail testé (transaction annulée + réponse simulée, aucun compte portail en base). Aucune vraie réservation faite.
+
+### TASK-026.14 [x] Page /rdv : message après l'urgence acceptée, Sophie juste sous Philippe
+Date de demande : 2026-10-27 (Philippe : « après urgence oui accepté, je vais brancher mes textos, j'aimerais que tu dises aux clients qu'un texto va être envoyé au technicien de garde ; vous pouvez nous rejoindre en tout temps au 514-282-2009 avec l'option d'urgence 8 suivi du 2 » ; puis « mets Sophie juste sous moi pour les choix de tech »)
+Date(s) de travail : 2026-10-27
+- Réglage « urgent_notice » (Configuration générale -> Agenda, « Message au client qui accepte l'urgence »), défaut : « Un texto va être envoyé au technicien de garde. Vous pouvez nous joindre en tout temps au 514-282-2009, option d'urgence 8, suivie du 2. » -- pas codé en dur (logiciel destiné à être vendu). Exposé par GET /api/v1/rdv/config.
+- /rdv : encadré rouge « Urgence acceptée. … » dès le Oui, sur les étapes 2 et 3 et la confirmation ; disparaît avec Annuler.
+- L'envoi du texto lui-même n'est PAS fait (Philippe va brancher ses textos) : seul le message au client existe.
+- Ordre par défaut des techniciens fictifs : Sophie Bélanger, Marc-André Lavoie, Julien Côté (aucun réglage agenda enregistré en base : les défauts s'appliquent).
+- Vérifié : API /rdv/techs = Philippe, Sophie, Marc-André, Julien ; Playwright desktop + mobile : message absent avant Oui, présent après et à l'étape 3, retiré par Annuler, aucune erreur JS.
+
+### TASK-026.15 [x] Page /rdv : la boîte ne grandit plus quand on choisit une plage
+Date de demande : 2026-10-27 (Philippe : « quand le technicien apparaît avec le bouton Continuer, la boîte grandit, je n'aime pas ça »)
+Date(s) de travail : 2026-10-27
+- Zone « Techniciens disponibles » toujours affichée sous le calendrier, hauteur fixe 132 px (défile s'il y a beaucoup de techniciens), « Choisissez une ou plusieurs plages. » tant que rien n'est choisi ; bouton Continuer toujours là, grisé sans plage.
+- Cellulaire : le résumé du haut garde sa place (min-height 150 px) pour les lignes Date et Durée.
+- Vérifié (Playwright, hauteur de la boîte sans plage / 1 / 2 / retirées) : ordinateur 747/747/747/747, cellulaire 1476/1476/1476/1476 ; aucune erreur JS.
+- Révision le même jour (Philippe : « à moins... les techniciens disponibles apparaissent à gauche dans le Prendre RDV, il y a un bel espace sous les infos qui se construisent avec les choix, et le Continuer pourrait apparaître à droite de la boîte des dates et heures ») : zone « Techniciens disponibles » déplacée dans le résumé de gauche, sous Technicien/Date/Durée (cliquer un technicien le choisit, il s'affiche au résumé) ; Continuer reste à droite sous les heures ; plus rien sous le calendrier.
+- Revérifié : ordinateur 744/744/744/744, cellulaire 1460/1460/1460/1460 ; aucune erreur JS.
+
+### TASK-026.16 [x] Page /rdv étape 3 : Courriel puis Compagnie en premier, indication « Client existant » / « Nouveau client » selon le courriel
+Date de demande : 2026-10-27 (Philippe : « pour la compagnie à l'étape 3, est-ce qu'après un espace (un mot) on peut lui dire compagnie existante si elle est dans le ERPCRM ou nouvelle compagnie si elle n'est pas là... la compagnie doit être en haut du prénom »)
+Date(s) de travail : 2026-10-27
+- Fait : champ Compagnie déplacé au-dessus de Prénom (pleine largeur).
+- Question posée (page publique : par le nom, n'importe qui pourrait vérifier qui est client de Simple IP ; et le RDV est relié par le courriel, pas par le nom). Réponse : « ok par le courriel, GO et mets-le en haut de l'entreprise ».
+- Ordre : Courriel, Compagnie, puis Prénom/Nom, Téléphone/Cellulaire.
+- GET /api/v1/rdv/client?email= -> {known, company_name} ; même recherche que la réservation (_lookup_client, extrait de _find_or_create_client). Sous le courriel (600 ms après la frappe, courriel complet seulement) : « Client existant : <compagnie> — le rendez-vous sera ajouté à votre dossier. » (et le champ Compagnie prend ce nom) ou « Nouveau client : un dossier sera créé. »
+- Nom, prénom et téléphone NON pré-remplis depuis le courriel (page publique : donnerait ces informations à quiconque connaît un courriel) ; pré-remplis seulement par le portail (TASK-026.13).
+- Vérifié : API (courriel de Jeff en majuscules -> MDI innovations Inc. ; inconnu -> known false ; « pasuncourriel » -> 422) ; Playwright : ordre des champs, deux messages, compagnie remplie, rien pour un courriel incomplet, aucune erreur JS.
+
+### TASK-026.17 [x] Page /rdv : contact reconnu par son courriel -> « Reconnu » à côté de Prénom et Nom
+Date de demande : 2026-10-27 (Philippe : « on va juste mettre Client existant : MDI innovations Inc. — le rendez-vous sera ajouté à votre dossier, le champ Compagnie prend ce nom tout seul, et les prénom on va juste mettre "reconnu", nom de famille aussi, comme ça ça donne pas d'info et ça va sécuriser le client » ; puis « à côté de leur titre de field »)
+Date(s) de travail : 2026-10-27
+- GET /api/v1/rdv/client renvoie aussi contact_known. Contact connu : pastille verte « Reconnu » à côté des titres Prénom et Nom, champs vides et grisés ; la page envoie prénom/nom vides.
+- Réservation : ticket, événement Google et courriel de confirmation prennent les vrais noms de la fiche du contact (plus ceux tapés). Courriel inconnu sans prénom/nom -> 400 « Prénom et nom requis » (rien créé).
+- Compagnie connue mais aucun contact (courriel d'une compagnie) : prénom et nom restent à remplir.
+- Révision le même jour (Philippe : « par contre, une fois reconnu, tu effaces et me barres le champ de prénom et nom (le reconnu est super) ») : champs Prénom/Nom plus jamais vidés ni grisés, ce qui est tapé reste et reste modifiable ; facultatifs pour un contact reconnu (la réservation prend toujours les noms de sa fiche). Revérifié : « Jeff »/« Gagnon » gardés, 2 pastilles, 0 champ bloqué, aucune erreur JS.
+- Vérifié : API (Jeff -> contact_known true) ; Playwright : 2 pastilles, 2 champs grisés vides, envoi intercepté (rien réservé) avec prénom/nom vides ; /book avec courriel inconnu sans nom -> 400, aucun contact ni compagnie créé ; aucune erreur JS.
 
 ### TASK-027.1 [x] Global/Tenant/Model Templates — CRUD + UI (item 1, GO "on construit cette écran")
 Pendant ERPCRM de TASK-S044 (TASKSIPV.md) -- voir cette entrée pour la
@@ -4877,6 +5064,27 @@ ne jamais remettre `onClick={onClose}` sur un `modal-overlay`, voir mémoire
 persistante `feedback_no_close_on_outside_click`.
 
 ---
+
+### TASK-036.1 [x] Popups dynamiques : la boîte s'adapte à la largeur de ses champs (2026-10-27)
+Date de demande : 2026-10-27 (demande répétée plusieurs fois avant, selon Philippe)
+Date(s) de travail : 2026-10-27
+
+Demande répétée de Philippe (plusieurs fois) : la boîte "Nouveau contact"
+(CompanyDetail -> QuickNewContact) est plus étroite que ses champs.
+Cause réelle vérifiée dans le CSS compilé (`dist/assets/index-*.css`) :
+`.modal-box { width: 360px }` (Catalogue.css) est émis APRÈS
+`.modal-wide { width: 520px }` (Invoices.css), même spécificité -> 360px
+gagne, `modal-wide` n'a jamais eu d'effet sur sa largeur. Prénom + Nom
+côte à côte débordent d'une boîte figée à 360px.
+Correctif à la source (règle globale `.modal-box`, 87 popups) : largeur
+`fit-content` avec minimum 360px et maximum écran, `.modal-box.modal-wide`
+en spécificité supérieure (minimum 520px). Les `maxWidth`/`width` inline
+déjà posés sur certains popups restent prioritaires.
+Fichier touché : `frontend/src/pages/Catalogue.css` (règle `.modal-box` +
+nouvelle règle `.modal-box.modal-wide`). `npm run build` + `erpcrm-frontend`
+redémarré (actif). Preuve (Chromium headless, CSS compilé, markup
+QuickNewContact) : avant boîte 360px, champ Nom dépasse (bord 654 > 580) ;
+après boîte 520px, champ Nom à l'intérieur (936 <= 936).
 
 ## TASK-037 [ERPCRM] [ ] Conférence -- backlog non prioritaire
 Classification: CURRENT
@@ -6564,6 +6772,98 @@ Date(s) de travail : 2026-10-09
 - Reste à prouver par un vrai usage : « Répondre » (marque « répondu » \Answered dans la boîte, fil In-Reply-To) — Philippe peut répondre au courriel « Test ERPCRM » depuis ERPCRM.
 
 ---
+
+### TASK-047.4 [x] Courriel sans compagnie : demander à l'associer, ou "me le rappeler plus tard" (2026-10-27)
+Date de demande : 2026-10-27
+Date(s) de travail : 2026-10-27
+Constat vérifié : un courriel classé sur un contact lié à plusieurs compagnies sans
+"Principal" reste sans compagnie (`mail_match._company_of_contact` retourne None) ->
+visible dans l'onglet Courriels du contact, dans aucune compagnie.
+Demande de Philippe :
+1. D'abord tenter de trouver la compagnie dans le contenu du courriel (le contact
+   parle sûrement de la compagnie concernée), parmi les compagnies de ce contact.
+2. Si non trouvé : à l'ouverture (lecture) du courriel, popup pour l'associer à une
+   compagnie (parmi celles du contact).
+3. Bouton "Me le rappeler plus tard" : le popup revient à la prochaine réponse dans
+   ce fil de courriel (pas à chaque ouverture).
+GO de Philippe 2026-10-27 ; "prochaine réponse" = prochain courriel du fil, reçu OU envoyé.
+Plan :
+- `mail_messages.company_ask_later` (bool, migration Alembic) : "Me le rappeler plus tard"
+  posé sur CE courriel seulement -> le prochain courriel du fil (nouveau, donc false)
+  redemande.
+- `mail_match` : contact sans compagnie déterminée -> 1) compagnie déjà choisie dans le
+  fil (in_reply_to/message_id), 2) nom d'une des compagnies du contact trouvé dans le
+  sujet/texte (une seule). Appliqué à l'arrivée (classify) et à l'envoi d'ici (send).
+- GET /v1/mail/{id} : `company_choices` (compagnies actives du contact) si encore indécis.
+- PUT /v1/mail/{id}/company : associer (tout le fil du même contact sans compagnie) ou
+  "plus tard".
+- MailBrowser (Reader) : popup à l'ouverture seulement (pas aux rechargements internes).
+Fait 2026-10-27. Fichiers : `backend/app/models/mailbox.py`, migration
+`b7c1e4a9d2f3_mail_company_ask_later.py` (appliquée), `backend/app/core/mail_match.py`
+(contact_companies, thread_ids, company_for_contact ; appelé dans classify),
+`backend/app/api/v1/endpoints/mail.py` (send, GET company_choices, PUT /{mid}/company),
+`frontend/src/components/MailBrowser.jsx` (CompanyAskModal).
+Détection dans le texte : noms normalisés (accents/majuscules/ponctuation), suffixes
+légaux retirés (inc, ltée...), le nom le plus précis l'emporte (« Simple IP » vs
+« Simple IP Rose ») ; les deux nommés -> indécis -> popup.
+Vérifié (lecture seule sur vraies données, rollback) : 6 cas de texte OK, fil réel de 8
+courriels reconstitué ; route PUT en ligne (401 sans session) ; build contient le popup.
+État actuel : 1 seul contact à plusieurs compagnies, 0 courriel en attente.
+Pas testé connecté dans le navigateur. Services backend (x2) + frontend redémarrés.
+
+### TASK-047.5 [~] Classer les courriels actuels "À classer" (règles, puis Zéko) (2026-10-27)
+Date de demande : 2026-10-27
+Date(s) de travail : 2026-10-27
+Demande de Philippe : classer les courriels déjà reçus, Zéko les place à la bonne place.
+État vérifié : 303 courriels "À classer" sur 387 (boîtes partagées/perso). Top domaines :
+mail.authorize.net 38, simpleip.tel 37, zohobooks.com 28, nanotechinfo.net 20,
+wildrosesportsflooring.ca 15, payments.interac.ca 14, google.com 12...
+Le classement automatique (mail_match.classify) ne tourne qu'à l'arrivée : des fiches
+créées depuis (ex. contact Nanotech du 2026-10-27) ne rattrapent jamais les anciens.
+Plan proposé : 1) repasser les règles existantes sur les "À classer" ; 2) Zéko pour le
+reste (expéditeur, signature, contenu) ; incertain -> reste "À classer".
+GO 2026-10-27. Fait : `backend/app/core/zeko_mail.py` (queue_unclassified,
+classify_with_zeko : Zéko choisit un nom EXACT dans la liste des compagnies actives,
+seulement si "certain" ; classified_by = "zeko", puce "par Zéko" dans le courriel),
+boucle `run_zeko_mail` (mail_sync.py, verrou 47_0249, un courriel à la fois, RDV d'abord),
+colonnes `mail_messages.zeko_classify/zeko_rdv/zeko_rdv_proposal` (migration c3d8f1a2b6e4).
+Lancé 2026-10-27 : 304 examinés, 20 classés par les règles (Nanotech), 247 en file Zéko
+(37 de nos propres domaines non classés). Reste : laisser Zéko finir, vérifier le résultat.
+Constat aux 3 premiers classés par Zéko : des notifications Google Agenda
+(calendar-notification@google.com, "RDV - Diner Nanotech") sont classées dans la compagnie
+du RDV (Nanotech, MDI) -- conforme à la consigne ("dont il parle directement"), à valider
+par Philippe.
+Résultat vérifié 2026-10-27 (fin de la file) : 247/247 passés, 156 classés par Zéko, 137 courriels reçus encore « À classer ».
+ERREUR : 64 des 156 mis dans « Simple IP inc. » (notre propre compagnie est dans la liste donnée à Zéko) -- reçus Authorize.net,
+BNC, Bell, ISP Telecom, Microcomp, Digitech, Revenu Québec, prospects (IPv4, LS3)... Les 92 autres semblent justes
+(paiements Zoho/Interac/Desjardins/Plooto -> le client payeur, fils de HBA, PAD, MDI). Douteux : Wildrose (Angie) partagé
+entre Mc Crystal et Simple IP ; Vincent et Dussault -> ScopServ ; notifications Google Agenda -> client ; 2 compagnies
+« Gouvernement (DEC/CED) » en double. Correction proposée à Philippe (en attente du GO) : retirer notre compagnie de la
+liste de Zéko ; remettre « À classer » les 64 (changement de données : demande explicite requise).
+Réponse de Philippe 2026-10-27 : « retirer ta propre compagnie de la liste de Zéko, oui, elle n'est plus supposée être là, elle est dans
+Admin, et refais une vérification ». Fait : classify_with_zeko exclut Company.is_owner (« Simple IP inc. », t1001) de la liste ET du
+rattachement ; les 64 remis en file Zéko (company_id vide, classified_by vide, zeko_classify « pending ») -- liste d'origine gardée
+dans le scratchpad de session (zeko_owner_64.json). Revérification en cours.
+Enquête (lecture seulement) : Wildrose Sports Flooring (Angie Goreham, Alberta) porte chez Telus le 403-347-5937 utilisé par une
+succursale de Mc Crystal (compte 1008) -> Mc Crystal est la bonne compagnie. Construction Vincent et Dussault 1997 inc. (Terrebonne,
+Irène Nadeau) = client final d'une commande ScopServ (PO 12836, réf. 11753, portabilité Vidéotron, Philippe technicien au déploiement)
+-> ScopServ est plausible. « Gouvernement (DEC/CED) » (t1047) et « Gouvernement du Canada (DEC/CED) » (t1048) : aucune facture,
+paiement ni contact ; 1 courriel chacun, 1 tâche sur t1048.
+Revérification, 10 premiers refaits : 4 dans « Simple IP Rose » (t1067, seul contact Philippe, courriel Hotmail) -- même erreur sous un
+autre nom ; file arrêtée (53 en pause, liste zeko_paused.json). Correction : Zéko exclut aussi toute compagnie dont le nom contient le
+nôtre (mots entiers, sans inc/ltée : Simple IP inc., Simple IP Rose, SIMPLE-IP ltée ; pas « Simple Iphone ») ; prompt : courriel
+« REÇU PAR Simple IP », ne jamais choisir une compagnie parce que le courriel lui est adressé, banque = null. Les 4 remis en file +
+échantillon de 20 (zeko_sample20.json) relancé avant le reste.
+Échantillon de 20 vérifié contre le contenu : 0 dans nos compagnies ; 13 laissés « À classer » (Interac sans client connu, BNC,
+rapports Authorize.net, Revenu Québec, Digitech, Microcomp) ; 7 classés : 5 justes (reçus Authorize.net où « Company : » = Talentech,
+HB Architectes, Waterco, Kiko Mufflers ; rebond Zoho de INV-112107 = facture de CIBLE RETOUR À L'EMPLOI) ; 2 douteux : robert@isptelecom.net
+(ISP Telecom, Toronto, MSA) mis dans « IP Télécom » (t1055 : richardhandfield@hotmail.com, 450-916-3123) -- noms proches, probablement
+deux compagnies ; laissés tels quels en attendant Philippe. Les 33 restants relancés.
+
+
+### TASK-047.6 [ ] Cloche de notifications à côté de Zéko (en attente du GO)
+Date de demande : 2026-10-27 (Philippe : « peut-être mettre une icône de cloche pour les notifications à savoir, à côté de Zéko une cloche avec le nombre de notifications (ex. : si un courriel n'a pas de client, la notification me dit tel courriel, est-ce que je crée le client... ou tel courriel donne un autre nom de compagnie, est-ce que je change le nom... etc.) »)
+Date(s) de travail : —
 
 ## TASK-048 [ERPCRM+SIPV] [ ] Installation chez un client : un seul endroit pour savoir quoi changer
 Date de demande : 2026-10-09 (Philippe, après TASK-S055.8 : « c'est important d'être dynamique : si on installe chez un client, il faut savoir quoi changer et ne pas chercher partout dans le projet »)

@@ -10,6 +10,8 @@ import NewTicketModal from './NewTicketModal'
 import NewTaskModal from './NewTaskModal'
 import MailCompose from './MailCompose'
 import { downloadFile } from '../utils/download'
+import { GoogleEventModal } from '../pages/Tasks'
+import { todayIso } from '../utils/date'
 
 const PAGE = 50
 
@@ -97,18 +99,116 @@ function ClassifyModal({ mail, onClose, onSaved }) {
   )
 }
 
+// TASK-047.4 : contact lie a plusieurs compagnies, ERPCRM n'a pas trouve laquelle -> on demande a la lecture.
+// « Me le rappeler plus tard » : redemande seulement au prochain courriel de ce fil (recu ou envoye).
+function CompanyAskModal({ mail, onDone }) {
+  const [pick, setPick] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function save(later) {
+    setSaving(true); setErr('')
+    try {
+      const r = await api.put(`/v1/mail/${mail.id}/company`, later ? { later: true } : { company_id: pick })
+      onDone(later ? null : r.data)
+    } catch (e) { setErr(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
+  }
+
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">À quelle compagnie associer ce courriel ?</h3>
+        <p style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: -6 }}>
+          {mail.contact_name || mail.from_email} fait partie de plusieurs compagnies et ERPCRM n'a pas trouvé laquelle dans le courriel.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {mail.company_choices.map(c => (
+            <label key={c.id} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, cursor: 'pointer' }}>
+              <input type="radio" name="ask-company" checked={pick === c.id} onChange={() => setPick(c.id)} />
+              {c.name}
+            </label>
+          ))}
+        </div>
+        {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={() => save(true)} disabled={saving}>Me le rappeler plus tard</button>
+          <button className="btn-primary" onClick={() => save(false)} disabled={saving || !pick}>{saving ? '...' : 'Associer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// TASK-026.6 : ce que Zeko a prepare a partir du courriel du client (rien n'est fait sans ce clic)
+function ZekoRdvBox({ mail, onDone }) {
+  const p = mail.zeko_rdv_proposal
+  const [text, setText] = useState(p.text || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const fmt = iso => iso ? new Date(iso).toLocaleString('fr-CA', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : ''
+  const hm = iso => new Date(iso).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })
+
+  async function act(action) {
+    setBusy(true); setErr('')
+    try {
+      const r = await api.put(`/v1/mail/${mail.id}/zeko-rdv`, { action, text })
+      onDone(r.data)
+    } catch (e) { setErr(e.response?.data?.detail || 'Erreur') } finally { setBusy(false) }
+  }
+
+  const box = { margin: '10px 0 0', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--c-border)', background: 'var(--c-surface-2)', fontSize: 13 }
+  if (p.status !== 'pending') return (
+    <div style={{ ...box, color: 'var(--c-muted)' }}>🤖 Zéko : {p.status === 'applied' ? (p.result || 'fait') : 'proposition ignorée'}</div>
+  )
+  return (
+    <div style={box}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>🤖 Zéko a lu ce courriel</div>
+      {p.summary && <div style={{ marginBottom: 6 }}>{p.summary}</div>}
+      <div style={{ color: 'var(--c-text-2)', marginBottom: 6 }}>RDV « {p.rdv.title} » : {fmt(p.rdv.start)} – {hm(p.rdv.end)}</div>
+      {p.kind === 'move' && <div style={{ marginBottom: 8 }}>Proposition : déplacer au <b>{fmt(p.new_start)} – {hm(p.new_end)}</b> (la plage est libre, 30 min avant et après).</div>}
+      {p.kind === 'email' && (
+        <>
+          <div style={{ marginBottom: 6 }}>
+            {p.requested ? <>Le {fmt(p.requested)} n'est pas libre. </> : <>Pas de nouvelle heure précise. </>}
+            {p.offer_start ? <>Prochaine plage libre : <b>{fmt(p.offer_start)} – {hm(p.offer_end)}</b>.</> : <>Aucune plage libre trouvée.</>}
+            {' '}Courriel préparé pour {p.to} (modifiable) :
+          </div>
+          <textarea value={text} onChange={e => setText(e.target.value)} rows={9} style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'inherit', fontSize: 13, padding: 8, borderRadius: 6, border: '1px solid var(--c-border-strong)' }} />
+        </>
+      )}
+      {p.kind === 'email' && <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>Le lien « Vous ne voulez plus que Zéko vous réponde ? » est ajouté au bas du courriel.</div>}
+      {p.kind === 'suggest' && (
+        <div style={{ marginBottom: 8 }}>
+          {p.requested ? <>Le {fmt(p.requested)} n'est pas libre. </> : <>Pas de nouvelle heure précise. </>}
+          {p.offer_start ? <>Prochaine plage libre : <b>{fmt(p.offer_start)} – {hm(p.offer_end)}</b>.</> : <>Aucune plage libre trouvée.</>}
+          <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>Zéko n'écrit pas au client : {p.blocked}</div>
+        </div>
+      )}
+      {p.kind === 'info' && <div style={{ marginBottom: 8 }}>Le client annule ce RDV : rien n'est changé dans l'agenda, à toi de décider.</div>}
+      {err && <div style={{ color: '#DC2626', marginBottom: 6 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+        {p.kind === 'move' && <button className="btn-primary" disabled={busy} onClick={() => act('apply')}>{busy ? '...' : 'Déplacer le RDV'}</button>}
+        {p.kind === 'email' && <button className="btn-primary" disabled={busy || !text.trim()} onClick={() => act('apply')}>{busy ? '...' : 'Envoyer au client'}</button>}
+        {(p.kind === 'info' || p.kind === 'suggest') && <button className="btn-primary" disabled={busy} onClick={() => act('apply')}>OK</button>}
+        <button className="btn-secondary" disabled={busy} onClick={() => act('dismiss')}>Ignorer</button>
+      </div>
+    </div>
+  )
+}
+
 function Reader({ id, onChanged, onClose, onOpen, onSent }) {
   const navigate = useNavigate()
   const [m, setM] = useState(null)
   const [err, setErr] = useState('')
   const [classify, setClassify] = useState(false)
-  const [making, setMaking] = useState(null)       // 'ticket' | 'task'
+  const [making, setMaking] = useState(null)       // 'ticket' | 'task' | 'rdv'
   const [compose, setCompose] = useState(null)     // 'reply' | 'reply_all' | 'forward'
   const [sentMsg, setSentMsg] = useState('')
+  const [askCompany, setAskCompany] = useState(false)   // TASK-047.4 : seulement a l'ouverture du courriel
 
   useEffect(() => {
-    setM(null); setErr('')
-    api.get(`/v1/mail/${id}`).then(r => { setM(r.data); onChanged?.({ ...r.data, is_read: true }) })
+    setM(null); setErr(''); setAskCompany(false)
+    api.get(`/v1/mail/${id}`).then(r => { setM(r.data); onChanged?.({ ...r.data, is_read: true }); setAskCompany(r.data.company_choices?.length > 1) })
       .catch(e => setErr(e.response?.data?.detail || 'Courriel introuvable'))
   }, [id])   // eslint-disable-line
 
@@ -121,6 +221,24 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
   const out = m.direction === 'out'
   const from = (m.from_name && m.from_name !== m.from_email ? `${m.from_name} <${m.from_email}>` : m.from_email) + (out && m.sent_by ? ` — envoyé par ${m.sent_by}` : '')
   const quote = `De : ${from}\nReçu le : ${new Date(m.sent_at || Date.now()).toLocaleString('fr-CA')}\n\n${(m.body_text || '').slice(0, 4000)}`
+
+  // TASK-026.7 : « Creer un RDV » depuis le courriel -- contact, compagnie, sujet et texte du courriel deja places
+  function rdvData() {
+    const now = new Date()
+    const h = Math.min(now.getHours() + 1, 23)
+    const hh = String(h).padStart(2, '0')
+    return {
+      mode: 'create', date: todayIso(), endDate: todayIso(), startTime: `${hh}:00`, endTime: `${String(Math.min(h + 1, 23)).padStart(2, '0')}:${h + 1 > 23 ? '59' : '00'}`,
+      title: `RDV - ${(m.subject || '').replace(/^\s*((re|tr|fw|fwd)\s*:\s*)+/i, '').slice(0, 200)}`,
+      description: (m.body_text || '').trim().slice(0, 8000), location: '',
+      company, contact,
+      onTicket: async ticketId => {
+        if (m.ticket_id) return
+        const r = await api.put(`/v1/mail/${m.id}/link`, { ticket_id: ticketId })
+        update({ ...r.data })
+      },
+    }
+  }
 
   async function linked(kind, obj) {
     setMaking(null)
@@ -168,6 +286,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
               {company && <a href={`/companies/${company.id}`} onClick={e => { e.preventDefault(); navigate(`/companies/${company.id}`) }}>{company.label}</a>}
               {company && contact && ' · '}
               {contact && <a href={`/contacts/${contact.id}`} onClick={e => { e.preventDefault(); navigate(`/contacts/${contact.id}`) }}>{contact.label}</a>}
+              {m.classified_by === 'zeko' && <span style={{ ...chip, marginLeft: 6 }} title="Classé par Zéko : « Changer » si c'est faux">par Zéko</span>}
               {m.contact_created && <span style={{ ...chip, marginLeft: 6, background: 'var(--c-tint-green)', color: 'var(--c-on-green)' }}>contact créé à partir de ce courriel</span>}
             </span>
           ) : <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
@@ -177,7 +296,9 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
           <button className="btn-primary" onClick={() => setCompose('reply')}>↩ Répondre</button>
           {m.all_to && (m.all_to !== m.reply_to || m.all_cc) && <button className="btn-secondary" onClick={() => setCompose('reply_all')}>↩ Répondre à tous</button>}
           <button className="btn-secondary" onClick={() => setCompose('forward')}>➜ Transférer</button>
+          <button className="btn-secondary" onClick={() => setMaking('rdv')}>📅 Créer un RDV</button>
         </div>
+        {m.zeko_rdv_proposal && <ZekoRdvBox key={m.id} mail={m} onDone={pr => update({ zeko_rdv_proposal: pr, zeko_rdv_pending: false })} />}
         {sentMsg && <div style={{ fontSize: 13, marginTop: 8, color: sentMsg.startsWith('Envoyé de') ? 'var(--c-on-green)' : 'var(--c-on-amber)' }}>✓ {sentMsg}</div>}
         {m.copy_error && !sentMsg && <div style={{ fontSize: 12, marginTop: 8, color: 'var(--c-on-amber)' }}>Envoyé, mais pas copié dans Envoyés de {m.mailbox} : {m.copy_error}</div>}
         {m.replies?.length > 0 && (
@@ -211,11 +332,13 @@ function Reader({ id, onChanged, onClose, onOpen, onSent }) {
       <MailBody html={m.body_html} text={m.body_text} />
 
       {compose && <MailCompose mode={compose} source={m} onClose={() => setCompose(null)} onSent={sent} />}
+      {askCompany && <CompanyAskModal mail={m} onDone={d => { setAskCompany(false); if (d) update({ ...d, company_choices: [] }) }} />}
       {classify && <ClassifyModal mail={m} onClose={() => setClassify(false)}
         onSaved={d => { setClassify(false); update(d) }} />}
       {making === 'ticket' && <NewTicketModal prefillCompany={company} prefillContact={contact}
         prefillTitle={(m.subject || '').slice(0, 255)} prefillDescription={quote}
         onClose={() => setMaking(null)} onCreated={t => linked('ticket', t)} />}
+      {making === 'rdv' && <GoogleEventModal data={rdvData()} onClose={() => setMaking(null)} onSaved={() => setMaking(null)} />}
       {making === 'task' && <NewTaskModal prefillCompany={company} prefillContact={contact}
         prefillTitle={(m.subject || '').slice(0, 255)} prefillDescription={quote}
         onClose={() => setMaking(null)} onCreated={t => linked('task', t)} />}
@@ -270,7 +393,7 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
                 <span style={{ flex: 1, fontWeight: m.is_read ? 400 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {m.direction === 'out' ? <span style={{ color: 'var(--c-muted)' }}>↗ À : {(m.to_addrs || '').replace(/\s*<[^>]+>/g, '')}</span> : (m.from_name || m.from_email)}
                 </span>
-                <span style={{ color: 'var(--c-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
+                <span style={{ color: 'var(--c-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{m.zeko_rdv_pending ? <span title="Zéko a préparé un changement de RDV">🤖 </span> : ''}{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
               </div>
               <div style={{ fontSize: 13, fontWeight: m.is_read ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject || '(sans objet)'}</div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

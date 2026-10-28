@@ -75,6 +75,14 @@ class MailMessage(Base):
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
     classified_by: Mapped[str | None] = mapped_column(String(10))     # auto | manual
+    # TASK-047.4 : contact lie a plusieurs compagnies, compagnie pas trouvee -> popup a la lecture ; « Me le rappeler
+    # plus tard » = true sur CE courriel seulement : le prochain courriel du fil (recu ou envoye) redemande.
+    company_ask_later: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    # Zeko (core/zeko_mail.py) : classement d'un courriel « A classer » (TASK-047.5) et lecture d'un changement de RDV
+    # (TASK-026.6) -- pending | done | none | failed ; la proposition RDV attend la confirmation de Philippe.
+    zeko_classify: Mapped[str | None] = mapped_column(String(10))
+    zeko_rdv: Mapped[str | None] = mapped_column(String(10))
+    zeko_rdv_proposal: Mapped[dict | None] = mapped_column(JSONB)
     contact_created: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # contact cree a partir de ce courriel
     signature_status: Mapped[str | None] = mapped_column(String(10))  # pending | done | failed (lecture de la signature par l'IA)
     shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # boite personnelle : partage avec l'equipe

@@ -45,6 +45,7 @@ function EmployeesTab() {
   const [showAdd, setShowAdd] = useState(false)
   const [showPay, setShowPay] = useState(null) // employee contact_id
   const [voiceOf, setVoiceOf] = useState(null)   // TASK-055 : voix de l'employe
+  const [agendaOf, setAgendaOf] = useState(null) // TASK-026.11 : prise de RDV en ligne
   const [signatureOf, setSignatureOf] = useState(null) // employe dont on modifie la signature (TASK-007.1)
   const [payForm, setPayForm] = useState({ amount: '', period_year: new Date().getFullYear(), period_month: new Date().getMonth() + 1, notes: '' })
   const [markingPaid, setMarkingPaid] = useState(null) // payment id
@@ -125,6 +126,9 @@ function EmployeesTab() {
             <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setVoiceOf(e)} title="Sa voix, pour être reconnu dans les conversations enregistrées">
               🎙️ Voix
             </button>
+            <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setAgendaOf(e)} title="Proposé aux clients sur la page de prise de RDV, marge libre avant/après ses RDV, agendas qui le rendent occupé">
+              📅 Agenda
+            </button>
             {can('salaires', 'modifier') && <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => setShowPay(e.contact_id)}>
               + Salaire
             </button>}
@@ -141,6 +145,7 @@ function EmployeesTab() {
           </div>
         </div>
       )}
+      {agendaOf && <AgendaModal employee={agendaOf} onClose={() => setAgendaOf(null)} />}
       {signatureOf && <SignatureModal employee={signatureOf} onClose={() => setSignatureOf(null)} onSaved={() => { setSignatureOf(null); load() }} />}
 
       {/* ── À payer ── */}
@@ -339,3 +344,63 @@ function SignatureModal({ employee, onClose, onSaved }) {
     </div>
   )
 }
+
+
+// Prise de RDV en ligne (TASK-026.11) : technicien propose au client sur /rdv ; le client voit seulement ses heures
+// libres, calculees avec SA marge (Philippe 30/30, les autres 0 par defaut) et les agendas Google coches ici.
+function AgendaModal({ employee, onClose }) {
+  const [b, setB] = useState(null)
+  const [calendars, setCalendars] = useState([])
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => {
+    api.get(`/v1/employees/${employee.contact_id}/booking`).then(r => setB(r.data))
+    api.get('/v1/employees/calendars').then(r => setCalendars(r.data)).catch(() => setCalendars([]))
+  }, [employee.contact_id])
+  const set = (k, v) => { setB(p => ({ ...p, [k]: v })); setErr('') }
+  async function save() {
+    setSaving(true); setErr('')
+    try { await api.put(`/v1/employees/${employee.contact_id}/booking`, b); onClose() }
+    catch (e) { setErr(e.response?.data?.detail || 'Refusé') } finally { setSaving(false) }
+  }
+  const full = `${employee.first_name} ${employee.last_name}`.trim()
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal-box" onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Agenda de {full}</h3>
+        {!b ? <div style={{ color: 'var(--c-muted)' }}>Chargement…</div> : <>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14 }}>
+            <input type="checkbox" checked={b.booking_enabled} onChange={e => set('booking_enabled', e.target.checked)} />
+            Réservable en ligne (proposé aux clients sur la page de prise de RDV)
+          </label>
+          {!employee.user_id && <div style={{ fontSize: 12, color: 'var(--c-on-amber)' }}>Il faut d'abord lui relier un compte de connexion : le RDV réservé lui est assigné.</div>}
+          <div className="form-group"><label>Nom affiché au client</label>
+            <input value={b.booking_name || ''} placeholder={full} onChange={e => set('booking_name', e.target.value)} /></div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <div className="form-group" style={{ flex: 1 }}><label>Libre avant ses RDV (min)</label>
+              <input type="number" min={0} max={240} value={b.buffer_before} onChange={e => set('buffer_before', parseInt(e.target.value, 10) || 0)} /></div>
+            <div className="form-group" style={{ flex: 1 }}><label>Libre après ses RDV (min)</label>
+              <input type="number" min={0} max={240} value={b.buffer_after} onChange={e => set('buffer_after', parseInt(e.target.value, 10) || 0)} /></div>
+          </div>
+          <div className="form-group"><label>Agendas Google qui le rendent occupé</label>
+            {calendars.length === 0 && <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Aucun agenda Google lu (Administration → Intégrations).</div>}
+            {calendars.map(cal => (
+              <label key={cal} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13, textTransform: 'none', letterSpacing: 0, fontWeight: 400 }}>
+                <input type="checkbox" checked={b.busy_calendars.includes(cal)}
+                  onChange={e => set('busy_calendars', e.target.checked ? [...b.busy_calendars, cal] : b.busy_calendars.filter(x => x !== cal))} />
+                {cal}
+              </label>
+            ))}
+            <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Les RDV dont le ticket lui est assigné le rendent aussi occupé, peu importe l'agenda.</div>
+          </div>
+          {err && <div style={{ color: '#DC2626', fontSize: 13 }}>{err}</div>}
+        </>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" onClick={save} disabled={saving || !b}>{saving ? '...' : 'Enregistrer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+

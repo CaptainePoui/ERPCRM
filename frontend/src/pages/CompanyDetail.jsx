@@ -1074,16 +1074,16 @@ function ContactsTab({ companyId, companyName, contacts, functions, onRefresh, s
                   <button className="ifield-ok" onClick={() => saveEmail(c.contact_id)} title="Confirmer" style={{ fontSize: 12 }}>✓</button>
                   <button className="ifield-x" onClick={() => setEditingEmail(null)} title="Annuler" style={{ fontSize: 12 }}>✕</button>
                 </>
-              ) : (
+              ) : c.email ? (
                 <span
                   className="contact-email-val"
                   onClick={() => { setEditingEmail(c.contact_id); setEmailDraft(c.email || '') }}
                   title="Cliquer pour modifier le courriel professionnel"
                 >
-                  {c.email ? <><span style={{ color: 'var(--c-muted)', fontSize: 12 }}>✉ </span>{c.email}</> : <span style={{ color: 'var(--c-border-strong)', fontSize: 12 }}>✉ Ajouter courriel</span>}
+                  <span style={{ color: 'var(--c-muted)', fontSize: 12 }}>✉ </span>{c.email}
                   <span className="ifield-pencil" style={{ fontSize: 11 }}>✎</span>
                 </span>
-              )}
+              ) : null /* TASK-003.5 : plus de "Ajouter courriel" sur la carte, on l'ajoute dans la fiche contact */}
             </div>
             {c.communications.map(ch => (
               <div key={ch.id} className="contact-comm">{ch.channel_type}: {ch.value}</div>

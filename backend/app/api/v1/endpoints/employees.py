@@ -181,6 +181,47 @@ class SignatureIO(BaseModel):
     html: str = ""
 
 
+# ── Prise de RDV en ligne (TASK-026.11) : technicien propose sur /rdv ────────────────────────────────────────────
+
+class BookingIO(BaseModel):
+    booking_enabled: bool = False
+    booking_name: str | None = None
+    buffer_before: int = 0
+    buffer_after: int = 0
+    busy_calendars: list[str] = []
+
+
+@router.get("/calendars")
+async def booking_calendars(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Agendas Google lus par ERPCRM (sauf les feries) : ceux qui peuvent rendre un technicien occupe."""
+    from app.core import google_calendar
+    return [c for c in await google_calendar.list_calendar_ids(db) if "#holiday@" not in c]
+
+
+@router.get("/{contact_id}/booking", response_model=BookingIO)
+async def get_booking(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    emp = await _get_employee(contact_id, db)
+    return BookingIO(booking_enabled=emp.booking_enabled, booking_name=emp.booking_name, buffer_before=emp.buffer_before,
+                     buffer_after=emp.buffer_after, busy_calendars=list(emp.busy_calendars or []))
+
+
+@router.put("/{contact_id}/booking", response_model=BookingIO)
+async def put_booking(contact_id: uuid.UUID, p: BookingIO, db: AsyncSession = Depends(get_db), me: User = Depends(get_current_user)):
+    from app.core import privileges as P
+    if not P.allows(await P.for_user_id(db, me.id), "administration", P.MODIFIER):
+        raise HTTPException(status_code=403, detail="Tes privilèges ne permettent pas de modifier : Administration")
+    emp = await _get_employee(contact_id, db)
+    if p.booking_enabled and not emp.user_id:
+        raise HTTPException(status_code=400, detail="Relie d'abord un compte de connexion à cet employé : le RDV réservé lui est assigné")
+    if not (0 <= p.buffer_before <= 240 and 0 <= p.buffer_after <= 240):
+        raise HTTPException(status_code=422, detail="Marges : de 0 à 240 minutes")
+    emp.booking_enabled, emp.booking_name = p.booking_enabled, (p.booking_name or "").strip()[:100] or None
+    emp.buffer_before, emp.buffer_after = p.buffer_before, p.buffer_after
+    emp.busy_calendars = [c for c in dict.fromkeys(p.busy_calendars) if c]
+    await db.commit()
+    return await get_booking(contact_id, db, me)
+
+
 @router.get("/users")
 async def list_login_accounts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Comptes de connexion actifs, pour relier un employé à celui qu'il utilise."""

@@ -6,6 +6,7 @@ Qui voit quoi : les boites partagees (service@, facturation@, portabilite@) -> t
 """
 import asyncio
 import uuid
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote
 
@@ -67,7 +68,8 @@ def _row(m: MailMessage, box: Mailbox, companies: dict, contacts: dict) -> dict:
             "contact_name": contacts.get(m.contact_id), "classified_by": m.classified_by,
             "contact_created": m.contact_created, "shared": m.shared,
             "ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None,
-            "direction": m.direction, "to_addrs": m.to_addrs, "answered_at": m.answered_at, "copy_error": m.copy_error}
+            "direction": m.direction, "to_addrs": m.to_addrs, "answered_at": m.answered_at, "copy_error": m.copy_error,
+            "zeko_rdv_pending": bool(m.zeko_rdv_proposal and m.zeko_rdv_proposal.get("status") == "pending")}
 
 
 @router.get("/folders")
@@ -218,6 +220,9 @@ async def send(data: str = Form(...), files: list[UploadFile] = File(default=[])
                       sent_by_user_id=user.id, company_id=company_id, contact_id=contact_id, classified_by=how,
                       **mail_store.parse(raw))
     db.add(msg)
+    await db.flush()
+    if msg.contact_id and not msg.company_id:            # TASK-047.4 : plusieurs compagnies -> fil, puis contenu
+        msg.company_id = await mail_match.company_for_contact(db, msg, msg.contact_id)
     if replying:
         src.answered_at = mail_store.now()
     await db.commit()
@@ -265,7 +270,138 @@ async def get_mail(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: Use
                 "attachments": m.attachments, "can_share": box.kind == "personal" and (box.owner_user_id == user.id or mbx.sees_all(user)),
                 "sent_by": users.get(m.sent_by_user_id), **mail_send.reply_targets(m.stored_path, m.direction == "out", own),
                 "replies": [{"id": str(r.id), "sent_at": r.sent_at, "to_addrs": r.to_addrs, "sent_by": users.get(r.sent_by_user_id)} for r in replies]})
+    # TASK-047.4 : contact a plusieurs compagnies, compagnie pas trouvee -> popup a la lecture (sauf « plus tard »)
+    choices = await mail_match.contact_companies(db, m.contact_id) if m.contact_id and not m.company_id and not m.company_ask_later else []
+    out["company_choices"] = [{"id": str(i), "name": n} for i, n in choices] if len(choices) > 1 else []
+    out["zeko_rdv_proposal"] = await _proposal_view(db, m, user)
     return out
+
+
+async def _responsable(db, prop: dict, user: User) -> str:
+    """Qui n'est pas disponible : l'employe assigne au ticket du RDV, sinon celui qui confirme."""
+    uid = (prop.get("rdv") or {}).get("assigned_to_id")
+    u = await db.get(User, uuid.UUID(uid)) if uid else None
+    return ((u or user).full_name or "").split(" ")[0] or "Notre technicien"
+
+
+async def _proposal_view(db, m: MailMessage, user: User) -> dict | None:
+    prop = m.zeko_rdv_proposal
+    if not prop:
+        return None
+    view = dict(prop)
+    if view.get("text"):
+        view["text"] = view["text"].replace("{responsable}", await _responsable(db, prop, user))
+    return view
+
+
+class ZekoRdvIn(BaseModel):
+    action: str                    # apply | dismiss
+    text: str | None = None        # courriel au client, corrige a l'ecran
+
+
+@router.put("/{mid}/zeko-rdv")
+async def zeko_rdv(mid: uuid.UUID, p: ZekoRdvIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """TASK-026.6 : Philippe confirme (ou ignore) ce que Zeko a prepare -- deplacer le RDV ou ecrire au client."""
+    from app.core import google_calendar
+    from app.core.zeko_mail import fr_when
+    m = await _get(db, mid, user)
+    prop = dict(m.zeko_rdv_proposal or {})
+    if prop.get("status") != "pending":
+        raise HTTPException(status_code=409, detail="Cette proposition de Zéko est déjà traitée")
+    if p.action == "dismiss":
+        prop["status"] = "dismissed"
+    elif p.action == "apply" and prop.get("kind") == "move":
+        r = prop["rdv"]
+        ok = await google_calendar.update_event(db, r["calendar_id"], r["event_id"], r["title"], r.get("description") or "",
+                                                r.get("location"), datetime.fromisoformat(prop["new_start"]), datetime.fromisoformat(prop["new_end"]))
+        if not ok:
+            raise HTTPException(status_code=502, detail="L'agenda Google n'a pas accepté le changement")
+        prop.update(status="applied", result=f"RDV déplacé au {fr_when(datetime.fromisoformat(prop['new_start']))}")
+    elif p.action == "apply" and prop.get("kind") == "email":
+        from app.core.zeko_mail import replies_blocked
+        blocked = await replies_blocked(db, await db.get(Contact, m.contact_id) if m.contact_id else None)
+        if blocked:                       # TASK-026.9 : reglage ou refus change depuis la proposition
+            raise HTTPException(status_code=409, detail=blocked)
+        text = (p.text or (await _proposal_view(db, m, user))["text"]).strip()
+        if not text:
+            raise HTTPException(status_code=422, detail="Le courriel est vide")
+        sent = await _send_reply(db, user, m, prop["to"], prop["subject"], text)
+        prop.update(status="applied", result=f"Courriel envoyé de {sent} à {prop['to']}", sent_text=text)
+    elif p.action == "apply":
+        prop["status"] = "applied"
+    else:
+        raise HTTPException(status_code=422, detail="Action inconnue")
+    m.zeko_rdv_proposal = prop
+    await db.commit()
+    return await _proposal_view(db, m, user)
+
+
+async def _send_reply(db, user: User, src: MailMessage, to_addr: str, subject: str, text: str) -> str:
+    """Reponse de Zeko dans le fil du courriel du client, envoyee de la boite qui l'a recu (sinon une boite partagee) ;
+    copie gardee ici et classee comme le courriel d'origine. Meme envoi que /send."""
+    import html as _html
+    boxes = await _senders(db, user)
+    box = next((b for b in boxes if b.id == src.mailbox_id), None) or next((b for b in boxes if b.kind == "shared"), None)
+    if not box:
+        raise HTTPException(status_code=403, detail="Aucune boîte d'envoi disponible")
+    from app.core.zeko_mail import optout_url
+    body = "<div>" + _html.escape(text).replace("\n", "<br>") + "</div>"
+    if src.contact_id:                     # TASK-026.9 : toujours present, jamais retirable a l'ecran
+        url = optout_url(src.contact_id)
+        body += ('<p style="font-size:12px;color:#666;margin-top:18px">Vous ne voulez plus que Zéko, l\'IA de Simple IP, vous réponde ? '
+                 f'<a href="{url}">Cliquez ce lien</a> (se désinscrire).</p>')
+    body += mail_send.quote_html(src)
+    raw, _mid = mail_send.build(sender=box.email, sender_name=box.display_name or "", to=mail_send.addresses(to_addr), cc=[],
+                                subject=subject, html_body=body, files=[], in_reply_to=src.message_id,
+                                references=mail_send.references_of(src.stored_path))
+    boxd = {"host": box.host, "port": box.imap_port, "smtp_port": box.smtp_port, "user": box.username,
+            "password": mbx.password_of(box), "email": box.email}
+    try:
+        await asyncio.wait_for(asyncio.to_thread(mail_send.send_sync, boxd, raw, [to_addr]), 90)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Envoi impossible : {exc}")
+    copy = MailMessage(mailbox_id=box.id, direction="out", stored_path=mail_send.save_sent(box.id, raw), is_read=True,
+                       sent_by_user_id=user.id, company_id=src.company_id, contact_id=src.contact_id,
+                       classified_by=src.classified_by or "auto", **mail_store.parse(raw))
+    db.add(copy)
+    src.answered_at = mail_store.now()
+    await db.commit()
+    try:
+        same = src.mailbox_id == box.id
+        await asyncio.wait_for(asyncio.to_thread(mail_send.after_send_sync, boxd, raw,
+                                                 src.uid if same else None, src.uidvalidity if same else None), 60)
+    except Exception as exc:
+        copy.copy_error = (str(exc) or exc.__class__.__name__)[:500]
+        await db.commit()
+    return box.email
+
+
+class CompanyIn(BaseModel):
+    company_id: uuid.UUID | None = None
+    later: bool = False            # « Me le rappeler plus tard » : redemande au prochain courriel du fil
+
+
+@router.put("/{mid}/company")
+async def set_company(mid: uuid.UUID, p: CompanyIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """TASK-047.4 : associe le courriel (et les autres du meme fil, meme contact, encore sans compagnie) a une des
+    compagnies du contact ; ou « plus tard » sur ce courriel seulement."""
+    m = await _get(db, mid, user)
+    if p.later:
+        m.company_ask_later = True
+        await db.commit()
+        return {"later": True}
+    if not m.contact_id:
+        raise HTTPException(status_code=422, detail="Ce courriel n'est lié à aucun contact")
+    if p.company_id not in {i for i, _ in await mail_match.contact_companies(db, m.contact_id)}:
+        raise HTTPException(status_code=422, detail="Cette compagnie n'est pas une compagnie de ce contact")
+    ids = await mail_match.thread_ids(db, m)
+    rows = (await db.execute(select(MailMessage).where(MailMessage.id.in_(ids), MailMessage.contact_id == m.contact_id,
+                                                       MailMessage.company_id.is_(None)))).scalars().all()
+    for o in rows:
+        o.company_id, o.classified_by = p.company_id, "manual"
+    await db.commit()
+    companies, contacts = await _names(db, [m])
+    return {**_row(m, await db.get(Mailbox, m.mailbox_id), companies, contacts), "moved": len(rows)}
 
 
 class ReadIn(BaseModel):

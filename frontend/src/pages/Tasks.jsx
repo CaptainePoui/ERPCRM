@@ -1429,7 +1429,7 @@ function formatAddress(a) {
   return `${a.street_1}${line2}, ${a.city} ${a.province} ${a.postal_code}`
 }
 
-function GoogleEventModal({ data, onClose, onSaved }) {
+export function GoogleEventModal({ data, onClose, onSaved }) {
   const isEdit = data.mode === 'edit'
   // RDV et appel : toujours un client, donc un ticket (TASK-015.19) ; seul « Perso (sans client) » n'en a pas
   const personal = !!data.personal
@@ -1462,8 +1462,9 @@ function GoogleEventModal({ data, onClose, onSaved }) {
 
   const [companies, setCompanies] = useState([])
   const [contacts, setContacts] = useState([])
-  const [selectedCompany, setSelectedCompany] = useState(null)
-  const [selectedContact, setSelectedContact] = useState(null)
+  // data.company / data.contact : prerempli depuis un courriel (« Creer un RDV », TASK-026.7)
+  const [selectedCompany, setSelectedCompany] = useState(data.company || null)
+  const [selectedContact, setSelectedContact] = useState(data.contact || null)
   const [quickCompanyName, setQuickCompanyName] = useState(null)
   const [quickContactName, setQuickContactName] = useState(null)
   const [companyAddresses, setCompanyAddresses] = useState([])
@@ -1475,8 +1476,11 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const [ticket, setTicket] = useState(null)
   const [savedEvent, setSavedEvent] = useState(isEdit ? { event_id: data.event_id, calendar_id: data.calendar_id } : null)
 
+  const [ticketLoaded, setTicketLoaded] = useState(!isEdit)
+  const [linking, setLinking] = useState(false)
+
   useEffect(() => {
-    if (isEdit || personal) return
+    if (personal) return
     api.get('/v1/companies').then(r => setCompanies(r.data))
     api.get('/v1/contacts').then(r => setContacts(r.data))
   }, [isEdit, personal])
@@ -1486,7 +1490,20 @@ function GoogleEventModal({ data, onClose, onSaved }) {
     api.get(`/v1/google-calendar/events/${data.event_id}/ticket`, { params: { calendar_id: data.calendar_id } })
       .then(r => setTicket(r.data))
       .catch(() => setTicket(null))
+      .finally(() => setTicketLoaded(true))
   }, [isEdit, data.event_id, data.calendar_id])
+
+  // TASK-026.8 : RDV deja dans l'agenda (ecrit dans Google) sans client -> le lier, son ticket est cree
+  async function linkClient() {
+    setLinking(true); setError('')
+    try {
+      const r = await api.post('/v1/google-calendar/events/link', {
+        calendar_id: data.calendar_id, event_id: data.event_id, title, description,
+        company_id: selectedCompany?.id || null, contact_id: selectedContact?.id || null,
+      })
+      setTicket(r.data)
+    } catch (e) { setError(e.response?.data?.detail || 'Liaison impossible') } finally { setLinking(false) }
+  }
 
   useEffect(() => {
     if (!selectedCompany) { setCompanyAddresses([]); return }
@@ -1500,6 +1517,21 @@ function GoogleEventModal({ data, onClose, onSaved }) {
   const selectedContactCompanyId = selectedContact
     ? contacts.find(c => c.id === selectedContact.id)?.companies?.[0]?.company_id
     : null
+
+  // TASK-026.7 : compagnie choisie apres le contact -> un contact qui n'en fait pas partie est retire ;
+  // contact choisi avant la compagnie -> sa compagnie se remplit s'il n'en a qu'une
+  function pickCompany(v) {
+    setSelectedCompany(v)
+    if (!v) { setSelectedContact(null); return }
+    const cur = selectedContact && contacts.find(c => c.id === selectedContact.id)
+    if (cur && !(cur.companies || []).some(co => co.company_id === v.id)) setSelectedContact(null)
+  }
+  function pickContact(v) {
+    setSelectedContact(v)
+    if (!v || selectedCompany) return
+    const cos = (contacts.find(c => c.id === v.id)?.companies || []).filter(co => co.is_active !== false)
+    if (cos.length === 1) setSelectedCompany({ id: cos[0].company_id, label: cos[0].company_name })
+  }
 
   function afterCompanyCreated(company) {
     setCompanies(prev => [...prev, company])
@@ -1542,6 +1574,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
         setSavedEvent({ event_id: r.data.id, calendar_id: r.data.calendar_id })
         if (r.data.ticket_id) {
           setTicket({ id: r.data.ticket_id, title, company_name: selectedCompany?.label || '' })
+          data.onTicket?.(r.data.ticket_id)        // courriel -> RDV : le courriel est lie au ticket du RDV
         } else {
           // Evenement perso -- rien a lier, il est simple et complet.
           onSaved()
@@ -1596,12 +1629,13 @@ function GoogleEventModal({ data, onClose, onSaved }) {
           <div className="form-group" style={{ flex: 1.3 }}><label>Date fin</label><input type="date" value={endDate} min={date} onChange={e => setEndDate(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
           <div className="form-group" style={{ flex: 1 }}><label>Heure fin</label><input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} disabled={locked} style={{ color: 'var(--c-text-2)', background: 'var(--c-surface)' }} /></div>
         </div>
-        {!isEdit && !justCreated && !personal && (
+        {((!isEdit && !justCreated && !personal) || (isEdit && ticketLoaded && !ticket)) && (
           <>
-            <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={v => { setSelectedCompany(v); if (!v) setSelectedContact(null) }} onCreate={name => setQuickCompanyName(name)} placeholder="Rechercher une compagnie..." />
+            {isEdit && <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Ce RDV n'est lié à aucun client : choisis la compagnie ou le contact puis « Lier au client » (un ticket est créé).</div>}
+            <Autocomplete label="Compagnie" items={companyItems} value={selectedCompany} onSelect={pickCompany} onCreate={name => setQuickCompanyName(name)} placeholder="Rechercher une compagnie..." />
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
               <div style={{ flex: 1 }}>
-                <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={setSelectedContact} onCreate={name => setQuickContactName(name)} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
+                <Autocomplete label="Contact" items={contactItems} value={selectedContact} onSelect={pickContact} onCreate={name => setQuickContactName(name)} placeholder="Rechercher un contact..." openOnFocus={!!selectedCompany} />
               </div>
               {selectedContactCompanyId && (
                 <a
@@ -1646,6 +1680,7 @@ function GoogleEventModal({ data, onClose, onSaved }) {
         )}
 
         <div className="modal-actions">
+          {isEdit && ticketLoaded && !ticket && (selectedCompany || selectedContact) && <button className="btn-secondary" onClick={linkClient} disabled={linking}>{linking ? '...' : 'Lier au client'}</button>}
           {isEdit && <button onClick={del} disabled={deleting} style={{ marginRight: 'auto', background: 'none', border: '1px solid #FCA5A5', color: '#DC2626', borderRadius: 6, padding: '6px 14px', cursor: 'pointer', fontSize: 14 }}>{deleting ? '...' : 'Supprimer'}</button>}
           {justCreated ? (
             <button className="btn-primary" onClick={onSaved}>Terminé</button>

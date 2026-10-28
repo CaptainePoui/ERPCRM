@@ -62,6 +62,7 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         last_name=contact.last_name,
         email=contact.email,
         email_other=contact.email_other,
+        zeko_replies_off=contact.zeko_replies_off,
         phone=office_company.office_phone if office_company else contact.phone,
         mobile=contact.mobile,
         extension=contact.extension,

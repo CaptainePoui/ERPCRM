@@ -111,12 +111,133 @@ export default function Admin() {
   )
 }
 
+// Agenda (TASK-026.10, Philippe : « mets les options d'agenda là ») : heures d'ouverture, plages de RDV et ce que Zeko
+// propose quand un client veut deplacer un RDV. Valeurs par defaut = celles d'avant (codees en dur jusque-la).
+const AGENDA_DAYS = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+function AgendaSettingsPanel() {
+  const [c, setC] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  useEffect(() => { api.get('/v1/settings/agenda').then(r => setC(r.data)) }, [])
+  if (!c) return null
+  const set = (k, v) => { setC(p => ({ ...p, [k]: v })); setMsg('') }
+  const setDay = (i, v) => setC(p => ({ ...p, hours: { ...p.hours, [i]: v }, lunch: v ? p.lunch : { ...p.lunch, [i]: null } }))
+  const setLunch = (i, v) => set('lunch', { ...c.lunch, [i]: v })
+  const setDur = (kind, k, v) => set('durations', { ...c.durations, [kind]: { ...c.durations[kind], [k]: v } })
+  async function save() {
+    setSaving(true); setMsg('')
+    try { const r = await api.put('/v1/settings/agenda', { ...c, demo_months: Number(c.demo_months), demo_techs: (c.demo_techs || []).map(n => n.trim()).filter(Boolean) }); setC(p => ({ ...r.data, defaults: p.defaults })); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') } finally { setSaving(false) }
+  }
+  const card = { background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }
+  const h3 = { fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: '0 0 6px' }
+  const note = { fontSize: 13, color: 'var(--c-muted)', margin: '0 0 14px' }
+  const num = (value, onChange, w = 80) => <input type="number" value={value} onChange={e => onChange(parseInt(e.target.value, 10) || 0)} style={{ width: w }} />
+  const field = (label, input) => <div className="form-group" style={{ marginBottom: 0 }}><label>{label}</label>{input}</div>
+  const row = { display: 'flex', gap: 16, alignItems: 'flex-end', flexWrap: 'wrap' }
+  return (
+    <div>
+      <div style={card}>
+        <h3 style={h3}>Heures d'ouverture</h3>
+        <p style={note}>Les plages de RDV et d'appel (page de prise de RDV, propositions de Zéko) sont prises dans ces heures. Les fériés du Québec (8 congés statutaires) sont fermés automatiquement. Pendant le dîner, aucune plage n'est offerte. La marge de chaque technicien (Employés → Agenda) s'applique aussi à l'ouverture, au dîner et à la fermeture.</p>
+        {AGENDA_DAYS.map((d, i) => {
+          const h = c.hours[i]
+          return (
+            <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '6px 0', borderTop: i ? '1px solid var(--c-surface-3)' : 'none', flexWrap: 'wrap' }}>
+              <span style={{ width: 90, fontWeight: 600, fontSize: 14 }}>{d}</span>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, width: 90 }}>
+                <input type="checkbox" checked={!!h} onChange={e => setDay(i, e.target.checked ? ['08:00', '16:00'] : null)} /> {h ? 'Ouvert' : 'Fermé'}
+              </label>
+              {h && <>
+                <input type="time" value={h[0]} onChange={e => setDay(i, [e.target.value, h[1]])} />
+                <span style={{ color: 'var(--c-muted)' }}>à</span>
+                <input type="time" value={h[1]} onChange={e => setDay(i, [h[0], e.target.value])} />
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, marginLeft: 12 }}>
+                  <input type="checkbox" checked={!!c.lunch?.[i]} onChange={e => setLunch(i, e.target.checked ? ['12:00', '13:00'] : null)} /> Dîner
+                </label>
+                {c.lunch?.[i] && <>
+                  <input type="time" value={c.lunch[i][0]} onChange={e => setLunch(i, [e.target.value, c.lunch[i][1]])} />
+                  <span style={{ color: 'var(--c-muted)' }}>à</span>
+                  <input type="time" value={c.lunch[i][1]} onChange={e => setLunch(i, [c.lunch[i][0], e.target.value])} />
+                </>}
+              </>}
+            </div>
+          )
+        })}
+      </div>
+
+      <div style={card}>
+        <h3 style={h3}>Plages de RDV et d'appel</h3>
+        <p style={note}>Un appel peut commencer dès l'ouverture ; un RDV (visite) pas avant la première heure ci-dessous.</p>
+        <div style={row}>
+          {field('Première heure d\'un RDV', <input type="time" value={c.rdv_earliest_start} onChange={e => set('rdv_earliest_start', e.target.value)} />)}
+          {field('Pas entre deux plages (min)', num(c.slot_minutes, v => set('slot_minutes', v)))}
+          {field('Chercher sur (jours)', num(c.lookahead_days, v => set('lookahead_days', v)))}
+          {field('Appel au plus tôt dans (heures)', num(c.appel_min_delay_hours, v => set('appel_min_delay_hours', v)))}
+          {field('RDV au plus tôt dans (jours)', num(c.rdv_min_delay_days, v => set('rdv_min_delay_days', v)))}
+        </div>
+        {[['appel', 'Durée d\'un appel (min)'], ['distance', 'Assistance à distance (min)'], ['rdv', 'Durée d\'un RDV (min)']].map(([k, l]) => (
+          <div key={k} style={{ ...row, marginTop: 14 }}>
+            <span style={{ width: 170, fontSize: 13, fontWeight: 600, alignSelf: 'center' }}>{l}</span>
+            {field('Par défaut', num(c.durations[k].default, v => setDur(k, 'default', v)))}
+            {field('Minimum', num(c.durations[k].min, v => setDur(k, 'min', v)))}
+            {field('Maximum', num(c.durations[k].max, v => setDur(k, 'max', v)))}
+            {field('Par tranche de', num(c.durations[k].step, v => setDur(k, 'step', v)))}
+          </div>
+        ))}
+      </div>
+
+      <div style={card}>
+        <h3 style={h3}>Page de prise de RDV (portail.simpleip.tel/rdv)</h3>
+        <p style={note}>Le client choisit le technicien, puis une ou plusieurs plages qui se suivent (le « pas entre deux plages » ci-dessus, 30 min par défaut), puis le type (appel, assistance à distance, rendez-vous sur place) et ses coordonnées. Les heures libres tiennent compte de la marge de chaque technicien (Employés → Agenda).</p>
+        <div style={row}>
+          {field('« Aucune disponibilité » pendant (mois)', <input type="number" step="0.1" value={c.demo_months} onChange={e => set('demo_months', e.target.value)} style={{ width: 80 }} />)}
+        </div>
+        <div className="form-group" style={{ marginTop: 14, marginBottom: 0 }}>
+          <label>Techniciens affichés, jamais disponibles (un nom par ligne)</label>
+          <textarea rows={3} value={(c.demo_techs || []).join('\n')} onChange={e => set('demo_techs', e.target.value.split('\n'))} style={{ maxWidth: 360 }} />
+          <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Choisis par le client : « Aucune disponibilité avant le » aujourd'hui + le nombre de mois ci-dessus. Vide = aucun.</div>
+        </div>
+        <div className="form-group" style={{ marginTop: 14, marginBottom: 0 }}>
+          <label>Message au client qui accepte l'urgence</label>
+          <textarea rows={3} value={c.urgent_notice || ''} onChange={e => set('urgent_notice', e.target.value)} style={{ maxWidth: 560 }} />
+          <div style={{ fontSize: 12, color: 'var(--c-muted)' }}>Affiché en rouge dès que le client répond Oui à l'avertissement d'urgence, jusqu'à la confirmation. Vide = aucun message.</div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <h3 style={h3}>Plage proposée par Zéko</h3>
+        <p style={note}>Quand un client demande de déplacer un RDV vers une plage qui n'est pas libre, Zéko cherche la prochaine plage libre avec ces règles (réponse au client : Administration → Zéko). La marge ci-dessous sert quand le RDV n'a pas de technicien ; sinon c'est celle du technicien (Employés → Agenda).</p>
+        <div style={row}>
+          {field('Libre avant, par défaut (min)', num(c.zeko_buffer_before, v => set('zeko_buffer_before', v)))}
+          {field('Libre après, par défaut (min)', num(c.zeko_buffer_after, v => set('zeko_buffer_after', v)))}
+        </div>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center', marginTop: 14, flexWrap: 'wrap', fontSize: 14 }}>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <input type="radio" checked={c.zeko_same_duration} onChange={() => set('zeko_same_duration', true)} /> Même durée que le RDV
+          </label>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+            <input type="radio" checked={!c.zeko_same_duration} onChange={() => set('zeko_same_duration', false)} /> Durée fixe :
+          </label>
+          {!c.zeko_same_duration && <>{num(c.zeko_fixed_duration, v => set('zeko_fixed_duration', v))}<span style={{ fontSize: 13, color: 'var(--c-muted)' }}>min</span></>}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : 'Enregistrer'}</button>
+        <button className="btn-secondary" onClick={() => { setC(p => ({ ...p.defaults, defaults: p.defaults })); setMsg('Valeurs d\'origine remises : « Enregistrer » pour les garder') }}>Valeurs d'origine</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : msg.startsWith('Valeurs') ? 'var(--c-muted)' : '#DC2626' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 // ── Tickets (TASK-015.12) ────────────────────────────────────────────────────
 
 // Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
 // rassembler dans un onglet config générale ») -- factures : conditions de paiement
 // Configuration generale (2026-10-16, Philippe) : tous les reglages generaux au meme endroit, en sous-onglets
-const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio']]
+const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio'], ['agenda', 'Agenda']]
 function ConfigPanel({ initial }) {
   const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
   return (
@@ -130,6 +251,7 @@ function ConfigPanel({ initial }) {
       {sub === 'tickets' && <TicketsSettingsPanel />}
       {sub === 'pastilles' && <PastillesPanel />}
       {sub === 'audio' && <AudioDevicesPanel />}
+      {sub === 'agenda' && <AgendaSettingsPanel />}
     </div>
   )
 }
@@ -411,10 +533,48 @@ function ZekoAdmin({ initial }) {
       <div className="filter-tabs" style={{ marginBottom: 16, flexWrap: 'wrap' }}>
         {ZEKO_TABS.map(([k, l]) => <button key={k} className={`filter-tab${sub === k ? ' active' : ''}`} onClick={() => setSub(k)}>{l}</button>)}
       </div>
-      {sub === 'reglages' && <ZekoSettingsPanel />}
+      {sub === 'reglages' && <><ZekoClientRepliesSection /><ZekoSettingsPanel /></>}
       {sub === 'appris' && <ZekoRulesPanel />}
       {sub === 'regles-banque' && <BankRulesPanel />}
       {sub === 'propositions' && <ZekoProposals />}
+    </div>
+  )
+}
+
+// Reponses de Zeko aux clients (TASK-026.9) : comme les frais de retard, eteint au depart. Allume, Zeko prepare un
+// courriel au client quand un RDV demande n'est pas libre (envoye seulement apres ton clic) ; eteint, il te montre
+// seulement la prochaine plage libre. Un client peut refuser (case de sa fiche ou lien au bas du courriel).
+function ZekoClientRepliesSection() {
+  const [on, setOn] = useState(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { api.get('/v1/settings').then(r => setOn(!!r.data.zeko_client_replies_enabled)) }, [])
+  async function set(v) {
+    setMsg('')
+    if (v && !await askConfirm('Allumer les réponses de Zéko aux clients ? Quand un client demande une plage de RDV qui n\'est pas libre, Zéko préparera un courriel signé « Zéko, l\'IA de Simple IP » (envoyé seulement après ton clic « Envoyer au client »).')) return
+    try { await api.put('/v1/settings', { zeko_client_replies_enabled: v }); setOn(v); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') }
+  }
+  if (on === null) return null
+  return (
+    <div style={{ background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: 0 }}>Réponses de Zéko aux clients</h3>
+        <span style={{ fontSize: 13, fontWeight: 600, color: on ? '#059669' : 'var(--c-on-amber)' }}>
+          {on ? 'Allumé' : 'Éteint — Zéko n\'écrit à aucun client'}
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 16 }}>
+        Quand un client demande de déplacer un RDV vers une plage qui n'est pas libre, Zéko prépare un courriel qui propose la prochaine plage libre
+        (même durée, 30 min avant et après) et le lien de prise de RDV ; il part seulement quand tu cliques « Envoyer au client ». Chaque courriel
+        contient un lien personnel pour que le client refuse les réponses de Zéko (case « Zéko peut répondre » de sa fiche). Éteint : Zéko te montre
+        seulement la prochaine plage libre.
+      </p>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        {on
+          ? <button className="btn-secondary" style={{ color: 'var(--c-on-amber)' }} onClick={() => set(false)}>Éteindre</button>
+          : <button className="btn-primary" onClick={() => set(true)}>Allumer</button>}
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
     </div>
   )
 }

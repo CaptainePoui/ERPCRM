@@ -23,6 +23,7 @@ from app.core.google_calendar import is_configured, list_events, create_event, u
 from app.models.app_settings import AppSetting
 from app.models.ticket import Ticket
 from app.models.contact import Contact
+from app.models.company import Company
 from app.core.email import send_rdv_confirmation_email
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.user import User
@@ -232,6 +233,43 @@ async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(g
     return {"id": event_id, "calendar_id": "primary", "ticket_id": str(ticket_id) if ticket_id else None}
 
 
+def _event_ticket_where(event_id: str, calendar_id: str):
+    """Les RDV crees ici sont enregistres avec calendar_id « primary », mais Google les relit sous leur vrai id
+    (agenda@simpleip.tel) -- les deux sont acceptes (TASK-026.8), sinon « Ticket lie » ne se retrouvait jamais."""
+    return (Ticket.google_calendar_event_id == event_id) & (Ticket.google_calendar_id.in_({calendar_id, "primary"}))
+
+
+class EventLink(BaseModel):
+    calendar_id: str
+    event_id: str
+    title: str
+    description: str | None = None
+    company_id: uuid.UUID | None = None
+    contact_id: uuid.UUID | None = None
+
+
+@router.post("/events/link")
+async def link_google_event(payload: EventLink, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """TASK-026.8 : RDV deja dans l'agenda (ecrit directement dans Google) relie a un client -- cree son ticket, comme
+    un RDV cree ici. Sert aussi a Zeko pour savoir quel RDV appartient a quel client."""
+    existing = (await db.execute(select(Ticket).where(_event_ticket_where(payload.event_id, payload.calendar_id)))).scalars().first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Ce RDV est déjà lié à un client")
+    company_id = await _resolve_company_id(db, payload.company_id, payload.contact_id)
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Choisis la compagnie ou le contact")
+    ticket = Ticket(title=payload.title, description=payload.description, company_id=company_id, contact_id=payload.contact_id,
+                    priority="normal", status="en_cours", google_calendar_event_id=payload.event_id,
+                    google_calendar_id=payload.calendar_id)
+    db.add(ticket)
+    from app.core.numbering import assign_ticket_number
+    await assign_ticket_number(db, ticket)
+    await db.commit()
+    company = await db.get(Company, company_id)
+    return {"id": str(ticket.id), "number": ticket.number, "title": ticket.title, "company_name": company.name if company else "",
+            "status": ticket.status}
+
+
 @router.get("/events/{event_id}/ticket")
 async def get_event_ticket(event_id: str, calendar_id: str = Query("primary"), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Retrouve le ticket auto-cree pour un RDV donne (TASK-015.15) -- pour
@@ -239,9 +277,9 @@ async def get_event_ticket(event_id: str, calendar_id: str = Query("primary"), d
     result = await db.execute(
         select(Ticket)
         .options(selectinload(Ticket.company))
-        .where(Ticket.google_calendar_event_id == event_id, Ticket.google_calendar_id == calendar_id)
+        .where(_event_ticket_where(event_id, calendar_id))
     )
-    ticket = result.scalar_one_or_none()
+    ticket = result.scalars().first()
     if not ticket:
         return None
     return {"id": str(ticket.id), "number": ticket.number, "title": ticket.title, "company_name": ticket.company.name,
@@ -258,12 +296,9 @@ async def update_google_event(payload: EventUpdate, db: AsyncSession = Depends(g
     # ce qu'on ecrit dans le RDV -- sinon un titre/description corrige apres
     # coup dans le RDV ne se reflete jamais sur le ticket.
     result_ticket = await db.execute(
-        select(Ticket).where(
-            Ticket.google_calendar_event_id == payload.event_id,
-            Ticket.google_calendar_id == payload.calendar_id,
-        )
+        select(Ticket).where(_event_ticket_where(payload.event_id, payload.calendar_id))
     )
-    ticket = result_ticket.scalar_one_or_none()
+    ticket = result_ticket.scalars().first()
     if ticket:
         ticket.title = payload.title
         ticket.description = payload.description

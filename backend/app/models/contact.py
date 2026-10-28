@@ -13,6 +13,8 @@ class Contact(Base):
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
     email: Mapped[str | None] = mapped_column(String(255))
     email_other: Mapped[str | None] = mapped_column(String(255))
+    # TASK-026.9 : le client ne veut plus que Zeko lui reponde (case de la fiche, ou son lien de desinscription)
+    zeko_replies_off: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
     phone: Mapped[str | None] = mapped_column(String(50))
     mobile: Mapped[str | None] = mapped_column(String(50))
     extension: Mapped[str | None] = mapped_column(String(20))

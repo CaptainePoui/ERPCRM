@@ -231,6 +231,16 @@ async def portal_me(u: PortalUser = Depends(get_portal_user)):
             "email": u.email, "permissions": _perms(u)}
 
 
+@router.get("/rdv-prefill")
+async def portal_rdv_prefill(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """TASK-026.13 : coordonnees deja remplies sur /rdv quand le client est connecte a son portail."""
+    from app.models.company import Company
+    c = u.contact
+    company = await db.get(Company, u.company_id)
+    return {"first_name": c.first_name if c else "", "last_name": c.last_name if c else "", "email": u.email or "",
+            "phone": (c.phone if c else None) or "", "mobile": (c.mobile if c else None) or "",
+            "company_name": company.name if company else ""}
+
 # ── Portal Data ───────────────────────────────────────────────────────────────
 
 @router.get("/invoices")

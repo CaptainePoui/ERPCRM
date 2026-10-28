@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime, timezone, date
-from sqlalchemy import Boolean, Float, String, Date, DateTime, ForeignKey, Text
+from sqlalchemy import Boolean, Float, Integer, String, Date, DateTime, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from app.core.database import Base
 
 
@@ -18,6 +18,13 @@ class Employee(Base):
     # envoie depuis ERPCRM) et signature HTML (images en data:, converties en pieces integrees a l'envoi)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), unique=True, nullable=True)
     email_signature: Mapped[str | None] = mapped_column(Text)
+    # Prise de RDV en ligne (TASK-026.11) : propose au client sur /rdv, nom affiche, marge libre avant/apres ses RDV
+    # (Philippe 30/30, les autres 0 par defaut) et agendas Google qui le rendent occupe.
+    booking_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    booking_name: Mapped[str | None] = mapped_column(String(100))
+    buffer_before: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    buffer_after: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    busy_calendars: Mapped[list[str]] = mapped_column(ARRAY(String(255)), nullable=False, default=list, server_default="{}")
 
     contact: Mapped["Contact"] = relationship("Contact")
     salary_payments: Mapped[list["SalaryPayment"]] = relationship("SalaryPayment", back_populates="employee", cascade="all, delete-orphan")

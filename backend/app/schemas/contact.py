@@ -33,6 +33,7 @@ class ContactCreate(BaseModel):
 
 class ContactUpdate(BaseModel):
     first_name: str | None = None
+    zeko_replies_off: bool | None = None          # TASK-026.9
     last_name: str | None = None
     email: str | None = None
     email_other: str | None = None
@@ -68,6 +69,7 @@ class ContactOut(BaseModel):
     last_name: str
     email: str | None
     email_other: str | None
+    zeko_replies_off: bool = False
     phone: str | None
     mobile: str | None
     extension: str | None
@@ -92,6 +94,8 @@ class ContactCompanyLink(BaseModel):
 
 class ContactCompanyUpdate(BaseModel):
     email: str | None = None
-    function_ids: list[uuid.UUID] = []
+    # None = ne pas toucher aux fonctions (TASK-003.5 : [] par defaut effacait toutes
+    # les fonctions a chaque modification du courriel depuis la carte ou un ticket)
+    function_ids: list[uuid.UUID] | None = None
     is_primary: bool | None = None
     is_active: bool | None = None
