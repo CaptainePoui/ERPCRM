@@ -6,8 +6,9 @@ poller : un verrou PostgreSQL fait qu'un seul copie a la fois -- jamais de courr
 """
 import asyncio
 import logging
+from datetime import timedelta
 
-from sqlalchemy import select, text, update
+from sqlalchemy import or_, select, text, update
 
 from app.core import mail_junk, mail_match, mail_store, zeko, zeko_mail
 from app.core.database import AsyncSessionLocal, engine
@@ -18,6 +19,7 @@ _INTERVAL = 60
 _LOCK = 47_0247                          # verrou PostgreSQL de la copie des courriels
 _SIG_LOCK = 47_0248                      # verrou de la lecture des signatures (separee : l'IA peut prendre des minutes)
 _ZEKO_LOCK = 47_0249                     # verrou de Zeko sur les courriels (classement, RDV) -- TASK-047.5 / TASK-026.6
+_RDV_MAX_DAYS = 7                        # TASK-047.8 : un vieux courriel copie (date de debut reculee) ne change plus un RDV
 
 
 def _box(mb) -> dict:
@@ -93,7 +95,8 @@ async def _sync_box(mb_id) -> int:
                 except Exception as exc:
                     log.warning("Classement du courriel %s impossible : %s", uid, exc)
                 # TASK-026.6 : courriel d'un client -> Zeko regarde s'il change un de ses RDV (proposition a confirmer)
-                if (msg.company_id or msg.contact_id) and mail_match.domain_of(msg.from_email) not in own and await zeko.enabled():
+                if (msg.company_id or msg.contact_id) and mail_match.domain_of(msg.from_email) not in own and _recent(msg) \
+                        and await zeko.enabled():
                     msg.zeko_rdv = "pending"
                 n += 1
         mb.last_uid = max(mb.last_uid, res["last_uid"])
@@ -102,6 +105,98 @@ async def _sync_box(mb_id) -> int:
     if n:
         log.info("%s : %d courriel(s) copie(s)", email_addr, n)
     return n + (1000 if res["more"] else 0)
+
+
+async def _sync_folders(mb_id) -> int:
+    """TASK-047.8 : les autres dossiers de la boite (Envoyes, Archive, dossiers crees a la main), en lecture seule.
+    Un courriel deja copie dans cette boite (meme Message-ID : envoye d'ici, ou deplace de la boite de reception) n'est
+    jamais copie deux fois ; celui d'un expediteur en liste noire n'est pas copie ; Zeko ne lit pas ces anciens RDV."""
+    from app.models.mailbox import Mailbox, MailFolder, MailMessage
+    async with AsyncSessionLocal() as db:
+        mb = await db.get(Mailbox, mb_id)
+        folders = {f.name: f for f in (await db.execute(select(MailFolder).where(MailFolder.mailbox_id == mb.id))).scalars().all()}
+        states = {n: (f.uidvalidity, f.last_uid) for n, f in folders.items()}
+        box, since, email_addr = _box(mb), mb.sync_since, mb.email
+        skip = {mail_junk.FOLDER.lower()}
+    try:
+        res = await asyncio.to_thread(mail_store.folders_sync, box, states, since, skip)
+    except Exception as exc:
+        log.warning("Dossiers de %s impossibles a lire : %s", email_addr, exc)
+        return 0
+    n = 0
+    async with AsyncSessionLocal() as db:
+        mb = await db.get(Mailbox, mb_id)
+        boxes = (await db.execute(select(Mailbox))).scalars().all()
+        own = {b.email.rsplit("@", 1)[1].lower() for b in boxes if "@" in b.email}
+        own_addrs = {b.email.lower() for b in boxes}
+        blocked = await mail_junk.patterns(db)
+        for name, r in res["folders"].items():
+            f = (await db.execute(select(MailFolder).where(MailFolder.mailbox_id == mb.id, MailFolder.name == name))).scalar_one_or_none()
+            if not f:
+                f = MailFolder(mailbox_id=mb.id, name=name)
+                db.add(f)
+                await db.flush()
+            f.sent, f.last_sync_at, f.sync_error = r["sent"], mail_store.now(), r["error"]
+            if r["error"]:
+                log.warning("Dossier %s de %s : %s", name, email_addr, r["error"])
+                continue
+            f.uidvalidity, f.last_uid = r["uidvalidity"], r["last_uid"]
+            for uid, raw, seen in r["new"]:
+                data = mail_store.parse(raw)
+                if data["message_id"] and (await db.execute(select(MailMessage.id).where(
+                        MailMessage.mailbox_id == mb.id, MailMessage.message_id == data["message_id"]).limit(1))).first():
+                    continue                     # deja copie : envoye d'ici, ou deplace de la boite de reception
+                if (await db.execute(select(MailMessage.id).where(MailMessage.folder_id == f.id, MailMessage.folder_uid == uid).limit(1))).first():
+                    continue
+                out = f.sent or (data["from_email"] or "") in own_addrs
+                if not out and mail_junk.match(data["from_email"], blocked):
+                    continue                     # liste noire : jamais copie
+                msg = MailMessage(mailbox_id=mb.id, folder_id=f.id, folder_uid=uid, direction="out" if out else "in",
+                                  stored_path=mail_store.save_raw(mb.id, r["uidvalidity"], uid, raw, folder_id=f.id),
+                                  is_read=True if out else seen, **data)
+                db.add(msg)
+                await db.flush()
+                try:
+                    async with db.begin_nested():
+                        if out:
+                            await _classify_sent(db, msg)
+                        else:
+                            await mail_match.classify(db, msg, own, mb.email)
+                except Exception as exc:
+                    log.warning("Classement du courriel %s (%s) impossible : %s", uid, name, exc)
+                n += 1
+        await db.commit()
+    if n:
+        log.info("%s : %d courriel(s) copie(s) des autres dossiers", email_addr, n)
+    return n + (1000 if res["more"] else 0)
+
+
+async def _classify_sent(db, msg) -> None:
+    """Courriel envoye d'ailleurs (Outlook, cellulaire) : comme un envoi d'ici -- fiche du courriel auquel il repond,
+    sinon un destinataire connu. Aucun contact cree."""
+    from app.models.mailbox import MailMessage
+    if msg.in_reply_to:
+        src = (await db.execute(select(MailMessage).where(MailMessage.mailbox_id == msg.mailbox_id,
+                                                          MailMessage.message_id == msg.in_reply_to,
+                                                          or_(MailMessage.company_id.is_not(None), MailMessage.contact_id.is_not(None)))
+                                .limit(1))).scalar_one_or_none()
+        if src:
+            msg.company_id, msg.contact_id, msg.classified_by = src.company_id, src.contact_id, "auto"
+            return
+    import email.utils
+    for _, a in email.utils.getaddresses([msg.to_addrs or "", msg.cc_addrs or ""]):
+        if not a:
+            continue
+        c_id, p_id = await mail_match.by_address(db, a.lower())
+        if c_id or p_id:
+            msg.company_id, msg.contact_id, msg.classified_by = c_id, p_id, "auto"
+            if p_id and not c_id:                # TASK-047.4 : plusieurs compagnies -> fil, puis contenu
+                msg.company_id = await mail_match.company_for_contact(db, msg, p_id)
+            return
+
+
+def _recent(msg) -> bool:
+    return msg.sent_at is not None and msg.sent_at >= mail_store.now() - timedelta(days=_RDV_MAX_DAYS)
 
 
 async def _signatures() -> None:
@@ -130,6 +225,9 @@ async def sync_all() -> None:
             for mb_id in ids:
                 for _ in range(20):              # premiere copie : par paquets de 200 jusqu'a avoir rattrape
                     if await _sync_box(mb_id) < 1000:
+                        break
+                for _ in range(20):              # TASK-047.8 : puis les autres dossiers, meme rythme
+                    if await _sync_folders(mb_id) < 1000:
                         break
         finally:
             await lock.execute(text("select pg_advisory_unlock(:k)"), {"k": _LOCK})
@@ -160,6 +258,10 @@ async def _zeko_one() -> bool:
         msg = (await db.execute(select(MailMessage).where(MailMessage.zeko_rdv == "pending")
                                 .order_by(MailMessage.sent_at.desc()).limit(1))).scalar_one_or_none()
         kind = "rdv"
+        if msg and not _recent(msg):         # TASK-047.8 : vieux courriel (copie d'une date reculee) -- Zeko ne le lit pas
+            msg.zeko_rdv = "none"
+            await db.commit()
+            return True
         if not msg:
             msg = (await db.execute(select(MailMessage).where(MailMessage.zeko_classify == "pending")
                                     .order_by(MailMessage.sent_at.desc()).limit(1))).scalar_one_or_none()

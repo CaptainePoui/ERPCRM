@@ -248,6 +248,10 @@ async def _set_seen(db, m: MailMessage, seen: bool) -> None:
     """Lu/non lu ici ET dans la boite (Outlook, cellulaire) ; boite injoignable -> ecrit au prochain passage."""
     if m.is_read == seen and not m.flag_pending:
         return
+    if m.uid is None:                    # TASK-047.8 : copie d'un autre dossier (ou envoye d'ici) -- ERPCRM seulement
+        m.is_read, m.flag_pending = seen, False
+        await db.commit()
+        return
     m.is_read, m.flag_pending = seen, True
     await db.commit()
     box = await db.get(Mailbox, m.mailbox_id)

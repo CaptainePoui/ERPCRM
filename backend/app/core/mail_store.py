@@ -4,6 +4,7 @@ La boite reste la source : chaque courriel est garde tel quel (.eml, storage/mai
 lues dans ce fichier au besoin. Lu/non lu suit dans les deux sens : ouvrir un courriel ici le marque lu dans la boite
 (Outlook et cellulaire suivent), et ce qui est lu ailleurs devient lu ici. Rien n'est efface ni deplace, sauf « A jeter »
 (expediteur en liste noire, TASK-047.7 : core/mail_junk.py).
+Les autres dossiers (Envoyes, Archive, dossiers crees a la main) sont copies aussi, en lecture seule (TASK-047.8).
 """
 from __future__ import annotations
 
@@ -173,6 +174,95 @@ def sync_sync(box: dict, known_uidvalidity: int | None, last_uid: int, since: da
             pass
 
 
+# Dossiers jamais copies (TASK-047.8) : drapeaux IMAP « special-use », puis le nom (le serveur ne marque pas toujours
+# ses dossiers : INBOX.Junk de mail.simpleip.tel n'a pas de drapeau). « A jeter » : core/mail_junk.py.
+_SKIP_FLAGS = (b"\\Trash", b"\\Junk", b"\\Drafts", b"\\Noselect", b"\\NonExistent", b"\\All", b"\\Flagged")
+_SKIP_NAMES = {"trash", "spam", "junk", "drafts", "deleted", "deleted items", "deleted messages", "junk e-mail", "junk email",
+               "corbeille", "brouillons", "pourriel", "pourriels", "courrier indésirable", "indésirables", "éléments supprimés"}
+_SENT_NAMES = {"sent", "sent items", "sent messages", "envoyés", "éléments envoyés", "messages envoyés"}
+
+
+def _imap_name(line: bytes):
+    """(drapeaux, separateur, nom) d'une ligne de LIST."""
+    mt = re.match(rb'\((?P<flags>[^)]*)\) (?:"(?P<sep>[^"]*)"|NIL) (?P<name>.+)$', line)
+    if not mt:
+        return None
+    name = mt.group("name").decode(errors="replace").strip()
+    if name.startswith('"') and name.endswith('"'):
+        name = name[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return mt.group("flags"), (mt.group("sep") or b"").decode() if mt.group("sep") else "", name
+
+
+def _utf7_decode(s: str) -> str:
+    def dec(m):
+        b64 = m.group(1).replace(",", "/")
+        return base64.b64decode(b64 + "=" * (-len(b64) % 4)).decode("utf-16-be") if b64 else "&"
+    return re.sub(r"&([^-]*)-", dec, s)
+
+
+def _quote(name: str) -> str:
+    return '"' + name.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def list_folders(conn, skip: set[str]) -> list[tuple[str, bool]]:
+    """[(nom IMAP, Envoyes ?)] des dossiers a copier : tout sauf la boite de reception, la Corbeille, les Indesirables,
+    les Brouillons et skip (noms affiches en minuscules, ex. « à jeter »)."""
+    typ, data = conn.list()
+    out = []
+    for line in data or []:
+        if not isinstance(line, bytes):
+            continue
+        parsed = _imap_name(line)
+        if not parsed:
+            continue
+        flags, sep, name = parsed
+        last = _utf7_decode(name.rsplit(sep, 1)[-1] if sep else name).strip().lower()
+        if name.upper() == "INBOX" or last in skip or any(f.lower() in flags.lower() for f in _SKIP_FLAGS) \
+                or last in _SKIP_NAMES:
+            continue
+        out.append((name, b"\\Sent" in flags or last in _SENT_NAMES))
+    return out
+
+
+def folders_sync(box: dict, states: dict[str, tuple[int | None, int]], since: date | None, skip: set[str]) -> dict:
+    """Un tour de copie des autres dossiers (bloquant, lecture seule : EXAMINE, BODY.PEEK).
+    states : {nom: (uidvalidity connue, dernier numero copie)}.
+    Retour : {"folders": {nom: {"sent", "uidvalidity", "last_uid", "new": [(uid, raw, seen)], "error"}}, "more": bool}."""
+    conn = _connect(box)
+    try:
+        res, budget = {}, BATCH
+        for name, sent in list_folders(conn, skip):
+            f = res[name] = {"sent": sent, "uidvalidity": None, "last_uid": 0, "new": [], "error": None}
+            try:
+                typ, _ = conn.select(_quote(name), readonly=True)
+                if typ != "OK":
+                    raise RuntimeError(f"Dossier {_utf7_decode(name)} illisible")
+                uv = int(re.search(rb"\d+", conn.response("UIDVALIDITY")[1][0]).group(0))
+                known_uv, last_uid = states.get(name, (None, 0))
+                if uv != known_uv:               # nouveau dossier, ou renumerote : on repart de la date de debut
+                    last_uid = 0
+                f["uidvalidity"], f["last_uid"] = uv, last_uid
+                if last_uid:
+                    todo = [u for u in _uids(conn, "UID", f"{last_uid + 1}:*") if u > last_uid]
+                else:
+                    start = since or (date.today() - timedelta(days=DEFAULT_DAYS))
+                    todo = _uids(conn, "SINCE", start.strftime("%d-%b-%Y"))
+                for uid in todo[:max(budget, 0)]:
+                    typ, d = conn.uid("FETCH", str(uid), "(FLAGS BODY.PEEK[])")
+                    if typ == "OK" and d and isinstance(d[0], tuple):
+                        f["new"].append((uid, d[0][1], b"\\Seen" in d[0][0]))
+                    f["last_uid"] = uid
+                budget -= len(todo)
+            except Exception as exc:
+                f["error"] = str(exc)[:500]
+        return {"folders": res, "more": budget < 0}
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
 def set_seen_sync(box: dict, uid: int, seen: bool) -> None:
     conn = _connect(box)
     try:
@@ -185,10 +275,10 @@ def set_seen_sync(box: dict, uid: int, seen: bool) -> None:
             pass
 
 
-def save_raw(mailbox_id, uidvalidity: int, uid: int, raw: bytes) -> str:
+def save_raw(mailbox_id, uidvalidity: int, uid: int, raw: bytes, folder_id=None) -> str:
     d = STORE_DIR / str(mailbox_id)
     d.mkdir(parents=True, exist_ok=True)
-    p = d / f"{uidvalidity}-{uid}.eml"
+    p = d / (f"{folder_id}-{uidvalidity}-{uid}.eml" if folder_id else f"{uidvalidity}-{uid}.eml")
     p.write_bytes(raw)
     return str(p)
 

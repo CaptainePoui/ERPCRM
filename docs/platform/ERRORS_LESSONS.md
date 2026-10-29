@@ -1303,3 +1303,18 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : `npm run build` puis redémarrage ; test refait, l'écran est bon.
 
 **Leçon (à ne pas refaire)** : tout changement frontend ERPCRM = `npm run build` dans `frontend/` PUIS `systemctl --user restart erpcrm-frontend.service`, et vérifier dans le navigateur avant d'affirmer.
+
+
+## TASK-047.8 — « Pas dans ERPCRM » affirmé sans regarder la vraie boîte ; vieux courriels envoyés à Zéko pour les RDV
+
+**2026-10-29 — recherche des échanges avec ISP Telecom**
+
+**On croyait** : que le MSA et l'offre de juillet n'existaient pas puisqu'ils n'étaient pas dans ERPCRM (« antérieurs à la copie des boîtes »), dit à Philippe sans vérifier la boîte elle-même.
+
+**Preuve** : lecture IMAP de service@ : les courriels du 2, 3 et 8 juillet (avec le MSA et les cédules) étaient dans la boîte de réception, et 8 courriels envoyés dans Envoyés. Cause : 1re copie = 90 derniers jours par défaut, et seule la boîte de réception était copiée (choix de TASK-047.2).
+
+**Correction** : TASK-047.8 (date de début reculée, autres dossiers copiés).
+
+**Deuxième erreur, même tâche** : en reculant la date, les anciens courriels reçus ont été mis en file pour la lecture des RDV par Zéko (règle de TASK-026.6 prévue pour les courriels qui arrivent) — 65 courriels de mai à juillet, 19 lus avant l'arrêt, aucune proposition créée. Vu en vérifiant les compteurs après la copie, corrigé dans le code (7 jours au plus).
+
+**Leçon (à ne pas refaire)** : (1) « absent d'ERPCRM » ≠ « absent » : regarder la source (la boîte) avant de l'affirmer ; (2) avant de faire rejouer un traitement d'arrivée sur de vieilles données (copie à rebours, import), lister tout ce que l'arrivée déclenche (Zéko, contacts, signatures, alertes) et décider pour chacun.

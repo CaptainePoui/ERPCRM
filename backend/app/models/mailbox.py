@@ -48,7 +48,8 @@ class MailMessage(Base):
     Classe automatiquement dans la fiche (compagnie/contact) d'apres l'adresse de l'expediteur ; « A classer » sinon."""
     __tablename__ = "mail_messages"
     __table_args__ = (UniqueConstraint("mailbox_id", "uidvalidity", "uid"),
-                      Index("ix_mail_messages_from_email", "from_email"))
+                      Index("ix_mail_messages_from_email", "from_email"),
+                      Index("ix_mail_messages_box_message_id", "mailbox_id", "message_id"))
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     mailbox_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -96,8 +97,29 @@ class MailMessage(Base):
     junk_server: Mapped[str | None] = mapped_column(String(10))
     junk_uid: Mapped[int | None] = mapped_column(BigInteger)
     junk_error: Mapped[str | None] = mapped_column(String(500))
+    # TASK-047.8 : copie d'un autre dossier de la boite (Envoyes, Archive, dossiers de Philippe) -- folder_id + son
+    # numero la-bas ; uidvalidity/uid restent vides (reserves a la boite de reception : lu/non lu, « A jeter »).
+    folder_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_folders.id", ondelete="SET NULL"), index=True)
+    folder_uid: Mapped[int | None] = mapped_column(BigInteger)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class MailFolder(Base):
+    """Autre dossier d'une boite copie dans ERPCRM (TASK-047.8, 2026-10-29) : Envoyes, Archive, dossiers crees par
+    Philippe -- jamais Corbeille, Indesirables, Brouillons ni « A jeter ». Copie en lecture seule, du plus ancien au
+    plus recent ; un courriel deja copie (meme Message-ID dans la boite) n'est jamais copie deux fois."""
+    __tablename__ = "mail_folders"
+    __table_args__ = (UniqueConstraint("mailbox_id", "name"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mailbox_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)          # nom IMAP (UTF-7 modifie), ex. INBOX.Sent
+    sent: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)  # dossier Envoyes
+    uidvalidity: Mapped[int | None] = mapped_column(BigInteger)
+    last_uid: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0, server_default="0")
+    last_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sync_error: Mapped[str | None] = mapped_column(Text)
 
 
 class MailBlock(Base):
