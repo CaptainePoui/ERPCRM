@@ -119,7 +119,7 @@ async def ai_parse(subject: str, body: str) -> dict:
         "\"date\": str|null, \"message\": str|null, \"reference\": str|null}\n\n"
         f"Sujet : {subject}\n\n{body[:5000]}"
     )
-    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="interac", timeout=900)
+    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="interac")
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ValueError("réponse de l'IA illisible")

@@ -11,6 +11,7 @@ de fond qui tourne a ce moment est coupee (le modele s'arrete quand la connexion
 import asyncio
 import json
 import logging
+import socket
 import time
 from datetime import datetime, timezone
 
@@ -23,6 +24,53 @@ from app.core.database import AsyncSessionLocal, engine
 log = logging.getLogger("zeko")
 
 CHAT_LOCK = 0x5A454B4F          # « ZEKO »
+
+# Modele local (TASK-006.12) : aucune limite de duree, il peut reflechir 10 min et plus. Seule la connexion a une
+# limite (serveur d'IA eteint). Une machine d'IA morte en pleine reponse est detectee par le keep-alive TCP (aucun
+# paquet ne passe pendant qu'Ollama reflechit sans flux) : sonde apres 60 s de silence, puis 3 x 20 s.
+_LOCAL_TIMEOUT = httpx.Timeout(None, connect=10)
+_KEEPALIVE = [(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1), (socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 60),
+              (socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 20), (socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)]
+
+
+# Relance d'une reponse vide (TASK-006.13, idee de Philippe) : le modele a tout ecrit dans sa reflexion
+EMPTY_NUDGE = ("Ta réponse précédente est arrivée vide : seule ta réflexion a été écrite, et elle n'est pas transmise. "
+               "Écris maintenant ta réponse finale.")
+
+
+def _local_client() -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=_LOCAL_TIMEOUT, transport=httpx.AsyncHTTPTransport(socket_options=_KEEPALIVE))
+
+
+# Serveur de secours (TASK-006.14) : le serveur principal (ex. Zeko sur le P720) est utilise s'il repond ; sinon
+# (debranche, deplace, en panne) le serveur de secours, avec ses propres modeles. Verifie au plus toutes les 30 s.
+_ALIVE_TTL = 30
+_alive: dict = {}                 # url -> (moment de la verification, repond ?)
+
+
+async def _answers(url: str) -> bool:
+    seen = _alive.get(url)
+    if seen and time.monotonic() - seen[0] < _ALIVE_TTL:
+        return seen[1]
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4, connect=3)) as c:
+            ok = (await c.get(f"{url}/models")).status_code == 200
+    except Exception:
+        ok = False
+    if seen and seen[1] != ok:
+        log.warning("Zeko : %s %s", url, "repond de nouveau" if ok else "ne repond plus")
+    _alive[url] = (time.monotonic(), ok)
+    return ok
+
+
+async def pick_server(cfg: dict, kind: str, model: str | None = None) -> tuple[str, str, str]:
+    """(adresse, modele, « local » ou « secours ») pour un appel : kind = « tasks » ou « chat »."""
+    b = cfg["backup"]
+    if b["url"] and not await _answers(cfg["url"]) and await _answers(b["url"]):
+        return b["url"], b[f"model_{kind}"] or model or cfg[f"model_{kind}"], "secours"
+    return cfg["url"], model or cfg[f"model_{kind}"], "local"
+
+
 _CACHE_TTL = 20
 _cache: dict = {"at": 0.0, "cfg": None}
 
@@ -64,6 +112,9 @@ async def config(fresh: bool = False) -> dict:
             "url": url.rstrip("/"),
             "model_tasks": (await get_setting(db, "zeko_model_tasks")) or settings.LOCAL_AI_MODEL,
             "model_chat": (await get_setting(db, "zeko_model_chat")) or settings.LOCAL_AI_MODEL,
+            "backup": {"url": ((await get_setting(db, "zeko_url_backup")) or "").strip().rstrip("/"),
+                       "model_tasks": (await get_setting(db, "zeko_model_tasks_backup")) or "",
+                       "model_chat": (await get_setting(db, "zeko_model_chat_backup")) or ""},
         }
         prov = (await get_setting(db, "zeko_ext_provider")) or "gemini"
         preset = PROVIDERS.get(prov, PROVIDERS["autre"])
@@ -88,6 +139,7 @@ async def config(fresh: bool = False) -> dict:
 
 def invalidate() -> None:
     _cache["cfg"] = None
+    _alive.clear()
 
 
 async def enabled() -> bool:
@@ -150,15 +202,15 @@ async def chat_active() -> bool:
     return bool(n)
 
 
-async def _post(cfg: dict, payload: dict, timeout: float) -> dict:
-    async with httpx.AsyncClient(timeout=timeout) as client:
-        r = await client.post(f"{cfg['url']}/chat/completions", json=payload)
+async def _post(url: str, payload: dict) -> dict:
+    async with _local_client() as client:
+        r = await client.post(f"{url}/chat/completions", json=payload)
         r.raise_for_status()
         return r.json()
 
 
 async def complete(messages: list[dict], *, purpose: str, model: str | None = None, temperature: float = 0,
-                   reasoning_effort: str | None = "low", timeout: float = 1200, priority: str = "background",
+                   reasoning_effort: str | None = "low", priority: str = "background",
                    user_id=None) -> str:
     """Un appel complet (sans flux) ; retourne le texte de la reponse. En priorite « background », cede la place a
     toute conversation : attend qu'elle finisse, et s'il en commence une pendant l'appel, coupe et recommence apres."""
@@ -166,6 +218,7 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
     if not cfg["enabled"]:
         raise ZekoUnavailable("Zéko n'est pas configuré (Administration → Intégrations)")
     payload = {"model": model or cfg["model_tasks"], "temperature": temperature, "messages": messages}
+    where = "local"
     if reasoning_effort:
         payload["reasoning_effort"] = reasoning_effort
     for _attempt in range(20):
@@ -173,7 +226,8 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
             while await chat_active():
                 await asyncio.sleep(3)
         t0 = time.monotonic()
-        task = asyncio.create_task(_post(cfg, payload, timeout))
+        url, payload["model"], where = await pick_server(cfg, "tasks", model)    # principal, sinon secours
+        task = asyncio.create_task(_post(url, payload))
         interrupted = False
         try:
             while not task.done():
@@ -186,7 +240,7 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
                     await task
                 except BaseException:
                     pass
-                await _journal(purpose=purpose, model=payload["model"], status="interrompu",
+                await _journal(purpose=purpose, provider=where, model=payload["model"], status="interrompu",
                                duration_ms=int((time.monotonic() - t0) * 1000), user_id=user_id,
                                error="Coupé pour laisser passer une conversation ; repris ensuite")
                 await asyncio.sleep(5)
@@ -196,13 +250,19 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
             task.cancel()
             raise
         except Exception as e:
-            await _journal(purpose=purpose, model=payload["model"], status="erreur",
+            await _journal(purpose=purpose, provider=where, model=payload["model"], status="erreur",
                            duration_ms=int((time.monotonic() - t0) * 1000), user_id=user_id, error=str(e)[:2000])
             raise
         usage = data.get("usage") or {}
-        await _journal(purpose=purpose, model=payload["model"], status="ok", duration_ms=int((time.monotonic() - t0) * 1000),
+        await _journal(purpose=purpose, provider=where, model=payload["model"], status="ok", duration_ms=int((time.monotonic() - t0) * 1000),
                        prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"), user_id=user_id)
-        return clean(data["choices"][0]["message"].get("content") or "")
+        answer = clean(data["choices"][0]["message"].get("content") or "")
+        if not answer.strip() and payload["messages"] is messages:      # vide : une seule relance (TASK-006.13)
+            payload = {**payload, "messages": messages + [{"role": "user", "content": EMPTY_NUDGE}]}
+            await _journal(purpose=purpose, provider=where, model=payload["model"], status="vide", user_id=user_id,
+                           duration_ms=int((time.monotonic() - t0) * 1000), error="Réponse vide : relancé une fois")
+            continue
+        return answer
     raise ZekoUnavailable("Zéko est resté occupé par des conversations ; nouvel essai plus tard")
 
 
@@ -213,7 +273,8 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
     cfg = await config()
     if not cfg["enabled"]:
         raise ZekoUnavailable("Zéko n'est pas configuré (Administration → Intégrations)")
-    payload = {"model": cfg["model_chat"], "stream": True, "temperature": 0.3, "reasoning_effort": "low",
+    url, chat_model, where = await pick_server(cfg, "chat")                   # principal, sinon secours (TASK-006.14)
+    payload = {"model": chat_model, "stream": True, "temperature": 0.3, "reasoning_effort": "low",
                "messages": messages, "stream_options": {"include_usage": True}}
     if tools:
         payload["tools"] = tools
@@ -225,8 +286,8 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
     try:
         await lock_conn.execute(text("SELECT pg_advisory_lock_shared(:k)"), {"k": CHAT_LOCK})
         await lock_conn.commit()
-        async with httpx.AsyncClient(timeout=httpx.Timeout(1800, connect=10)) as client:
-            async with client.stream("POST", f"{cfg['url']}/chat/completions", json=payload) as r:
+        async with _local_client() as client:
+            async with client.stream("POST", f"{url}/chat/completions", json=payload) as r:
                 if r.status_code >= 400:
                     raise ZekoUnavailable(f"Le modèle a répondu {r.status_code} : {(await r.aread())[:300]!r}")
                 async for line in r.aiter_lines():
@@ -267,6 +328,6 @@ async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, 
         except Exception:
             pass
         await lock_conn.close()
-        await _journal(purpose=purpose, model=payload["model"], status=status, duration_ms=int((time.monotonic() - t0) * 1000),
+        await _journal(purpose=purpose, provider=where, model=payload["model"], status=status, duration_ms=int((time.monotonic() - t0) * 1000),
                        prompt_tokens=usage.get("prompt_tokens"), completion_tokens=usage.get("completion_tokens"),
                        error=error, user_id=user_id, conversation_id=conversation_id)

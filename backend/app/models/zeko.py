@@ -68,7 +68,7 @@ class ZekoInvocation(Base):
     purpose: Mapped[str] = mapped_column(String(40), nullable=False, index=True)   # conversation, depot_bancaire, recu, interac, signature
     provider: Mapped[str] = mapped_column(String(30), default="local")
     model: Mapped[str | None] = mapped_column(String(100))
-    status: Mapped[str] = mapped_column(String(20), default="ok")                   # ok | erreur | interrompu
+    status: Mapped[str] = mapped_column(String(20), default="ok")                   # ok | erreur | interrompu | vide
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     prompt_tokens: Mapped[int | None] = mapped_column(Integer)
     completion_tokens: Mapped[int | None] = mapped_column(Integer)

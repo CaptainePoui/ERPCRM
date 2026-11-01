@@ -6,7 +6,7 @@ Qui voit quoi : les boites partagees (service@, facturation@, portabilite@) -> t
 """
 import asyncio
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
@@ -63,7 +63,8 @@ def _row(m: MailMessage, box: Mailbox, companies: dict, contacts: dict) -> dict:
     return {"id": str(m.id), "mailbox_id": str(m.mailbox_id), "mailbox": box.email, "personal": box.kind == "personal",
             "from_email": m.from_email, "from_name": m.from_name, "subject": m.subject, "sent_at": m.sent_at,
             "snippet": (m.body_text or "")[:160].replace("\n", " "), "is_read": m.is_read,
-            "has_attachments": bool(m.attachments), "company_id": str(m.company_id) if m.company_id else None,
+            "has_attachments": bool(m.attachments), "scan_status": m.scan_status, "scan_detail": m.scan_detail,  # TASK-047.9
+            "company_id": str(m.company_id) if m.company_id else None,
             "company_name": companies.get(m.company_id), "contact_id": str(m.contact_id) if m.contact_id else None,
             "contact_name": contacts.get(m.contact_id), "classified_by": m.classified_by,
             "contact_created": m.contact_created, "shared": m.shared,
@@ -192,7 +193,8 @@ async def send(data: str = Form(...), files: list[UploadFile] = File(default=[])
     if src and p.mode != "new":
         html += mail_send.quote_html(src)
     attach = [(f.filename or "piece", await f.read(), f.content_type or "application/octet-stream") for f in files]
-    if src and p.mode == "forward":
+    if src and p.mode == "forward" and p.forward_attachments:
+        await _ensure_scanned(db, src)
         for a in src.attachments or []:
             if a.get("i") in p.forward_attachments and Path(src.stored_path).is_file():
                 name, ctype, content = mail_store.attachment(src.stored_path, a["i"])
@@ -596,11 +598,26 @@ async def link(mid: uuid.UUID, p: LinkIn, db: AsyncSession = Depends(get_db), us
     return {"ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None}
 
 
+async def _ensure_scanned(db: AsyncSession, m: MailMessage) -> None:
+    """TASK-047.9 : jamais une piece jointe d'un courriel dangereux ; pas encore analyse -> analyse tout de suite."""
+    from app.core import mail_scan
+    if m.scan_status is None:
+        try:
+            m.scan_status, m.scan_detail = await mail_scan.scan_message(m)
+        except mail_scan.ScanUnavailable as e:
+            raise HTTPException(status_code=503, detail=f"Pièce jointe pas encore vérifiée : {e}. Réessayez dans un instant.")
+        m.scanned_at = datetime.now(timezone.utc)
+        await db.commit()
+    if m.scan_status == "danger":
+        raise HTTPException(status_code=409, detail=f"Pièce jointe bloquée : {m.scan_detail}")
+
+
 @router.get("/{mid}/attachments/{index}")
 async def get_attachment(mid: uuid.UUID, index: int, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
     m = await _get(db, mid, user)
     if not any(a.get("i") == index for a in m.attachments or []) or not Path(m.stored_path).is_file():
         raise HTTPException(status_code=404, detail="Pièce jointe introuvable")
+    await _ensure_scanned(db, m)
     name, ctype, data = mail_store.attachment(m.stored_path, index)
     return Response(data, media_type=ctype or "application/octet-stream",
                     headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(name)}"})

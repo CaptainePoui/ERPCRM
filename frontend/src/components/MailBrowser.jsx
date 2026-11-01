@@ -10,6 +10,7 @@ import NewTicketModal from './NewTicketModal'
 import NewTaskModal from './NewTaskModal'
 import MailCompose from './MailCompose'
 import { downloadFile } from '../utils/download'
+import { showAlert } from './Dialog'
 import { GoogleEventModal } from '../pages/Tasks'
 import { todayIso } from '../utils/date'
 
@@ -26,12 +27,13 @@ function size(n) {
   return n > 1048576 ? `${(n / 1048576).toFixed(1)} Mo` : `${Math.max(1, Math.round(n / 1024))} Ko`
 }
 
-// Corps du courriel isole (aucun script ; les liens s'ouvrent dans un nouvel onglet)
-function MailBody({ html, text }) {
+// Corps du courriel isole (aucun script ; les liens s'ouvrent dans un nouvel onglet). Courriel dangereux (TASK-047.9) :
+// sandbox complet, aucun lien ne s'ouvre.
+function MailBody({ html, text, danger }) {
   const doc = html
     ? `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`
     : `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;white-space:pre-wrap;word-wrap:break-word}</style></head><body>${(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</body></html>`
-  return <iframe title="Courriel" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={doc}
+  return <iframe title="Courriel" sandbox={danger ? '' : 'allow-popups allow-popups-to-escape-sandbox'} srcDoc={doc}
     style={{ width: '100%', flex: 1, minHeight: 420, border: 'none', background: 'var(--c-surface)' }} />
 }
 
@@ -383,16 +385,22 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved }) {
           </div>
         )}
         {junkMsg && <div style={{ fontSize: 13, marginTop: 8, color: 'var(--c-on-green)' }}>✓ {junkMsg}</div>}
+        {m.scan_status === 'danger' && (
+          <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: '#FEE2E2', color: '#991B1B', fontSize: 13, border: '1px solid #FCA5A5' }}>
+            <b>⚠ Courriel dangereux</b> : {m.scan_detail}. Les pièces jointes sont bloquées et les liens ne s'ouvrent pas. Ne répondez pas aux demandes qu'il contient.
+          </div>
+        )}
         {m.attachments?.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
             {m.attachments.map(a => (
-              <button key={a.i} className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }}
-                onClick={() => downloadFile(`/v1/mail/${m.id}/attachments/${a.i}`, a.filename)}>📎 {a.filename} ({size(a.size)})</button>
+              <button key={a.i} className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} disabled={m.scan_status === 'danger'}
+                title={m.scan_status === 'danger' ? 'Bloquée : courriel dangereux' : undefined}
+                onClick={() => downloadFile(`/v1/mail/${m.id}/attachments/${a.i}`, a.filename).catch(async e => { let d; try { d = JSON.parse(await e.response.data.text()).detail } catch { d = null } showAlert(d || 'Pièce jointe impossible à ouvrir') })}>{m.scan_status === 'danger' ? '⛔' : '📎'} {a.filename} ({size(a.size)})</button>
             ))}
           </div>
         )}
       </div>
-      <MailBody html={m.body_html} text={m.body_text} />
+      <MailBody html={m.body_html} text={m.body_text} danger={m.scan_status === 'danger'} />
 
       {compose && <MailCompose mode={compose} source={m} onClose={() => setCompose(null)} onSent={sent} />}
       {blocking && <BlockModal mail={m} onClose={() => setBlocking(false)} onDone={blocked} />}
@@ -457,7 +465,7 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
                 <span style={{ flex: 1, fontWeight: m.is_read ? 400 : 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {m.direction === 'out' ? <span style={{ color: 'var(--c-muted)' }}>↗ À : {(m.to_addrs || '').replace(/\s*<[^>]+>/g, '')}</span> : (m.from_name || m.from_email)}
                 </span>
-                <span style={{ color: 'var(--c-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{m.zeko_rdv_pending ? <span title="Zéko a préparé un changement de RDV">🤖 </span> : ''}{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
+                <span style={{ color: 'var(--c-muted)', fontSize: 12, whiteSpace: 'nowrap' }}>{m.zeko_rdv_pending ? <span title="Zéko a préparé un changement de RDV">🤖 </span> : ''}{m.answered_at ? <span title="Répondu">↩ </span> : ''}{m.scan_status === 'danger' ? <span title={`Courriel dangereux : ${m.scan_detail}`}>⚠ </span> : ''}{m.has_attachments ? '📎 ' : ''}{when(m.sent_at)}</span>
               </div>
               <div style={{ fontSize: 13, fontWeight: m.is_read ? 400 : 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject || '(sans objet)'}</div>
               <div style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

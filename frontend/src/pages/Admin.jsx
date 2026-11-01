@@ -583,15 +583,23 @@ function ZekoSettingsPanel() {
   const [f, setF] = useState(null)
   const [models, setModels] = useState([])
   const [modelsErr, setModelsErr] = useState(null)
+  const [bModels, setBModels] = useState([])
+  const [bModelsErr, setBModelsErr] = useState(null)
+  const [active, setActive] = useState(null)
   const [journal, setJournal] = useState([])
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   async function loadModels() {
     setModelsErr(null)
     try { setModels((await api.get('/v1/zeko/models')).data) } catch (e) { setModels([]); setModelsErr(e.response?.data?.detail || 'Modèle injoignable') }
+    setBModelsErr(null)
+    try { setBModels((await api.get('/v1/zeko/models', { params: { secours: true } })).data) } catch (e) { setBModels([]); setBModelsErr(e.response?.data?.detail || 'Modèle injoignable') }
+    api.get('/v1/zeko/active').then(r => setActive(r.data)).catch(() => setActive(null))
   }
+  const fromSettings = d => ({ enabled: d.zeko_enabled, url: d.zeko_url, tasks: d.zeko_model_tasks, chat: d.zeko_model_chat,
+    burl: d.zeko_url_backup, btasks: d.zeko_model_tasks_backup, bchat: d.zeko_model_chat_backup })
   useEffect(() => {
-    api.get('/v1/settings').then(r => setF({ enabled: r.data.zeko_enabled, url: r.data.zeko_url, tasks: r.data.zeko_model_tasks, chat: r.data.zeko_model_chat }))
+    api.get('/v1/settings').then(r => setF(fromSettings(r.data)))
     loadModels()
     api.get('/v1/zeko/journal?limit=15').then(r => setJournal(r.data)).catch(() => {})
   }, [])
@@ -599,18 +607,19 @@ function ZekoSettingsPanel() {
   async function save() {
     setSaving(true)
     try {
-      const r = await api.put('/v1/settings', { zeko_enabled: f.enabled, zeko_url: f.url, zeko_model_tasks: f.tasks, zeko_model_chat: f.chat })
-      setF({ enabled: r.data.zeko_enabled, url: r.data.zeko_url, tasks: r.data.zeko_model_tasks, chat: r.data.zeko_model_chat })
+      const r = await api.put('/v1/settings', { zeko_enabled: f.enabled, zeko_url: f.url, zeko_model_tasks: f.tasks, zeko_model_chat: f.chat,
+        zeko_url_backup: f.burl, zeko_model_tasks_backup: f.btasks, zeko_model_chat_backup: f.bchat })
+      setF(fromSettings(r.data))
       setSaved(true)
       loadModels()
     } finally { setSaving(false) }
   }
   if (!f) return <div className="loading">Chargement...</div>
   const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12, flexWrap: 'wrap' }
-  const pick = (k) => (
+  const pick = (k, list = models) => (
     <select value={f[k]} onChange={e => set(k, e.target.value)} style={{ minWidth: 220, maxWidth: '100%' }}>
-      {!models.includes(f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
-      {models.map(m => <option key={m} value={m}>{m}</option>)}
+      {!list.includes(f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
+      {list.map(m => <option key={m} value={m}>{m}</option>)}
     </select>
   )
   return (
@@ -627,6 +636,17 @@ function ZekoSettingsPanel() {
       </div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('chat')}</div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
+      <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', margin: '16px 0 4px' }}>Serveur de secours</div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 10 }}>
+        Utilisé seulement quand l'adresse ci-dessus ne répond pas (machine débranchée, déplacée, en panne). Zéko revient tout seul au serveur principal dès qu'il répond. Laisser vide = pas de secours.
+      </p>
+      <div style={row}><span style={{ minWidth: 170 }}>Adresse de secours</span>
+        <input value={f.burl} onChange={e => set('burl', e.target.value)} placeholder="http://…:11434/v1" style={{ width: 340, maxWidth: '100%' }} />
+        {f.burl && (bModelsErr ? <span style={{ color: '#DC2626', fontSize: 12 }}>{bModelsErr}</span> : bModels.length > 0 && <span style={{ color: '#059669', fontSize: 12 }}>✓ joignable ({bModels.length} modèles)</span>)}
+      </div>
+      {f.burl && <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('bchat', bModels)}</div>}
+      {f.burl && <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('btasks', bModels)}</div>}
+      {active && <p style={{ fontSize: 13, marginBottom: 12 }}>En ce moment, Zéko utilise <b>{active.serveur === 'secours' ? 'le serveur de secours' : 'le serveur principal'}</b> ({active.adresse}) : conversation {active.modele_conversation}, tâches {active.modele_taches}.</p>}
       <button className="btn-primary" onClick={save} disabled={saving}>{saving ? '...' : saved ? '✓ Enregistré' : 'Enregistrer'}</button>
       <ExternalAiPanel />
       {journal.length > 0 && (

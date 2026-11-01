@@ -71,6 +71,11 @@ class MailMessage(Base):
     body_html: Mapped[str | None] = mapped_column(Text)
     attachments: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")  # [{i, filename, ctype, size}]
     stored_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    # TASK-047.9 : analyse ClamAV (virus, hameconnage) + liens compares a une liste de domaines d'hameconnage ;
+    # vide = pas encore analyse ; « propre » ; « danger » (scan_detail : ce qui a ete trouve) ; « partiel » (trop gros...)
+    scan_status: Mapped[str | None] = mapped_column(String(10), index=True)
+    scan_detail: Mapped[str | None] = mapped_column(String(500))
+    scanned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     flag_pending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)   # lu/non lu change ici, pas encore ecrit dans la boite
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)

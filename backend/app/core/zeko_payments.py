@@ -83,7 +83,7 @@ async def examine(db, m) -> str:
     from app.models.bank_account import BankTransaction
     from app.core.bank_matching import invoice_balances
     full, evidence = await _text_of(m)
-    content = await zeko.complete([{"role": "user", "content": PROMPT + "\n\n" + full}], purpose="avis_paiement", timeout=1800)
+    content = await zeko.complete([{"role": "user", "content": PROMPT + "\n\n" + full}], purpose="avis_paiement")
     mm = re.search(r"\{.*\}", content, re.S)
     x = json.loads(mm.group(0)) if mm else {}
     if not x.get("paiement_recu"):

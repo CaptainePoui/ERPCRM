@@ -110,7 +110,7 @@ async def classify_with_zeko(db, msg) -> None:
         "Liste :\n" + "\n".join(f"- {n}" for n in names) + "\n\n"
         f"De : {msg.from_name or ''} <{msg.from_email}>\nObjet : {msg.subject or ''}\n\n{_text(msg, 4000)}"
     )
-    x = _json(await zeko.complete([{"role": "user", "content": prompt}], purpose="classement_courriel", timeout=900))
+    x = _json(await zeko.complete([{"role": "user", "content": prompt}], purpose="classement_courriel"))
     name = (x.get("compagnie") or "").strip() if isinstance(x.get("compagnie"), str) else ""
     msg.zeko_classify = "done"
     if not name or x.get("certain") is not True:
@@ -302,7 +302,7 @@ async def rdv_with_zeko(db, msg) -> None:
         "« retard » : nouvelle_heure = l'heure où il arrivera. « deplacer » sans date ou heure précise : null.\n\n"
         f"De : {msg.from_name or ''} <{msg.from_email}>\nObjet : {msg.subject or ''}\n\n{_text(msg)}"
     )
-    x = _json(await zeko.complete([{"role": "user", "content": prompt}], purpose="rdv_courriel", timeout=900))
+    x = _json(await zeko.complete([{"role": "user", "content": prompt}], purpose="rdv_courriel"))
     action = x.get("action") if x.get("action") in ("deplacer", "retard", "annuler") else None
     try:
         rdv = rdvs[int(x.get("rdv")) - 1] if action and x.get("rdv") is not None else None

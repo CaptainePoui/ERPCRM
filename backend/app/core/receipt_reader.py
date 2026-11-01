@@ -125,7 +125,7 @@ async def ai_extract(text: str, categories: list[str], vendors: list[str], filen
                  "changent, recopie ceux du nouveau reçu) :\n" + json.dumps(ex, ensure_ascii=False) + "\n")
     user += "Texte du reçu :\n" + compact(text)[:24000]
     content = await zeko.complete([{"role": "system", "content": _system_prompt(categories, vendors)},
-                                   {"role": "user", "content": user}], purpose="recu", timeout=1200)
+                                   {"role": "user", "content": user}], purpose="recu")
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ReadError("Réponse de l'IA illisible")

@@ -25,7 +25,7 @@ from app.models.zeko import ZekoProject, ZekoConversation, ZekoMessage, ZekoInvo
 
 router = APIRouter()
 
-_MAX_TOOL_ROUNDS = 5
+_MAX_TOOL_ROUNDS = 20               # protege seulement d une boucle sans fin (TASK-006.12) ; « Arreter » reste la
 _HISTORY_CHARS = 9000
 
 SYSTEM = (
@@ -33,12 +33,13 @@ SYSTEM = (
     "de Simple IP à dépanner et à retrouver l'information. Réponds en français, court, clair et concret, comme un collègue. "
     "Tu consultes les données d'ERPCRM et, comme un employé, tu fais le travail demandé avec les outils qui changent des "
     "données (agenda, nouvelle personne et son poste, réglages d'un poste, ce que tu as appris, règles de la banque, nom d'un "
-    "client). Avant de changer quoi que ce soit, décris en UNE question « Je … ? » tout ce que tu vas faire pour cette "
+    "client). Avant de changer quoi que ce soit (sauf l'agenda, voir plus bas), décris en UNE question « Je … ? » tout ce que tu vas faire pour cette "
     "tâche ; après un oui clair, fais-la au complet sans redemander, puis dis ce qui est fait en reprenant le résultat de "
     "l'outil (ce qu'il dit fait, et ce qu'il dit pas fait), jamais plus. Si une partie de la demande "
-    "n'est pas possible, dis-le dans ta question. Pour l'agenda, ta question vient de l'outil : appelle-le d'abord sans "
-    "oui, en lui passant la date avec les mots dits (ex. « tarte le 16 ») ; il te rend la question à poser, ou ce qui ne "
-    "va pas (une date à faire préciser, un client introuvable) : dis-le tel quel. N'invente jamais un fait sur un client, un "
+    "n'est pas possible, dis-le dans ta question. Pour l'agenda, appelle l'outil tout de suite sans oui, en lui passant la "
+    "date avec les mots dits (ex. « tarte le 16 ») : s'il n'y a rien dans ta marge avant/après, il le met à l'agenda et te dit "
+    "ce qui est fait ; sinon il te rend la question à poser (conflit, date corrigée), ou ce qui ne va pas (une date à faire "
+    "préciser, un client introuvable) : dis-le tel quel. N'invente jamais un fait sur un client, un "
     "équipement ou un ticket : consulte d'abord ; si l'information n'y est pas, dis-le simplement. Sépare ce qui est "
     "confirmé dans ERPCRM de tes hypothèses. Une question marquée « restée sans réponse » : réponds-y d'abord, en commençant "
     "par « Pour la question de ce matin : » (le moment indiqué), puis une ligne seule ---, puis la réponse à la nouvelle "
@@ -378,9 +379,10 @@ async def _setup(user: User):
 
 
 async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=False):
-    """Un tour de Zeko : flux du modele, outils (jusqu'a 5 tours), evenements SSE. save(role, content, **kw) garde
+    """Un tour de Zeko : flux du modele, outils (jusqu'a 20 tours), evenements SSE. save(role, content, **kw) garde
     les etapes (conversation personnelle : tout ; ticket : seulement la reponse finale)."""
     partial = ""
+    nudged = False
     try:
         for _round in range(_MAX_TOOL_ROUNDS + 1):
             partial = ""
@@ -394,6 +396,12 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                     yield _sse({"type": "texte", "texte": val})
                 elif kind == "outils":
                     calls = val
+            if not calls and not partial.strip() and not nudged and _round < _MAX_TOOL_ROUNDS:
+                # Reponse vide (TASK-006.13) : certains modeles ecrivent tout dans leur reflexion et rien dans la
+                # reponse ; on lui redemande une fois d'ecrire sa reponse (relance non gardee dans la conversation)
+                nudged = True
+                messages.append({"role": "user", "content": zeko.EMPTY_NUDGE})
+                continue
             if not calls:
                 await save("assistant", partial)
                 partial = None
@@ -649,19 +657,29 @@ async def journal(limit: int = 50, db: AsyncSession = Depends(get_db), _: User =
 
 
 @router.get("/models")
-async def models(_: User = Depends(get_current_user)):
-    """Modeles offerts par l'adresse configuree (liste pour l'ecran Administration)."""
+async def models(secours: bool = False, _: User = Depends(get_current_user)):
+    """Modeles offerts par l'adresse configuree, ou par celle du serveur de secours (liste pour l'ecran Administration)."""
     import httpx
     c = await zeko.config(fresh=True)
-    if not c["url"]:
+    url = c["backup"]["url"] if secours else c["url"]
+    if not url:
         return []
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(f"{c['url']}/models")
+            r = await client.get(f"{url}/models")
             r.raise_for_status()
             return sorted(m["id"] for m in r.json().get("data", []))
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Modèle injoignable : {str(e)[:200]}")
+
+
+@router.get("/active")
+async def active_server(_: User = Depends(get_current_user)):
+    """Serveur que Zeko utilise en ce moment (principal ou secours) et ses modeles (TASK-006.14)."""
+    c = await zeko.config(fresh=True)
+    url, chat, where = await zeko.pick_server(c, "chat")
+    _u, tasks, _w = await zeko.pick_server(c, "tasks")
+    return {"serveur": where, "adresse": url, "modele_conversation": chat, "modele_taches": tasks}
 
 
 @router.get("/external/providers")

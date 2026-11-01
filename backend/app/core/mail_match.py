@@ -254,7 +254,7 @@ async def read_signature(db, msg) -> None:
         "\"telephone\": str|null, \"poste\": str|null, \"cellulaire\": str|null}\n\n"
         f"Expéditeur : {msg.from_name or ''} <{msg.from_email}>\n\n{text}"
     )
-    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="signature", timeout=900)
+    content = await zeko.complete([{"role": "user", "content": prompt}], purpose="signature")
     m = re.search(r"\{.*\}", content, re.S)
     x = json.loads(m.group(0)) if m else {}
     digits = re.sub(r"\D", "", text)

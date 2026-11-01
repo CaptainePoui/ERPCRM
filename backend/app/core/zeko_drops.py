@@ -205,7 +205,7 @@ async def analyze(db, d: ZekoDrop) -> dict:
     user = f"Nom du fichier : {d.filename}\n" + (f"Provenance : {d.origin}\n" if d.origin else "") + (f"{d.context}\n" if d.context else "")
     user += "Texte du document :\n" + (compact(d.text)[:6000] if d.text and d.text.strip() else "(aucun texte lisible : image ou format non lu)")
     content = await zeko.complete([{"role": "system", "content": _prompt(d, page, _refused(d))}, {"role": "user", "content": user}],
-                                  purpose="depot", timeout=1200, user_id=d.user_id)
+                                  purpose="depot", user_id=d.user_id)
     m = re.search(r"\{.*\}", content, re.S)
     if not m:
         raise ValueError("Réponse de Zéko illisible")

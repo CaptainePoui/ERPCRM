@@ -35,7 +35,6 @@ SECONDS_PER_DEPOSIT = 30       # mesure du 2026-10-05 (~27 s) -- sert au decompt
 # File : le plus vieil import d'abord (demande de Philippe, 2026-10-06), puis la date du releve
 QUEUE_ORDER = (BankTransaction.created_at, BankTransaction.posted_date, BankTransaction.id)
 _BATCH = 20          # depots confies a l'IA par passage (un par appel)
-_TIMEOUT = 900
 
 
 async def _context(db) -> tuple[list[dict], list[str]]:
@@ -105,7 +104,7 @@ async def _ask(system: str, t: BankTransaction) -> dict:
     # testes (PATIO DESIGN -> Construction Nationale, 90 %) ; c'est l'ecriture qui coute sur ce processeur.
     content = await zeko.complete([{"role": "system", "content": system},
                                    {"role": "user", "content": "Dépôt à identifier : " + json.dumps(deposit, ensure_ascii=False)}],
-                                  purpose="depot_bancaire", timeout=_TIMEOUT)
+                                  purpose="depot_bancaire")
     return _parse(content)
 
 
