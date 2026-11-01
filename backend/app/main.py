@@ -19,6 +19,7 @@ from app.api.v1.endpoints import purchases
 from app.api.v1.endpoints import barter
 from app.api.v1.endpoints import journal
 from app.api.v1.endpoints import privileges as privileges_router
+from app.api.v1.endpoints import notifications as notifications_router
 from app.services.imap_poller import run_poller
 from app.services.reminder_poller import run_reminder_poller
 from app.services.backup_poller import run_backup_poller
@@ -125,6 +126,7 @@ app.include_router(taxes.router, prefix="/api/v1/taxes", tags=["taxes"])
 app.include_router(purchases.router, prefix="/api/v1/purchases", tags=["purchases"])
 app.include_router(barter.router, prefix="/api/v1/barter", tags=["barter"])
 app.include_router(privileges_router.router, prefix="/api/v1/privileges", tags=["privileges"])
+app.include_router(notifications_router.router, prefix="/api/v1/notifications", tags=["notifications"])
 app.mount("/uploads", StaticFiles(directory="/home/simpleip/erpcrm/backend/uploads"), name="uploads")
 # Meme dossier sous /api (2026-10-09) : passe par le meme chemin que l'API (portail.simpleip.tel -> /api), donc les photos
 # du catalogue et des installations s'affichent aussi hors du bureau (avant : adresse interne 192.168.1.9 seulement).

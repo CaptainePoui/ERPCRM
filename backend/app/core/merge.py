@@ -211,10 +211,13 @@ async def merge_companies(db, keep_id, drop_id, choices: dict, user) -> Company:
     if (await db.execute(text("select 1 from company_sites where company_id = :k and is_primary"), {"k": k})).first():
         await db.execute(text("update company_sites set is_primary = false where company_id = :d"), {"d": d})   # une seule succursale principale
     await db.execute(text("delete from telephony_locks where company_id = :d"), {"d": d})
+    from app.core import vendors
+    await vendors.merge_vendor_of(db, keep, drop)    # TASK-044.6 : une seule fiche fournisseur par compagnie
     await _move(db, _COMPANY_REFS + _ENTITY_REFS, k, d, "companies")
     for col in ("parent_company_id", "bill_to_company_id", "internet_company_id", "network_company_id"):
         await db.execute(text(f"update companies set {col} = null where id = :k and {col} = :k"), {"k": k})   # jamais elle-meme
     note = f". Son numéro de compte {drop.account_number} n'existe plus" if drop.account_number else ""
+    await vendors.sync_name(db, keep)                # nom choisi a la fusion (avant _finish, qui fait le commit)
     await _finish(db, keep, drop, "companies", label, summary, former, user, note)
     return keep
 

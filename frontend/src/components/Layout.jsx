@@ -8,6 +8,7 @@ import {
 import './Layout.css'
 import { playReminder, showNotification, fmtSince } from './ticketReminder'
 import ZekoPanel from './ZekoPanel'
+import NotificationBell from './NotificationBell'
 import { listenForZeko } from '../utils/zekoBridge'
 import ZekoDropPopup, { useZekoDropTarget } from './ZekoDrops'
 import { useNavTrail } from './navTrail'
@@ -336,6 +337,7 @@ export default function Layout({ user, onLogout, children }) {
           <GlobalSearch />
           <ActiveTimers />
           <div className="layout-user">
+            <NotificationBell />
             {can('zeko', 'modifier') && <button onClick={() => setZekoOpen(true)} {...zekoDrop.props}
               title={zekoDrop.err || "Zéko — l'assistant d'ERPCRM. Glisse un document ici : Zéko le place au bon endroit"}
               style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px 5px 6px', borderRadius: 18, border: `${zekoDrop.over ? 2 : 1}px ${zekoDrop.over ? 'dashed' : 'solid'} var(--brand)`,

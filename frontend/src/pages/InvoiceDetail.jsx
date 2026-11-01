@@ -194,6 +194,14 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
     } catch (e) { showAlert(e.response?.data?.detail || 'Action impossible') }
   }
 
+  // TASK-047.6 : la facture reste en retard, seule la cloche n'en parle plus
+  async function bellIgnore(on) {
+    try {
+      const r = await api.put(`/v1/invoices/${id}/bell-ignore`, { ignored: on })
+      setInv(r.data)
+    } catch (e) { showAlert(e.response?.data?.detail || 'Action impossible') }
+  }
+
   async function deleteLine(lineId) {
     const r = await api.delete(`/v1/invoices/${id}/lines/${lineId}`)
     setInv(r.data)
@@ -312,6 +320,9 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               → {isCredit && t === 'envoyee' ? (inv.status === 'brouillon' ? "Créer l'avoir" : 'Émettre') : STATUS_LABELS[t]?.label}
             </button>
           ))}
+          {(inv.status === 'en_retard' || inv.bell_ignored_at) && !isCredit && <button className="btn-secondary" onClick={() => bellIgnore(!inv.bell_ignored_at)} style={{ fontSize: 12 }}
+            title={inv.bell_ignored_at ? 'La cloche en parlera de nouveau tant qu\'elle est en retard' : 'Elle reste en retard ; seule la cloche n\'en parle plus'}>
+            {inv.bell_ignored_at ? '🔔 Ne plus ignorer' : '🔕 Ignorer dans la cloche'}</button>}
           {canCredit && <button className="btn-secondary" onClick={createCredit} disabled={actioning} style={{ fontSize: 12 }}>Créer un avoir</button>}
           {canGenerateNext && <button className="btn-secondary" onClick={generateNext} disabled={actioning} style={{ fontSize: 12 }}>Générer suivante</button>}
           <button className="btn-secondary" onClick={() => downloadFile(`/v1/invoices/${id}/pdf`, `${inv.credit_of_id ? 'avoir' : 'facture'}-${inv.number}.pdf`).catch(() => showAlert('PDF non disponible'))} style={{ fontSize: 12 }}>⬇ PDF</button>

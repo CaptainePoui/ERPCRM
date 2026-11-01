@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import { ReceiptDrop, openReceipt, LINE_CLASSES } from './Receipts'
@@ -71,6 +72,12 @@ export function PurchaseExpenses() {
     setError('')
     setEdit(e ? { ...e } : { expense_date: today(), vendor_id: null, category_id: null, description: '', tax_mode: 'exclusive', tax_code: 'tps_tvq', amount: '', paid_through: "Compte de l'entreprise", reference: '', notes: '' })
   }
+  // ?open=<id> : ouvert depuis la fiche de la compagnie, onglet Transactions -> Comptes à payer (TASK-002.13)
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const id = params.get('open'), x = id && (rows || []).find(r => r.id === id)
+    if (x) { open(x); setParams({}, { replace: true }) }
+  }, [rows])
   async function save() {
     setError('')
     const body = { expense_date: edit.expense_date, vendor_id: edit.vendor_id, category_id: edit.category_id, description: edit.description || null,

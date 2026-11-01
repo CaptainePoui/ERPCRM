@@ -8,6 +8,7 @@ class StatusOut(BaseModel):
     name: str
     color: str | None
     is_system: bool
+    applies_to: str = "both"
 
     model_config = {"from_attributes": True}
 

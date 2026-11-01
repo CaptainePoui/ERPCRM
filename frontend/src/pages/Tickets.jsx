@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import EntityLink from '../components/EntityLink'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import NewTicketModal from '../components/NewTicketModal'
 import './Tickets.css'
@@ -57,7 +57,9 @@ function fmtOpened(iso) {
 export default function Tickets() {
   const [tickets, setTickets] = useState([])
   const [loading, setLoading] = useState(true)
-  const [statusFilters, setStatusFilters] = useState(loadSavedStatusFilters)
+  const [params] = useSearchParams()
+  const [statusFilters, setStatusFilters] = useState(() => params.get('statuts') ? new Set(params.get('statuts').split(',')) : loadSavedStatusFilters())
+  useEffect(() => { if (params.get('statuts')) setStatusFilters(new Set(params.get('statuts').split(','))) }, [params])   // la cloche (TASK-047.6)
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
   const navigate = useNavigate()

@@ -14,6 +14,8 @@ from app.core.database import get_db
 from app.core import sipv_client
 from app.core.site_defaults import ensure_primary_site
 from app.core import branches, company_tree, account_numbers
+from app.core import vendors as vendors_core
+from app.core import status_scope
 from app.core.telephony_lock import acquire_telephony_lock
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.entity import Entity, EntityType
@@ -142,8 +144,12 @@ async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_
     db.add(company)
     await db.flush()
 
+    await status_scope.check(db, payload.status_ids, "companies")     # TASK-002.14
     for status_id in payload.status_ids:
         db.add(EntityStatus(entity_id=entity.id, status_id=status_id))
+    if await vendors_core.supplier_status_id(db) in payload.status_ids:   # TASK-044.6 : fournisseur = cette compagnie
+        await db.flush()
+        await vendors_core.ensure_vendor(db, company)
 
     for addr in payload.addresses:
         db.add(Address(entity_id=entity.id, **addr))
@@ -223,6 +229,8 @@ async def update_company(company_id: uuid.UUID, payload: CompanyUpdate, db: Asyn
                  old_value=str(old_value) if old_value is not None else None,
                  new_value=str(new_value) if new_value is not None else None)
         setattr(company, field, new_value)
+    if "name" in changes:
+        await vendors_core.sync_name(db, company)    # TASK-044.6 : le nom du fournisseur suit la compagnie
 
     await db.commit()
 
@@ -466,6 +474,83 @@ async def _connect_side(db: AsyncSession, company_id, contact_id) -> dict | None
     return out
 
 
+@router.get("/{company_id}/tabs")
+async def get_company_tabs(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Onglets de la fiche selon ses pastilles, plus ceux qui ont des données (TASK-002.13, core/company_tabs.py)."""
+    from app.core.company_tabs import visible_tabs
+    out = await visible_tabs(db, company_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    return out
+
+
+@router.get("/{company_id}/payables")
+async def get_company_payables(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Comptes à payer de la fiche (TASK-002.13 étape 2) : factures de sa fiche fournisseur, paiements faits, avoirs et
+    dépenses -- les mêmes données qu'Achats (rien de copié), regroupées sur la compagnie. Privilège « achats »."""
+    from decimal import Decimal
+    from sqlalchemy import or_
+    from app.core import clock
+    from app.models.purchases import Bill, Expense, Vendor, VendorCredit, VendorPayment, VendorPaymentAllocation
+    from app.api.v1.endpoints.purchases import _bill_balances, _bill_out, _credit_out, _expense_out, _payment_out
+    if not await db.get(Company, company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    v = (await db.execute(select(Vendor).where(Vendor.company_id == company_id))).scalar_one_or_none()
+    empty = {"balance_due": 0.0, "overdue": 0.0, "overdue_count": 0, "oldest_overdue_days": 0, "credits_available": 0.0, "last_payment": None}
+    if not v:
+        return {"vendor": None, "summary": empty, "transactions": []}
+    bills = (await db.execute(select(Bill).where(Bill.vendor_id == v.id))).scalars().all()
+    bal = await _bill_balances(db, [b.id for b in bills])
+    # ses paiements, et les paiements groupés (sans fournisseur) qui règlent une de ses factures
+    paid_bills = select(VendorPaymentAllocation.payment_id).where(VendorPaymentAllocation.bill_id.in_([b.id for b in bills]))
+    pays = (await db.execute(select(VendorPayment).where(or_(VendorPayment.vendor_id == v.id, VendorPayment.id.in_(paid_bills))))).scalars().all()
+    creds = (await db.execute(select(VendorCredit).where(VendorCredit.vendor_id == v.id))).scalars().all()
+    exps = (await db.execute(select(Expense).where(Expense.vendor_id == v.id))).scalars().all()
+    today = clock.today()
+    rows, due, overdue, n_over, oldest = [], Decimal(0), Decimal(0), 0, 0
+    for b in bills:
+        o = _bill_out(b, bal.get(b.id, Decimal(0)))
+        late = o["balance"] > 0.005 and bool(b.due_date) and b.due_date < today
+        if o["status"] not in ("brouillon", "annulee"):
+            due += Decimal(str(o["balance"]))
+            if late:
+                overdue += Decimal(str(o["balance"])); n_over += 1
+                oldest = max(oldest, (today - b.due_date).days)
+        rows.append({"kind": "bill", "id": o["id"], "date": o["bill_date"], "number": o["bill_number"], "status": o["status"],
+                     "due_date": o["due_date"], "total": o["total"], "paid": o["paid"], "remaining": o["balance"], "overdue": late,
+                     "recurring": bool(o["recurring_id"])})
+    credits_left = Decimal(0)
+    for c in creds:
+        o = _credit_out(c)
+        credits_left += Decimal(str(max(0.0, o["remaining"])))
+        rows.append({"kind": "credit", "id": o["id"], "date": o["credit_date"], "number": o["credit_number"], "status": None,
+                     "due_date": None, "total": o["total"], "paid": o["applied"], "remaining": o["remaining"], "overdue": False,
+                     "description": o["description"]})
+    mine = {str(b.id) for b in bills}
+    for p in pays:
+        o = await _payment_out(db, p)
+        allocs = o["allocations"] if p.vendor_id == v.id else [a for a in o["allocations"] if a["bill_id"] in mine]
+        grouped = p.vendor_id != v.id         # paiement groupé : seulement la part qui règle ses factures
+        amount = round(sum(a["amount"] for a in allocs), 2) if grouped else o["amount"]
+        allocated = round(sum(a["amount"] for a in allocs), 2) if grouped else o["allocated"]
+        rows.append({"kind": "payment", "id": o["id"], "date": o["payment_date"], "number": o["reference"], "status": o["method"],
+                     "due_date": None, "total": amount, "paid": allocated, "remaining": round(amount - allocated, 2),
+                     "overdue": False, "bills": [a["bill_number"] for a in allocs], "grouped": grouped,
+                     "grouped_total": o["amount"] if grouped else None})
+    for e in exps:
+        o = _expense_out(e)
+        rows.append({"kind": "expense", "id": o["id"], "date": o["expense_date"], "number": o["reference"], "status": o["paid_through"],
+                     "due_date": None, "total": o["total"], "paid": o["total"], "remaining": 0.0, "overdue": False,
+                     "description": o["description"] or o["category_name"]})
+    rows.sort(key=lambda r: (r["date"] or today), reverse=True)
+    last = max(pays, key=lambda p: p.payment_date, default=None)
+    return {"vendor": {"id": str(v.id), "name": v.name, "is_active": v.is_active},
+            "summary": {"balance_due": float(due), "overdue": float(overdue), "overdue_count": n_over, "oldest_overdue_days": oldest,
+                        "credits_available": float(credits_left),
+                        "last_payment": {"date": last.payment_date, "amount": float(last.amount), "method": last.method} if last else None},
+            "transactions": rows}
+
+
 @router.get("/{company_id}/connectivity")
 async def get_connectivity(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     co = await db.get(Company, company_id)
@@ -570,11 +655,15 @@ async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSe
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
     existing = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == company_id, EntityStatus.status_id == status_id))
     if not existing.scalar_one_or_none():
+        await status_scope.check(db, [status_id], "companies")       # TASK-002.14
         db.add(EntityStatus(entity_id=company_id, status_id=status_id))
         st = await db.execute(select(Status).where(Status.id == status_id))
         st_obj = st.scalar_one_or_none()
         _log(db, company_id, current_user, "status_added",
              description=f"Pastille « {st_obj.name if st_obj else status_id} » ajoutée")
+        if status_id == await vendors_core.supplier_status_id(db):    # TASK-044.6 : apparaît dans Achats -> Fournisseurs
+            await db.flush()
+            await vendors_core.ensure_vendor(db, await db.get(Company, company_id))
         await db.commit()
 
 

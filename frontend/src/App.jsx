@@ -29,6 +29,7 @@ import MyAccount from './pages/MyAccount'
 import Employees from './pages/Employees'
 import Tasks from './pages/Tasks'
 import Mail from './pages/Mail'
+import { MailWindow } from './components/MailBrowser'
 import Server from './pages/Server'
 import Bank from './pages/Bank'
 import BankAccountDetail from './pages/BankAccountDetail'
@@ -77,6 +78,8 @@ function InternalApp() {
   if (!user) return <Login onLogin={handleLogin} />
   // Fenêtre Zéko à part, sans menu (TASK-006.7) : à placer sur un autre écran
   if (location.pathname === '/zeko') return <ZekoPanel standalone onClose={() => window.close()} />
+  // Courriel en grand dans sa propre fenêtre, sans menu (TASK-047.11)
+  if (location.pathname.startsWith('/mail/view/')) return <MailWindow id={location.pathname.split('/')[3]} />
 
   if (!privsReady) return null
   return (

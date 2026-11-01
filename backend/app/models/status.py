@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import String, Text, Boolean, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
 
 
@@ -15,6 +15,10 @@ class Status(Base):
     color: Mapped[str | None] = mapped_column(String(7))
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Onglets que cette pastille apporte sur la fiche compagnie (TASK-002.13, core/company_tabs.py)
+    company_tabs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # À qui la pastille s'offre (TASK-002.14) : both | companies | contacts ; une fiche qui la porte déjà la garde
+    applies_to: Mapped[str] = mapped_column(String(10), nullable=False, default="both", server_default="both")
 
     entity_statuses: Mapped[list["EntityStatus"]] = relationship("EntityStatus", back_populates="status")
 

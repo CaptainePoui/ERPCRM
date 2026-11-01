@@ -468,3 +468,22 @@ async def put_agenda(payload: dict, db: AsyncSession = Depends(get_db), _: User 
         return await agenda_config.save(db, {k: v for k, v in payload.items() if k != "defaults"})
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+
+
+# ── Notifications (TASK-047.6) : la cloche, Administration -> Configuration -> Notifications ─────────────────────────
+
+@router.get("/notifications")
+async def get_notifications_config(_: User = Depends(get_current_user)):
+    from app.core import notifications
+    return {**await notifications.load(fresh=True), "defaults": notifications.DEFAULTS,
+            "ticket_status_labels": notifications.TICKET_STATUSES}
+
+
+@router.put("/notifications")
+async def put_notifications_config(payload: dict, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import notifications
+    try:
+        return await notifications.save(db, {k: v for k, v in payload.items() if k not in ("defaults", "ticket_status_labels")})
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+

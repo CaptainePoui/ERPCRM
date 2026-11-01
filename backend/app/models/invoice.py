@@ -51,6 +51,9 @@ class Invoice(Base):
     barter_settlement: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     # Facture de frais de retard : la facture en retard qu'elle vise (jamais de frais sur une facture de retard)
     late_fee_for_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("invoices.id", ondelete="SET NULL"), nullable=True, index=True)
+    # TASK-047.6 : facture en retard que la cloche ne montre plus (elle reste « en retard » ; « Ne plus ignorer » la remet)
+    bell_ignored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    bell_ignored_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     # TASK-005.22 : brouillon offert au client -- statut annulee + cette date (affiche « Offerte »)
     offered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # TASK-005.23 : PDF d'origine (ancien logiciel / QuickBooks), fichier dans storage/invoice_originals/

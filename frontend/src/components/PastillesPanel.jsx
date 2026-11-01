@@ -5,7 +5,14 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { contrastText } from '../utils/color'
 
-const EMPTY = { name: '', color: '#6B7280' }
+const EMPTY = { name: '', color: '#6B7280', company_tabs: [], applies_to: 'both' }
+// TASK-002.14 : à qui la pastille s'offre (une fiche qui la porte déjà la garde)
+const APPLIES = [['both', 'Compagnies et contacts'], ['companies', 'Compagnies'], ['contacts', 'Contacts']]
+const appliesLabel = Object.fromEntries(APPLIES)
+// TASK-002.13 : onglets de la fiche compagnie qu'une pastille peut apporter (Général, Contacts, Courriels et Journal y
+// sont toujours). Même liste que core/company_tabs.py OPTIONAL.
+const TABS = [['tickets', 'Tickets'], ['telephonie', 'Téléphonie'], ['transactions', 'Transactions'], ['entente', 'Entente'],
+              ['inventaire', 'Inventaire'], ['conversations', 'Conversations'], ['photos', 'Photos']]   // ordre de la fiche
 
 export default function PastillesPanel() {
   const [rows, setRows] = useState(null)
@@ -24,7 +31,7 @@ export default function PastillesPanel() {
   function start(r) {
     setError('')
     setEditing(r ? r.id : 'new')
-    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active } : EMPTY)
+    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active, company_tabs: r.company_tabs || [], applies_to: r.applies_to || 'both' } : EMPTY)
   }
 
   async function save() {
@@ -56,6 +63,22 @@ export default function PastillesPanel() {
           {chip(form.name, form.color)}
         </div>
       </td>
+      <td>
+        <select value={form.applies_to} onChange={e => setForm(p => ({ ...p, applies_to: e.target.value }))}
+          style={{ border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 6px', fontSize: 13, background: 'var(--c-surface)', color: 'var(--c-text)' }}>
+          {APPLIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </td>
+      <td>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+          {TABS.map(([k, l]) => (
+            <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+              <input type="checkbox" checked={form.company_tabs.includes(k)}
+                onChange={e => setForm(p => ({ ...p, company_tabs: e.target.checked ? [...p.company_tabs, k] : p.company_tabs.filter(x => x !== k) }))} /> {l}
+            </label>
+          ))}
+        </div>
+      </td>
       <td />
       <td style={{ textAlign: 'center' }}>
         {editing !== 'new' && <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />}
@@ -79,10 +102,16 @@ export default function PastillesPanel() {
         Une compagnie ou un contact peut porter plusieurs pastilles (ex. client et sous-traitant). Une pastille désactivée
         ne s'offre plus sur les fiches, mais reste sur celles qui la portent déjà.
       </p>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13, margin: '0 0 16px' }}>
+        <b>S'offre à</b> : les fiches où la pastille peut être ajoutée ; une fiche qui la porte déjà la garde.{' '}
+        <b>Onglets</b> : ceux que la pastille ajoute sur la fiche d'une compagnie. La fiche montre les onglets de toutes ses
+        pastilles. Général, Contacts, Courriels et Journal sont toujours là ; un onglet qui contient déjà des données reste
+        visible ; une compagnie sans pastille, et la compagnie du propriétaire, montrent tous les onglets.
+      </p>
       {error && <div className="form-error">{error}</div>}
       <div style={{ overflowX: 'auto' }}>
         <table className="adm-table">
-          <thead><tr><th>Pastille</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
+          <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
           <tbody>
             {editing === 'new' && <tr>{editRow}</tr>}
             {rows.map(r => (
@@ -90,6 +119,10 @@ export default function PastillesPanel() {
                 {editing === r.id ? editRow : (
                   <>
                     <td>{chip(r.name, r.color, !r.is_active)}</td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>{appliesLabel[r.applies_to] || appliesLabel.both}</td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>
+                      {(r.company_tabs || []).length ? TABS.filter(([k]) => r.company_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
+                    </td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{r.used}</td>
                     <td style={{ textAlign: 'center' }}>
                       <span style={{ color: r.is_active ? '#059669' : 'var(--c-faint)', fontWeight: 600, fontSize: 13 }}>{r.is_active ? 'Oui' : 'Non'}</span>

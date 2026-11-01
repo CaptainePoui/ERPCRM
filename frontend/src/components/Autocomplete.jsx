@@ -1,5 +1,28 @@
 import { useState, useEffect, useRef } from 'react'
 
+// TASK-047.10 : même tolérance que la recherche du haut (TASK-052) -- sans accents, espaces, tirets, apostrophes ni
+// ponctuation (« dastou » trouve « D'Astous Auto ») ; ceux qui COMMENCENT par les lettres tapées d'abord, puis ceux
+// dont un mot commence par elles, puis ceux qui les contiennent. item.search = autres textes cherchés (ex. raison sociale).
+const squash = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+const words = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)
+function rank(items, query) {
+  const q = squash(query)
+  if (!q) return items
+  const score = i => {
+    const texts = [i.label, ...(Array.isArray(i.search) ? i.search : [i.search])].filter(Boolean)
+    let best = 0
+    for (const t of texts) {
+      const sq = squash(t)
+      if (sq.startsWith(q)) return 3
+      if (words(t).some(w => w.startsWith(q)) || words(t).some((_, k, a) => a.slice(k).join('').startsWith(q))) best = Math.max(best, 2)
+      else if (sq.includes(q)) best = Math.max(best, 1)
+    }
+    return best
+  }
+  return items.map((i, n) => [score(i), n, i]).filter(([s]) => s > 0)
+    .sort((a, b) => b[0] - a[0] || a[1] - b[1]).map(([, , i]) => i)
+}
+
 export default function Autocomplete({ label, items, value, onSelect, onCreate, placeholder, required, autoFocus, openOnFocus }) {
   const [query, setQuery] = useState(value?.label || '')
   const [open, setOpen] = useState(false)
@@ -13,9 +36,9 @@ export default function Autocomplete({ label, items, value, onSelect, onCreate, 
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  const filtered = query.trim()
-    ? items.filter(i => i.label.toLowerCase().includes(query.toLowerCase()))
-    : items
+  // Champ vide : rien de proposé (Philippe : « si aucune lettre n'est inscrite, pas de proposition… à partir de la première
+  // seulement »), sauf openOnFocus, voulu là où la liste est courte (ex. les contacts de la compagnie choisie)
+  const filtered = query.trim() ? rank(items, query) : (openOnFocus ? items : [])
 
   const showCreate = onCreate && query.trim() && filtered.length === 0
 

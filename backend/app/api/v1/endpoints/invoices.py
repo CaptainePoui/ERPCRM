@@ -69,6 +69,7 @@ class InvoiceOut(BaseModel):
     late_fee_for_id: uuid.UUID | None = None  # facture de frais de retard : la facture en retard qu'elle vise
     offered_at: datetime | None = None        # TASK-005.22 : brouillon offert au client (statut annulee)
     has_original_pdf: bool = False            # TASK-005.23 : PDF d'origine de l'ancien logiciel
+    bell_ignored_at: datetime | None = None   # TASK-047.6 : en retard, mais ignorée dans la cloche
 
 
 class InvoiceListItem(BaseModel):
@@ -89,6 +90,7 @@ class InvoiceListItem(BaseModel):
     barter_settlement: bool = False
     late_fee_for_id: uuid.UUID | None = None
     offered_at: datetime | None = None   # TASK-005.22 : « Offerte »
+    bell_ignored_at: datetime | None = None   # TASK-047.6
     paid: float = 0                      # regle (paiements confirmes + avoirs) : actions de masse (TASK-046)
 
 
@@ -234,6 +236,7 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         credit_of_id=inv.credit_of_id,
         barter_settlement=inv.barter_settlement,
         late_fee_for_id=inv.late_fee_for_id,
+        bell_ignored_at=inv.bell_ignored_at,
         site_id=inv.site_id,
         site_label_snapshot=inv.site_label_snapshot,
         site_address_snapshot=inv.site_address_snapshot,
@@ -293,6 +296,7 @@ async def list_invoices(
         barter_settlement=i.barter_settlement,
         late_fee_for_id=i.late_fee_for_id,
         offered_at=i.offered_at,
+        bell_ignored_at=i.bell_ignored_at,
         site_label_snapshot=i.site_label_snapshot,
         transmission_status=i.transmission_status,
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
@@ -500,6 +504,22 @@ async def unoffer_invoice(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_
     if not inv.offered_at:
         raise HTTPException(status_code=400, detail="Cette facture n'est pas offerte")
     inv.status, inv.offered_at = "brouillon", None
+    await db.commit()
+    return await _build_out(await _get_inv(invoice_id, db), db)
+
+
+class BellIgnoreIn(BaseModel):
+    ignored: bool
+
+
+@router.put("/{invoice_id}/bell-ignore", response_model=InvoiceOut)
+async def bell_ignore_invoice(invoice_id: uuid.UUID, p: BellIgnoreIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """TASK-047.6 : « Ignorer dans la cloche » / « Ne plus ignorer ». La facture reste en retard ; seule la cloche n'en
+    parle plus (Philippe : elle sort de la cloche si elle est payée ou si je la fais ignorer)."""
+    inv = await _get_inv(invoice_id, db)
+    if p.ignored and inv.status != "en_retard":
+        raise HTTPException(status_code=400, detail="Seule une facture en retard peut être ignorée dans la cloche")
+    inv.bell_ignored_at, inv.bell_ignored_by = (datetime.now().astimezone(), user.id) if p.ignored else (None, None)
     await db.commit()
     return await _build_out(await _get_inv(invoice_id, db), db)
 

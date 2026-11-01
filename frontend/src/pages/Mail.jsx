@@ -3,12 +3,16 @@
 // support@ n'y est pas : ses courriels deviennent des tickets. « Envoyes d'ici » : courriels envoyes depuis ERPCRM (TASK-047.3).
 // « A jeter » : expediteurs en liste noire (TASK-047.7), effaces apres 1 an.
 import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import MailBrowser from '../components/MailBrowser'
 
 export default function Mail() {
   const [data, setData] = useState({ folders: [], unclassified: 0, junk: 0 })
-  const [sel, setSel] = useState({ view: 'all', mailbox_id: '' })
+  const [params, setParams] = useSearchParams()
+  const [sel, setSel] = useState({ view: params.get('view') === 'unread' ? 'unread' : 'all', mailbox_id: '' })
+  // La cloche (TASK-047.6) ouvre /mail?view=unread, aussi quand on est déjà ici
+  useEffect(() => { if (params.get('view') === 'unread') { setSel({ view: 'unread', mailbox_id: '' }); setParams({}, { replace: true }) } }, [params])
   const [syncing, setSyncing] = useState(false)
 
   const loadFolders = () => api.get('/v1/mail/folders').then(r => setData(r.data))
@@ -43,6 +47,7 @@ export default function Mail() {
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
           {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', unread)}
+          {item(sel.view === 'unread', () => setSel({ view: 'unread', mailbox_id: '' }), 'Non lus', unread)}
           {item(sel.view === 'unclassified', () => setSel({ view: 'unclassified', mailbox_id: '' }), 'À classer', data.unclassified)}
           {item(sel.view === 'sent', () => setSel({ view: 'sent', mailbox_id: '' }), 'Envoyés d’ici', 0)}
           {item(sel.view === 'junk', () => setSel({ view: 'junk', mailbox_id: '' }), '🗑 À jeter', 0, data.junk ? `· ${data.junk}` : '')}

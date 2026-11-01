@@ -15,6 +15,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import clock
+from app.core import vendors as vendors_core
 from app.core.database import get_db
 from app.api.v1.endpoints.auth import get_current_user
 from app.api.v1.endpoints.invoices import _money
@@ -23,6 +24,7 @@ from app.models.purchases import (
     Vendor, ExpenseCategory, Expense, ExpenseLine, ReceiptDocument, LINE_CLASSES, RecurringExpense, Bill, BillLine,
     RecurringBill, RecurringBillLine, VendorPayment, VendorPaymentAllocation, VendorCredit, VendorCreditAllocation,
 )
+from app.models.company import Company
 from app.models.user import User
 
 router = APIRouter()
@@ -92,17 +94,31 @@ class VendorIn(BaseModel):
     is_active: bool = True
 
 
-def _vendor_out(v: Vendor, stats: dict | None = None) -> dict:
+def _vendor_out(v: Vendor, stats: dict | None = None, company: Company | None = None, suppliers: set | None = None) -> dict:
+    """TASK-044.6 : le nom affiché est celui de la compagnie ; « fournisseur » = sa compagnie, active, porte la pastille (ou
+    une ancienne fiche pas encore reliée à une compagnie) -- c'est le filtre d'Achats -> Fournisseurs et des choix de fournisseur."""
     s = stats or {}
-    return {"id": str(v.id), "name": v.name, "email": v.email, "phone": v.phone, "address": v.address, "notes": v.notes,
+    return {"id": str(v.id), "name": company.name if company else v.name, "email": v.email, "phone": v.phone,
+            "address": v.address, "notes": v.notes,
             "company_id": str(v.company_id) if v.company_id else None,
+            "account_number": company.account_number if company else None,
+            "fournisseur": v.company_id is None or (suppliers is not None and v.company_id in suppliers
+                                                    and (company is None or company.is_active)),   # compagnie désactivée : sortie
             "default_category_id": str(v.default_category_id) if v.default_category_id else None,
             "is_active": v.is_active, "bill_count": s.get("count", 0), "balance_due": float(s.get("due", 0))}
+
+
+async def _vendor_full(db: AsyncSession, v: Vendor) -> dict:
+    co = await db.get(Company, v.company_id) if v.company_id else None
+    return _vendor_out(v, company=co, suppliers=await vendors_core.supplier_company_ids(db))
 
 
 @router.get("/vendors")
 async def list_vendors(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     vendors = (await db.execute(select(Vendor).order_by(Vendor.name))).scalars().all()
+    companies = {c.id: c for c in (await db.execute(select(Company).where(
+        Company.id.in_([v.company_id for v in vendors if v.company_id])))).scalars().all()}
+    suppliers = await vendors_core.supplier_company_ids(db)
     bal = await _bill_balances(db)
     stats: dict = {}
     for b in (await db.execute(select(Bill.id, Bill.vendor_id, Bill.total, Bill.status))).all():
@@ -110,7 +126,8 @@ async def list_vendors(db: AsyncSession = Depends(get_db), _: User = Depends(get
         s["count"] += 1
         if b.status not in ("brouillon", "annulee"):
             s["due"] += max(ZERO, b.total - bal.get(b.id, ZERO))
-    return [_vendor_out(v, stats.get(v.id)) for v in vendors]
+    out = [_vendor_out(v, stats.get(v.id), companies.get(v.company_id), suppliers) for v in vendors]
+    return sorted(out, key=lambda o: o["name"].lower())
 
 
 async def _unique_vendor_name(db: AsyncSession, name: str, exclude: uuid.UUID | None = None) -> None:
@@ -121,27 +138,56 @@ async def _unique_vendor_name(db: AsyncSession, name: str, exclude: uuid.UUID | 
         raise HTTPException(status_code=400, detail="Un fournisseur porte déjà ce nom")
 
 
+class VendorNew(BaseModel):
+    """Nouveau fournisseur = une compagnie qui reçoit la pastille : une compagnie existante (company_id), ou un nom
+    (la compagnie à ce nom si elle existe, sinon une nouvelle compagnie)."""
+    company_id: uuid.UUID | None = None
+    name: str | None = None
+    default_category_id: uuid.UUID | None = None
+    notes: str | None = None
+
+
 @router.post("/vendors", status_code=status.HTTP_201_CREATED)
-async def create_vendor(p: VendorIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    if not p.name.strip():
-        raise HTTPException(status_code=400, detail="Nom requis")
-    await _unique_vendor_name(db, p.name)
-    v = Vendor(**{**p.model_dump(), "name": p.name.strip()})
-    db.add(v)
+async def create_vendor(p: VendorNew, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    if p.company_id:
+        co = await _get(db, Company, p.company_id, "Compagnie")
+        await vendors_core.add_supplier_status(db, co, user.id)
+    elif (p.name or "").strip():
+        co = await vendors_core.new_supplier_company(db, p.name, user.id)
+    else:
+        raise HTTPException(status_code=400, detail="Choisis une compagnie ou tape un nom")
+    v = await vendors_core.ensure_vendor(db, co)
+    if p.default_category_id:
+        v.default_category_id = p.default_category_id
+    if p.notes:
+        v.notes = p.notes
     await db.commit()
-    return _vendor_out(v)
+    return await _vendor_full(db, v)
 
 
 @router.put("/vendors/{vid}")
-async def update_vendor(vid: uuid.UUID, p: VendorIn, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def update_vendor(vid: uuid.UUID, p: VendorIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Partie comptable. Le nom d'un fournisseur relié se change dans sa fiche compagnie ; relier une ancienne fiche à une
+    compagnie lui pose la pastille."""
     v = await _get(db, Vendor, vid, "Fournisseur")
-    if not p.name.strip():
-        raise HTTPException(status_code=400, detail="Nom requis")
-    await _unique_vendor_name(db, p.name, exclude=vid)
-    for k, val in p.model_dump().items():
-        setattr(v, k, val.strip() if k == "name" else val)
+    if p.company_id and p.company_id != v.company_id:
+        co = await _get(db, Company, p.company_id, "Compagnie")
+        other = (await db.execute(select(Vendor).where(Vendor.company_id == co.id, Vendor.id != v.id))).scalar_one_or_none()
+        if other:
+            raise HTTPException(status_code=400, detail=f"« {co.name} » est déjà un fournisseur : une seule fiche par compagnie")
+        v.company_id = co.id
+        await db.flush()
+        await vendors_core.add_supplier_status(db, co, user.id)
+        await vendors_core.sync_name(db, co)
+    elif not v.company_id:
+        if not p.name.strip():
+            raise HTTPException(status_code=400, detail="Nom requis")
+        await _unique_vendor_name(db, p.name, exclude=vid)
+        v.name = p.name.strip()
+    for k in ("email", "phone", "address", "notes", "default_category_id", "is_active"):
+        setattr(v, k, getattr(p, k))
     await db.commit()
-    return _vendor_out(v)
+    return await _vendor_full(db, v)
 
 
 # ── Categories de depense ────────────────────────────────────────────────────
@@ -993,11 +1039,9 @@ async def create_expense_from_receipt(db: AsyncSession, doc: ReceiptDocument, r:
         best = max(((((name_similarity(name, n) + name_similarity(n, name)) / 2), vid) for vid, n in vendors), default=(0, None))
         if best[0] >= 0.6:
             vendor_id = best[1]
-        else:
-            v = Vendor(name=name[:255])
-            db.add(v)
-            await db.flush()
-            vendor_id = v.id
+        else:                                 # TASK-044.6 : un nouveau fournisseur est une compagnie avec la pastille
+            co = await vendors_core.new_supplier_company(db, name)
+            vendor_id = (await vendors_core.ensure_vendor(db, co)).id
     cats = {c.name.lower(): c.id for c in (await db.execute(select(ExpenseCategory))).scalars().all()}
     vendor = await db.get(Vendor, vendor_id)
     category_id = category_id or cats.get((r.get("compte") or "").strip().lower()) or (vendor.default_category_id if vendor else None)

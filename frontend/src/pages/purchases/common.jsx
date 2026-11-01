@@ -98,7 +98,8 @@ export function Select({ value, onChange, options, empty }) {
 }
 
 export function VendorPicker({ vendors, value, onChange, onCreated, label = 'Fournisseur', required }) {
-  const items = vendors.filter(v => v.is_active || v.id === value).map(v => ({ id: v.id, label: v.name }))
+  // TASK-044.6 : seulement les compagnies qui portent la pastille « fournisseur » (et le choix déjà fait)
+  const items = vendors.filter(v => (v.is_active && v.fournisseur) || v.id === value).map(v => ({ id: v.id, label: v.name }))
   const cur = vendors.find(v => v.id === value)
   async function create(name) {
     const r = await api.post('/v1/purchases/vendors', { name })

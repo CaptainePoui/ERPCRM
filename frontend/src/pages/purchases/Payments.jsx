@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../../services/api'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, VendorPicker,
@@ -122,6 +122,12 @@ export function PurchasePayments() {
   const [rows, setRows] = useState(null)
   const [search, setSearch] = useState('')
   const [edit, setEdit] = useState(undefined)   // undefined = ferme, null = nouveau, objet = modification
+  // ?open=<id> : ouvert depuis la fiche de la compagnie, onglet Transactions -> Comptes à payer (TASK-002.13)
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const id = params.get('open'), p = id && (rows || []).find(x => x.id === id)
+    if (p) { setEdit(p); setParams({}, { replace: true }) }
+  }, [rows])
   const load = () => api.get('/v1/purchases/payments').then(r => setRows(r.data))
   useEffect(() => { load() }, [])
 

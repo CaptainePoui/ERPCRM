@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import api from '../../services/api'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, Select, VendorPicker,
@@ -78,6 +79,12 @@ export function PurchaseCredits() {
   const [edit, setEdit] = useState(undefined)
   const load = () => api.get('/v1/purchases/credits').then(r => setRows(r.data))
   useEffect(() => { load() }, [])
+  // ?open=<id> : ouvert depuis la fiche de la compagnie, onglet Transactions -> Comptes à payer (TASK-002.13)
+  const [params, setParams] = useSearchParams()
+  useEffect(() => {
+    const id = params.get('open'), x = id && (rows || []).find(r => r.id === id)
+    if (x) { setEdit(x); setParams({}, { replace: true }) }
+  }, [rows])
   const open = (rows || []).reduce((s, c) => s + c.remaining, 0)
 
   return (

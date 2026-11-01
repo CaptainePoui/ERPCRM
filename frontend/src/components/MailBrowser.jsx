@@ -2,10 +2,11 @@
 // Ecrire -- components/MailCompose.jsx) : liste + lecture. Sert a la boite de reception (/mail) et a l'onglet
 // Courriels des fiches compagnie et contact. Classement automatique dans la fiche ; « Changer » seulement si ERPCRM
 // s'est trompe. Faire un ticket / une tache a partir du courriel.
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from './Autocomplete'
+import { openInMain } from '../utils/zekoBridge'
 import NewTicketModal from './NewTicketModal'
 import NewTaskModal from './NewTaskModal'
 import MailCompose from './MailCompose'
@@ -52,7 +53,7 @@ function ClassifyModal({ mail, onClose, onSaved }) {
     api.get('/v1/contacts').then(r => setContacts(r.data))
   }, [])
 
-  const companyItems = companies.map(c => ({ id: c.id, label: c.name }))
+  const companyItems = companies.map(c => ({ id: c.id, label: c.name, sub: c.account_number, search: [c.legal_name, c.account_number] }))
   const contactItems = contacts
     .filter(c => !company || (c.companies || []).some(co => co.company_id === company.id))
     .map(c => ({ id: c.id, label: `${c.first_name} ${c.last_name}`.trim(), sub: c.email || c.companies?.[0]?.company_name || '', companies: c.companies || [] }))
@@ -230,8 +231,9 @@ function ZekoRdvBox({ mail, onDone }) {
   )
 }
 
-function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved }) {
-  const navigate = useNavigate()
+function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
+  const routerNavigate = useNavigate()
+  const navigate = go || routerNavigate     // TASK-047.11 : dans la fenêtre à part, les pages s'ouvrent dans la fenêtre ERPCRM
   const [m, setM] = useState(null)
   const [err, setErr] = useState('')
   const [classify, setClassify] = useState(false)
@@ -420,6 +422,36 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved }) {
 
 // filter : { mailbox_id, view, company_id, contact_id, direction } ; onCounts : appele quand lu/classe change (compteurs a jour)
 // composeDefaults : « Ecrire » depuis une fiche -> { to, company_id, contact_id, mailbox_id } (le courriel envoye y est classe)
+// TASK-047.11 (Philippe : « un clic = la visualisation rapide ; deux clics, il l'ouvre dans sa propre page avec les mêmes
+// options, en grand ; le X de la page l'enlève, ou le X de la fenêtre aussi ») : une seule fenêtre « erpcrm-courriel »,
+// un 2e double-clic y remplace le courriel. Même volet de lecture (Reader) : mêmes options, mêmes corrections.
+const MAIL_CHANNEL = 'erpcrm-courriels'
+export function openMailWindow(id) {
+  const w = Math.min(1200, Math.round(window.screen.availWidth * 0.7)), h = Math.round(window.screen.availHeight * 0.9)
+  const win = window.open(`/mail/view/${id}`, 'erpcrm-courriel', `popup,width=${w},height=${h}`)
+  win?.focus()
+}
+
+function post(msg) {
+  try { const ch = new BroadcastChannel(MAIL_CHANNEL); ch.postMessage(msg); ch.close() } catch { /* sans BroadcastChannel */ }
+}
+
+export function MailWindow({ id }) {
+  useEffect(() => {
+    document.title = 'Courriel — ERPCRM'
+    let t = 'jour'       // même apparence que la fenêtre ERPCRM (TASK-050), comme la fenêtre de Zéko
+    try { t = localStorage.getItem('erpcrm_theme') || 'jour' } catch { /* sans stockage */ }
+    if (t === 'nuit') document.documentElement.setAttribute('data-theme', 'dark')
+  }, [])
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--c-surface)' }}>
+      <Reader id={id} go={openInMain} onClose={() => window.close()}
+        onChanged={m => post({ type: 'changed', mail: m })} onSent={() => post({ type: 'reload' })} onMoved={() => post({ type: 'reload' })}
+        onOpen={other => window.location.replace(`/mail/view/${other}`)} />
+    </div>
+  )
+}
+
 export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100vh - 170px)', composeDefaults = {} }) {
   const [items, setItems] = useState([])
   const [total, setTotal] = useState(0)
@@ -442,6 +474,23 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
 
   useEffect(() => { setOpen(null); load(0) }, [load])
 
+  // TASK-047.11 : ce qui est fait dans la fenêtre à part (lu, classé, à jeter, réponse) se voit ici aussi
+  useEffect(() => {
+    let ch
+    try { ch = new BroadcastChannel(MAIL_CHANNEL) } catch { return }
+    ch.onmessage = e => { if (e.data?.type === 'changed') changed(e.data.mail); else if (e.data?.type === 'reload') { load(0); onCounts?.() } }
+    return () => ch.close()
+  }, [load])   // eslint-disable-line
+
+  // Sans aperçu ouvert, l'ouvrir rétrécit la liste : le 2e clic d'un double-clic tomberait à côté de la ligne. On attend
+  // donc un instant avant d'ouvrir l'aperçu, le temps de voir si c'est un double-clic (TASK-047.11).
+  const clickTimer = useRef()
+  function pick(id) {
+    clearTimeout(clickTimer.current)
+    if (open) setOpen(id)
+    else clickTimer.current = setTimeout(() => setOpen(id), 250)
+  }
+
   function changed(m) {
     setItems(prev => prev.map(x => x.id === m.id ? { ...x, ...Object.fromEntries(Object.entries(m).filter(([k]) => k in x)) } : x))
     onCounts?.()
@@ -458,7 +507,8 @@ export default function MailBrowser({ filter = {}, onCounts, height = 'calc(100v
         <div style={{ overflowY: 'auto', flex: 1 }}>
           {!loading && !items.length && <div style={{ padding: 20, color: 'var(--c-muted)', fontSize: 14 }}>Aucun courriel.</div>}
           {items.map(m => (
-            <div key={m.id} onClick={() => setOpen(m.id)}
+            <div key={m.id} onClick={() => pick(m.id)} onDoubleClick={() => { clearTimeout(clickTimer.current); openMailWindow(m.id) }}
+              title="Double-clic : ouvrir en grand dans sa propre fenêtre"
               style={{ padding: '9px 12px', borderBottom: '1px solid var(--c-surface-3)', cursor: 'pointer', background: open === m.id ? 'var(--c-tint-blue)' : 'var(--c-surface)',
                        borderLeft: `3px solid ${m.is_read ? 'transparent' : 'var(--brand)'}` }}>
               <div style={{ display: 'flex', gap: 8, fontSize: 13 }}>

@@ -105,6 +105,8 @@ async def create_contact(payload: ContactCreate, db: AsyncSession = Depends(get_
     db.add(contact)
     await db.flush()
 
+    from app.core import status_scope
+    await status_scope.check(db, payload.status_ids, "contacts")      # TASK-002.14
     for status_id in payload.status_ids:
         db.add(EntityStatus(entity_id=entity.id, status_id=status_id))
 
@@ -977,6 +979,8 @@ async def assign_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSe
         raise HTTPException(status_code=404, detail="Contact introuvable")
     existing = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == contact_id, EntityStatus.status_id == status_id))
     if not existing.scalar_one_or_none():
+        from app.core import status_scope
+        await status_scope.check(db, [status_id], "contacts")        # TASK-002.14
         db.add(EntityStatus(entity_id=contact_id, status_id=status_id))
         await db.commit()
 

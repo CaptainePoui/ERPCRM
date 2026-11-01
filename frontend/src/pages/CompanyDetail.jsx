@@ -29,10 +29,11 @@ import { askConfirm, showAlert } from '../components/Dialog'
 import FormerInfoSection, { RenameCompanyModal } from '../components/FormerInfoSection'
 import ConversationsSection from '../components/ConversationsSection'
 import MergeModal from '../components/MergeModal'
+import CompanyPayables, { usePayables } from './purchases/CompanyPayables'
 
-// Ordre voulu par Philippe (2026-10-14) ; CDR est dans Téléphonie, les tâches iront dans les tickets
-const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Conversations', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Photos', 'Journal']
-const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'conversations', 'telephonie', 'transactions', 'entente', 'inventaire', 'photos', 'journal']
+// Ordre voulu par Philippe (2026-10-14 ; Conversations entre Inventaire et Photos le 2026-11-01) ; CDR est dans Téléphonie
+const TABS = ['Général', 'Tickets', 'Contacts', 'Courriels', 'Téléphonie', 'Transactions', 'Entente', 'Inventaire', 'Conversations', 'Photos', 'Journal']
+const TAB_SLUGS = ['general', 'tickets', 'contacts', 'courriels', 'telephonie', 'transactions', 'entente', 'inventaire', 'conversations', 'photos', 'journal']
 
 // ── Inline field ──────────────────────────────────────────────────────────────
 function InlineField({ label, value, display, onSave, type = 'text', options, multiline }) {
@@ -163,14 +164,26 @@ function VendorCommissionField({ company, onSave }) {
 }
 
 // ── Status selector (inline) ──────────────────────────────────────────────────
-function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath }) {
+// TASK-002.13 : seulement les pastilles de la fiche (✕ pour en enlever une), et un « + » pour en ajouter une à partir de
+// la liste. onChange : les onglets de la fiche suivent ses pastilles.
+function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath, onChange }) {
   const [current, setCurrent] = useState(initialStatuses)
   const [saving, setSaving] = useState(null)
+  const [adding, setAdding] = useState(false)
+  const ref = useRef()
 
   useEffect(() => { setCurrent(initialStatuses) }, [entityId])
 
+  useEffect(() => {
+    if (!adding) return
+    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setAdding(false) }   // simple liste, rien à perdre
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [adding])
+
   async function toggle(status) {
     setSaving(status.id)
+    setAdding(false)
     const isActive = current.find(s => s.id === status.id)
     setCurrent(prev => isActive ? prev.filter(s => s.id !== status.id) : [...prev, status])
     try {
@@ -179,26 +192,39 @@ function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiP
       } else {
         await api.post(`${apiPath}/${entityId}/statuses/${status.id}`)
       }
+      onChange?.()
     } catch {
       setCurrent(prev => isActive ? [...prev, status] : prev.filter(s => s.id !== status.id))
     } finally { setSaving(null) }
   }
 
+  const worn = [...current].sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+  const offered = allStatuses.filter(s => !current.some(c => c.id === s.id))   // actives seulement (ref/statuses)
   return (
-    <div className="status-selector">
-      {[...allStatuses, ...current.filter(c => !allStatuses.some(a => a.id === c.id))].map(s => {   // + pastille désactivée encore portée
-        const active = !!current.find(x => x.id === s.id)
-        return (
-          <button key={s.id} type="button"
-            className={`status-option${active ? ' selected' : ''}`}
-            style={{ '--sc': s.color, '--sc-text': contrastText(s.color) }}
-            onClick={() => toggle(s)}
-            disabled={saving === s.id}
-          >
-            {saving === s.id ? '…' : s.name}
-          </button>
-        )
-      })}
+    <div className="status-selector" ref={ref} style={{ position: 'relative', alignItems: 'center' }}>
+      {worn.map(s => (
+        <span key={s.id} className="status-option selected" style={{ '--sc': s.color, '--sc-text': contrastText(s.color), cursor: 'default',
+          display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+          {saving === s.id ? '…' : s.name}
+          <button type="button" onClick={() => toggle(s)} disabled={saving === s.id} title={`Enlever la pastille « ${s.name} »`}
+            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1, opacity: 0.8 }}>✕</button>
+        </span>
+      ))}
+      {worn.length === 0 && <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucune pastille</span>}
+      {offered.length > 0 && (
+        <button type="button" className="status-option" onClick={() => setAdding(a => !a)} title="Ajouter une pastille"
+          style={{ padding: '4px 10px' }}>+</button>
+      )}
+      {adding && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: 'var(--c-surface)',
+                      border: '1px solid var(--c-border-strong)', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.18)', padding: 8,
+                      display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 420 }}>
+          {offered.map(s => (
+            <button key={s.id} type="button" className="status-option" onClick={() => toggle(s)}
+              style={{ '--sc': s.color, borderColor: s.color }}>{s.name}</button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -334,9 +360,12 @@ function fmtD(d) {
   return d ? new Date(d + 'T00:00:00').toLocaleDateString('fr-CA') : '—'
 }
 
-function FinanceOverview({ companyId, onOpen }) {
+function FinanceOverview({ companyId, onOpen, ledgers = ['receivables'], onOpenPayables }) {
   const [f, setF] = useState(null)
+  const [ap, setAp] = useState(null)      // comptes à payer (TASK-002.13 étape 2), seulement pour un fournisseur
+  const receivable = ledgers.includes('receivables'), payable = ledgers.includes('payables')
   useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setF(r.data.summary)) }, [companyId])
+  useEffect(() => { if (payable) api.get(`/v1/companies/${companyId}/payables`).then(r => setAp(r.data.summary)).catch(() => setAp(null)) }, [companyId, payable])
   if (!f) return null
   const card = (label, value, sub, opts = {}) => (
     <div className={`cd-fin-card${opts.onClick ? ' clickable' : ''}`} onClick={opts.onClick}
@@ -346,8 +375,13 @@ function FinanceOverview({ companyId, onOpen }) {
       {sub && <div className="cd-fin-sub">{sub}</div>}
     </div>
   )
+  const apCard = payable && ap && card('À payer', money(ap.balance_due),
+    ap.overdue > 0 ? `dont ${money(ap.overdue)} en retard (${ap.overdue_count})` : (ap.balance_due > 0 ? 'Voir les comptes à payer' : 'Rien à payer'),
+    { color: ap.overdue > 0 ? '#DC2626' : (ap.balance_due > 0 ? 'var(--c-text)' : '#059669'), alert: ap.overdue > 0, onClick: onOpenPayables })
+  if (!receivable) return apCard ? <div className="cd-fin-row">{apCard}</div> : null
   return (
     <div className="cd-fin-row">
+      {apCard}
       {card('Solde dû', money(f.balance_due), f.balance_due > 0 ? 'Voir les factures ouvertes' : 'Rien à recevoir',
         { color: f.balance_due > 0 ? 'var(--c-text)' : '#059669', onClick: () => onOpen('ouvertes') })}
       {f.overdue > 0 && card('En retard', money(f.overdue),
@@ -544,6 +578,34 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
   )
 }
 
+// Client et fournisseur à la fois (TASK-002.13 étape 2) : les deux comptes, et le solde net -- affichage seulement, la
+// compensation viendra à part (jamais sur les taxes)
+function LedgerBar({ companyId, ledger, setLedger }) {
+  const [ar, setAr] = useState(null)
+  const { data: ap } = usePayables(companyId)
+  useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setAr(r.data.summary)).catch(() => setAr(null)) }, [companyId])
+  const net = ar && ap ? ar.balance_due - ap.summary.balance_due : null
+  const btn = (v, label, amount) => (
+    <button className={`filter-tab${ledger === v ? ' active' : ''}`} onClick={() => setLedger(v)} style={{ fontSize: 14, padding: '6px 14px' }}>
+      {label}{amount != null && <span style={{ marginLeft: 8, fontWeight: 700 }}>{money(amount)}</span>}
+    </button>
+  )
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--c-surface-3)' }}>
+      <div className="filter-tabs">
+        {btn('receivables', 'Comptes à recevoir', ar?.balance_due)}
+        {btn('payables', 'Comptes à payer', ap?.summary.balance_due)}
+      </div>
+      {net != null && (
+        <div style={{ fontSize: 14 }} title="Ce qu'il te doit moins ce que tu lui dois (affichage seulement : rien n'est compensé)">
+          Solde net : <b style={{ color: Math.abs(net) < 0.005 ? 'var(--c-faint)' : net > 0 ? '#059669' : '#DC2626' }}>{money(Math.abs(net))}</b>{' '}
+          <span style={{ color: 'var(--c-muted)' }}>{Math.abs(net) < 0.005 ? '(quitte)' : net > 0 ? 'en ta faveur' : 'en sa faveur'}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CompanyDetail({ isNew }) {
   const { id } = useParams()
   const navigate = useNavigate()
@@ -556,7 +618,16 @@ export default function CompanyDetail({ isNew }) {
     setTabState(i)
     setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', TAB_SLUGS[i]); next.delete('facture'); return next }, { replace: true })
   }
-  const slug = TAB_SLUGS[tab]
+  // TASK-002.13 : onglets selon les pastilles (+ ceux qui ont des données), calculés par le serveur ; tous en attendant
+  const [tabInfo, setTabInfo] = useState(null)
+  const loadTabs = () => api.get(`/v1/companies/${id}/tabs`).then(r => setTabInfo(r.data)).catch(() => setTabInfo(null))
+  const shownSlugs = tabInfo ? tabInfo.tabs : TAB_SLUGS
+  // Transactions : « Comptes à recevoir » et/ou « Comptes à payer » selon la fiche (?compte=payer)
+  const ledgers = tabInfo?.ledgers || ['receivables']
+  const ledger = (searchParams.get('compte') === 'payer' || !ledgers.includes('receivables')) && ledgers.includes('payables') ? 'payables' : 'receivables'
+  const setLedger = v => setSearchParams(prev => { const next = new URLSearchParams(prev); next.set('tab', 'transactions'); next.delete('facture')
+    if (v === 'payables') next.set('compte', 'payer'); else next.delete('compte'); return next }, { replace: true })
+  const slug = shownSlugs.includes(TAB_SLUGS[tab]) ? TAB_SLUGS[tab] : 'general'   // onglet caché (ancien lien) -> Général
   const features = useFeatures()   // Echanges (troc) : onglet cache si l'option est decochee (Administration → Integrations)
   const [txFilter, setTxFilter] = useState('')   // filtre de l'onglet Transactions (ouvert depuis la vue d'ensemble)
   // TASK-002.9 : facture et paiement ouverts DANS la fiche (?facture= / ?paiement=) -- on reste dans le client
@@ -582,11 +653,11 @@ export default function CompanyDetail({ isNew }) {
   const [allContacts, setAllContacts] = useState([])
 
   useEffect(() => {
-    api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
+    api.get('/v1/ref/statuses', { params: { for: 'companies' } }).then(r => setStatuses(r.data))   // TASK-002.14
     api.get('/v1/ref/functions').then(r => setFunctions(r.data))
     api.get('/v1/ref/users/managers').then(r => setManagers(r.data))
     api.get('/v1/contacts').then(r => setAllContacts(r.data))
-    if (!isNew) load()
+    if (!isNew) { load(); loadTabs() }
   }, [id, isNew])
 
   async function load() {
@@ -732,8 +803,8 @@ export default function CompanyDetail({ isNew }) {
 
       {!isNew && (
         <div className="detail-tabs">
-          {TABS.map((t, i) => (TAB_SLUGS[i] === 'echanges' && !features.barter) ? null : (
-            <button key={t} className={`tab-btn${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
+          {TABS.map((t, i) => ((TAB_SLUGS[i] === 'echanges' && !features.barter) || !shownSlugs.includes(TAB_SLUGS[i])) ? null : (
+            <button key={t} className={`tab-btn${slug === TAB_SLUGS[i] ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
           ))}
         </div>
       )}
@@ -745,7 +816,8 @@ export default function CompanyDetail({ isNew }) {
           <>
             {slug === 'general' && (
               <div>
-                <FinanceOverview companyId={id} onOpen={f => { setTxFilter(f); setTab(TAB_SLUGS.indexOf('transactions')) }} />
+                <FinanceOverview companyId={id} ledgers={ledgers} onOpen={f => { setTxFilter(f); setLedger('receivables'); setTabState(TAB_SLUGS.indexOf('transactions')) }}
+                  onOpenPayables={() => { setLedger('payables'); setTabState(TAB_SLUGS.indexOf('transactions')) }} />
                 <div className="cd-general-cols">
                   <div>
                     <div className="ifield-section-title">Identification</div>
@@ -753,7 +825,7 @@ export default function CompanyDetail({ isNew }) {
                       <div className="ifield-full">
                         <div className="ifield-label">Pastilles</div>
                         <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
-                          apiPath="/v1/companies" />
+                          apiPath="/v1/companies" onChange={loadTabs} />
                       </div>
                       <InlineField label="Nom de compagnie" value={c.name} onSave={v => { if ((v || '').trim() && v.trim() !== c.name) setRenaming(v.trim()) }} />
                       <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
@@ -813,8 +885,12 @@ export default function CompanyDetail({ isNew }) {
 
             {slug === 'transactions' && (openInvoiceId
               ? <InvoiceDetail key={openInvoiceId} invoiceId={openInvoiceId} embedded onBack={() => setParam('facture', null)} onOpenInvoice={i => setParam('facture', i)} />
-              : <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter}
-                  onOpenInvoice={i => setParam('facture', i)} onOpenPayment={p => setParam('paiement', p)} />)}
+              : <>
+                  {ledgers.length > 1 && <LedgerBar companyId={id} ledger={ledger} setLedger={setLedger} />}
+                  {ledger === 'payables' ? <CompanyPayables companyId={id} />
+                    : <TransactionsTab companyId={id} companyName={c.name} filter={txFilter} setFilter={setTxFilter}
+                        onOpenInvoice={i => setParam('facture', i)} onOpenPayment={p => setParam('paiement', p)} />}
+                </>)}
             {openPaymentId && <PaymentModal paymentId={openPaymentId} onClose={() => setParam('paiement', null)} />}
             {slug === 'entente' && <EntenteTab company={c} onRefresh={load} showBarter={features.barter} onOpenInvoice={i => { setTabState(TAB_SLUGS.indexOf('transactions')); setParam('facture', i) }} />}
             {slug === 'contacts' && <ContactsTab companyId={id} companyName={c.name} contacts={c.contacts} functions={functions} onRefresh={load} sipvEnabled={c.sipv_enabled} />}

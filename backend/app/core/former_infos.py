@@ -95,6 +95,8 @@ async def rename_company(db, company: Company, new_name: str, previous_until: da
     db.add(EntityLog(entity_id=company.id, user_id=user_id, action="renamed", field_name="name", old_value=old,
                      new_value=new_name, description="Changement de nom (l'ancien nom est gardé)", source=source))
     await db.flush()
+    from app.core import vendors
+    await vendors.sync_name(db, company)     # TASK-044.6 : le nom du fournisseur suit la compagnie
     return f
 
 

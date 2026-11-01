@@ -10,7 +10,7 @@ TPS/TVQ (TASK-043).
 import uuid
 from decimal import Decimal
 from datetime import datetime, date, timezone
-from sqlalchemy import String, Text, Boolean, Date, DateTime, Integer, Numeric, ForeignKey
+from sqlalchemy import String, Text, Boolean, Date, DateTime, Integer, Numeric, ForeignKey, Index, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import UUID
 from app.core.database import Base
@@ -21,14 +21,17 @@ def _now():
 
 
 class Vendor(Base):
+    """Partie comptable d'un fournisseur ; le fournisseur lui-meme est une compagnie avec la pastille « fournisseur »
+    (TASK-044.6, core/vendors.py) : une seule fiche par compagnie."""
     __tablename__ = "vendors"
+    __table_args__ = (Index("uq_vendors_company_id", "company_id", unique=True, postgresql_where=text("company_id IS NOT NULL")),)
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
     email: Mapped[str | None] = mapped_column(String(255))
     phone: Mapped[str | None] = mapped_column(String(50))
     address: Mapped[str | None] = mapped_column(Text)
     notes: Mapped[str | None] = mapped_column(Text)
-    # Le fournisseur est aussi une compagnie de la CRM (ex. ScopServ, IP Telecom)
+    # Sa compagnie (TASK-044.6) ; vide seulement pour une ancienne fiche pas encore reliee ou desactivee
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"))
     default_category_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("expense_categories.id", ondelete="SET NULL"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

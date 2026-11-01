@@ -1318,3 +1318,16 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Deuxième erreur, même tâche** : en reculant la date, les anciens courriels reçus ont été mis en file pour la lecture des RDV par Zéko (règle de TASK-026.6 prévue pour les courriels qui arrivent) — 65 courriels de mai à juillet, 19 lus avant l'arrêt, aucune proposition créée. Vu en vérifiant les compteurs après la copie, corrigé dans le code (7 jours au plus).
 
 **Leçon (à ne pas refaire)** : (1) « absent d'ERPCRM » ≠ « absent » : regarder la source (la boîte) avant de l'affirmer ; (2) avant de faire rejouer un traitement d'arrivée sur de vieilles données (copie à rebours, import), lister tout ce que l'arrivée déclenche (Zéko, contacts, signatures, alertes) et décider pour chacun.
+
+
+## TASK-044.6 — « Aucune facture » affirmé en ne regardant que les dépenses ; génération automatique des factures périodiques oubliée
+
+**2026-11-01 — LastPass**
+
+**On croyait** : (1) que le fournisseur « LastPast » n'avait « ni dépense ni facture » (dit à Philippe) ; (2) qu'aucun service ne générait les factures fournisseur périodiques (seulement le bouton « Créer »), donc qu'on pouvait créer la périodique LastPass datée de 2022 sans générer les années passées, le temps d'en parler.
+
+**Preuve** : (1) la requête ne regardait que `expenses` et `recurring_expenses` ; `bills` contenait la facture Zoho du 2021-03-16 (56,92 $). (2) `app/services/recurring_poller.py` a créé les 5 cycles 2022-2026 quelques secondes après la création ; la recherche (`grep` dans `app/workers app/main.py app/core`) n'avait pas regardé `app/services/`.
+
+**Correction** : (1) corrigé auprès de Philippe et dans TASK-044.5. (2) les 5 factures correspondent à sa demande (« mets-le depuis le début ») ; l'effet sur les taxes des périodes déjà déclarées lui est expliqué avant toute autre action (aucune suppression sans demande).
+
+**Leçon (à ne pas refaire)** : (1) « aucun achat » = vérifier les 6 tables d'achats (dépenses, factures, et leurs périodiques, paiements, avoirs) ; (2) avant de créer un enregistrement « périodique » ou « en file », chercher ce qui le traite en arrière-plan dans TOUT `app/` (`grep -rn` sans liste de dossiers), et prévenir si ça agit sur des périodes passées.

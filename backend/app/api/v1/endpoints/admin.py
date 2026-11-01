@@ -171,12 +171,16 @@ class StatusAdminOut(BaseModel):
     color: str | None
     is_active: bool
     used: int
+    company_tabs: list[str] = []
+    applies_to: str = "both"
 
 
 class StatusAdminIn(BaseModel):
     name: str | None = None
     color: str | None = None
     is_active: bool | None = None
+    company_tabs: list[str] | None = None     # onglets apportés sur la fiche compagnie (TASK-002.13)
+    applies_to: str | None = None             # both | companies | contacts (TASK-002.14)
 
 
 def _clean_status(payload: StatusAdminIn) -> dict:
@@ -187,12 +191,21 @@ def _clean_status(payload: StatusAdminIn) -> dict:
             raise HTTPException(status_code=422, detail="Le nom est requis")
     if data.get("color") is not None and not re.fullmatch(r"#[0-9A-Fa-f]{6}", data["color"]):
         raise HTTPException(status_code=422, detail="Couleur invalide")
+    if data.get("company_tabs") is not None:
+        from app.core.company_tabs import OPTIONAL, clean
+        unknown = [t for t in data["company_tabs"] if t not in OPTIONAL]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Onglet inconnu : {', '.join(unknown)}")
+        data["company_tabs"] = clean(data["company_tabs"])
+    if data.get("applies_to") is not None and data["applies_to"] not in ("both", "companies", "contacts"):
+        raise HTTPException(status_code=422, detail="S'offre à : compagnies, contacts ou les deux")
     return data
 
 
 async def _status_out(db: AsyncSession, s: Status) -> StatusAdminOut:
     used = (await db.execute(select(func.count()).select_from(EntityStatus).where(EntityStatus.status_id == s.id))).scalar_one()
-    return StatusAdminOut(id=s.id, name=s.name, color=s.color, is_active=s.is_active, used=used)
+    return StatusAdminOut(id=s.id, name=s.name, color=s.color, is_active=s.is_active, used=used, company_tabs=s.company_tabs or [],
+                          applies_to=s.applies_to or "both")
 
 
 async def _name_taken(db: AsyncSession, name: str, exclude: uuid.UUID | None = None) -> bool:
@@ -215,7 +228,8 @@ async def create_status(payload: StatusAdminIn, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=422, detail="Le nom est requis")
     if await _name_taken(db, data["name"]):
         raise HTTPException(status_code=409, detail="Cette pastille existe déjà")
-    s = Status(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True), is_system=False)
+    s = Status(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True), is_system=False,
+               company_tabs=data.get("company_tabs") or [], applies_to=data.get("applies_to") or "both")
     db.add(s)
     await db.commit()
     await db.refresh(s)

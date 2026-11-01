@@ -237,7 +237,7 @@ function AgendaSettingsPanel() {
 // Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
 // rassembler dans un onglet config générale ») -- factures : conditions de paiement
 // Configuration generale (2026-10-16, Philippe) : tous les reglages generaux au meme endroit, en sous-onglets
-const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio'], ['agenda', 'Agenda']]
+const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio'], ['agenda', 'Agenda'], ['notifications', 'Notifications']]
 function ConfigPanel({ initial }) {
   const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
   return (
@@ -252,6 +252,73 @@ function ConfigPanel({ initial }) {
       {sub === 'pastilles' && <PastillesPanel />}
       {sub === 'audio' && <AudioDevicesPanel />}
       {sub === 'agenda' && <AgendaSettingsPanel />}
+      {sub === 'notifications' && <NotificationsSettingsPanel />}
+    </div>
+  )
+}
+
+// Cloche (TASK-047.6) : tout est réglable (Philippe : « j'aime quand tout est modifiable, je pense à si quelqu'un achète
+// le programme et qu'il n'a pas les mêmes goûts que moi »)
+function NotificationsSettingsPanel() {
+  const [c, setC] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [perm, setPerm] = useState(typeof Notification === 'undefined' ? 'indisponible' : Notification.permission)
+  useEffect(() => { api.get('/v1/settings/notifications').then(r => setC(r.data)) }, [])
+  if (!c) return null
+  const set = (k, v) => { setC(p => ({ ...p, [k]: v })); setMsg('') }
+  async function save() {
+    setSaving(true); setMsg('')
+    try {
+      const r = await api.put('/v1/settings/notifications', { ...c, bank_days: Number(c.bank_days) })
+      setC(p => ({ ...r.data, defaults: p.defaults, ticket_status_labels: p.ticket_status_labels })); setMsg('Enregistré')
+    } catch (e) { setMsg(e.response?.data?.detail || 'Refusé') } finally { setSaving(false) }
+  }
+  async function askPerm() {
+    if (typeof Notification === 'undefined') return
+    try { setPerm(await Notification.requestPermission()) } catch { /* refusé */ }
+  }
+  const card = { background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24, marginBottom: 20 }
+  const h3 = { fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: '0 0 6px' }
+  const note = { fontSize: 13, color: 'var(--c-muted)', margin: '0 0 14px' }
+  const check = (k, label) => (
+    <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, marginBottom: 8 }}>
+      <input type="checkbox" checked={!!c[k]} onChange={e => set(k, e.target.checked)} /> {label}
+    </label>)
+  const statuses = Object.entries(c.ticket_status_labels || {})
+  return (
+    <div>
+      <div style={card}>
+        <h3 style={h3}>Cloche (à côté de Zéko)</h3>
+        <p style={note}>La cloche montre ce qui reste à régler et lit toujours l'état réel : un courriel lu (dans ERPCRM ou ailleurs), une facture payée ou ignorée, un ticket fini ou un relevé importé en sortent d'eux-mêmes. Chaque personne ne voit que les sections permises par ses privilèges.</p>
+        {check('mail', 'Courriels non lus (toutes les boîtes que la personne voit)')}
+        {check('invoices', 'Factures en retard (sauf celles « ignorées dans la cloche » sur la facture)')}
+        {check('tickets', 'Tickets pas finis')}
+        {c.tickets && <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 0 12px 26px' }}>
+          {statuses.map(([k, l]) => (
+            <label key={k} style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+              <input type="checkbox" checked={c.ticket_statuses.includes(k)}
+                onChange={e => set('ticket_statuses', e.target.checked ? [...c.ticket_statuses, k] : c.ticket_statuses.filter(x => x !== k))} /> {l}
+            </label>))}
+        </div>}
+        {check('bank', 'Relevé bancaire à importer')}
+        {c.bank && <div style={{ margin: '0 0 12px 26px', fontSize: 13 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            Rappel <input type="number" min={1} max={90} value={c.bank_days} onChange={e => set('bank_days', e.target.value)} style={{ width: 70 }} /> jours après le dernier import de chaque compte
+          </label>
+          <div style={{ color: 'var(--c-muted)', marginTop: 4 }}>Si ce jour est fermé selon les heures d'ouverture (Configuration → Agenda) ou férié, le rappel arrive le dernier jour ouvert d'avant. Importer un relevé fait repartir le décompte.</div>
+        </div>}
+      </div>
+      <div style={card}>
+        <h3 style={h3}>Notification du navigateur</h3>
+        <p style={note}>En plus de la cloche, une petite fenêtre dans le coin de l'écran quand de nouveaux courriels arrivent (ERPCRM ouvert dans un onglet). Autorisation du navigateur : {perm === 'granted' ? 'accordée' : perm === 'denied' ? 'refusée (à changer dans le navigateur)' : perm === 'indisponible' ? 'non disponible ici' : 'pas encore demandée'}.</p>
+        {check('browser', 'Activer la notification du navigateur')}
+        {c.browser && perm === 'default' && <button className="btn-secondary" onClick={askPerm}>Autoriser dans ce navigateur</button>}
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <button className="btn-primary" onClick={save} disabled={saving}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? 'var(--c-on-green, #16a34a)' : '#DC2626' }}>{msg}</span>}
+      </div>
     </div>
   )
 }

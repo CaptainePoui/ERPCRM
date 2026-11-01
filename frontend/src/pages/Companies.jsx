@@ -14,7 +14,7 @@ export default function Companies() {
 
   useEffect(() => {
     api.get('/v1/companies').then(r => setCompanies(r.data)).finally(() => setLoading(false))
-    api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
+    api.get('/v1/ref/statuses', { params: { for: 'companies' } }).then(r => setStatuses(r.data))   // TASK-002.14
   }, [])
 
   const filtered = companies.filter(c =>

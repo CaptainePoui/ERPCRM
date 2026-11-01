@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import EntityLink from '../components/EntityLink'
 import useRowSelection from '../hooks/useRowSelection'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import NewInvoiceModal from '../components/NewInvoiceModal'
 import './Invoices.css'
@@ -38,7 +38,9 @@ const FILTERS = [
 export default function Invoices({ creditsOnly = false }) {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState('')
+  const [params] = useSearchParams()
+  const [filter, setFilter] = useState(params.get('status') || '')
+  useEffect(() => { if (params.get('status')) setFilter(params.get('status')) }, [params])   // la cloche : ?status=en_retard (TASK-047.6)
   const [search, setSearch] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [marking, setMarking] = useState(false)

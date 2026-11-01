@@ -110,8 +110,10 @@ TOOLS = [
     _fn("telephonie", "Numéros de téléphone (DID) et postes d'un client, lus en direct sur le serveur téléphonique : "
         "qui est en ligne en ce moment, en appel, boîte vocale, langue, renvois.", _CLIENT, ["client"]),
     # TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail, un oui par tache
-    _fn("agenda", "Rendez-vous, appels et événements de l'agenda entre deux dates (tous les calendriers).",
-        {"depuis": {"type": "string", "description": "AAAA-MM-JJ"}, "jusqua": {"type": "string", "description": "AAAA-MM-JJ, inclus"}},
+    _fn("agenda", "Rendez-vous, appels et événements de l'agenda entre deux dates (tous les calendriers). Passe les dates "
+        "avec les mots dits (« lundi », « demain », « le 16 ») : il les lit lui-même ; s'il répond par une question, pose-la telle quelle.",
+        {"depuis": {"type": "string", "description": "la date exactement comme elle a été dite"},
+         "jusqua": {"type": "string", "description": "la date de fin comme elle a été dite, incluse (absente = un seul jour)"}},
         ["depuis"]),
     _fn("lire_date", "Quel jour tombe une date dite (« le 16 », « lundi 16 novembre ») ; s'il répond par une question "
         "(« veux-tu dire… ? »), pose-la telle quelle.",
@@ -293,6 +295,96 @@ def allowed_tools(privs: dict, tools: list) -> list:
     from app.core import privileges as P
     return [t for t in tools if t["function"]["name"] in TOOL_PRIVILEGES
             and all(P.allows(privs, s, lv) for s, lv in TOOL_PRIVILEGES[t["function"]["name"]])]
+
+
+# TASK-006.17 (2026-11-01, Zéko a voulu relier LastPass comme CLIENT sans poser sa question) : le oui n'est plus une simple
+# consigne. Ces outils ne s'exécutent qu'après un oui de la personne à une question qui décrit CE changement (vérifié par
+# endpoints/zeko.py _confirmed) ; sinon le programme rédige la question et Zéko la pose telle quelle.
+CONFIRM = {"retenir", "oublier", "changer_regle_banque", "changer_nom_client", "ajouter_ancienne_info", "creer_poste", "regler_poste"}
+_RENVOI_QUAND = {"toujours": "toujours", "occupe": "si occupé", "sans_reponse": "sans réponse", "non_connecte": "non connecté"}
+_RENVOI_VERS = {"poste": "le poste", "boite_vocale": "la boîte vocale", "groupe_appel": "le groupe", "numero_externe": "le numéro", "aucun": "aucun renvoi"}
+
+
+def _poste_details(a: dict) -> str:
+    out = []
+    if a.get("numero"):
+        out.append(f"poste {a['numero']}")
+    if a.get("boite_vocale") is not None:
+        out.append("boîte vocale " + ("activée" if a["boite_vocale"] else "désactivée"))
+    if a.get("langue"):
+        out.append("téléphone en " + ("français" if a["langue"] == "fr" else "anglais"))
+    if a.get("courriel"):
+        out.append(f"courriel {a['courriel']}")
+    if a.get("cellulaire"):
+        out.append(f"cellulaire {a['cellulaire']}")
+    for r in a.get("renvois") or []:
+        if isinstance(r, dict):
+            out.append(f"renvoi {_RENVOI_QUAND.get(r.get('quand'), r.get('quand') or '')} vers {_RENVOI_VERS.get(r.get('vers'), r.get('vers') or '')}"
+                       f"{' ' + str(r['destination']) if r.get('destination') else ''}"
+                       f"{' après ' + str(r['delai_secondes']) + ' s' if r.get('delai_secondes') else ''}".strip())
+    return ", ".join(out)
+
+
+async def _supplier_only(db, co) -> str:
+    """Avertissement si la fiche est un fournisseur sans être cliente (TASK-006.17 : LastPass relié comme client)."""
+    from app.models.status import EntityStatus, Status
+    names = set((await db.execute(select(func.lower(Status.name)).join(EntityStatus, EntityStatus.status_id == Status.id)
+                                  .where(EntityStatus.entity_id == co.id))).scalars().all())
+    return f" (attention : {co.name} porte la pastille fournisseur, pas client)" if "fournisseur" in names and "client" not in names else ""
+
+
+async def confirm_question(name: str, args: dict, db, user_id=None) -> str:
+    """La question « Je … ? » rédigée par le programme pour ce changement (ou ce qui ne va pas : privilège, client
+    introuvable), en JSON pour l'outil. Rien n'est changé ici."""
+    from app.core import privileges as P
+    privs = await P.for_user_id(db, user_id)
+    refus = [sec for sec, lv in TOOL_PRIVILEGES.get(name) or [] if not P.allows(privs, sec, lv)]
+    if refus:
+        label = ", ".join(next(l for k, l, _e in P.SECTIONS if k == sec) for sec in refus)
+        return _out(f"{ECHEC}les privilèges de la personne qui te parle ne permettent pas cela ({label})")
+    a = {k: v for k, v in (args or {}).items() if v not in (None, "", [])}
+    co_name = None
+    if a.get("client") and name in ("changer_nom_client", "creer_poste", "ajouter_ancienne_info") or \
+            (name == "changer_regle_banque" and a.get("action") == "associer_client"):
+        co = await _resolve_company(db, str(a.get("client") or ""))
+        if not isinstance(co, Company):
+            return _out(co)                      # client introuvable ou plusieurs : on le dit au lieu de demander un oui
+        co_name = co.name
+        warn = await _supplier_only(db, co) if name == "changer_regle_banque" else ""
+    else:
+        warn = ""
+    who = co_name or a.get("client")
+    if name == "retenir":
+        q = f"Je retiens que {a.get('quoi', '').rstrip('.')}" + (f" (client : {who})" if who else "") + \
+            (f" (expéditeur : {a['expediteur']})" if a.get("expediteur") else "")
+    elif name == "oublier":
+        q = f"J'oublie ce que j'avais appris : « {a.get('quoi', '')} »" + (f" (client : {who})" if who else "")
+    elif name == "changer_regle_banque":
+        ben, act = a.get("beneficiaire", ""), a.get("action")
+        q = {"retirer_client": f"Je retire le client de la règle de la banque « {ben} » (le fournisseur de ses retraits reste)",
+             "supprimer": f"Je supprime toute la règle de la banque « {ben} »",
+             "associer_client": f"Je relie le bénéficiaire « {ben} » au client {who} : ses dépôts seront associés à ce client{warn}"}.get(act)
+        if not q:
+            return _out("action inconnue pour une règle de la banque")
+    elif name == "changer_nom_client":
+        q = f"Je renomme {who} en « {a.get('nouveau_nom', '')} » et je garde l'ancien nom « {a.get('ancien_nom') or who} »" + \
+            (f" jusqu'au {a['ancien_nom_jusqua']}" if a.get("ancien_nom_jusqua") else "")
+    elif name == "ajouter_ancienne_info":
+        genre = {"nom": "nom", "courriel": "courriel", "telephone": "téléphone"}.get(a.get("genre"), a.get("genre", ""))
+        periode = (f" depuis le {a['depuis']}" if a.get("depuis") else "") + (f" jusqu'au {a['jusqua']}" if a.get("jusqua") else "")
+        q = f"Je garde l'ancien {genre} « {a.get('valeur', '')} » de {a.get('contact') or who or '?'}{periode}"
+    elif name == "creer_poste":
+        det = _poste_details(a)
+        q = f"Je crée un poste pour {a.get('prenom', '')} {a.get('nom', '')}".rstrip() + f" chez {who}" + (f" : {det}" if det else "")
+    elif name == "regler_poste":
+        det = _poste_details(a)
+        if not det:
+            return _out("aucun réglage à changer : dis ce qu'il faut changer (boîte vocale, langue, renvois)")
+        q = f"Je règle le poste de {a.get('personne', '')} : {det}"
+    else:
+        return _out(f"outil inconnu : {name}")
+    return _out({"question": q + " ?", "confirmer": name, "valeurs": args,
+                 "consigne": "pose cette question telle quelle ; rien n'est changé avant le oui"})
 
 
 async def run(name: str, args: dict, db, user_id=None) -> str:
@@ -917,24 +1009,35 @@ def _date_dite(v, today):
 
 
 async def _agenda(name, args, db, user_id):
-    from datetime import datetime, time, timedelta
+    from datetime import date, datetime, time, timedelta
     from fastapi import HTTPException
     from app.core import clock
     tz = clock.business_tz()
     if name == "agenda":
         from app.core.google_calendar import list_events
-        d1 = _day(args.get("depuis")) or clock.today()
-        d2 = _day(args.get("jusqua")) or d1
+        # TASK-006.16 : la date dite est lue ici (le modele avait cherche le vendredi 6 pour « lundi ») et chaque
+        # reponse nomme le jour de la semaine
+        d1 = _date_dite(args.get("depuis"), clock.today()) if args.get("depuis") else clock.today()
+        if isinstance(d1, str):
+            return d1
+        d2 = _date_dite(args.get("jusqua"), clock.today()) if args.get("jusqua") else d1
+        if not isinstance(d2, str) and d2 < d1:     # « de lundi à vendredi » dit un mercredi : le vendredi qui suit lundi
+            d2 = _date_dite(args.get("jusqua"), d1 - timedelta(days=1))
+        if isinstance(d2, str):
+            return d2
+        if d2 < d1:
+            return f"la fin ({_date_txt(d2)}) est avant le début ({_date_txt(d1)}) : précise les dates"
         evs = await list_events(db, datetime.combine(d1, time(0), tz), datetime.combine(d2 + timedelta(days=1), time(0), tz))
         out = []
         for e in sorted(evs, key=lambda e: e["start"]):
             if e["all_day"]:
-                when = f"{e['start']} (journée)"
+                when = f"{_date_txt(date.fromisoformat(e['start'][:10]))} (journée)"
             else:
                 st, en = datetime.fromisoformat(e["start"]).astimezone(tz), datetime.fromisoformat(e["end"]).astimezone(tz)
-                when = f"{st:%Y-%m-%d %H:%M}-{en:%H:%M}"
+                when = f"{_date_txt(st.date())}, {st:%H:%M}-{en:%H:%M}"
             out.append({"quand": when, "titre": e["title"], "lieu": e.get("location") or None})
-        return out or "rien à l'agenda pour cette période"
+        periode = _date_txt(d1) if d1 == d2 else f"du {_date_txt(d1)} au {_date_txt(d2)}"
+        return {"periode": periode, "evenements": out} if out else f"rien à l'agenda : {periode}"
 
     user = await _user(db, user_id)
     if not await _can_change(db, user_id):

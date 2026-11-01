@@ -430,10 +430,15 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                 else:
                     if x["name"] == "mettre_agenda":
                         args = _asked(messages, args) if args.get("oui") is True else _said(messages, args)
-                    result = await zeko_tools.run(x["name"], args, s, user_id)
+                    if x["name"] in zeko_tools.CONFIRM:          # TASK-006.17 : le oui vérifié par le programme
+                        ok = _confirmed(messages, x["name"], args)
+                        result = (await zeko_tools.run(x["name"], ok, s, user_id) if ok is not None
+                                  else await zeko_tools.confirm_question(x["name"], args, s, user_id))
+                    else:
+                        result = await zeko_tools.run(x["name"], args, s, user_id)
                 await save("tool", result, tool_call_id=x["id"], tool_name=x["name"])
                 messages.append({"role": "tool", "tool_call_id": x["id"], "content": result})
-                if x["name"] == "mettre_agenda" and '"question"' in result:
+                if (x["name"] == "mettre_agenda" or x["name"] in zeko_tools.CONFIRM) and '"question"' in result:
                     try:
                         asked = json.loads(result).get("question")
                     except (ValueError, AttributeError):
@@ -468,6 +473,60 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                 await save("assistant", (partial + " … (arrêté)").strip())
             except Exception:
                 pass
+
+
+_YES = {"oui", "ouais", "ouep", "yes", "yep", "ok", "okay", "go", "vas", "vasy", "parfait", "exact", "exactement", "confirme",
+        "confirmer", "fais", "correct", "certain", "certainement", "absolument", "allez", "daccord"}
+_NO = {"non", "pas", "attends", "attend", "annule", "annuler", "arrete", "stop", "jamais", "nope", "change", "plutot", "mais"}
+
+
+def _plain(t) -> str:
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", str(t or "").lower()) if unicodedata.category(c) != "Mn")
+
+
+def _is_yes(text) -> bool:
+    """Un oui clair (TASK-006.17) : commence par oui / ok / go / d'accord / c'est bon… et ne contient ni non, ni « pas »,
+    ni « mais » (« oui mais change X » = une autre demande : nouvelle question)."""
+    import re
+    words = re.findall(r"[a-z]+", _plain(text))
+    if not words or any(w in _NO for w in words):
+        return False
+    joined = "".join(words)
+    return words[0] in _YES or joined.startswith(("daccord", "cestbon", "cestbeau", "biensur", "vasy"))
+
+
+def _same(a: dict, b: dict) -> bool:
+    """Mêmes valeurs (sans les vides, ni la note, sans égard à la casse et aux accents)."""
+    norm = lambda d: {k: _plain(json.dumps(v, ensure_ascii=False, sort_keys=True)).strip()
+                      for k, v in (d or {}).items() if v not in (None, "", []) and k not in ("note", "oui")}
+    return norm(a) == norm(b)
+
+
+def _confirmed(messages, name, args):
+    """TASK-006.17 : les valeurs à exécuter si le DERNIER message de la personne est un oui clair à une question qui décrit
+    ce changement, posée juste avant : (a) la question rédigée par le programme pour ce même outil et ces mêmes valeurs ;
+    ou (b) une question « … ? » écrite par Zéko qui nomme chacune de ces valeurs. Sinon None : on demande d'abord."""
+    users = [i for i, m in enumerate(messages) if m["role"] == "user"]
+    if not users or not _is_yes(messages[users[-1]]["content"]):
+        return None
+    last, prev = users[-1], (users[-2] if len(users) > 1 else -1)
+    between = messages[prev + 1:last]
+    for m in between:
+        if m["role"] != "tool" or '"confirmer"' not in (m.get("content") or ""):
+            continue
+        try:
+            q = json.loads(m["content"])
+        except ValueError:
+            continue
+        if isinstance(q, dict) and q.get("confirmer") == name and isinstance(q.get("valeurs"), dict) and _same(q["valeurs"], args):
+            return q["valeurs"]
+    said = next((m["content"] for m in reversed(between) if m["role"] == "assistant" and (m.get("content") or "").strip()), "")
+    if said.rstrip().endswith("?"):
+        vals = [v for k, v in (args or {}).items() if isinstance(v, str) and len(v.strip()) > 2 and k not in ("note", "action", "genre")]
+        if vals and all(_plain(v).strip() in _plain(said) for v in vals):
+            return args
+    return None
 
 
 def _said(messages, args):

@@ -51,10 +51,12 @@ _ROUTES = [
     (r"employees/me(/|$)", None),
     (r"google-calendar/callback", None),
     (r"zeko/status$", None),
+    (r"notifications$", None),                         # la cloche : chaque categorie filtree par ses privileges (TASK-047.6)
     (r"tickets/timers/(heartbeat|active)$", None),     # presence de l'ecran ouvert et ses propres chronos
     (r"(admin/statuses|admin/payment-methods|settings)(/|$)", "lecture_libre"),
     (rf"companies/[^/]+/{_TEL}", "telephonie"),
     (r"companies/[^/]+/(recurring-billing|finance)", "ventes"),
+    (r"companies/[^/]+/payables", "achats"),          # comptes à payer de la fiche (TASK-002.13 étape 2)
     (r"contacts/[^/]+/(sip-extension|office-phone)", "telephonie"),
     (r"(companies|contacts|former-infos|equipment)(/|$)", "clients"),
     (r"maintenance(/|$)", "acces_clients"),

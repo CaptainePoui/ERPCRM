@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.database import get_db
@@ -12,8 +12,13 @@ router = APIRouter()
 
 
 @router.get("/statuses", response_model=list[StatusOut])
-async def list_statuses(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(Status).where(Status.is_active == True).order_by(Status.name))
+async def list_statuses(for_: str | None = Query(None, alias="for"), db: AsyncSession = Depends(get_db),
+                        _: User = Depends(get_current_user)):
+    """Pastilles actives ; ?for=companies|contacts : seulement celles qui s'offrent à ce genre de fiche (TASK-002.14)."""
+    q = select(Status).where(Status.is_active == True)
+    if for_ in ("companies", "contacts"):
+        q = q.where(Status.applies_to.in_(("both", for_)))
+    result = await db.execute(q.order_by(Status.name))
     return result.scalars().all()
 
 

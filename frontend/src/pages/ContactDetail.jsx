@@ -430,7 +430,7 @@ export default function ContactDetail({ isNew }) {
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
 
   useEffect(() => {
-    api.get('/v1/ref/statuses').then(r => setStatuses(r.data))
+    api.get('/v1/ref/statuses', { params: { for: 'contacts' } }).then(r => setStatuses(r.data))   // TASK-002.14
     if (!isNew) load()
   }, [id, isNew])
 
