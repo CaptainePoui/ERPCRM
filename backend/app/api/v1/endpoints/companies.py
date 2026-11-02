@@ -71,6 +71,7 @@ def _build_company_out(company: Company) -> CompanyOut:
         name=company.name,
         account_number=company.account_number,
         office_phone=company.office_phone,
+        billing_email=company.billing_email,
         legal_name=company.legal_name,
         website=company.website,
         industry=company.industry,
@@ -1763,6 +1764,61 @@ async def deactivate_company_site(company_id: uuid.UUID, site_id: uuid.UUID, db:
 
 
 # ── Vue financiere (TASK-002.2) ──────────────────────────────────────────────
+
+# ── État de compte (TASK-005.31) ─────────────────────────────────────────────────────────────────────────────────
+
+class StatementSendIn(BaseModel):
+    to: str
+    start: date | None = None
+    end: date | None = None
+
+
+@router.get("/{company_id}/statement")
+async def company_statement(company_id: uuid.UUID, start: date | None = None, end: date | None = None,
+                            db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import statement
+    if not await db.get(Company, company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    return await statement.build(db, company_id, start, end)
+
+
+@router.get("/{company_id}/statement/pdf")
+async def company_statement_pdf(company_id: uuid.UUID, start: date | None = None, end: date | None = None,
+                                db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from fastapi.responses import Response
+    from app.core import statement
+    if not await db.get(Company, company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    content, name = await statement.pdf(db, await statement.build(db, company_id, start, end))
+    return Response(content, media_type="application/pdf", headers={"Content-Disposition": f'inline; filename="{name}"'})
+
+
+@router.post("/{company_id}/statement/send")
+async def company_statement_send(company_id: uuid.UUID, p: StatementSendIn, db: AsyncSession = Depends(get_db),
+                                 user: User = Depends(get_current_user)):
+    """Envoie l'état de compte en PDF (boîte des factures) ; inscrit au journal de la fiche."""
+    from app.core import mail_send, statement
+    from app.core.email import _send
+    if not await db.get(Company, company_id):
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    try:
+        to = mail_send.addresses(p.to)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    if not to:
+        raise HTTPException(status_code=422, detail="Indique l'adresse du client")
+    data = await statement.build(db, company_id, p.start, p.end)
+    content, name = await statement.pdf(db, data)
+    html = (f"<p>Bonjour,</p><p>Voici l'état de compte de {data['company']['name']} au {data['date']} : solde de "
+            f"<b>{data['balance']:,.2f} $</b>".replace(",", " ").replace(".", ",") + ".</p><p>Le détail est dans le PDF joint.</p>")
+    sent = [a for _, a in to if await _send(a, f"État de compte — {data['company']['name']}", html,
+                                            attachment=(name, content, "pdf"), function="invoices")]
+    if not sent:
+        raise HTTPException(status_code=502, detail="Envoi impossible (boîte des factures ou serveur de courriel)")
+    _log(db, company_id, user, "statement_sent", description=f"État de compte envoyé à {', '.join(sent)} (solde {data['balance']:.2f} $)")
+    await db.commit()
+    return {"sent": sent, "balance": data["balance"]}
+
 
 @router.get("/{company_id}/finance")
 async def company_finance(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):

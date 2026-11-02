@@ -433,8 +433,64 @@ function ClientPaymentsList({ companyId, onOpen }) {
   )
 }
 
+// État de compte (TASK-005.31) : période des paiements, aperçu PDF, envoi au courriel de facturation. Fermé par ses boutons.
+function StatementModal({ companyId, onClose }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const ago = new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10)
+  const [start, setStart] = useState(ago)
+  const [end, setEnd] = useState(today)
+  const [data, setData] = useState(null)
+  const [to, setTo] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+  useEffect(() => {
+    api.get(`/v1/companies/${companyId}/statement`, { params: { start, end } }).then(r => { setData(r.data); setTo(t => t || r.data.company.billing_email || '') })
+  }, [companyId, start, end])
+  useEffect(() => { if (!to) api.get(`/v1/companies/${companyId}/email-recipients`).then(r => setTo(t => t || r.data[0]?.email || '')).catch(() => {}) }, [companyId])
+  async function preview() {
+    const r = await api.get(`/v1/companies/${companyId}/statement/pdf`, { params: { start, end }, responseType: 'blob' })
+    window.open(URL.createObjectURL(r.data), '_blank')
+  }
+  async function send() {
+    setBusy(true); setMsg('')
+    try { const r = await api.post(`/v1/companies/${companyId}/statement/send`, { to, start, end }); setMsg(`Envoyé à ${r.data.sent.join(', ')}`) }
+    catch (e) { setMsg(e.response?.data?.detail || 'Envoi impossible') } finally { setBusy(false) }
+  }
+  const money = v => (v ?? 0).toLocaleString('fr-CA', { style: 'currency', currency: 'CAD' })
+  return (
+    <div className="modal-overlay">
+      <div className="modal-box" style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">État de compte</h3>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', fontSize: 13, marginBottom: 10 }}>
+          Paiements reçus du <input type="date" value={start} onChange={e => setStart(e.target.value)} /> au <input type="date" value={end} onChange={e => setEnd(e.target.value)} />
+        </div>
+        {data ? (
+          <div style={{ fontSize: 14, marginBottom: 10 }}>
+            <div>{data.invoices.length} facture{data.invoices.length > 1 ? 's' : ''} à payer : <b>{money(data.owed)}</b>{data.credits > 0 ? ` · avoirs ${money(data.credits)}` : ''} · <b>solde {money(data.balance)}</b></div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>
+              {Object.entries(data.aging_labels).map(([k, l]) => <span key={k}>{l} : {money(data.aging[k])}</span>)}
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: 4 }}>{data.payments.length} paiement{data.payments.length > 1 ? 's' : ''} reçu{data.payments.length > 1 ? 's' : ''} dans la période</div>
+          </div>
+        ) : <div className="loading">Chargement…</div>}
+        <div className="form-group">
+          <label className="ifield-label">Envoyer à</label>
+          <input value={to} onChange={e => setTo(e.target.value)} placeholder="courriel de facturation du client" style={{ width: '100%' }} />
+        </div>
+        {msg && <div style={{ fontSize: 13, marginTop: 6, color: msg.startsWith('Envoyé') ? 'var(--c-on-green)' : '#DC2626' }}>{msg}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Fermer</button>
+          <button className="btn-secondary" onClick={preview} disabled={!data}>Voir le PDF</button>
+          <button className="btn-primary" onClick={send} disabled={busy || !to.trim() || !data}>{busy ? '…' : 'Envoyer'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvoice, onOpenPayment }) {
   const navigate = useNavigate()
+  const [statement, setStatement] = useState(false)
   const [rows, setRows] = useState(null)
   const reload = () => api.get(`/v1/companies/${companyId}/finance`).then(r => setRows(r.data.transactions))
   useEffect(() => { reload() }, [companyId])
@@ -468,11 +524,15 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
   const sum = k => invs.reduce((s, t) => s + t[k], 0)
   return (
     <div>
-      <div className="filter-tabs" style={{ marginBottom: 12 }}>
-        {TX_FILTERS.map(([v, l]) => (
-          <button key={v} className={`filter-tab${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>{l}</button>
-        ))}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="filter-tabs">
+          {TX_FILTERS.map(([v, l]) => (
+            <button key={v} className={`filter-tab${filter === v ? ' active' : ''}`} onClick={() => setFilter(v)}>{l}</button>
+          ))}
+        </div>
+        <button className="btn-secondary" onClick={() => setStatement(true)} title="Tout ce que le client doit : factures ouvertes, vieillissement, paiements, solde — PDF ou courriel">État de compte</button>
       </div>
+      {statement && <StatementModal companyId={companyId} onClose={() => setStatement(false)} />}
       <div style={{ overflowX: 'auto' }}>
         <table className="cd-tx-table">
           <thead>
@@ -796,6 +856,7 @@ export default function CompanyDetail({ isNew }) {
                       <CompanySpecialties companyId={id} onOpenContacts={() => setTab(TAB_SLUGS.indexOf('contacts'))} />
                       <InlineField label="Nom de compagnie" value={c.name} onSave={v => { if ((v || '').trim() && v.trim() !== c.name) setRenaming(v.trim()) }} />
                       <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
+                      <InlineField label="Courriel de facturation" value={c.billing_email} onSave={v => saveField('billing_email', (v || '').trim() || null)} />
                       <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
                       <div className="ifield">
                         <div className="ifield-label">Tenant téléphonique SIPV</div>

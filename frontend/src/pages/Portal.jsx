@@ -392,19 +392,49 @@ const STATUS_COLOR = {
   actif: '#059669', inactif: 'var(--c-faint)', hors_service: '#DC2626',
 }
 
+// TASK-001.2 : le gestionnaire du client débloque les accès de SA compagnie (collègues bloqués après des mauvais mots de passe)
+function AccessLocksTab() {
+  const [rows, setRows] = useState(null)
+  const [msg, setMsg] = useState('')
+  const load = () => portalApi.get('/v1/portal/access-locks').then(r => setRows(r.data)).catch(() => setRows([]))
+  useEffect(() => { load() }, [])
+  async function unlock(r) {
+    setMsg('')
+    try { await portalApi.put(`/v1/portal/access-locks/${r.id}/unlock`, {}); setMsg(`Accès de ${r.full_name} débloqué.`); load() }
+    catch (e) { setMsg(e.response?.data?.detail || 'Erreur') }
+  }
+  if (!rows) return <div className="portal-empty">Chargement…</div>
+  return (
+    <div>
+      <p style={{ fontSize: 14, color: '#555' }}>Les accès de votre entreprise bloqués après trop de mauvais mots de passe. Débloquer permet à la personne de réessayer.</p>
+      {msg && <div style={{ fontSize: 14, color: '#059669', margin: '8px 0' }}>{msg}</div>}
+      {rows.length === 0 ? <div className="portal-empty">Aucun accès bloqué.</div> : rows.map(r => (
+        <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 0', borderBottom: '1px solid #eee' }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 600 }}>{r.full_name}</div>
+            <div style={{ fontSize: 13, color: '#777' }}>{r.email} · {r.banned ? 'bloqué jusqu\'au déblocage' : `bloqué jusqu'à ${new Date(r.locked_until).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}</div>
+          </div>
+          <button className="btn-primary" onClick={() => unlock(r)}>Débloquer</button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function PortalDashboard({ session, onLogout }) {
   const perms = session.permissions || {}
   const tabs = Object.entries(TABS_MAP).filter(([key]) => perms[key]).map(([, v]) => v)
   if (TELEPHONY_MANAGER_PERMS.some(k => perms[k])) {
     tabs.push({ label: 'Gestion téléphonique', key: 'telephony' })
   }
+  if (perms.can_unlock_access) tabs.push({ label: 'Accès bloqués', key: 'access' })   // TASK-001.2
   const [tab, setTab] = useState(tabs[0]?.key || '')
   const [data, setData] = useState({})
   const [loading, setLoading] = useState(false)
   const [showNewTicket, setShowNewTicket] = useState(false)
 
   useEffect(() => {
-    if (!tab || tab === 'telephony') return // Gestion téléphonique gère ses propres sous-onglets/fetch
+    if (!tab || tab === 'telephony' || tab === 'access') return // ces onglets gèrent leurs propres lectures
     setLoading(true)
     portalApi.get(`/v1/portal/${tab}`)
       .then(r => setData(p => ({ ...p, [tab]: r.data })))
@@ -478,6 +508,7 @@ function PortalDashboard({ session, onLogout }) {
         )}
 
         {tab === 'telephony' && <TelephonyManagementTab perms={perms} />}
+        {tab === 'access' && <AccessLocksTab />}
 
         {!loading && tab === 'equipment' && (
           <table className="portal-table">

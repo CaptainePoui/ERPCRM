@@ -101,6 +101,8 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
         sub = c.account_number
         if olds and c.id not in seen:
             sub = f"anciennement {olds[0].value}" + (f" · {c.account_number}" if c.account_number else "")
+        if c.is_active is False:            # désactivée (jamais supprimée) : trouvable, mais dit (Philippe 2026-11-02, « gouver »)
+            sub = "désactivée" + (f" · {sub}" if sub else "")
         results.append(SearchResult(id=c.id, type="company", label=c.name, sub=sub))
 
     contacts = await db.execute(

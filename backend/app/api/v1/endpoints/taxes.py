@@ -11,7 +11,7 @@ fournisseur. Exclus : les comptes de dépense marqués « pas de CTI/RTI » (sal
 taxe, impôts) ; une facture fournisseur est exclue si toutes ses lignes sont dans de tels comptes.
 """
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -36,6 +36,7 @@ ADJ_CATEGORIES = {
     "cti_rti": "CTI/RTI — correction manuelle (ceux des achats sont déjà calculés)",
     "creance_irrecouvrable": "Créance irrécouvrable",
     "correction": "Correction",
+    "decouvert": "Document découvert après coup (taxes d'une période déjà déclarée)",     # TASK-044.5
     "autre": "Autre",
 }
 ZERO = Decimal("0.00")
@@ -239,6 +240,7 @@ async def declare_period(payload: DeclareIn, db: AsyncSession = Depends(get_db),
         raise HTTPException(status_code=400, detail=f"Déjà déclarée (taxes déclarées jusqu'au {lock})")
     await set_setting(db, "tax_lock_date", payload.end.isoformat())
     await set_setting(db, "tax_lock_auto", "")
+    await _record_declaration(db, payload.end, "manuel")
     if await complete_declared_tasks(db, payload.end):
         await db.commit()
     return {"tax_lock_date": payload.end}
@@ -258,6 +260,7 @@ async def declare_from_payment(db: AsyncSession, tp: TaxPayment) -> date | None:
         return None
     await set_setting(db, "tax_lock_date", tp.period_end.isoformat())
     await set_setting(db, "tax_lock_auto", f"{tp.id}|{lock.isoformat() if lock else ''}")
+    await _record_declaration(db, tp.period_end, "versement")
     if await complete_declared_tasks(db, tp.period_end):
         await db.commit()
     return tp.period_end
@@ -450,3 +453,88 @@ async def save_obligation(p: ObligationIn, db: AsyncSession = Depends(get_db), _
     ob.notes = p.notes
     await db.commit()
     return await obligation_status(db, p.kind, p.period_start, p.period_end)
+
+
+
+# ── Documents découverts après coup (TASK-044.5) ───────────────────────────────────────────────────────────────
+# Philippe (2026-11-01) : « je veux réclamer ou donner toutes les taxes des factures que je découvre dès que je les
+# découvre ». Un document d'achat (facture fournisseur, dépense, avoir) daté dans une période déjà déclarée mais saisi
+# APRÈS sa déclaration : ses CTI/RTI se réclament dans la période ouverte, par un ajustement « document découvert après
+# coup » qui pointe le document (une seule fois : index unique). Les factures de vente d'une période déclarée sont déjà
+# bloquées (TASK-005.29). La liste est proposée ; Philippe choisit ce qu'il ajoute ; l'ajustement reste modifiable.
+
+async def _record_declaration(db: AsyncSession, end: date, how: str) -> None:
+    from app.models.tax import TaxDeclaration
+    freq, _lock, fiscal = await _context(db, None)
+    start = next((s for s, e in _periods(end, freq, fiscal, 36) if e == end), end.replace(day=1))
+    row = (await db.execute(select(TaxDeclaration).where(TaxDeclaration.period_end == end))).scalar_one_or_none()
+    if row:
+        row.declared_at, row.how = datetime.now(timezone.utc), how
+    else:
+        db.add(TaxDeclaration(period_start=start, period_end=end, declared_at=datetime.now(timezone.utc), how=how))
+    await db.commit()
+
+
+async def _late_candidates(db: AsyncSession) -> list[dict]:
+    from app.models.tax import TaxDeclaration
+    _, lock, _ = await _context(db, None)
+    if not lock:
+        return []
+    since_s = (await get_setting(db, "tax_late_docs_since") or "2026-10-05").strip()
+    baseline = datetime.fromisoformat(since_s).replace(tzinfo=timezone.utc) if "T" not in since_s else datetime.fromisoformat(since_s)
+    decls = (await db.execute(select(TaxDeclaration))).scalars().all()
+
+    def declared_at(d: date) -> datetime:
+        return next((x.declared_at for x in decls if x.period_start <= d <= x.period_end), baseline)
+    done = {(k, i) for k, i in (await db.execute(select(TaxAdjustment.doc_kind, TaxAdjustment.doc_id)
+                                                 .where(TaxAdjustment.doc_id.is_not(None)))).all()}
+    exp, bills, creds = _purchase_docs(date(2000, 1, 1), lock)
+    out = []
+    for kind, q, dfield, sign in (("expense", exp, "expense_date", -1), ("bill", bills, "bill_date", -1), ("vendor_credit", creds, "credit_date", 1)):
+        for doc in (await db.execute(q)).scalars().all():
+            d = getattr(doc, dfield)
+            if not (doc.tps_amount or doc.tvq_amount) or (kind, doc.id) in done or not doc.created_at or doc.created_at <= declared_at(d):
+                continue
+            label = {"expense": doc.description if kind == "expense" else None, "bill": f"Facture {getattr(doc, 'bill_number', '') or ''}".strip(),
+                     "vendor_credit": f"Avoir {getattr(doc, 'credit_number', '') or ''}".strip()}[kind] or "Dépense"
+            out.append({"kind": kind, "id": str(doc.id), "date": d, "created_at": doc.created_at, "label": label,
+                        "vendor": doc.vendor.name if getattr(doc, "vendor", None) else None,
+                        "tps": float(sign * doc.tps_amount), "tvq": float(sign * doc.tvq_amount)})
+    return sorted(out, key=lambda x: x["date"])
+
+
+def _open_date(lock: date | None) -> date:
+    today = clock.today()
+    return today if not lock or today > lock else lock + timedelta(days=1)
+
+
+@router.get("/late-documents")
+async def late_documents(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Documents d'achat découverts après la déclaration de leur période (montants signés : négatif = taxe réclamée)."""
+    _, lock, _ = await _context(db, None)
+    items = await _late_candidates(db)
+    return {"items": items, "tax_lock_date": lock, "into": _open_date(lock),
+            "tps": round(sum(i["tps"] for i in items), 2), "tvq": round(sum(i["tvq"] for i in items), 2)}
+
+
+class LateApplyIn(BaseModel):
+    docs: list[dict]           # [{kind, id}]
+
+
+@router.post("/late-documents/apply")
+async def apply_late_documents(p: LateApplyIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Ajoute les taxes des documents choisis à la période ouverte (un ajustement par document, compté une fois)."""
+    _, lock, _ = await _context(db, None)
+    cand = {(c["kind"], c["id"]): c for c in await _late_candidates(db)}
+    when = _open_date(lock)
+    made = []
+    for d in p.docs:
+        c = cand.get((d.get("kind"), str(d.get("id"))))
+        if not c:
+            continue                                   # déjà ajouté, ou plus un document découvert après coup
+        db.add(TaxAdjustment(adjustment_date=when, category="decouvert", tps_amount=Decimal(str(c["tps"])), tvq_amount=Decimal(str(c["tvq"])),
+                             description=f"{c['label']}{' — ' + c['vendor'] if c['vendor'] else ''}, daté du {c['date']} (période déjà déclarée)",
+                             doc_kind=c["kind"], doc_id=uuid.UUID(c["id"]), created_by=user.id))
+        made.append(c)
+    await db.commit()
+    return {"added": len(made), "date": when, "tps": round(sum(c["tps"] for c in made), 2), "tvq": round(sum(c["tvq"] for c in made), 2)}

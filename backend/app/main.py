@@ -38,6 +38,10 @@ from app.core.voice_check import run_voice_check_poller
 from app.core.mail_scan import run_mail_scan_poller
 
 
+from app.core.ticket_rdv import run_refresher as run_ticket_rdv     # TASK-047.12
+from app.core.alerts import run_alerts                               # TASK-047.12
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with AsyncSessionLocal() as db:
@@ -49,6 +53,7 @@ async def lifespan(app: FastAPI):
     leader_task = asyncio.create_task(run_as_leader([
         run_poller, run_reminder_poller, run_backup_poller, run_cdr_report_poller, run_recurring_poller,
         run_bank_ai_poller, run_receipt_poller, run_interac_poller, run_mail_sync, run_presence_watcher, run_zeko_payments, run_conversation_poller, run_voice_check_poller, run_drop_poller, run_mail_scan_poller,
+        run_ticket_rdv, run_alerts,
     ]))
     try:
         yield

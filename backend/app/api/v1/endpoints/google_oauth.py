@@ -202,6 +202,7 @@ async def create_google_event(payload: EventCreate, db: AsyncSession = Depends(g
             status="en_cours",
             google_calendar_event_id=event_id,
             google_calendar_id="primary",
+            rdv_start=payload.start,            # TASK-047.12 : la cloche l'ignore jusqu'à l'heure du RDV
         )
         db.add(ticket)
         from app.core.numbering import assign_ticket_number
@@ -302,6 +303,7 @@ async def update_google_event(payload: EventUpdate, db: AsyncSession = Depends(g
     if ticket:
         ticket.title = payload.title
         ticket.description = payload.description
+        ticket.rdv_start = payload.start        # TASK-047.12
         await db.commit()
 
     return {"ok": True}

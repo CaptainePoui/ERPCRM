@@ -13,6 +13,8 @@ class Company(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     account_number: Mapped[str | None] = mapped_column(String(50))
     office_phone: Mapped[str | None] = mapped_column(String(50))
+    # TASK-005.30 : courriel de facturation (factures, avis de retard, réponses automatiques) ; vide = contact facturation
+    billing_email: Mapped[str | None] = mapped_column(String(255))
     # Tenant telephonique SIPV
     sipv_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     sipv_tenant_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))

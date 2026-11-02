@@ -6,7 +6,7 @@ import { showNotification } from './ticketReminder'
 // Cloche à côté de Zéko (TASK-047.6) : ce qui reste à régler, lu dans l'état réel par le serveur (une ligne disparaît
 // d'elle-même quand c'est réglé). Relue chaque minute et au retour sur l'onglet. Le menu se ferme au clic à côté : ce
 // n'est pas une fenêtre de saisie (rien à perdre).
-const ICONS = { mail: '✉', invoices: '$', tickets: '#', bank: '⌂', mail_review: '?' }
+const ICONS = { mail: '✉', invoices: '$', tickets: '#', bank: '⌂', mail_review: '?', alerts: '!' }
 
 export default function NotificationBell() {
   const navigate = useNavigate()

@@ -1538,6 +1538,12 @@ const PORTAL_PERM_GROUPS = [
     ],
   },
   {
+    title: 'GESTION DES ACCÈS (TASK-001.2)',
+    fields: [
+      ['can_unlock_access', 'Débloquer les accès de sa compagnie (collègues bloqués après des mauvais mots de passe)'],
+    ],
+  },
+  {
     title: 'TÉLÉPHONIE — MON POSTE',
     fields: [
       ['can_view_own_extension', 'Voir son propre poste (statut, extension)'],
@@ -1608,6 +1614,13 @@ function PortalAccessSection({ contact }) {
           <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--c-text)' }}>{portalUser.email}</span>
           <span style={{ fontSize: 12, color: 'var(--c-muted)' }}>{portalPermLabel(portalUser)}</span>
           <span style={{ fontSize: 12, color: 'var(--c-faint)' }}>Dernière connexion : {portalUser.last_login ? new Date(portalUser.last_login).toLocaleString('fr-CA') : 'jamais'}</span>
+          {(portalUser.lock?.banned || portalUser.lock?.locked_until) && <>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#DC2626' }}>
+              {portalUser.lock.banned ? 'Bloqué (trop d\'essais)' : `Bloqué jusqu'à ${new Date(portalUser.lock.locked_until).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
+            </span>
+            <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 10px' }}
+              onClick={async () => setPortalUser((await api.put(`/v1/portal/users/${portalUser.id}/unlock`)).data)}>Débloquer</button>
+          </>}
           <button
             onClick={toggleActive}
             style={{ fontSize: 11, fontWeight: 600, padding: '2px 10px', borderRadius: 10, border: 'none', cursor: 'pointer', background: portalUser.is_active ? 'var(--c-tint-green)' : 'var(--c-tint-red)', color: portalUser.is_active ? '#059669' : '#DC2626' }}

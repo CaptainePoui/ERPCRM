@@ -120,8 +120,13 @@ BILLING_FUNCTIONS = ("comptes payables", "facturation")
 
 
 async def billing_email(db, company_id) -> str | None:
-    """Courriel d'envoi des factures : contact comptes payables/facturation, sinon principal, sinon le premier."""
+    """Courriel d'envoi des factures : celui de la compagnie (TASK-005.30), sinon contact comptes payables/facturation,
+    sinon principal, sinon le premier."""
     from sqlalchemy.orm import selectinload
+    from app.models.company import Company
+    co = await db.get(Company, company_id)
+    if co and (co.billing_email or "").strip():
+        return co.billing_email.strip()
     from app.models.contact_company import ContactCompany, ContactCompanyFunction
     rows = (await db.execute(select(ContactCompany).options(
         selectinload(ContactCompany.contact), selectinload(ContactCompany.functions).selectinload(ContactCompanyFunction.function))

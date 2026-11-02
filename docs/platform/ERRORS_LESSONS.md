@@ -1429,3 +1429,21 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 ## TASK-002.16 — La recherche par fautes de frappe passait avant les anciens noms
 
 **2026-11-02** — « patio » montrait D Astous Auto, Patrick Morin… avant Construction Nationale (anciennement Patio Desing), et cet ancien nom n'avait jamais été gardé (renommage du 2026-10-02, avant la fonction des anciens noms). **Correction** : ancien nom ajouté (API), un ancien nom compte comme vraie correspondance. **Leçon** : quand une fonction nouvelle arrive (anciens noms), vérifier les données d'avant qui auraient dû en profiter (renommages dans le journal).
+
+
+## TASK-047.5 (suite) — « Gouvernement (DEC/CED) » désactivée au lieu d'être simplement renommée
+
+**2026-10-28, constaté le 2026-11-02**
+
+**On croyait** : que la règle « jamais supprimer une compagnie, la désactiver » s'appliquait quand Philippe a dit « je ne veux qu'un Gouvernement avec une succursale pour Gouvernement Québec ».
+
+**Preuve** : Philippe (2026-11-02) : « pourquoi tu l'as désactivée… et pourquoi tu ne l'as pas seulement changée de nom !!! » ; la fiche désactivée restait dans la recherche (« gouver ») et dans ses questions depuis.
+
+**Correction** : supprimée sur sa demande (migration `c9f5a7b2d4e6`, aucune donnée rattachée) ; la recherche marque maintenant une compagnie désactivée.
+
+**Leçon (à ne pas refaire)** : quand Philippe veut « une seule » fiche à la place de deux, renommer / fusionner la fiche existante plutôt que d'en créer une et de désactiver l'autre ; la règle « désactiver » sert à garder la trace d'un VRAI client qui part, pas à nettoyer un doublon.
+
+
+## TASK-006.21 — Test de nuit programmé à 00:00 UTC (19 h chez Philippe)
+
+**2026-11-02** — `systemd-run --on-calendar="2026-11-03 00:00:00"` sans fuseau : le serveur est en UTC → 19 h heure de l'Est, quand Philippe travaille. Vu en lisant la liste des minuteries (« dans 5 h 40 ») ; reprogrammé avec « America/Toronto » (05:00 UTC). **Leçon** : toute heure donnée par Philippe est l'heure du Québec ; toujours écrire le fuseau dans une programmation et vérifier l'heure UTC affichée.

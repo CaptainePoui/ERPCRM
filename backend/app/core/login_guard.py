@@ -15,8 +15,12 @@ DEFAULTS = {"steps": [{"attempts": 3, "minutes": 5}, {"attempts": 3, "minutes": 
 KEY = "login_security"
 BANNED = ("Compte bloqué après trop d'essais. Demande à ton gestionnaire de faire débloquer ton compte, "
           "ou contacte l'administrateur.")
+# TASK-001.2 : le portail client a ses propres paliers (réglables séparément) et son propre message de blocage
+PORTAL_KEY = "portal_login_security"
+PORTAL_BANNED = ("Accès bloqué après trop d'essais. Demande au gestionnaire de ton entreprise de débloquer ton accès, "
+                 "ou contacte Simple IP.")
 _TTL = 20
-_cache = {"at": 0.0, "cfg": copy.deepcopy(DEFAULTS)}
+_caches = {KEY: {"at": 0.0, "cfg": copy.deepcopy(DEFAULTS)}, PORTAL_KEY: {"at": 0.0, "cfg": copy.deepcopy(DEFAULTS)}}
 
 
 def validate(data: dict) -> dict:
@@ -37,13 +41,14 @@ def validate(data: dict) -> dict:
     return {"steps": out}
 
 
-async def load(fresh: bool = False) -> dict:
+async def load(fresh: bool = False, key: str = KEY) -> dict:
+    _cache = _caches[key]
     if not fresh and _time.monotonic() - _cache["at"] < _TTL:
         return _cache["cfg"]
     from app.core.database import AsyncSessionLocal
     from app.api.v1.endpoints.settings import get_setting
     async with AsyncSessionLocal() as db:
-        raw = await get_setting(db, KEY)
+        raw = await get_setting(db, key)
     try:
         cfg = validate(json.loads(raw)) if raw else copy.deepcopy(DEFAULTS)
     except (ValueError, TypeError):
@@ -52,26 +57,26 @@ async def load(fresh: bool = False) -> dict:
     return cfg
 
 
-async def save(db, data: dict) -> dict:
+async def save(db, data: dict, key: str = KEY) -> dict:
     from app.api.v1.endpoints.settings import set_setting
     cfg = validate(data)
-    await set_setting(db, KEY, json.dumps(cfg))
-    _cache.update(at=_time.monotonic(), cfg=cfg)
+    await set_setting(db, key, json.dumps(cfg))
+    _caches[key].update(at=_time.monotonic(), cfg=cfg)
     return cfg
 
 
-def refusal(user, now: datetime | None = None) -> tuple[int, str] | None:
+def refusal(user, now: datetime | None = None, banned_msg: str = BANNED) -> tuple[int, str] | None:
     """(code HTTP, message) si le compte est bloqué en ce moment, sinon None."""
     now = now or datetime.now(timezone.utc)
     if user.banned_at:
-        return 403, BANNED
+        return 403, banned_msg
     if user.locked_until and user.locked_until > now:
         mins = max(1, int((user.locked_until - now).total_seconds() + 59) // 60)
         return 429, f"Trop d'essais. Réessaie dans {mins} minute{'s' if mins > 1 else ''}."
     return None
 
 
-def failed(user, cfg: dict, now: datetime | None = None) -> str:
+def failed(user, cfg: dict, now: datetime | None = None, banned_msg: str = BANNED) -> str:
     """Compte un mauvais mot de passe ; applique le palier atteint. Renvoie le message à montrer. Ne fait pas le commit."""
     now = now or datetime.now(timezone.utc)
     steps = cfg["steps"]
@@ -84,9 +89,9 @@ def failed(user, cfg: dict, now: datetime | None = None) -> str:
     user.lock_step = (user.lock_step or 0) + 1
     if step["minutes"] == 0:
         user.banned_at = now
-        return BANNED
+        return banned_msg
     user.locked_until = now + timedelta(minutes=step["minutes"])
-    return refusal(user, now)[1]
+    return refusal(user, now, banned_msg)[1]
 
 
 def succeeded(user) -> None:

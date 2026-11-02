@@ -511,6 +511,51 @@ function SlipsSection() {
   )
 }
 
+// TASK-044.5 (Philippe 2026-11-01 : « je veux réclamer ou donner toutes les taxes des factures que je découvre dès que je
+// les découvre ») : documents d'achat datés dans une période déjà déclarée mais saisis après -> leurs taxes vont dans la
+// période ouverte (un ajustement « document découvert après coup » par document, compté une seule fois, modifiable)
+function LateDocumentsCard({ refreshKey, onChanged }) {
+  const [d, setD] = useState(null)
+  const [picked, setPicked] = useState({})
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/v1/taxes/late-documents').then(r => { setD(r.data); setPicked(Object.fromEntries(r.data.items.map(i => [i.kind + i.id, true]))) })
+  useEffect(() => { load() }, [refreshKey])
+  if (!d || !d.items.length) return msg ? <div style={{ ...card, marginBottom: 16, color: 'var(--c-on-green)' }}>{msg}</div> : null
+  const chosen = d.items.filter(i => picked[i.kind + i.id])
+  const sum = k => chosen.reduce((s, i) => s + i[k], 0)
+  async function apply() {
+    setBusy(true); setMsg('')
+    try {
+      const r = await api.post('/v1/taxes/late-documents/apply', { docs: chosen.map(i => ({ kind: i.kind, id: i.id })) })
+      setMsg(`${r.data.added} document${r.data.added > 1 ? 's' : ''} ajouté${r.data.added > 1 ? 's' : ''} à la période ouverte (ajustements datés du ${r.data.date}) : TPS ${fmtMoney(r.data.tps)}, TVQ ${fmtMoney(r.data.tvq)}.`)
+      await load(); await onChanged?.()
+    } catch (e) { setMsg(e.response?.data?.detail || 'Erreur') } finally { setBusy(false) }
+  }
+  return (
+    <div style={{ ...card, marginBottom: 16, borderColor: 'var(--c-on-amber)' }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>Documents découverts après coup ({d.items.length})</div>
+      <div style={{ fontSize: 13, color: 'var(--c-muted)', marginBottom: 8 }}>
+        Datés dans une période déjà déclarée (jusqu'au {d.tax_lock_date}), saisis après sa déclaration : leurs taxes se réclament dans la période ouverte.
+        Négatif = taxe réclamée (CTI/RTI) ; positif = taxe à remettre.
+      </div>
+      <Table head={['', 'Date', 'Document', 'Fournisseur', 'TPS', 'TVQ']} minWidth={560}>
+        {d.items.map(i => (
+          <tr key={i.kind + i.id}>
+            <td><input type="checkbox" checked={!!picked[i.kind + i.id]} onChange={e => setPicked(p => ({ ...p, [i.kind + i.id]: e.target.checked }))} /></td>
+            <td>{i.date}</td><td>{i.label}</td><td>{i.vendor || ''}</td>
+            <td style={{ textAlign: 'right' }}>{fmtMoney(i.tps)}</td><td style={{ textAlign: 'right' }}>{fmtMoney(i.tvq)}</td>
+          </tr>
+        ))}
+      </Table>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+        <button className="btn-primary" disabled={busy || !chosen.length} onClick={apply}>Ajouter à la période ouverte ({fmtMoney(sum('tps'))} TPS, {fmtMoney(sum('tvq'))} TVQ)</button>
+        {msg && <span style={{ fontSize: 13, color: '#DC2626' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
 export default function Taxes() {
   const [params, setParams] = useSearchParams()
   const section = SECTIONS.some(s => s.value === params.get('section')) ? params.get('section') : 'declaration'
@@ -535,6 +580,7 @@ export default function Taxes() {
           ))}
         </nav>
         <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+          {section === 'declaration' && <LateDocumentsCard refreshKey={refreshKey} onChanged={refresh} />}
           {section === 'declaration' && <DeclarationSection refreshKey={refreshKey}
             onAddAdjustment={p => setAdjEdit({ adjustment_date: p.end < todayIso() ? p.end : todayIso() })}
             onAddPayment={p => setPayEdit({ period_start: p.start, period_end: p.end })} />}

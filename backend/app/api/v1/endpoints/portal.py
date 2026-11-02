@@ -12,7 +12,7 @@ from app.api.v1.endpoints.payments import next_payment_reference, settled_amount
 from jose import JWTError
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.core import audit
+from app.core import audit, login_guard
 from app.core.security import verify_password, hash_password, create_access_token, decode_token
 from app.core import sipv_client, voicebox_client
 from app.core.telephony_lock import acquire_telephony_lock
@@ -79,6 +79,8 @@ class PortalUserOut(BaseModel):
     can_listen_audio_prompts: bool
     can_generate_voice_prompts: bool
     can_view_company_cdr: bool
+    can_unlock_access: bool = False      # TASK-001.2
+    lock: dict = {}                      # TASK-001.2 : bloqué, banni, essais ratés
     notes: str | None
     created_at: datetime
     last_login: datetime | None
@@ -107,6 +109,7 @@ class PortalUserCreate(BaseModel):
     can_listen_audio_prompts: bool = False
     can_generate_voice_prompts: bool = False
     can_view_company_cdr: bool = False
+    can_unlock_access: bool = False          # TASK-001.2
     notes: str | None = None
 
 class PortalUserUpdate(BaseModel):
@@ -132,6 +135,7 @@ class PortalUserUpdate(BaseModel):
     can_listen_audio_prompts: bool | None = None
     can_generate_voice_prompts: bool | None = None
     can_view_company_cdr: bool | None = None
+    can_unlock_access: bool | None = None    # TASK-001.2
     notes: str | None = None
 
 
@@ -142,6 +146,7 @@ def _perms(u: PortalUser) -> dict:
         "can_create_tickets": u.can_create_tickets,
         "can_view_equipment": u.can_view_equipment,
         **{f: getattr(u, f) for f in TELEPHONY_PERM_FIELDS},
+        "can_unlock_access": u.can_unlock_access,
     }
 
 async def _reload(db, uid) -> PortalUser:
@@ -157,6 +162,7 @@ def _out(u: PortalUser) -> PortalUserOut:
         can_view_invoices=u.can_view_invoices, can_view_tickets=u.can_view_tickets,
         can_create_tickets=u.can_create_tickets, can_view_equipment=u.can_view_equipment,
         notes=u.notes, created_at=u.created_at, last_login=u.last_login,
+        can_unlock_access=u.can_unlock_access, lock=login_guard.state(u),
         **{f: getattr(u, f) for f in TELEPHONY_PERM_FIELDS},
     )
 
@@ -212,8 +218,17 @@ async def portal_login(payload: PortalLoginRequest, db: AsyncSession = Depends(g
     rows = (await db.execute(select(PortalUser).join(Contact, Contact.id == PortalUser.contact_id)
                              .where(func.lower(Contact.email) == (payload.email or "").strip().lower()))).unique().scalars().all()
     u = rows[0] if len(rows) == 1 else None
-    if not u or not verify_password(payload.password, u.hashed_password):
+    if not u:
         raise HTTPException(status_code=401, detail="Identifiants invalides")
+    # TASK-001.2 : mêmes paliers que les employés (réglés à part) ; bloqué -> refusé, même avec le bon mot de passe
+    blocked = login_guard.refusal(u, banned_msg=login_guard.PORTAL_BANNED)
+    if blocked:
+        raise HTTPException(status_code=blocked[0], detail=blocked[1])
+    if not verify_password(payload.password, u.hashed_password):
+        msg = login_guard.failed(u, await login_guard.load(key=login_guard.PORTAL_KEY), banned_msg=login_guard.PORTAL_BANNED)
+        await db.commit()
+        raise HTTPException(status_code=401, detail=msg)
+    login_guard.succeeded(u)
     if not u.is_active:
         raise HTTPException(status_code=403, detail="Compte portail désactivé")
     audit.set_portal_user(u.id)      # la connexion est inscrite au nom du client
@@ -224,6 +239,31 @@ async def portal_login(payload: PortalLoginRequest, db: AsyncSession = Depends(g
         access_token=token, portal_user_id=str(u.id),
         company_id=str(u.company_id), full_name=u.full_name, permissions=_perms(u),
     )
+
+# ── TASK-001.2 : le gestionnaire du client débloque les accès de SA compagnie ─────────────────────────────────────
+
+@router.get("/access-locks")
+async def portal_access_locks(u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    """Accès portail bloqués ou bannis de sa compagnie (permission « Débloquer les accès de sa compagnie »)."""
+    if not u.can_unlock_access:
+        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    rows = (await db.execute(select(PortalUser).where(PortalUser.company_id == u.company_id))).unique().scalars().all()
+    now = datetime.now(timezone.utc)
+    return [{"id": str(x.id), "full_name": x.full_name, "email": x.email, **login_guard.state(x, now)}
+            for x in rows if x.banned_at or (x.locked_until and x.locked_until > now)]
+
+
+@router.put("/access-locks/{access_id}/unlock")
+async def portal_unlock_access(access_id: uuid.UUID, u: PortalUser = Depends(get_portal_user), db: AsyncSession = Depends(get_db)):
+    if not u.can_unlock_access:
+        raise HTTPException(status_code=403, detail="Accès non autorisé")
+    x = await db.get(PortalUser, access_id)
+    if not x or x.company_id != u.company_id:          # jamais l'accès d'une autre compagnie
+        raise HTTPException(status_code=404, detail="Accès introuvable")
+    login_guard.unlock(x)
+    await db.commit()
+    return {"ok": True}
+
 
 @router.get("/me")
 async def portal_me(u: PortalUser = Depends(get_portal_user)):
@@ -1141,6 +1181,33 @@ async def update_portal_user(user_id: uuid.UUID, payload: PortalUserUpdate, db: 
         setattr(u, k, v)
     await db.commit()
     return _out(await _reload(db, u.id))
+
+@router.put("/users/{user_id}/unlock", response_model=PortalUserOut)
+async def unlock_portal_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Débloque un accès portail bloqué ou banni après des mauvais mots de passe (TASK-001.2), depuis ERPCRM."""
+    u = await db.get(PortalUser, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="Utilisateur portail introuvable")
+    login_guard.unlock(u)
+    await db.commit()
+    return _out(await _reload(db, u.id))
+
+
+from app.api.v1.endpoints.admin import require_admin      # réglages : privilège Administration (comme TASK-001.1)
+
+
+@router.get("/login-security")
+async def get_portal_login_security(_: User = Depends(require_admin)):
+    return await login_guard.load(fresh=True, key=login_guard.PORTAL_KEY)
+
+
+@router.put("/login-security")
+async def put_portal_login_security(body: dict, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    try:
+        return await login_guard.save(db, body, key=login_guard.PORTAL_KEY)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_portal_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):

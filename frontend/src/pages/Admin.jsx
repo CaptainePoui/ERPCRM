@@ -255,32 +255,38 @@ function ConfigPanel({ initial }) {
       {sub === 'specialisations' && <SpecialtiesPanel />}
       {sub === 'audio' && <AudioDevicesPanel />}
       {sub === 'agenda' && <AgendaSettingsPanel />}
-      {sub === 'notifications' && <NotificationsSettingsPanel />}
-      {sub === 'securite' && <LoginSecurityPanel />}
+      {sub === 'notifications' && <><NotificationsSettingsPanel /><div style={{ height: 24 }} /><AlertsSettingsPanel /></>}
+      {sub === 'securite' && <><LoginSecurityPanel />
+        <div style={{ height: 28 }} />
+        <LoginSecurityPanel url="/v1/portal/login-security" title="Portail client : mauvais mots de passe"
+          note={<>Mêmes paliers, réglés à part pour les accès des clients au portail. Durée 0 : l'accès reste bloqué jusqu'au déblocage,
+            par Simple IP (fiche du contact → accès portail → Débloquer) ou par le gestionnaire du client s'il a la permission
+            « Débloquer les accès de sa compagnie ». Une connexion réussie remet tout à zéro.</>} /></>}
     </div>
   )
 }
 
 // Blocage après des mauvais mots de passe (TASK-001.1) : paliers réglables ; durée 0 = débloqué par un administrateur
-function LoginSecurityPanel() {
+// TASK-001.2 : le même panneau pour le portail client (paliers réglés à part, url = /v1/portal/login-security)
+function LoginSecurityPanel({ url = '/v1/admin/login-security', title = 'Mauvais mots de passe', note }) {
   const [steps, setSteps] = useState(null)
   const [msg, setMsg] = useState('')
-  useEffect(() => { api.get('/v1/admin/login-security').then(r => setSteps(r.data.steps)).catch(e => setMsg(e.response?.data?.detail || 'Accès refusé')) }, [])
+  useEffect(() => { api.get(url).then(r => setSteps(r.data.steps)).catch(e => setMsg(e.response?.data?.detail || 'Accès refusé')) }, [url])
   if (!steps) return msg ? <div className="adm-error">{msg}</div> : <div className="loading">Chargement...</div>
   const set = (i, k, v) => setSteps(p => p.map((st, j) => j === i ? { ...st, [k]: v } : st))
   async function save() {
     setMsg('')
-    try { setSteps((await api.put('/v1/admin/login-security', { steps })).data.steps); setMsg('Enregistré') }
+    try { setSteps((await api.put(url, { steps })).data.steps); setMsg('Enregistré') }
     catch (e) { setMsg(e.response?.data?.detail || 'Erreur') }
   }
   const input = { width: 70, border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 6px', fontSize: 14, background: 'var(--c-surface)', color: 'var(--c-text)' }
   return (
     <div style={{ maxWidth: 680 }}>
-      <div className="ifield-section-title">Mauvais mots de passe</div>
+      <div className="ifield-section-title">{title}</div>
       <p style={{ color: 'var(--c-muted)', fontSize: 13 }}>
-        Après le nombre d'essais ratés d'un palier, le compte est bloqué pour la durée indiquée, puis le palier suivant
+        {note || <>Après le nombre d'essais ratés d'un palier, le compte est bloqué pour la durée indiquée, puis le palier suivant
         s'applique. Durée 0 : le compte reste bloqué jusqu'à ce qu'un administrateur le débloque (Administration →
-        Utilisateurs). Une connexion réussie remet tout à zéro. Pendant un blocage, même le bon mot de passe est refusé.
+        Utilisateurs). Une connexion réussie remet tout à zéro. Pendant un blocage, même le bon mot de passe est refusé.</>}
       </p>
       {steps.map((st, i) => (
         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0', flexWrap: 'wrap' }}>
@@ -295,6 +301,65 @@ function LoginSecurityPanel() {
         <button className="btn-secondary" onClick={() => setSteps(p => [...p, { attempts: 3, minutes: 0 }])}>+ Palier</button>
         <button className="btn-primary" onClick={save}>Enregistrer</button>
         {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
+    </div>
+  )
+}
+
+// Alertes (TASK-047.12) : un service tombe ou une sauvegarde échoue -> cloche + courriel + Slack (textos : à venir, API ScopServ)
+function AlertsSettingsPanel() {
+  const [c, setC] = useState(null)
+  const [msg, setMsg] = useState('')
+  const [busy, setBusy] = useState(false)
+  const load = () => api.get('/v1/settings/alerts').then(r => setC({ ...r.data, emails: (r.data.emails || []).join(', ') }))
+  useEffect(() => { load() }, [])
+  if (!c) return null
+  const set = (k, v) => { setC(p => ({ ...p, [k]: v })); setMsg('') }
+  const body = () => ({ enabled: c.enabled, checks: c.checks, backup_max_hours: Number(c.backup_max_hours), disk_min_pct: Number(c.disk_min_pct),
+                        emails: c.emails, slack_webhook: c.slack_webhook })
+  async function save() {
+    setBusy(true); setMsg('')
+    try { await api.put('/v1/settings/alerts', body()); await load(); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') } finally { setBusy(false) }
+  }
+  async function test() {
+    setBusy(true); setMsg('')
+    try { await api.put('/v1/settings/alerts', body()); const r = await api.post('/v1/settings/alerts/test'); await load(); setMsg('Essai : ' + r.data.sent.join(' ; ')) }
+    catch (e) { setMsg(e.response?.data?.detail || 'Refusé') } finally { setBusy(false) }
+  }
+  const card = { background: 'var(--c-surface)', border: '1px solid var(--c-border)', borderRadius: 12, padding: 24 }
+  const input = { border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 8px', fontSize: 14, background: 'var(--c-surface)', color: 'var(--c-text)' }
+  return (
+    <div style={card}>
+      <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--c-text)', margin: '0 0 6px' }}>Alertes : service en panne, sauvegarde ratée</h3>
+      <p style={{ fontSize: 13, color: 'var(--c-muted)', margin: '0 0 14px' }}>
+        Vérifié toutes les 2 minutes. Une panne = 2 vérifications ratées de suite ; une seule alerte par panne (cloche, courriel, Slack), puis un avis quand c'est rétabli.
+        Textos : à venir (API ScopServ).
+      </p>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, marginBottom: 10 }}>
+        <input type="checkbox" checked={!!c.enabled} onChange={e => set('enabled', e.target.checked)} /> Alertes activées
+      </label>
+      {Object.entries(c.labels || {}).map(([k, l]) => {
+        const st = (c.state || {})[k]
+        return (
+          <label key={k} style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, marginBottom: 6, marginLeft: 22 }}>
+            <input type="checkbox" checked={!!c.checks[k]} onChange={e => set('checks', { ...c.checks, [k]: e.target.checked })} /> {l}
+            {st && <span style={{ fontSize: 12, color: st.ok ? '#059669' : '#DC2626' }}>— {st.ok ? 'OK' : 'EN PANNE'} : {st.detail}</span>}
+          </label>
+        )
+      })}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', margin: '10px 0', fontSize: 14 }}>
+        <label>Sauvegarde réussie depuis moins de <input type="number" min={1} value={c.backup_max_hours} onChange={e => set('backup_max_hours', e.target.value)} style={{ ...input, width: 70 }} /> h</label>
+        <label>Alerte sous <input type="number" min={1} max={50} value={c.disk_min_pct} onChange={e => set('disk_min_pct', e.target.value)} style={{ ...input, width: 60 }} /> % d'espace disque libre</label>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '170px 1fr', gap: 8, alignItems: 'center', fontSize: 14, maxWidth: 760 }}>
+        <span>Courriels</span><input value={c.emails} onChange={e => set('emails', e.target.value)} placeholder="ex. philippe@simpleip.tel, autre@exemple.com" style={input} />
+        <span>Webhook Slack</span><input value={c.slack_webhook} onChange={e => set('slack_webhook', e.target.value)} placeholder="https://hooks.slack.com/services/…" style={input} />
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+        <button className="btn-primary" onClick={save} disabled={busy}>Enregistrer</button>
+        <button className="btn-secondary" onClick={test} disabled={busy} title="Enregistre, envoie un essai aux canaux réglés et refait les vérifications">Envoyer un essai</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' || msg.startsWith('Essai') ? '#059669' : '#DC2626' }}>{msg}</span>}
       </div>
     </div>
   )
@@ -1500,7 +1565,7 @@ function PortalUserModal({ onClose, onSaved }) {
     can_edit_dnd: false, can_edit_voicemail: true, can_edit_call_plan: false, can_view_own_cdr: true,
     can_view_voicemail_messages: false, can_receive_alerts: false,
     can_manage_telephony: false, can_manage_ivr: false, can_manage_groups: false,
-    can_manage_audio_prompts: false, can_view_company_cdr: false,
+    can_manage_audio_prompts: false, can_view_company_cdr: false, can_unlock_access: false,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -1557,6 +1622,7 @@ function PortalUserModal({ onClose, onSaved }) {
             ['can_view_tickets', 'Voir les tickets'],
             ['can_create_tickets', 'Créer des tickets'],
             ['can_view_equipment', 'Voir l\'inventaire'],
+            ['can_unlock_access', 'Débloquer les accès de sa compagnie (collègues bloqués après des mauvais mots de passe)'],
           ].map(([key, label]) => (
             <label key={key} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, marginBottom: 6, cursor: 'pointer' }}>
               <input type="checkbox" checked={form[key]} onChange={e => f(key, e.target.checked)} />

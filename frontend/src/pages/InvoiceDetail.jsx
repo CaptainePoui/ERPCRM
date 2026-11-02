@@ -679,9 +679,11 @@ function SendInvoiceModal({ invoiceId, companyId, onClose, onSent }) {
 
   useEffect(() => {
     api.get(`/v1/companies/${companyId}`).then(r => {
+      // TASK-005.30 : le courriel de facturation de la compagnie d'abord, sinon le contact principal
       const contacts = r.data.contacts || []
       const primary = contacts.find(c => c.is_primary && c.email) || contacts.find(c => c.email)
-      if (primary) setEmail(primary.email)
+      if (r.data.billing_email) setEmail(r.data.billing_email)
+      else if (primary) setEmail(primary.email)
     }).finally(() => setLoadingEmail(false))
   }, [companyId])
 

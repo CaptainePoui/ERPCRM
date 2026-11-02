@@ -20,6 +20,9 @@ class TaxAdjustment(Base):
     tps_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
     tvq_amount: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
     description: Mapped[str | None] = mapped_column(Text)
+    # TASK-044.5 : « document découvert après coup » -> le document dont viennent ces taxes (compté une seule fois)
+    doc_kind: Mapped[str | None] = mapped_column(String(20))      # bill | expense | vendor_credit
+    doc_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -66,3 +69,16 @@ class TaxObligation(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+
+class TaxDeclaration(Base):
+    """Moment où une période a été déclarée (TASK-044.5) : un document d'achat daté dans cette période mais saisi APRÈS
+    est « découvert après coup » ; ses taxes se réclament (ou se remettent) dans la période ouverte."""
+    __tablename__ = "tax_declarations"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False, unique=True)
+    declared_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    how: Mapped[str] = mapped_column(String(20), nullable=False, default="manuel")

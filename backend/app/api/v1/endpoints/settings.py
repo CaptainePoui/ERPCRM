@@ -496,3 +496,35 @@ async def put_notifications_config(payload: dict, db: AsyncSession = Depends(get
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
+
+
+
+# ── Alertes (TASK-047.12) : services en panne, sauvegardes ratées ─────────────────────────────────────────────────
+
+@router.get("/alerts")
+async def get_alerts_config(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import alerts
+    return {**await alerts.load(db), "labels": alerts.CHECKS, "state": await alerts.state(db)}
+
+
+@router.put("/alerts")
+async def put_alerts_config(body: dict, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.api.v1.endpoints.admin import require_admin
+    from app.core import alerts
+    await require_admin(_, db)
+    try:
+        return await alerts.save(db, body)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+
+
+@router.post("/alerts/test")
+async def test_alerts(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Envoie un essai aux canaux réglés (courriel, Slack) et refait les vérifications tout de suite."""
+    from app.api.v1.endpoints.admin import require_admin
+    from app.core import alerts
+    await require_admin(_, db)
+    cfg = await alerts.load(db)
+    sent = await alerts.notify(cfg, "Essai des alertes ERPCRM", "Ceci est un essai : les alertes arrivent bien ici.")
+    st = await alerts.run_once(db)
+    return {"sent": sent or ["aucun canal réglé (courriel ou Slack)"], "state": st}

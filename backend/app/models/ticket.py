@@ -35,6 +35,8 @@ class Ticket(Base):
 
     # Lien vers le RDV Google Calendar qui a cree ce ticket automatiquement (TASK-015.15).
     google_calendar_event_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # TASK-047.12 : heure du RDV (Google Agenda) ; la cloche ignore le ticket tant qu'elle n'est pas passée
+    rdv_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     google_calendar_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

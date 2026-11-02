@@ -118,6 +118,13 @@ async def collect(db, user) -> dict:
                         "lines": [{"text": f"{m.from_name or m.from_email or '?'} : {m.subject or '(sans objet)'}",
                                    "path": "/mail?view=unread"} for m in rows]})
 
+    if privileges.allows(privs, "administration"):       # TASK-047.12 : pannes en cours (alertes)
+        from app.core import alerts
+        lines = await alerts.bell_lines(db)
+        if lines:
+            out.append({"kind": "alerts", "label": "Alertes : service en panne", "count": len(lines),
+                        "path": "/admin?tab=configuration&section=notifications", "lines": lines})
+
     if cfg["mail_review"] and privileges.allows(privs, "courriels"):     # TASK-006.23
         from app.core import mail_rules
         q = (select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
@@ -140,8 +147,12 @@ async def collect(db, user) -> dict:
                                    else f"{i.number} · {name or '?'}", "path": f"/invoices/{i.id}"} for i, name in rows[:5]]})
 
     if cfg["tickets"] and cfg["ticket_statuses"] and privileges.allows(privs, "tickets"):
+        from datetime import datetime, timezone
+        from sqlalchemy import or_
         q = (select(Ticket, Company.name).join(Company, Company.id == Ticket.company_id, isouter=True)
-             .where(Ticket.status.in_(cfg["ticket_statuses"])))
+             .where(Ticket.status.in_(cfg["ticket_statuses"]),
+                    # TASK-047.12 : un ticket dont le RDV n'est pas encore passé n'est pas « à régler »
+                    or_(Ticket.rdv_start.is_(None), Ticket.rdv_start <= datetime.now(timezone.utc))))
         rows = (await db.execute(q.order_by(Ticket.created_at.desc()))).all()
         if rows:
             from app.core.zeko_tools import ticket_no

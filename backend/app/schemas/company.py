@@ -28,6 +28,7 @@ class CompanyCreate(BaseModel):
     name: str
     account_number: str | None = None
     office_phone: str | None = None
+    billing_email: str | None = None
     legal_name: str | None = None
     website: str | None = None
     industry: str | None = None
@@ -52,6 +53,7 @@ class CompanyUpdate(BaseModel):
     name: str | None = None
     account_number: str | None = None
     office_phone: str | None = None
+    billing_email: str | None = None
     legal_name: str | None = None
     website: str | None = None
     industry: str | None = None
@@ -96,6 +98,7 @@ class CompanyOut(BaseModel):
     name: str
     account_number: str | None
     office_phone: str | None
+    billing_email: str | None = None
     legal_name: str | None
     website: str | None
     industry: str | None

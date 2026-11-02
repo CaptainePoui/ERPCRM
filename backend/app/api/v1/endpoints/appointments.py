@@ -422,6 +422,7 @@ async def book_appointment(payload: BookingRequest, db: AsyncSession = Depends(g
     )
     if google_event_id:
         ticket.google_calendar_event_id, ticket.google_calendar_id = google_event_id, "primary"
+        ticket.rdv_start = start_utc            # TASK-047.12 : la cloche l'ignore jusqu'à l'heure du RDV
     db.add(appt)
     await db.commit()
 

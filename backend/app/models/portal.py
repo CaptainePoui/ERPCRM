@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Text, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
@@ -40,6 +40,12 @@ class PortalUser(Base):
     can_listen_audio_prompts: Mapped[bool] = mapped_column(Boolean, default=False)
     can_generate_voice_prompts: Mapped[bool] = mapped_column(Boolean, default=False)
     can_view_company_cdr: Mapped[bool] = mapped_column(Boolean, default=False)
+    # TASK-001.2 : « Débloquer les accès de sa compagnie » (gestionnaire du client) ; blocage après des mauvais mots de passe
+    can_unlock_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    failed_logins: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    lock_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
