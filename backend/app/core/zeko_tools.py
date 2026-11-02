@@ -155,6 +155,31 @@ TOOLS = [
              "vers": {"type": "string", "enum": ["poste", "boite_vocale", "groupe_appel", "numero_externe", "aucun"]},
              "destination": {"type": "string"}, "delai_secondes": {"type": "integer"}}}}},
         ["personne"]),
+    _fn("ranger_image", "Range une image collée dans CETTE conversation dans la fiche d'un client : « photo » (onglet Photos "
+        "de la fiche) ou « document » (documents de la fiche). Appelle-le dès qu'on te demande de ranger, mettre ou classer "
+        "une image. Si la personne a nommé le client, c'est rangé tout de suite ; sinon il te rend la question exacte à poser "
+        "telle quelle, et après un oui clair à cette question, rappelle-le avec les mêmes valeurs.",
+        {**_CLIENT, "genre": {"type": "string", "enum": ["photo", "document"], "description": "photo si on dit photo(s), sinon document"},
+         "titre": {"type": "string", "description": "titre court, seulement s'il est donné ou évident (ex. « Preuve de paiement des taxes »)"},
+         "image": {"type": "integer", "description": "numéro de l'image dans le dernier message qui en a (1 = la première), si plusieurs"}},
+        ["client", "genre"]),
+    _fn("revue_courriels", "Revue des courriels reçus avec la personne, pour créer des règles (TASK-006.23) : les groupes de "
+        "courriels pareils (même expéditeur, objet semblable) qu'aucune règle ne couvre encore, avec leur nombre et où ils sont "
+        "classés. Présente les groupes un à la fois, dis ce que tu vois, et propose une règle (creer_regle_courriel) ; la "
+        "personne décide.", {"jours": {"type": "integer", "description": "reçus depuis combien de jours (défaut 90)"},
+                             "a_verifier": {"type": "boolean", "description": "true = seulement les courriels à vérifier (cloche)"}}),
+    _fn("creer_regle_courriel", "Crée une règle des courriels (comme Outlook), appliquée à l'arrivée : conditions (expéditeur exact, "
+        "objet contient, texte contient) et actions (classer dans un client, marquer lu, À jeter, déplacer dans un dossier). "
+        "Appelle-le avec les valeurs : il te rend la question exacte à poser (avec combien de courriels déjà reçus y "
+        "répondent) ; après un oui clair, rappelle-le avec les mêmes valeurs. Si la personne a tout nommé et qu'aucun ancien "
+        "courriel ne répond, c'est créé tout de suite.",
+        {"nom": {"type": "string", "description": "nom court de la règle"},
+         "expediteur": {"type": "string", "description": "adresse exacte de l'expéditeur, si la règle en dépend"},
+         "objet_contient": {"type": "string"}, "texte_contient": {"type": "string"},
+         **_CLIENT, "marquer_lu": {"type": "boolean"}, "a_jeter": {"type": "boolean"},
+         "dossier": {"type": "string", "description": "dossier de la boîte où le déplacer"},
+         "aussi_anciens": {"type": "boolean", "description": "false seulement si la personne a dit : pas les anciens"}},
+        ["nom"]),
     _fn("ouvrir_page", "Ouvre à l'écran, dans la fenêtre ERPCRM de l'utilisateur, la page d'un client, d'une personne, d'un "
         "ticket ou d'une facture : à faire quand la demande porte sur un dossier précis, pour qu'il le voie.",
         {"genre": {"type": "string", "enum": ["client", "personne", "ticket", "facture"]},
@@ -170,7 +195,8 @@ LABELS = {"ouvrir_page": "ouvre la page", "lire_date": "lit la date", "agenda": 
           "paiements_carte": "lit les reçus de carte dans les courriels", "demander_ia_externe": "demande à l'IA externe", "chercher": "cherche dans ERPCRM", "fiche_client": "lit la fiche du client", "fiche_contact": "lit la fiche de la personne",
           "tickets_client": "lit les tickets du client", "lire_ticket": "lit un ticket", "conversations": "relit les conversations enregistrées", "equipements": "lit les équipements",
           "telephonie": "lit la téléphonie", "changer_nom_client": "change le nom d'un client",
-          "ajouter_ancienne_info": "garde une ancienne coordonnée"}
+          "ajouter_ancienne_info": "garde une ancienne coordonnée", "ranger_image": "range l'image dans la fiche",
+          "revue_courriels": "regarde les courriels reçus", "creer_regle_courriel": "crée une règle des courriels"}
 
 
 def _out(x, limit: int = _MAX) -> str:
@@ -286,6 +312,8 @@ TOOL_PRIVILEGES = {
     "changer_nom_client": [("clients", "modifier")], "ajouter_ancienne_info": [("clients", "modifier")],
     "telephonie": [("telephonie", "voir")], "agenda": [("agenda", "voir")], "mettre_agenda": [("agenda", "modifier")],
     "creer_poste": [("telephonie", "modifier"), ("clients", "modifier")], "regler_poste": [("telephonie", "modifier")],
+    "ranger_image": [("clients", "modifier")],
+    "revue_courriels": [("courriels", "voir")], "creer_regle_courriel": [("courriels", "modifier")],
     "lire_date": [], "ouvrir_page": [], "demander_ia_externe": [],
 }
 
@@ -300,7 +328,8 @@ def allowed_tools(privs: dict, tools: list) -> list:
 # TASK-006.17 (2026-11-01, Zéko a voulu relier LastPass comme CLIENT sans poser sa question) : le oui n'est plus une simple
 # consigne. Ces outils ne s'exécutent qu'après un oui de la personne à une question qui décrit CE changement (vérifié par
 # endpoints/zeko.py _confirmed) ; sinon le programme rédige la question et Zéko la pose telle quelle.
-CONFIRM = {"retenir", "oublier", "changer_regle_banque", "changer_nom_client", "ajouter_ancienne_info", "creer_poste", "regler_poste"}
+CONFIRM = {"retenir", "oublier", "changer_regle_banque", "changer_nom_client", "ajouter_ancienne_info", "creer_poste", "regler_poste",
+           "ranger_image", "creer_regle_courriel"}
 _RENVOI_QUAND = {"toujours": "toujours", "occupe": "si occupé", "sans_reponse": "sans réponse", "non_connecte": "non connecté"}
 _RENVOI_VERS = {"poste": "le poste", "boite_vocale": "la boîte vocale", "groupe_appel": "le groupe", "numero_externe": "le numéro", "aucun": "aucun renvoi"}
 
@@ -344,7 +373,7 @@ async def confirm_question(name: str, args: dict, db, user_id=None) -> str:
         return _out(f"{ECHEC}les privilèges de la personne qui te parle ne permettent pas cela ({label})")
     a = {k: v for k, v in (args or {}).items() if v not in (None, "", [])}
     co_name = None
-    if a.get("client") and name in ("changer_nom_client", "creer_poste", "ajouter_ancienne_info") or \
+    if a.get("client") and name in ("changer_nom_client", "creer_poste", "ajouter_ancienne_info", "ranger_image", "creer_regle_courriel") or \
             (name == "changer_regle_banque" and a.get("action") == "associer_client"):
         co = await _resolve_company(db, str(a.get("client") or ""))
         if not isinstance(co, Company):
@@ -354,7 +383,31 @@ async def confirm_question(name: str, args: dict, db, user_id=None) -> str:
     else:
         warn = ""
     who = co_name or a.get("client")
-    if name == "retenir":
+    extra = {}
+    if name == "ranger_image":
+        if not co_name:
+            return _out("dis à quel client va l'image")
+        img = pick_image(a)
+        if img.get("erreur"):
+            return _out(img["erreur"])
+        extra = {"_image": img["nom"]}            # l'image exacte de la question : c'est elle qui sera rangée après le oui
+        quoi = "cette image" if img["total"] == 1 else f"l'image n° {img['n']}"
+        ou = "les photos" if a.get("genre") == "photo" else "les documents"
+        q = f"Je mets {quoi} dans {ou} de {who}" + (f" (titre : « {a['titre']} »)" if a.get("titre") else "")
+    elif name == "creer_regle_courriel":
+        rule = await _mail_rule(a, co_name and co)
+        if isinstance(rule, str):
+            return _out(rule)
+        from app.core import mail_rules as R
+        n, _ = await R.existing(db, rule)
+        old = n > 0 and a.get("aussi_anciens") is not False
+        extra = {"_anciens": old}
+        if a.get("_nomme") and n == 0:            # tout nommé par la personne, aucun ancien à décider : créé tout de suite
+            return await run(name, {**{k: v for k, v in (args or {}).items() if k != "_nomme"}, **extra}, db, user_id)
+        q = (f"Je crée la règle « {rule.name} » : si {R.describe(rule)} → {_rule_actions(rule, co_name)}"
+             + (f". {n} courriel{'s' if n > 1 else ''} déjà reçu{'s' if n > 1 else ''} y répond{'ent' if n > 1 else ''} : "
+                + ("je l'applique aussi à eux (un classement fait à la main est gardé)" if old else "seulement les prochains") if n else ""))
+    elif name == "retenir":
         q = f"Je retiens que {a.get('quoi', '').rstrip('.')}" + (f" (client : {who})" if who else "") + \
             (f" (expéditeur : {a['expediteur']})" if a.get("expediteur") else "")
     elif name == "oublier":
@@ -383,7 +436,8 @@ async def confirm_question(name: str, args: dict, db, user_id=None) -> str:
         q = f"Je règle le poste de {a.get('personne', '')} : {det}"
     else:
         return _out(f"outil inconnu : {name}")
-    return _out({"question": q + " ?", "confirmer": name, "valeurs": args,
+    vals = {k: v for k, v in (args or {}).items() if k not in ("_images", "_nomme")} | extra
+    return _out({"question": q + " ?", "confirmer": name, "valeurs": vals,
                  "consigne": "pose cette question telle quelle ; rien n'est changé avant le oui"})
 
 
@@ -719,6 +773,13 @@ async def _run(name, args, db, user_id=None) -> str:
         who = target.name if isinstance(target, Company) else f"{target.first_name} {target.last_name}"
         return _out(f"gardé pour {who} : ancien {fi.KIND_FR[kind]} {f.value} {fi.period(f)}".strip())
 
+    if name == "ranger_image":
+        return _out(await _ranger_image(args, db, user_id))
+    if name == "revue_courriels":
+        return _out(await _revue_courriels(args, db), 16000)
+    if name == "creer_regle_courriel":
+        return _out(await _creer_regle(args, db, user_id))
+
     if name == "fiche_contact":
         c = await _resolve_contact(db, args.get("contact"))
         if not isinstance(c, Contact):
@@ -926,6 +987,211 @@ async def _postes_live(comp, numeros):
 
 
 # --- TASK-006.7 etape 2 (2026-10-24) : Zeko fait le travail (agenda, poste), apres un oui, comme dans l'ecran ---
+
+# ── TASK-006.23 : règles des courriels par Zéko ───────────────────────────────────────────────────────────────
+
+async def _mail_rule(a: dict, co=None):
+    """Règle (pas encore enregistrée) d'après les valeurs de l'outil, ou ce qui ne va pas (texte)."""
+    from app.core import mail_rules as R
+    from app.models.mailbox import MailRule
+    conds = [c for c in ({"champ": "expediteur", "op": "est", "valeur": a.get("expediteur")},
+                         {"champ": "objet", "op": "contient", "valeur": a.get("objet_contient")},
+                         {"champ": "corps", "op": "contient", "valeur": a.get("texte_contient")}) if str(c["valeur"] or "").strip()]
+    actions = {"compagnie_id": str(co.id) if co else None, "lu": bool(a.get("marquer_lu")), "a_jeter": bool(a.get("a_jeter")),
+               "dossier": a.get("dossier") or None, "arreter": True}
+    try:
+        name, match, conds, actions = R.validate(a.get("nom") or "", "toutes", conds, actions)
+    except ValueError as e:
+        return f"{ECHEC}{e}"
+    return MailRule(id=uuid.uuid4(), name=name, match=match, conditions=conds, actions=actions, hits=0, source="zeko")
+
+
+def _rule_actions(rule, co_name=None) -> str:
+    a = rule.actions or {}
+    out = [f"classer dans {co_name}" if co_name else None, "marquer lu" if a.get("lu") else None,
+           "mettre dans « À jeter »" if a.get("a_jeter") else None, f"déplacer dans « {a['dossier']} »" if a.get("dossier") else None]
+    return ", ".join(x for x in out if x)
+
+
+async def _creer_regle(args, db, user_id):
+    from app.core import mail_rules as R
+    from app.models.mailbox import MailRule
+    co = await _resolve_company(db, args.get("client")) if args.get("client") else None
+    if args.get("client") and not isinstance(co, Company):
+        return f"{ECHEC}{co}"
+    rule = await _mail_rule(args, co)
+    if isinstance(rule, str):
+        return rule
+    last = (await db.execute(select(func.max(MailRule.position)))).scalar() or 0
+    rule.position, rule.created_by = last + 10, user_id
+    db.add(rule)
+    await db.commit()
+    res = f"règle « {rule.name} » créée"
+    if args.get("_anciens"):
+        c = await R.apply_existing(db, rule)
+        res += f" ; anciens : {c['classes']} classé(s), {c['lus']} marqué(s) lu(s), {c['a_jeter']} à jeter, {c['deplaces']} à déplacer" + \
+               (f", {c['garde_a_la_main']} gardé(s) (classés à la main)" if c["garde_a_la_main"] else "")
+    return {"fait": res + " (Administration → Zéko → Règles des courriels)"}
+
+
+async def _revue_courriels(args, db):
+    """Groupes de courriels reçus pareils (expéditeur + objet sans dates/numéros) qu'aucune règle active ne couvre."""
+    import re
+    from datetime import datetime, timedelta, timezone
+    from collections import Counter, defaultdict
+    from app.core import mail_rules as R, notifications
+    from app.models.mailbox import Mailbox, MailMessage
+    days = max(1, min(365, int(args.get("jours") or 90)))
+    q = (select(MailMessage, Mailbox.email).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
+         .where(MailMessage.direction == "in", MailMessage.junk_at.is_(None), ~Mailbox.functions.any("tickets"),
+                MailMessage.sent_at >= datetime.now(timezone.utc) - timedelta(days=days)))
+    if args.get("a_verifier"):
+        q = q.where(R.to_review((await notifications.load())["mail_review_days"]))
+    rows = (await db.execute(q)).all()
+    rules = await R.active(db)
+    own = {b.rsplit("@", 1)[-1].lower() for b, in (await db.execute(select(Mailbox.email))).all()}
+    groups = defaultdict(list)
+    for m, box in rows:
+        if any(R.matches(r, m, box) for r in rules):
+            continue
+        subj = re.sub(r"\s+", " ", re.sub(r"\b\d[\d/:.\-]*\b|#\S+", " ", m.subject or "")).strip(" -:|") or "(sans objet)"
+        groups[((m.from_email or "").lower(), subj.lower())].append(m)
+    cids = {m.company_id for ms in groups.values() for m in ms if m.company_id}
+    names = dict((await db.execute(select(Company.id, Company.name).where(Company.id.in_(cids)))).all()) if cids else {}
+    out = []
+    for (frm, subj), ms in sorted(groups.items(), key=lambda kv: -len(kv[1]))[:12]:
+        where = Counter(names.get(m.company_id, "À classer") if m.company_id else "À classer" for m in ms).most_common(2)
+        ours = frm.rsplit("@", 1)[-1] in own
+        client = await _group_client(db, frm, ms[0].subject or "", ours)
+        rule = {"nom": (f"{client['nom']} — " if client else "") + re.sub(r"\s*\(.*?\)\s*", " ", ms[0].subject or frm).strip()[:80],
+                "expediteur": frm,
+                # nos adresses envoient pour plusieurs clients : l'objet entier (sans dates/numéros) ; sinon l'expéditeur suffit
+                "objet_contient": re.sub(r"\s+", " ", re.sub(r"\b\d[\d/:.\-]*\b|#\S+", " ", ms[0].subject or "")).strip(" -:|") if ours else None,
+                "client": client["nom"] if client else None}
+        out.append({"expediteur": frm, "nom_expediteur": ms[0].from_name, "objet": ms[0].subject, "nombre": len(ms),
+                    "nos_adresses": ours, "client_trouve": client, "regle_proposee": rule,
+                    "classes_dans": ", ".join(f"{w} ({c})" for w, c in where),
+                    "par_zeko": sum(m.classified_by == "zeko" for m in ms), "dernier": str(max(m.sent_at for m in ms if m.sent_at).date())})
+    return {"jours": days, "courriels_vus": len(rows), "groupes": out,
+            "consigne": ("Présente les groupes les plus nombreux d'abord, un ou deux à la fois. Pour chacun, propose EXACTEMENT "
+                         "regle_proposee (préparée par le programme : client vérifié dans ERPCRM, anciens noms compris) ; si "
+                         "client_trouve est null, n'invente aucun client : propose marquer lu, un dossier ou « À jeter ». "
+                         "Client : seulement une fiche qui EXISTE, vérifiée avec chercher (il trouve aussi les anciens noms, ex. "
+                         "« Patio Design » = Construction Nationale) ; ne propose jamais de créer un client. Expéditeur de nos "
+                         "adresses (nos_adresses = true, ex. rapports du serveur téléphonique) : il envoie pour plusieurs clients, "
+                         "l'objet de la règle doit donc nommer le client (ex. « Patio Design »), jamais seulement « Appel manquer ». "
+                         "Avis d'un service que nous utilisons (Zoho, Google, Authorize.net…) qui ne concerne pas un client : "
+                         "propose marquer lu, un dossier ou « À jeter », pas un client.")}
+
+
+async def _group_client(db, frm: str, subject: str, ours: bool):
+    """Le client d'un groupe de courriels, trouvé par le PROGRAMME (jamais deviné par le modèle) : adresse ou domaine connus,
+    sinon (nos propres adresses, ex. rapports du serveur téléphonique) le nom dans l'objet, anciens noms compris.
+    {nom, ancien_nom?, par} ou None."""
+    import re
+    from app.core import mail_match, former_infos as fi
+    if not ours:
+        cid, _ct = await mail_match.by_address(db, frm)
+        cid = cid or await mail_match.by_domain(db, frm.rsplit("@", 1)[-1])
+        co = await db.get(Company, cid) if cid else None
+        return {"nom": co.name, "par": "adresse ou domaine de l'expéditeur"} if co else None
+    generic = {"appel", "appels", "manquer", "manque", "manques", "manquee", "manquees", "scheduled", "report", "rapport", "rapports",
+               "notification", "notifications", "daily", "weekly", "quotidien", "hebdomadaire", "missed", "call", "calls", "cdr",
+               "de", "du", "des", "la", "le", "les", "pour", "re", "tr", "fwd", "fw"}
+    words = [w for w in re.findall(r"[A-Za-zÀ-ÿ0-9]+", re.sub(r"\(.*?\)", " ", subject)) if mail_match._norm(w) not in generic and len(w) > 1]
+    if not words:
+        return None
+    # l'expression entière, puis chaque mot de 4 lettres et plus (« Patio Design » trouve l'ancien nom « Patio Desing ») :
+    # seulement si UNE seule compagnie répond
+    for q in [" ".join(words)] + [w for w in words if len(w) >= 4]:
+        names = (await db.execute(select(Company).where(Company.is_active.is_(True),
+                                                        func.unaccent(func.lower(Company.name)).ilike(f"%{mail_match._norm(q)}%")))).scalars().all()
+        former = await fi.entities_matching(db, q)
+        olds = {i: [f.value for f in fs if f.kind == "name"] for i, fs in former.items()}
+        olds = {i: v for i, v in olds.items() if v}
+        cos = {c.id: c for c in names} | {c.id: c for c in (await db.execute(select(Company).where(Company.id.in_(list(olds))))).scalars().all()}
+        if len(cos) == 1:
+            co = next(iter(cos.values()))
+            if co.id in olds and co.id not in {c.id for c in names}:
+                return {"nom": co.name, "ancien_nom": olds[co.id][0], "par": f"ancien nom « {olds[co.id][0]} » (« {q} » dans l'objet)"}
+            return {"nom": co.name, "par": f"« {q} » dans l'objet"}
+    return None
+
+
+def pick_image(a: dict) -> dict:
+    """L'image visée parmi celles du dernier message qui en a (_images, lues par le programme) : {nom, n, total} ou {erreur}."""
+    imgs = a.get("_images") or []
+    if not imgs:
+        return {"erreur": f"{ECHEC}aucune image collée dans cette conversation : demande de la coller (Ctrl+V) ou de la glisser ici"}
+    n = a.get("image")
+    if len(imgs) > 1 and not n:
+        return {"erreur": f"il y a {len(imgs)} images dans le dernier message qui en a : demande laquelle (1 à {len(imgs)})"}
+    try:
+        n = int(n or 1)
+    except (TypeError, ValueError):
+        n = 0
+    if not 1 <= n <= len(imgs):
+        return {"erreur": f"image n° {a.get('image')} introuvable : il y en a {len(imgs)}"}
+    return {"nom": imgs[n - 1], "n": n, "total": len(imgs)}
+
+
+async def _ranger_image(args, db, user_id):
+    """TASK-006.19 : l'image collée dans la conversation, rangée dans la fiche du client après le oui (même rangement
+    qu'un fichier glissé sur le bouton Zéko, core/zeko_drops.accept : photo -> photos de la fiche ; document -> documents
+    de la fiche). L'image est COPIÉE : effacer la conversation ne l'enlève pas de la fiche."""
+    import hashlib
+    import shutil
+    from app.core import zeko_images, zeko_drops
+    from app.models.installation_photo import InstallationPhoto
+    from app.models.zeko import ZekoDrop
+    if not args.get("_image") and args.get("_images"):        # rangée tout de suite (client nommé par la personne)
+        img = pick_image(args)
+        if img.get("erreur"):
+            return img["erreur"]
+        args = {**args, "_image": img["nom"]}
+    src = zeko_images.path_of(str(args.get("_image") or ""))
+    if not args.get("_image") or not src.exists():
+        return f"{ECHEC}l'image n'est plus dans la conversation"
+    comp = await _resolve_company(db, args.get("client"))
+    if not isinstance(comp, Company):
+        return f"{ECHEC}{comp}"
+    user = await _user(db, user_id)
+    if not user:
+        return f"{ECHEC}personne connectée inconnue"
+    titre = str(args.get("titre") or "").strip()[:200] or None
+    chemin = f"/companies/{comp.id}?tab=photos"
+    if args.get("genre") == "photo":
+        from app.api.v1.endpoints.companies import PHOTO_UPLOAD_DIR, _log
+        fname = f"zeko-{src.stem}-{comp.id.hex[:8]}{src.suffix}"     # une image = un seul fichier par fiche
+        if (await db.execute(select(InstallationPhoto.id).where(InstallationPhoto.company_id == comp.id,
+                                                                InstallationPhoto.filename == fname))).first():
+            return {"fait": f"déjà dans les photos de {comp.name} : rien de refait", "ouvert": comp.name, "chemin": chemin}
+        shutil.copyfile(src, PHOTO_UPLOAD_DIR / fname)
+        db.add(InstallationPhoto(company_id=comp.id, filename=fname, caption=titre, uploaded_by_id=user.id))
+        _log(db, comp.id, user, "photo_added", description="Photo collée dans la conversation avec Zéko")
+        await db.commit()
+        return {"fait": f"ajoutée aux photos de {comp.name}", "ouvert": comp.name, "chemin": chemin}
+    if args.get("genre") != "document":
+        return f"{ECHEC}genre inconnu : photo ou document"
+    raw = src.read_bytes()
+    sha = hashlib.sha256(raw).hexdigest()
+    if (await db.execute(select(ZekoDrop.id).where(ZekoDrop.company_id == comp.id, ZekoDrop.sha256 == sha,
+                                                   ZekoDrop.status.in_(["done", "archived"])))).first():
+        return {"fait": f"déjà dans les documents de {comp.name} : rien de refait", "ouvert": comp.name, "chemin": chemin}
+    zeko_drops.DROPS_DIR.mkdir(parents=True, exist_ok=True)
+    d = ZekoDrop(id=uuid.uuid4(), user_id=user.id, filename=f"{titre or 'Image collée dans Zéko'}{src.suffix}"[:255], sha256=sha,
+                 size=len(raw), origin="collée dans la conversation avec Zéko", status="archived",   # placé, pas dans la file des dépôts
+                 company_id=comp.id, stored_path="",
+                 analysis={"type": "document", "titre": titre or "Image collée dans Zéko", "compagnie": comp.name,
+                           "compagnie_id": str(comp.id)})
+    path = zeko_drops.DROPS_DIR / f"{d.id}{src.suffix}"
+    path.write_bytes(raw)
+    d.stored_path = str(path)
+    d.result = {"texte": f"Classé dans les documents de {comp.name}", "chemin": chemin}
+    db.add(d)
+    await db.commit()
+    return {"fait": f"classée dans les documents de {comp.name}", "ouvert": comp.name, "chemin": chemin}
+
 
 async def _user(db, user_id):
     from app.models.user import User

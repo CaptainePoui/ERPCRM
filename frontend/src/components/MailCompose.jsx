@@ -19,6 +19,65 @@ function subjectFor(mode, subject) {
 }
 
 // mode : new | reply | reply_all | forward ; source : courriel ouvert (lecture) ; defaults : { to, mailbox_id, company_id, contact_id }
+// Champ À / Cc avec les contacts de la compagnie (2026-11-01, Philippe : « je veux que les noms des contacts
+// apparaissent quand je clique sur le courriel à envoyer ») : la liste s'ouvre au clic, se filtre sur ce qu'on tape
+// après la dernière virgule ; un choix ajoute « Nom <adresse> ». Échap ou clic ailleurs : la liste se ferme.
+export function RecipientInput({ value, onChange, options, style, autoFocus, placeholder }) {
+  const [open, setOpen] = useState(false)
+  const [hi, setHi] = useState(0)
+  const boxRef = useRef()
+  useEffect(() => {
+    if (!open) return
+    const close = e => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+  const parts = value.split(',')
+  const typed = parts[parts.length - 1].trim().toLowerCase()
+  const already = value.toLowerCase()
+  // Dès la première lettre : tous les contacts d'ERPCRM aussi (2026-11-02, Philippe : « je veux mettre un Cc mais je n'ai
+  // pas d'aide de recherche... dès les premières lettres du nom de contact ou du courriel ») ; la compagnie d'abord
+  const [found, setFound] = useState([])
+  useEffect(() => {
+    if (!typed) { setFound([]); return }
+    const t = setTimeout(() => api.get('/v1/mail/address-book', { params: { q: typed } }).then(r => setFound(r.data)).catch(() => setFound([])), 200)
+    return () => clearTimeout(t)
+  }, [typed])
+  const mine = (options || []).filter(o => !already.includes(o.email.toLowerCase())
+    && (!typed || o.name.toLowerCase().includes(typed) || o.email.toLowerCase().includes(typed)))
+  const list = [...mine, ...found.filter(o => !already.includes(o.email.toLowerCase()) && !mine.some(m => m.email.toLowerCase() === o.email.toLowerCase()))]
+  function pick(o) {
+    const keep = parts.slice(0, -1).map(x => x.trim()).filter(Boolean)
+    onChange([...keep, o.name && o.name !== o.email ? `${o.name} <${o.email}>` : o.email].join(', ') + ', ')
+    setHi(0)
+  }
+  return (
+    <div ref={boxRef} style={{ position: 'relative', flex: 1, minWidth: 0, display: 'flex' }}>
+      <input value={value} onChange={e => { onChange(e.target.value); setOpen(true); setHi(0) }} onClick={() => setOpen(true)} onFocus={() => setOpen(true)}
+        onKeyDown={e => {
+          if (!open || !list.length) return
+          if (e.key === 'ArrowDown') { e.preventDefault(); setHi(h => Math.min(h + 1, list.length - 1)) }
+          else if (e.key === 'ArrowUp') { e.preventDefault(); setHi(h => Math.max(h - 1, 0)) }
+          else if (e.key === 'Enter') { e.preventDefault(); pick(list[hi]) }
+          else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false) }
+        }}
+        placeholder={placeholder} style={style} autoFocus={autoFocus} />
+      {open && list.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, marginTop: 2, maxHeight: 260, overflowY: 'auto',
+                      background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 6, boxShadow: '0 8px 24px rgba(0,0,0,.25)' }}>
+          {list.map((o, i) => (
+            <div key={o.email} onMouseDown={e => { e.preventDefault(); pick(o) }} onMouseEnter={() => setHi(i)}
+              style={{ padding: '6px 10px', cursor: 'pointer', fontSize: 13, background: i === hi ? 'var(--c-tint-blue)' : undefined }}>
+              <span style={{ fontWeight: 600 }}>{o.name}</span> <span style={{ color: 'var(--c-muted)' }}>&lt;{o.email}&gt;</span>
+              {o.note && <span style={{ color: 'var(--c-faint)', fontSize: 12 }}> · {o.note}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function MailCompose({ mode = 'new', source, defaults = {}, onClose, onSent }) {
   const fileRef = useRef()
   const [boxes, setBoxes] = useState(null)
@@ -35,6 +94,11 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState('')
 
+  const [recipients, setRecipients] = useState([])
+  useEffect(() => {
+    const cid = defaults.company_id || source?.company_id      // écrire depuis la fiche, ou répondre à un courriel classé
+    if (cid) api.get(`/v1/companies/${cid}/email-recipients`).then(r => setRecipients(r.data)).catch(() => setRecipients([]))
+  }, [defaults.company_id, source?.company_id])
   useEffect(() => {
     api.get('/v1/mail/senders').then(r => {
       const list = r.data.boxes
@@ -95,13 +159,13 @@ export default function MailCompose({ mode = 'new', source, defaults = {}, onClo
         {originBox && <div style={{ fontSize: 12, color: 'var(--c-on-amber)', margin: '-4px 0 8px 54px' }}>Ce courriel est arrivé dans {originBox}, d’où vous ne pouvez pas envoyer : choisissez une autre boîte.</div>}
         <div style={row}>
           <span style={lab}>À</span>
-          <input value={to} onChange={e => setTo(e.target.value)} placeholder="adresse@exemple.com, Nom <autre@exemple.com>" style={inp} autoFocus={mode === 'new' || mode === 'forward'} />
+          <RecipientInput value={to} onChange={setTo} options={recipients} placeholder="adresse@exemple.com, Nom <autre@exemple.com>" style={inp} autoFocus={mode === 'new' || mode === 'forward'} />
           {!showCc && <button type="button" className="btn-secondary" style={{ padding: '4px 10px' }} onClick={() => setShowCc(true)}>Cc</button>}
         </div>
         {showCc && (
           <div style={row}>
             <span style={lab}>Cc</span>
-            <input value={cc} onChange={e => setCc(e.target.value)} style={inp} />
+            <RecipientInput value={cc} onChange={setCc} options={recipients} style={inp} />
           </div>
         )}
         <div style={row}>

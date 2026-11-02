@@ -118,13 +118,15 @@ async def _statement(db, d: ZekoDrop, raw: bytes) -> dict | None:
         return None
     accounts = (await db.execute(select(BankAccount).where(BankAccount.is_active.is_(True), BankAccount.account_type != "petty_cash"))).scalars().all()
     digits = re.sub(r"\D", "", st.account_number or "")
-    acc = next((a for a in accounts if a.account_last4 and digits.endswith(a.account_last4)), None) or (accounts[0] if len(accounts) == 1 else None)
+    by_number = next((a for a in accounts if a.account_last4 and digits.endswith(a.account_last4)), None)
+    acc = by_number or (accounts[0] if len(accounts) == 1 else None)
     if not acc:
         return {"type": "releve", "erreur": "Relevé lu, mais je ne sais pas dans quel compte de la banque l'importer"}
     prev = await _import(db, d, acc.id, raw, dry_run=True)
     return {"type": "releve", "compte_id": str(acc.id), "compte": f"{acc.name} ({acc.institution or 'banque'} ****{acc.account_last4 or '?'})",
             "debut": str(prev.get("period_start") or ""), "fin": str(prev.get("period_end") or ""), "lignes": prev.get("rows_total"),
-            "nouvelles": prev.get("rows_new"), "compte_different": bool(prev.get("account_mismatch"))}
+            "nouvelles": prev.get("rows_new"), "compte_different": bool(prev.get("account_mismatch")),
+            "compte_par": "numero" if by_number else "seul_compte"}     # TASK-006.20 : reconnu par son numéro = certain
 
 
 async def _import(db, d: ZekoDrop, account_id, raw: bytes, dry_run: bool) -> dict:
@@ -362,6 +364,7 @@ async def process_one() -> bool:
             d.analysis = a
             d.status, d.error = "ready", None
             await db.commit()
+            await _auto_statement(db, d)
         except Exception as e:      # noqa: BLE001 -- un document en echec ne bloque jamais la file
             await db.rollback()
             d = await db.get(ZekoDrop, d.id)
@@ -369,6 +372,34 @@ async def process_one() -> bool:
             await db.commit()
             log.warning("Depot Zeko %s : echec (%s)", d.filename, e)
         return True
+
+
+async def _auto_statement(db, d: ZekoDrop) -> None:
+    """TASK-006.20 (Philippe 2026-11-02 : « pourquoi il me le demande s'il est sûr à 100 % que ça va là ?? et en plus 2 clics
+    pour oui et fermer ») : un relevé lu par le programme dont le compte est reconnu par son NUMÉRO, sans « compte
+    différent », est importé sans question (déjà tout dans Banque : rien à faire). Compte deviné (un seul compte) ou
+    privilège manquant : la question reste. Réglage : Administration -> Zéko -> Réglages. L'import se défait."""
+    from app.api.v1.endpoints.settings import get_setting
+    from app.models.user import User
+    a = d.analysis or {}
+    if a.get("type") != "releve" or a.get("erreur") or a.get("compte_par") != "numero" or a.get("compte_different"):
+        return
+    if (await get_setting(db, "zeko_auto_statements")) == "false":
+        return
+    if not a.get("nouvelles"):
+        d.status, d.result = "done", {"texte": "Relevé déjà dans Banque : rien de nouveau", "chemin": "/bank", "auto": True}
+        await db.commit()
+        return
+    user, name = await db.get(User, d.user_id), d.filename
+    try:
+        res = await accept(db, d, user)
+    except Exception as e:                     # noqa: BLE001 -- privilège Banque manquant, import refusé : on garde la question
+        await db.rollback()
+        log.info("Relevé %s : pas importé tout seul (%s), la question reste", name, e)
+        return
+    d = await db.get(ZekoDrop, d.id)
+    d.result = {**res, "auto": True}
+    await db.commit()
 
 
 async def run_drop_poller():
@@ -397,7 +428,8 @@ async def accept(db, d: ZekoDrop, user) -> dict:
     raw = Path(d.stored_path).read_bytes()
     if k == "releve":
         r = await _import(db, d, uuid.UUID(a["compte_id"]), raw, dry_run=False)
-        res = {"texte": f"{r.get('rows_new', a.get('nouvelles'))} transactions importées dans Banque", "chemin": "/bank"}
+        res = {"texte": f"{r.get('rows_new', a.get('nouvelles'))} transactions importées dans Banque", "chemin": "/bank",
+               "import_id": str(r["import_id"]) if r.get("import_id") else None}       # pour « Défaire »
     elif k == "depense":
         from app.api.v1.endpoints.purchases import _store_receipt
         from app.models.purchases import ReceiptDocument

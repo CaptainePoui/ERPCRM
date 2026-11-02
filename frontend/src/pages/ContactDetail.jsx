@@ -18,6 +18,8 @@ import QuickNewCompany from '../components/QuickNewCompany'
 import PhoneOptionsEditor from '../components/PhoneOptionsEditor'
 import CdrReportsSection from '../components/CdrReportsSection'
 import { contrastText } from '../utils/color'
+import StatusSelector from '../components/StatusSelector'
+import SpecialtySelector from '../components/SpecialtySelector'
 import './CompanyDetail.css'
 import { todayIso, parseDay } from '../utils/date'
 import { askConfirm, showAlert } from '../components/Dialog'
@@ -105,42 +107,6 @@ function ContactFunctionsEditor({ companyId, contactId, current, onSaved }) {
       ))}
       <button className="ifield-ok" onClick={save} disabled={saving}>✓</button>
       <button className="ifield-x" onClick={() => setEditing(false)}>✕</button>
-    </div>
-  )
-}
-
-// ── Status selector (same as CompanyDetail) ───────────────────────────────────
-function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath }) {
-  const [current, setCurrent] = useState(initialStatuses)
-  const [saving, setSaving] = useState(null)
-
-  useEffect(() => { setCurrent(initialStatuses) }, [entityId])
-
-  async function toggle(status) {
-    setSaving(status.id)
-    const isActive = current.find(s => s.id === status.id)
-    setCurrent(prev => isActive ? prev.filter(s => s.id !== status.id) : [...prev, status])
-    try {
-      if (isActive) await api.delete(`${apiPath}/${entityId}/statuses/${status.id}`)
-      else await api.post(`${apiPath}/${entityId}/statuses/${status.id}`)
-    } catch {
-      setCurrent(prev => isActive ? [...prev, status] : prev.filter(s => s.id !== status.id))
-    } finally { setSaving(null) }
-  }
-
-  return (
-    <div className="status-selector">
-      {[...allStatuses, ...current.filter(c => !allStatuses.some(a => a.id === c.id))].map(s => {   // + pastille désactivée encore portée
-        const active = !!current.find(x => x.id === s.id)
-        return (
-          <button key={s.id} type="button"
-            className={`status-option${active ? ' selected' : ''}`}
-            style={{ '--sc': s.color, '--sc-text': contrastText(s.color) }}
-            onClick={() => toggle(s)}
-            disabled={saving === s.id}
-          >{saving === s.id ? '…' : s.name}</button>
-        )
-      })}
     </div>
   )
 }
@@ -362,6 +328,7 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
 }
 
 const CONTACT_TABS = ['Général', 'Téléphonie', 'Courriels', 'Provisionnement']
+const CONTACT_TAB_KEYS = ['general', 'telephonie', 'courriels', 'provisionnement']   // core/contact_tabs.py ORDER
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
@@ -425,6 +392,14 @@ export default function ContactDetail({ isNew }) {
   // enfoui au milieu de la fiche) -- meme pattern detail-tabs/tab-btn que
   // CompanyDetail.jsx.
   const [tab, setTab] = useState(0)
+  // TASK-002.17 : onglets selon les pastilles du contact (Administration -> Pastilles) ; tous tant que ce n'est pas lu
+  const [shownTabs, setShownTabs] = useState(null)
+  const loadTabs = () => !isNew && api.get(`/v1/contacts/${id}/tabs`).then(r => setShownTabs(r.data.tabs)).catch(() => setShownTabs(null))
+  useEffect(() => { loadTabs() }, [id, isNew])
+  // Pastilles des compagnies du contact, en petit à droite des onglets (lecture seule ; 2026-11-02)
+  const [coStatuses, setCoStatuses] = useState([])
+  useEffect(() => { if (!isNew) api.get(`/v1/contacts/${id}/company-statuses`).then(r => setCoStatuses(r.data)).catch(() => setCoStatuses([])) }, [id, isNew])
+  useEffect(() => { if (shownTabs && !shownTabs.includes(CONTACT_TAB_KEYS[tab])) setTab(0) }, [shownTabs])
   const [showOtherEmail, setShowOtherEmail] = useState(false)   // TASK-003.5
 
   const companyId = contact?.companies?.find(x => x.is_primary)?.company_id || contact?.companies?.[0]?.company_id
@@ -443,6 +418,9 @@ export default function ContactDetail({ isNew }) {
     return () => clearInterval(timer)
   }, [id, isNew, contact?.sipv_sync])
 
+
+  // Relire la fiche sans l'écran de chargement (spécialisations changées, TASK-002.18)
+  async function reloadQuiet() { const r = await api.get(`/v1/contacts/${id}`); setContact(r.data) }
 
   async function load() {
     setLoading(true)
@@ -785,7 +763,7 @@ export default function ContactDetail({ isNew }) {
               <>
                 <button className="back-btn" onClick={goBack}>← Retour</button>
                 <span className="breadcrumb-sep">›</span>
-                <button className="back-btn" onClick={() => navigate(`/companies/${companyId}?tab=contacts`)}>Contact</button>
+                <button className="back-btn" title="Ouvrir la compagnie (onglet Contacts)" onClick={() => navigate(`/companies/${companyId}?tab=contacts`)}>{companyName || 'Compagnie'}</button>
               </>
             ) : (
               <button className="back-btn" onClick={goBack}>← Retour</button>
@@ -913,10 +891,24 @@ export default function ContactDetail({ isNew }) {
       )}
 
       {!isNew && (
-        <div className="detail-tabs">
-          {CONTACT_TABS.map((t, i) => (
+        <div className="detail-tabs" style={{ display: 'flex', alignItems: 'center' }}>
+          {CONTACT_TABS.map((t, i) => (!shownTabs || shownTabs.includes(CONTACT_TAB_KEYS[i])) && (
             <button key={t} className={`tab-btn${tab === i ? ' active' : ''}`} onClick={() => setTab(i)}>{t}</button>
           ))}
+          {coStatuses.some(co => co.statuses.length) && (
+            <div style={{ marginLeft: 'auto', display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', justifyContent: 'flex-end', paddingLeft: 12 }}>
+              {coStatuses.filter(co => co.statuses.length).map(co => (
+                <span key={co.company_id} style={{ display: 'inline-flex', gap: 4, alignItems: 'center', cursor: 'pointer' }}
+                  title={`Pastilles de la compagnie ${co.company_name} (elles se changent dans sa fiche)`} onClick={() => navigate(`/companies/${co.company_id}`)}>
+                  {coStatuses.filter(x => x.statuses.length).length > 1 && <span style={{ fontSize: 11, color: 'var(--c-faint)' }}>{co.company_name}</span>}
+                  {co.statuses.map(st => (
+                    <span key={st.name} style={{ background: st.color || '#6B7280', color: contrastText(st.color || '#6B7280'), borderRadius: 10, padding: '1px 7px',
+                      fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, whiteSpace: 'nowrap' }}>{st.name}</span>
+                  ))}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1391,8 +1383,13 @@ export default function ContactDetail({ isNew }) {
           </div>
         ) : (
           <div>
-            <div className="ifield-section-title">Pastilles</div>
-            <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts" />
+            <div className="ifield-section-title">Spécialisations</div>
+            <SpecialtySelector contactId={id} companies={c.companies} onChanged={async () => { await reloadQuiet(); loadTabs() }} />
+            {(statuses.length > 0 || (c.statuses || []).length > 0) && <>
+              <div className="ifield-section-title" style={{ marginTop: 14 }}>Pastilles</div>
+              <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses} apiPath="/v1/contacts"
+                onChange={list => { setContact(x => ({ ...x, statuses: list })); loadTabs() }} />
+            </>}
 
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Coordonnées</div>
             <div className="ifields-grid">
@@ -1429,7 +1426,7 @@ export default function ContactDetail({ isNew }) {
                 {c.companies.map(co => (
                   <div key={co.contact_company_id} className="comm-row">
                     <button className="contact-name-link" onClick={() => navigate(`/companies/${co.company_id}`)}>{co.company_name}</button>
-                    <ContactFunctionsEditor companyId={co.company_id} contactId={id} current={co.functions} onSaved={load} />
+                    <ContactFunctionsEditor companyId={co.company_id} contactId={id} current={co.functions} onSaved={async () => { await reloadQuiet(); loadTabs() }} />
                     {co.is_primary && <span className="primary-badge">Principal</span>}
                   </div>
                 ))}

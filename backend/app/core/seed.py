@@ -72,9 +72,10 @@ async def seed_defaults(db: AsyncSession) -> None:
         from app.core import account_numbers   # chaque compagnie a son numero (TASK-002.7)
         db.add(Company(id=ent.id, name="Mon entreprise", is_owner=True, account_number=await account_numbers.assign(db)))
 
-    for name in DEFAULT_FUNCTIONS:
-        result = await db.execute(select(Function).where(Function.name == name))
-        if not result.scalar_one_or_none():
+    # Spécialisations de départ : seulement sur une installation neuve (TASK-002.18 : elles se gèrent dans Administration ;
+    # une spécialisation renommée ne doit pas revenir sous son ancien nom au redémarrage)
+    if not (await db.execute(select(Function.id).limit(1))).first():
+        for name in DEFAULT_FUNCTIONS:
             db.add(Function(name=name))
 
     # Premier compte : seulement sur une installation neuve (aucun utilisateur). Jamais recree ensuite -- un compte

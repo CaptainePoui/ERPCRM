@@ -20,6 +20,7 @@ import useFeatures from '../hooks/useFeatures'
 import useRowSelection from '../hooks/useRowSelection'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { contrastText } from '../utils/color'
+import StatusSelector from '../components/StatusSelector'
 import './CompanyDetail.css'
 import MailBrowser from '../components/MailBrowser'
 import ConnectivityPanel from '../components/ConnectivityPanel'
@@ -163,65 +164,24 @@ function VendorCommissionField({ company, onSave }) {
   )
 }
 
-// ── Status selector (inline) ──────────────────────────────────────────────────
-// TASK-002.13 : seulement les pastilles de la fiche (✕ pour en enlever une), et un « + » pour en ajouter une à partir de
-// la liste. onChange : les onglets de la fiche suivent ses pastilles.
-function StatusSelector({ entityId, statuses: initialStatuses, allStatuses, apiPath, onChange }) {
-  const [current, setCurrent] = useState(initialStatuses)
-  const [saving, setSaving] = useState(null)
-  const [adding, setAdding] = useState(false)
-  const ref = useRef()
-
-  useEffect(() => { setCurrent(initialStatuses) }, [entityId])
-
-  useEffect(() => {
-    if (!adding) return
-    function handler(e) { if (ref.current && !ref.current.contains(e.target)) setAdding(false) }   // simple liste, rien à perdre
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [adding])
-
-  async function toggle(status) {
-    setSaving(status.id)
-    setAdding(false)
-    const isActive = current.find(s => s.id === status.id)
-    setCurrent(prev => isActive ? prev.filter(s => s.id !== status.id) : [...prev, status])
-    try {
-      if (isActive) {
-        await api.delete(`${apiPath}/${entityId}/statuses/${status.id}`)
-      } else {
-        await api.post(`${apiPath}/${entityId}/statuses/${status.id}`)
-      }
-      onChange?.()
-    } catch {
-      setCurrent(prev => isActive ? [...prev, status] : prev.filter(s => s.id !== status.id))
-    } finally { setSaving(null) }
-  }
-
-  const worn = [...current].sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-  const offered = allStatuses.filter(s => !current.some(c => c.id === s.id))   // actives seulement (ref/statuses)
+// Ce que ses gens font (TASK-002.18, Philippe 2026-11-02 : « que les fonctions des contacts se voient dans l'entreprise,
+// comme ça ça compléterait le profil, chaque contact ajouterait aux forces de l'entreprise sans doublon ») : lecture seule,
+// une fois chacune, survol = qui ; elles se changent sur la fiche de chaque contact.
+function CompanySpecialties({ companyId, onOpenContacts }) {
+  const [rows, setRows] = useState(null)
+  useEffect(() => { api.get(`/v1/companies/${companyId}/specialties`).then(r => setRows(r.data)).catch(() => setRows([])) }, [companyId])
+  if (!rows) return null
   return (
-    <div className="status-selector" ref={ref} style={{ position: 'relative', alignItems: 'center' }}>
-      {worn.map(s => (
-        <span key={s.id} className="status-option selected" style={{ '--sc': s.color, '--sc-text': contrastText(s.color), cursor: 'default',
-          display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          {saving === s.id ? '…' : s.name}
-          <button type="button" onClick={() => toggle(s)} disabled={saving === s.id} title={`Enlever la pastille « ${s.name} »`}
-            style={{ background: 'none', border: 'none', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 12, lineHeight: 1, opacity: 0.8 }}>✕</button>
-        </span>
-      ))}
-      {worn.length === 0 && <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucune pastille</span>}
-      {offered.length > 0 && (
-        <button type="button" className="status-option" onClick={() => setAdding(a => !a)} title="Ajouter une pastille"
-          style={{ padding: '4px 10px' }}>+</button>
-      )}
-      {adding && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 4, zIndex: 50, background: 'var(--c-surface)',
-                      border: '1px solid var(--c-border-strong)', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.18)', padding: 8,
-                      display: 'flex', flexWrap: 'wrap', gap: 6, maxWidth: 420 }}>
-          {offered.map(s => (
-            <button key={s.id} type="button" className="status-option" onClick={() => toggle(s)}
-              style={{ '--sc': s.color, borderColor: s.color }}>{s.name}</button>
+    <div className="ifield-full">
+      <div className="ifield-label">Spécialités de ses contacts</div>
+      {rows.length === 0 ? <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>Aucune (elles viennent des spécialisations de ses contacts)</span> : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {rows.map(s => (
+            <span key={s.id} onClick={onOpenContacts} title={s.contacts.map(c => c.name).join(', ')}
+              style={{ background: s.color || '#6B7280', color: contrastText(s.color || '#6B7280'), borderRadius: 12, padding: '2px 9px', fontSize: 11,
+                       fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {s.name}{s.contacts.length > 1 ? ` · ${s.contacts.length}` : ''}
+            </span>
           ))}
         </div>
       )}
@@ -365,7 +325,7 @@ function FinanceOverview({ companyId, onOpen, ledgers = ['receivables'], onOpenP
   const [ap, setAp] = useState(null)      // comptes à payer (TASK-002.13 étape 2), seulement pour un fournisseur
   const receivable = ledgers.includes('receivables'), payable = ledgers.includes('payables')
   useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setF(r.data.summary)) }, [companyId])
-  useEffect(() => { if (payable) api.get(`/v1/companies/${companyId}/payables`).then(r => setAp(r.data.summary)).catch(() => setAp(null)) }, [companyId, payable])
+  useEffect(() => { if (payable) api.get(`/v1/companies/${companyId}/payables`, { params: { summary_only: true } }).then(r => setAp(r.data.summary)).catch(() => setAp(null)) }, [companyId, payable])
   if (!f) return null
   const card = (label, value, sub, opts = {}) => (
     <div className={`cd-fin-card${opts.onClick ? ' clickable' : ''}`} onClick={opts.onClick}
@@ -582,7 +542,7 @@ function TransactionsTab({ companyId, companyName, filter, setFilter, onOpenInvo
 // compensation viendra à part (jamais sur les taxes)
 function LedgerBar({ companyId, ledger, setLedger }) {
   const [ar, setAr] = useState(null)
-  const { data: ap } = usePayables(companyId)
+  const { data: ap } = usePayables(companyId, true)
   useEffect(() => { api.get(`/v1/companies/${companyId}/finance`).then(r => setAr(r.data.summary)).catch(() => setAr(null)) }, [companyId])
   const net = ar && ap ? ar.balance_due - ap.summary.balance_due : null
   const btn = (v, label, amount) => (
@@ -649,15 +609,21 @@ export default function CompanyDetail({ isNew }) {
   const [showTask, setShowTask] = useState(false)
   const [showMerge, setShowMerge] = useState(false)      // fusionner avec une autre fiche (TASK-003.4)
   const [twins, setTwins] = useState([])                  // fiches semblables : le bouton Fusionner n'apparaît que s'il y en a
-  useEffect(() => { if (id && !isNew) api.get(`/v1/companies/${id}/merge-suggestions`).then(r => setTwins(r.data)).catch(() => setTwins([])) }, [id])
   const [allContacts, setAllContacts] = useState([])
 
+  // La fiche d'abord (Général s'affiche dès qu'elle arrive), les listes de choix ensuite, en arrière-plan
+  // (Philippe, 2026-11-01 : « ça prend 3 secondes ouvrir une compagnie… load juste le Général et le reste en arrière-plan »)
   useEffect(() => {
-    api.get('/v1/ref/statuses', { params: { for: 'companies' } }).then(r => setStatuses(r.data))   // TASK-002.14
-    api.get('/v1/ref/functions').then(r => setFunctions(r.data))
-    api.get('/v1/ref/users/managers').then(r => setManagers(r.data))
-    api.get('/v1/contacts').then(r => setAllContacts(r.data))
-    if (!isNew) { load(); loadTabs() }
+    const extras = () => {
+      api.get('/v1/ref/statuses', { params: { for: 'companies' } }).then(r => setStatuses(r.data))   // TASK-002.14
+      api.get('/v1/ref/functions').then(r => setFunctions(r.data))
+      api.get('/v1/ref/users/managers').then(r => setManagers(r.data))
+      api.get('/v1/contacts').then(r => setAllContacts(r.data))
+      if (id && !isNew) api.get(`/v1/companies/${id}/merge-suggestions`).then(r => setTwins(r.data)).catch(() => setTwins([]))
+    }
+    if (isNew) { extras(); return }
+    loadTabs()
+    load().finally(extras)
   }, [id, isNew])
 
   async function load() {
@@ -825,8 +791,9 @@ export default function CompanyDetail({ isNew }) {
                       <div className="ifield-full">
                         <div className="ifield-label">Pastilles</div>
                         <StatusSelector entityId={id} statuses={c.statuses} allStatuses={statuses}
-                          apiPath="/v1/companies" onChange={loadTabs} />
+                          apiPath="/v1/companies" onChange={list => { setCompany(x => ({ ...x, statuses: list })); loadTabs() }} />
                       </div>
+                      <CompanySpecialties companyId={id} onOpenContacts={() => setTab(TAB_SLUGS.indexOf('contacts'))} />
                       <InlineField label="Nom de compagnie" value={c.name} onSave={v => { if ((v || '').trim() && v.trim() !== c.name) setRenaming(v.trim()) }} />
                       <InlineField label="Téléphone bureau" value={c.office_phone} onSave={v => saveField('office_phone', v)} />
                       <InlineField label="No compte (tenant SIPV)" value={c.account_number} onSave={v => saveField('account_number', v)} />
@@ -1544,8 +1511,8 @@ function PhotosTab({ companyId }) {
     load()
   }
 
-  async function upload(file) {
-    const caption = prompt('Légende (optionnel) :') || ''
+  async function upload(file, ask = true) {
+    const caption = ask ? (prompt('Légende (optionnel) :') || '') : ''
     setUploading(true)
     try {
       const fd = new FormData()
@@ -1557,6 +1524,21 @@ function PhotosTab({ companyId }) {
       setUploading(false)
     }
   }
+
+  // Ctrl+V d'une capture d'écran dans l'onglet (Philippe 2026-11-02) : ajoutée tout de suite, sans légende à taper.
+  // Pas quand on écrit dans un champ (ex. la conversation avec Zéko garde son propre collage).
+  useEffect(() => {
+    const onPaste = e => {
+      const t = e.target
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      const files = [...(e.clipboardData?.items || [])].filter(i => i.kind === 'file' && i.type.startsWith('image/')).map(i => i.getAsFile()).filter(Boolean)
+      if (!files.length) return
+      e.preventDefault()
+      files.reduce((p, f) => p.then(() => upload(new File([f], `capture-${Date.now()}.${(f.type.split('/')[1] || 'png').replace('jpeg', 'jpg')}`, { type: f.type }), false)), Promise.resolve())
+    }
+    document.addEventListener('paste', onPaste)
+    return () => document.removeEventListener('paste', onPaste)
+  }, [companyId])
 
   async function remove(photoId) {
     if (!await askConfirm('Retirer cette photo ?')) return
@@ -1574,6 +1556,7 @@ function PhotosTab({ companyId }) {
         <button className="btn-secondary" disabled={uploading} onClick={() => fileInput.current.click()}>
           {uploading ? 'Envoi...' : '+ Ajouter une photo'}
         </button>
+        <span style={{ marginLeft: 12, fontSize: 12, color: 'var(--c-faint)' }}>ou Ctrl+V pour coller une capture d'écran</span>
       </div>
       {docs.length > 0 && <>
         <div className="ifield-section-title" style={{ marginBottom: 8 }}>Documents classés par Zéko</div>

@@ -8,9 +8,11 @@ import './Admin.css'
 import { parseDay } from '../utils/date'
 import { invalidateFeatures } from '../hooks/useFeatures'
 import MailboxesPanel from '../components/MailboxesPanel'
+import MailRulesPanel from '../components/MailRules'
 import CompanySettingsPanel from '../components/CompanySettingsPanel'
 import JournalPanel from '../components/JournalPanel'
 import PastillesPanel from '../components/PastillesPanel'
+import SpecialtiesPanel from '../components/SpecialtiesPanel'
 import { askConfirm } from '../components/Dialog'
 import BankRulesPanel from '../components/BankRulesPanel'
 import AudioDevicesPanel from '../components/AudioDevicesPanel'
@@ -237,7 +239,7 @@ function AgendaSettingsPanel() {
 // Configuration generale (2026-10-16, Philippe : « on a des options générales pour ticket aussi, on pourrait les
 // rassembler dans un onglet config générale ») -- factures : conditions de paiement
 // Configuration generale (2026-10-16, Philippe) : tous les reglages generaux au meme endroit, en sous-onglets
-const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['audio', 'Appareils audio'], ['agenda', 'Agenda'], ['notifications', 'Notifications']]
+const CONFIG_TABS = [['general', 'Général'], ['factures', 'Factures'], ['paiements', 'Méthodes de paiement'], ['tickets', 'Tickets'], ['pastilles', 'Pastilles'], ['specialisations', 'Spécialisations'], ['audio', 'Appareils audio'], ['agenda', 'Agenda'], ['notifications', 'Notifications'], ['securite', 'Sécurité']]
 function ConfigPanel({ initial }) {
   const [sub, setSub] = useState(CONFIG_TABS.some(([k]) => k === initial) ? initial : 'general')
   return (
@@ -250,9 +252,50 @@ function ConfigPanel({ initial }) {
       {sub === 'paiements' && <PaymentMethodsPanel />}
       {sub === 'tickets' && <TicketsSettingsPanel />}
       {sub === 'pastilles' && <PastillesPanel />}
+      {sub === 'specialisations' && <SpecialtiesPanel />}
       {sub === 'audio' && <AudioDevicesPanel />}
       {sub === 'agenda' && <AgendaSettingsPanel />}
       {sub === 'notifications' && <NotificationsSettingsPanel />}
+      {sub === 'securite' && <LoginSecurityPanel />}
+    </div>
+  )
+}
+
+// Blocage après des mauvais mots de passe (TASK-001.1) : paliers réglables ; durée 0 = débloqué par un administrateur
+function LoginSecurityPanel() {
+  const [steps, setSteps] = useState(null)
+  const [msg, setMsg] = useState('')
+  useEffect(() => { api.get('/v1/admin/login-security').then(r => setSteps(r.data.steps)).catch(e => setMsg(e.response?.data?.detail || 'Accès refusé')) }, [])
+  if (!steps) return msg ? <div className="adm-error">{msg}</div> : <div className="loading">Chargement...</div>
+  const set = (i, k, v) => setSteps(p => p.map((st, j) => j === i ? { ...st, [k]: v } : st))
+  async function save() {
+    setMsg('')
+    try { setSteps((await api.put('/v1/admin/login-security', { steps })).data.steps); setMsg('Enregistré') }
+    catch (e) { setMsg(e.response?.data?.detail || 'Erreur') }
+  }
+  const input = { width: 70, border: '1px solid var(--c-border-strong)', borderRadius: 4, padding: '4px 6px', fontSize: 14, background: 'var(--c-surface)', color: 'var(--c-text)' }
+  return (
+    <div style={{ maxWidth: 680 }}>
+      <div className="ifield-section-title">Mauvais mots de passe</div>
+      <p style={{ color: 'var(--c-muted)', fontSize: 13 }}>
+        Après le nombre d'essais ratés d'un palier, le compte est bloqué pour la durée indiquée, puis le palier suivant
+        s'applique. Durée 0 : le compte reste bloqué jusqu'à ce qu'un administrateur le débloque (Administration →
+        Utilisateurs). Une connexion réussie remet tout à zéro. Pendant un blocage, même le bon mot de passe est refusé.
+      </p>
+      {steps.map((st, i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '8px 0', flexWrap: 'wrap' }}>
+          <b style={{ width: 80 }}>Palier {i + 1}</b>
+          <input type="number" min={1} max={20} value={st.attempts} onChange={e => set(i, 'attempts', e.target.value)} style={input} /> essais ratés →
+          <input type="number" min={0} value={st.minutes} onChange={e => set(i, 'minutes', e.target.value)} style={input} /> minutes
+          {Number(st.minutes) === 0 && <span style={{ color: '#DC2626', fontSize: 13 }}>(bloqué jusqu'au déblocage)</span>}
+          {steps.length > 1 && <button className="adm-del-btn" onClick={() => setSteps(p => p.filter((_, j) => j !== i))} title="Retirer ce palier">✕</button>}
+        </div>
+      ))}
+      <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
+        <button className="btn-secondary" onClick={() => setSteps(p => [...p, { attempts: 3, minutes: 0 }])}>+ Palier</button>
+        <button className="btn-primary" onClick={save}>Enregistrer</button>
+        {msg && <span style={{ fontSize: 13, color: msg === 'Enregistré' ? '#059669' : '#DC2626' }}>{msg}</span>}
+      </div>
     </div>
   )
 }
@@ -270,7 +313,7 @@ function NotificationsSettingsPanel() {
   async function save() {
     setSaving(true); setMsg('')
     try {
-      const r = await api.put('/v1/settings/notifications', { ...c, bank_days: Number(c.bank_days) })
+      const r = await api.put('/v1/settings/notifications', { ...c, bank_days: Number(c.bank_days), mail_review_days: Number(c.mail_review_days) })
       setC(p => ({ ...r.data, defaults: p.defaults, ticket_status_labels: p.ticket_status_labels })); setMsg('Enregistré')
     } catch (e) { setMsg(e.response?.data?.detail || 'Refusé') } finally { setSaving(false) }
   }
@@ -292,6 +335,13 @@ function NotificationsSettingsPanel() {
         <h3 style={h3}>Cloche (à côté de Zéko)</h3>
         <p style={note}>La cloche montre ce qui reste à régler et lit toujours l'état réel : un courriel lu (dans ERPCRM ou ailleurs), une facture payée ou ignorée, un ticket fini ou un relevé importé en sortent d'eux-mêmes. Chaque personne ne voit que les sections permises par ses privilèges.</p>
         {check('mail', 'Courriels non lus (toutes les boîtes que la personne voit)')}
+        {check('mail_review', 'Courriels à vérifier : classés par Zéko, contacts créés à partir d\'un courriel, courriels à classer')}
+        {c.mail_review && <div style={{ margin: '0 0 12px 26px', fontSize: 13 }}>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            Courriels à classer reçus depuis <input type="number" min={1} max={365} value={c.mail_review_days} onChange={e => set('mail_review_days', e.target.value)} style={{ width: 70 }} /> jours
+          </label>
+          <div style={{ color: 'var(--c-muted)', marginTop: 4 }}>« C'est bon », « Changer », une règle ou un classement à la main les sortent de la cloche. « Revoir avec Zéko » : il regarde les courriels avec toi et propose des règles.</div>
+        </div>}
         {check('invoices', 'Factures en retard (sauf celles « ignorées dans la cloche » sur la facture)')}
         {check('tickets', 'Tickets pas finis')}
         {c.tickets && <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', margin: '0 0 12px 26px' }}>
@@ -592,7 +642,7 @@ function ExternalAiPanel() {
 
 // Onglet Zeko (2026-10-22, Philippe : « dans admin j'aimerais un onglet Zéko, entre autres avec les associations de
 // paiement, les règles qu'il a ») : reglages, ce qu'il a appris, regles de la banque, propositions de paiement.
-const ZEKO_TABS = [['reglages', 'Réglages'], ['appris', 'Ce que Zéko a appris'], ['regles-banque', 'Règles de la banque'], ['propositions', 'Propositions de paiement']]
+const ZEKO_TABS = [['reglages', 'Réglages'], ['appris', 'Ce que Zéko a appris'], ['regles-courriels', 'Règles des courriels'], ['regles-banque', 'Règles de la banque'], ['propositions', 'Propositions de paiement']]
 function ZekoAdmin({ initial }) {
   const [sub, setSub] = useState(ZEKO_TABS.some(([k]) => k === initial) ? initial : 'reglages')
   return (
@@ -602,6 +652,7 @@ function ZekoAdmin({ initial }) {
       </div>
       {sub === 'reglages' && <><ZekoClientRepliesSection /><ZekoSettingsPanel /></>}
       {sub === 'appris' && <ZekoRulesPanel />}
+      {sub === 'regles-courriels' && <MailRulesPanel />}
       {sub === 'regles-banque' && <BankRulesPanel />}
       {sub === 'propositions' && <ZekoProposals />}
     </div>
@@ -663,7 +714,8 @@ function ZekoSettingsPanel() {
     try { setBModels((await api.get('/v1/zeko/models', { params: { secours: true } })).data) } catch (e) { setBModels([]); setBModelsErr(e.response?.data?.detail || 'Modèle injoignable') }
     api.get('/v1/zeko/active').then(r => setActive(r.data)).catch(() => setActive(null))
   }
-  const fromSettings = d => ({ enabled: d.zeko_enabled, url: d.zeko_url, tasks: d.zeko_model_tasks, chat: d.zeko_model_chat,
+  const fromSettings = d => ({ enabled: d.zeko_enabled, url: d.zeko_url, tasks: d.zeko_model_tasks, chat: d.zeko_model_chat, vision: d.zeko_model_vision || '',
+    autoStatements: d.zeko_auto_statements !== false,
     burl: d.zeko_url_backup, btasks: d.zeko_model_tasks_backup, bchat: d.zeko_model_chat_backup })
   useEffect(() => {
     api.get('/v1/settings').then(r => setF(fromSettings(r.data)))
@@ -674,7 +726,7 @@ function ZekoSettingsPanel() {
   async function save() {
     setSaving(true)
     try {
-      const r = await api.put('/v1/settings', { zeko_enabled: f.enabled, zeko_url: f.url, zeko_model_tasks: f.tasks, zeko_model_chat: f.chat,
+      const r = await api.put('/v1/settings', { zeko_enabled: f.enabled, zeko_url: f.url, zeko_model_tasks: f.tasks, zeko_model_chat: f.chat, zeko_model_vision: f.vision, zeko_auto_statements: f.autoStatements,
         zeko_url_backup: f.burl, zeko_model_tasks_backup: f.btasks, zeko_model_chat_backup: f.bchat })
       setF(fromSettings(r.data))
       setSaved(true)
@@ -683,9 +735,10 @@ function ZekoSettingsPanel() {
   }
   if (!f) return <div className="loading">Chargement...</div>
   const row = { display: 'flex', alignItems: 'center', gap: 10, fontSize: 14, marginBottom: 12, flexWrap: 'wrap' }
-  const pick = (k, list = models) => (
+  const pick = (k, list = models, empty) => (
     <select value={f[k]} onChange={e => set(k, e.target.value)} style={{ minWidth: 220, maxWidth: '100%' }}>
-      {!list.includes(f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
+      {empty && <option value="">{empty}</option>}
+      {!list.includes(f[k]) && !(empty && !f[k]) && <option value={f[k]}>{f[k] || '—'}</option>}
       {list.map(m => <option key={m} value={m}>{m}</option>)}
     </select>
   )
@@ -703,6 +756,14 @@ function ZekoSettingsPanel() {
       </div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle de conversation</span>{pick('chat')}</div>
       <div style={row}><span style={{ minWidth: 170 }}>Modèle des tâches</span>{pick('tasks')}</div>
+      <div style={row}><span style={{ minWidth: 170 }}>Modèle des images</span>{pick('vision', models, '— aucun (pas d’images) —')}
+        <span style={{ color: 'var(--c-muted)', fontSize: 12 }}>Répond quand une image est collée dans Zéko (un modèle qui voit les images, ex. gemma4). Vide = pas d'images.</span>
+      </div>
+      <label style={{ ...row, cursor: 'pointer' }}>
+        <input type="checkbox" checked={f.autoStatements} onChange={e => set('autoStatements', e.target.checked)} />
+        Importer sans demander un relevé bancaire déposé dont le compte est reconnu par son numéro
+        <span style={{ color: 'var(--c-muted)', fontSize: 12 }}>(compte deviné ou numéro différent : Zéko demande quand même)</span>
+      </label>
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--c-muted)', textTransform: 'uppercase', margin: '16px 0 4px' }}>Serveur de secours</div>
       <p style={{ color: 'var(--c-muted)', fontSize: 13, marginBottom: 10 }}>
         Utilisé seulement quand l'adresse ci-dessus ne répond pas (machine débranchée, déplacée, en panne). Zéko revient tout seul au serveur principal dès qu'il répond. Laisser vide = pas de secours.
@@ -1218,6 +1279,11 @@ function UsersPanel() {
     setUsers(p => p.map(u => u.id === user.id ? r.data : u))
   }
 
+  async function unlock(user) {
+    const r = await api.put(`/v1/admin/users/${user.id}/unlock`)
+    setUsers(p => p.map(u => u.id === user.id ? r.data : u))
+  }
+
   async function deleteUser(user) {
     if (!await askConfirm(`Supprimer ${user.full_name} ?`)) return
     await api.delete(`/v1/admin/users/${user.id}`)
@@ -1251,6 +1317,15 @@ function UsersPanel() {
                 <button className={`adm-toggle ${u.is_active ? 'active' : 'inactive'}`} onClick={() => toggle(u)}>
                   {u.is_active ? 'Actif' : 'Inactif'}
                 </button>
+                {(u.lock?.banned || u.lock?.locked_until) && (
+                  <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: '#DC2626' }}
+                      title="Trop de mauvais mots de passe (Administration → Configuration → Sécurité)">
+                      {u.lock.banned ? 'Bloqué (mots de passe)' : `Bloqué jusqu'à ${new Date(u.lock.locked_until).toLocaleTimeString('fr-CA', { hour: '2-digit', minute: '2-digit' })}`}
+                    </span>
+                    <button className="adm-edit-btn" onClick={() => unlock(u)}>Débloquer</button>
+                  </div>
+                )}
               </td>
               <td style={{ color: 'var(--c-faint)', fontSize: 13 }}>{fmtDate(u.last_login)}</td>
               <td>

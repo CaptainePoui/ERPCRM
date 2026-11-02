@@ -105,6 +105,8 @@ app.include_router(portal.router, prefix="/api/v1/portal", tags=["portal"])
 app.include_router(ecom.router, prefix="/api/v1/ecom", tags=["ecom"])
 app.include_router(settings_router.router, prefix="/api/v1/settings", tags=["settings"])
 app.include_router(mailboxes_router.router, prefix="/api/v1/mailboxes", tags=["mailboxes"])
+from app.api.v1.endpoints import mail_rules as mail_rules_router
+app.include_router(mail_rules_router.router, prefix="/api/v1/mail/rules", tags=["mail"])   # TASK-006.22, AVANT /mail/{id}
 app.include_router(mail_router.router, prefix="/api/v1/mail", tags=["mail"])
 app.include_router(employees.router, prefix="/api/v1/employees", tags=["employees"])
 app.include_router(sales_reps_router.router, prefix="/api/v1/sales-reps", tags=["sales-reps"])

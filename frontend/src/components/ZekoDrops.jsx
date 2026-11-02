@@ -1,11 +1,12 @@
 // Documents déposés sur Zéko (TASK-006.9, 2026-10-26) : on glisse un fichier (PDF, photo, ZIP, courriel .eml, relevé
 // CSV/OFX) sur le bouton Zéko, de n'importe quelle page. Zéko le lit en arrière-plan, reconnaît ce que c'est et propose
 // où le placer : « Oui » le fait ; « Autre » relance l'analyse ; à la 2e fois, on lui dit où il va.
-// La fenêtre ne se ferme que par ses boutons (Réduire, OK sur chaque ligne).
+// La fenêtre ne se ferme que par ses boutons (Réduire, OK sur chaque ligne) ; une ligne faite se ferme seule après 8 s.
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 
+const DONE_CLOSE_MS = 8000
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
 
 export async function dropOnZeko(files, path) {
@@ -53,15 +54,30 @@ function Item({ d, onChange }) {
     catch (e) { setErr(e.response?.data?.detail || 'Erreur') } finally { setBusy(false) }
   }
   const other = () => (d.tries >= 1 || d.status === 'failed' ? setWhere('') : call('other'))
+  // Fait : la ligne se ferme seule (TASK-006.20, Philippe : « 2 clics pour oui et fermer »), sauf si on vient de cliquer
+  // « Défaire » ou que la souris est dessus
+  const [hover, setHover] = useState(false)
+  const [undone, setUndone] = useState(false)
+  useEffect(() => {
+    if (d.status !== 'done' || hover || undone) return
+    const t = setTimeout(() => call('dismiss'), DONE_CLOSE_MS)
+    return () => clearTimeout(t)
+  }, [d.status, hover, undone])
+  async function undo() {
+    setBusy(true); setErr('')
+    try { await api.delete(`/v1/bank/statements/${d.result.import_id}`); setUndone(true) }
+    catch (e) { setErr(e.response?.data?.detail || 'Impossible de défaire') } finally { setBusy(false) }
+  }
   const btn = { fontSize: 12, padding: '4px 12px' }
   return (
-    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--c-border)' }}>
+    <div style={{ padding: '10px 12px', borderTop: '1px solid var(--c-border)' }} onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}>
       <div style={{ fontSize: 12, color: 'var(--c-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         📄 {d.filename}{d.origin ? ` — ${d.origin}` : ''}
       </div>
       {['pending', 'reading', 'analyzing'].includes(d.status) && <div style={{ fontSize: 13, color: 'var(--c-muted)', marginTop: 4 }}>{wait(d)}</div>}
       {d.status === 'ready' && <div style={{ fontSize: 14, marginTop: 4, color: 'var(--c-text)', lineHeight: 1.45 }}>{d.question}</div>}
-      {d.status === 'done' && <div style={{ fontSize: 14, marginTop: 4, color: 'var(--c-on-green)', fontWeight: 600 }}>✓ {d.result?.texte}</div>}
+      {d.status === 'done' && !undone && <div style={{ fontSize: 14, marginTop: 4, color: 'var(--c-on-green)', fontWeight: 600 }}>✓ {d.result?.texte}{d.result?.auto ? ' (sans question : compte reconnu par son numéro)' : ''}</div>}
+      {undone && <div style={{ fontSize: 14, marginTop: 4, color: 'var(--c-text)', fontWeight: 600 }}>Import défait : les transactions sont retirées de Banque.</div>}
       {d.status === 'failed' && <div style={{ fontSize: 13, marginTop: 4, color: 'var(--c-on-red)' }}>✗ {d.error}</div>}
       {err && <div style={{ fontSize: 13, marginTop: 4, color: 'var(--c-on-red)', fontWeight: 600 }}>{err}</div>}
       {where !== null && (
@@ -83,7 +99,8 @@ function Item({ d, onChange }) {
           <button className="btn-secondary" style={btn} disabled={busy} onClick={other}>Dire où il va</button>
         </>}
         {d.status === 'done' && <>
-          {d.result?.chemin && <button className="btn-secondary" style={btn} onClick={() => navigate(d.result.chemin)}>Ouvrir</button>}
+          {d.result?.import_id && !undone && <button className="btn-secondary" style={btn} disabled={busy} onClick={undo}>Défaire</button>}
+          {d.result?.chemin && !undone && <button className="btn-secondary" style={btn} onClick={() => navigate(d.result.chemin)}>Ouvrir</button>}
           <button className="btn-primary" style={btn} disabled={busy} onClick={() => call('dismiss')}>OK</button>
         </>}
       </div>

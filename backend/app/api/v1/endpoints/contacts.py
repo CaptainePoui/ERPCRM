@@ -973,6 +973,34 @@ async def update_office_phone(contact_id: uuid.UUID, payload: OfficePhoneUpdate,
     return _build_contact_out(result.scalar_one())
 
 
+@router.get("/{contact_id}/company-statuses")
+async def company_statuses(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Pastilles des compagnies du contact, en lecture seulement (Philippe 2026-11-02 : « on peut mettre l'info des pastilles
+    de la compagnie dans les contacts, en plus petit, à droite complètement des onglets ») — compagnie principale d'abord."""
+    from app.models.status import Status
+    links = (await db.execute(select(ContactCompany).options(selectinload(ContactCompany.company))
+                              .where(ContactCompany.contact_id == contact_id, ContactCompany.is_active.is_not(False)))).scalars().all()
+    out = []
+    for cc in sorted(links, key=lambda l: not l.is_primary):
+        if not cc.company:
+            continue
+        sts = (await db.execute(select(Status).join(EntityStatus, EntityStatus.status_id == Status.id)
+                                .where(EntityStatus.entity_id == cc.company_id).order_by(Status.name))).scalars().all()
+        out.append({"company_id": str(cc.company_id), "company_name": cc.company.name, "is_primary": cc.is_primary,
+                    "statuses": [{"name": s.name, "color": s.color} for s in sts]})
+    return out
+
+
+@router.get("/{contact_id}/tabs")
+async def contact_tabs(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Onglets de la fiche selon ses pastilles (TASK-002.17)."""
+    from app.core.contact_tabs import visible_tabs
+    out = await visible_tabs(db, contact_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail="Contact introuvable")
+    return out
+
+
 @router.post("/{contact_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def assign_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     if not (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none():

@@ -54,6 +54,7 @@ class ZekoMessage(Base):
     tool_calls: Mapped[str | None] = mapped_column(Text)        # JSON des appels d'outils demandes par Zeko
     tool_call_id: Mapped[str | None] = mapped_column(String(100))
     tool_name: Mapped[str | None] = mapped_column(String(60))
+    images: Mapped[list | None] = mapped_column(JSONB)          # TASK-006.18 : images collees (fichiers de storage/zeko_images)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     conversation: Mapped["ZekoConversation"] = relationship("ZekoConversation", back_populates="messages")

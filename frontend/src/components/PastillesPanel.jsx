@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import api from '../services/api'
 import { contrastText } from '../utils/color'
 
-const EMPTY = { name: '', color: '#6B7280', company_tabs: [], applies_to: 'both' }
+const EMPTY = { name: '', color: '#6B7280', company_tabs: [], contact_tabs: [], applies_to: 'both' }
 // TASK-002.14 : à qui la pastille s'offre (une fiche qui la porte déjà la garde)
 const APPLIES = [['both', 'Compagnies et contacts'], ['companies', 'Compagnies'], ['contacts', 'Contacts']]
 const appliesLabel = Object.fromEntries(APPLIES)
@@ -13,6 +13,8 @@ const appliesLabel = Object.fromEntries(APPLIES)
 // sont toujours). Même liste que core/company_tabs.py OPTIONAL.
 const TABS = [['tickets', 'Tickets'], ['telephonie', 'Téléphonie'], ['transactions', 'Transactions'], ['entente', 'Entente'],
               ['inventaire', 'Inventaire'], ['conversations', 'Conversations'], ['photos', 'Photos']]   // ordre de la fiche
+// TASK-002.17 : onglets de la fiche contact (Général y est toujours). Même liste que core/contact_tabs.py OPTIONAL.
+const CTABS = [['telephonie', 'Téléphonie'], ['courriels', 'Courriels'], ['provisionnement', 'Provisionnement']]
 
 export default function PastillesPanel() {
   const [rows, setRows] = useState(null)
@@ -31,7 +33,7 @@ export default function PastillesPanel() {
   function start(r) {
     setError('')
     setEditing(r ? r.id : 'new')
-    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active, company_tabs: r.company_tabs || [], applies_to: r.applies_to || 'both' } : EMPTY)
+    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active, company_tabs: r.company_tabs || [], contact_tabs: r.contact_tabs || [], applies_to: r.applies_to || 'both' } : EMPTY)
   }
 
   async function save() {
@@ -79,6 +81,18 @@ export default function PastillesPanel() {
           ))}
         </div>
       </td>
+      <td>
+        {form.applies_to !== 'companies' ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+            {CTABS.map(([k, l]) => (
+              <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                <input type="checkbox" checked={form.contact_tabs.includes(k)}
+                  onChange={e => setForm(p => ({ ...p, contact_tabs: e.target.checked ? [...p.contact_tabs, k] : p.contact_tabs.filter(x => x !== k) }))} /> {l}
+              </label>
+            ))}
+          </div>
+        ) : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>—</span>}
+      </td>
       <td />
       <td style={{ textAlign: 'center' }}>
         {editing !== 'new' && <input type="checkbox" checked={form.is_active} onChange={e => setForm(p => ({ ...p, is_active: e.target.checked }))} />}
@@ -106,12 +120,13 @@ export default function PastillesPanel() {
         <b>S'offre à</b> : les fiches où la pastille peut être ajoutée ; une fiche qui la porte déjà la garde.{' '}
         <b>Onglets</b> : ceux que la pastille ajoute sur la fiche d'une compagnie. La fiche montre les onglets de toutes ses
         pastilles. Général, Contacts, Courriels et Journal sont toujours là ; un onglet qui contient déjà des données reste
-        visible ; une compagnie sans pastille, et la compagnie du propriétaire, montrent tous les onglets.
+        visible ; une compagnie sans pastille, et la compagnie du propriétaire, montrent tous les onglets. Même chose pour la
+        fiche d'un contact (Général toujours là ; un contact sans pastille montre tous ses onglets).
       </p>
       {error && <div className="form-error">{error}</div>}
       <div style={{ overflowX: 'auto' }}>
         <table className="adm-table">
-          <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
+          <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th>Onglets sur la fiche contact</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
           <tbody>
             {editing === 'new' && <tr>{editRow}</tr>}
             {rows.map(r => (
@@ -122,6 +137,9 @@ export default function PastillesPanel() {
                     <td style={{ color: 'var(--c-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>{appliesLabel[r.applies_to] || appliesLabel.both}</td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>
                       {(r.company_tabs || []).length ? TABS.filter(([k]) => r.company_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
+                    </td>
+                    <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>
+                      {r.applies_to === 'companies' ? '—' : (r.contact_tabs || []).length ? CTABS.filter(([k]) => r.contact_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
                     </td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{r.used}</td>
                     <td style={{ textAlign: 'center' }}>

@@ -112,6 +112,7 @@ async def config(fresh: bool = False) -> dict:
             "url": url.rstrip("/"),
             "model_tasks": (await get_setting(db, "zeko_model_tasks")) or settings.LOCAL_AI_MODEL,
             "model_chat": (await get_setting(db, "zeko_model_chat")) or settings.LOCAL_AI_MODEL,
+            "model_vision": (await get_setting(db, "zeko_model_vision")) or "",     # TASK-006.18 : lit les images
             "backup": {"url": ((await get_setting(db, "zeko_url_backup")) or "").strip().rstrip("/"),
                        "model_tasks": (await get_setting(db, "zeko_model_tasks_backup")) or "",
                        "model_chat": (await get_setting(db, "zeko_model_chat_backup")) or ""},
@@ -266,14 +267,26 @@ async def complete(messages: list[dict], *, purpose: str, model: str | None = No
     raise ZekoUnavailable("Zéko est resté occupé par des conversations ; nouvel essai plus tard")
 
 
+def has_images(messages: list[dict]) -> bool:
+    return any(isinstance(m.get("content"), list) and any(p.get("type") == "image_url" for p in m["content"]) for m in messages)
+
+
 async def stream_chat(messages: list[dict], *, tools: list[dict] | None = None, purpose: str = "conversation",
                       user_id=None, conversation_id=None):
     """Conversation en flux. Produit des evenements : ("pense", morceau de reflexion), ("texte", morceau),
-    puis ("outils", [appels]) ou ("fin", None). Tient le verrou de priorite pendant toute la generation."""
+    puis ("outils", [appels]) ou ("fin", None). Tient le verrou de priorite pendant toute la generation.
+    Des images dans les messages (TASK-006.18) : le « Modèle des images » repond, jamais un modele texte qui ne les
+    verrait pas et inventerait."""
     cfg = await config()
     if not cfg["enabled"]:
         raise ZekoUnavailable("Zéko n'est pas configuré (Administration → Intégrations)")
     url, chat_model, where = await pick_server(cfg, "chat")                   # principal, sinon secours (TASK-006.14)
+    if has_images(messages):
+        if not cfg["model_vision"]:
+            raise ZekoUnavailable("Aucun modèle ne lit les images : choisis le « Modèle des images » dans Administration → Zéko → Réglages")
+        if where != "local":
+            raise ZekoUnavailable("Le serveur principal de Zéko ne répond pas, et le serveur de secours ne lit pas les images")
+        chat_model = cfg["model_vision"]
     payload = {"model": chat_model, "stream": True, "temperature": 0.3, "reasoning_effort": "low",
                "messages": messages, "stream_options": {"include_usage": True}}
     if tools:

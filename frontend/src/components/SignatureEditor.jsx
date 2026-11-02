@@ -39,7 +39,7 @@ const btn = active => ({
   minWidth: 30, height: 30, padding: '0 8px', border: '1px solid #D1D5DB', borderRadius: 6, cursor: 'pointer', fontSize: 13,
   background: active ? '#DBEAFE' : '#fff', color: active ? '#1D4ED8' : '#111827',
 })
-const sel = { height: 30, border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13, padding: '0 6px', background: '#fff' }
+const sel = { height: 30, border: '1px solid #D1D5DB', borderRadius: 6, fontSize: 13, padding: '0 6px', background: '#fff', color: '#111827' }   // barre claire, même en mode nuit
 const sep = <span style={{ width: 1, alignSelf: 'stretch', background: '#E5E7EB', margin: '0 2px' }} />
 
 export default function SignatureEditor({ value, onChange }) {
@@ -142,7 +142,7 @@ export default function SignatureEditor({ value, onChange }) {
         <button type="button" style={btn(false)} title="Rétablir" onClick={() => c().redo().run()}>↷</button>
       </div>
       <style>{`
-        .sig-editor .ProseMirror { min-height: 220px; max-height: 420px; overflow-y: auto; padding: 12px 14px; outline: none; font-family: Arial, sans-serif; font-size: 14px; color: #333; }
+        .sig-editor .ProseMirror { min-height: 220px; max-height: 420px; overflow-y: auto; padding: 12px 14px; outline: none; font-family: Arial, sans-serif; font-size: 14px; color: #333; background: #fff; }   /* feuille blanche, même en mode nuit : comme le destinataire la verra */
         .sig-editor .ProseMirror p { margin: 0; }
         .sig-editor .ProseMirror img { max-width: 100%; }
         .sig-editor .ProseMirror a { color: #1D4ED8; text-decoration: underline; }

@@ -67,11 +67,74 @@ def _row(m: MailMessage, box: Mailbox, companies: dict, contacts: dict) -> dict:
             "company_id": str(m.company_id) if m.company_id else None,
             "company_name": companies.get(m.company_id), "contact_id": str(m.contact_id) if m.contact_id else None,
             "contact_name": contacts.get(m.contact_id), "classified_by": m.classified_by,
-            "contact_created": m.contact_created, "shared": m.shared,
+            "contact_created": m.contact_created, "shared": m.shared, "reviewed_at": m.reviewed_at, "auto_reply": m.auto_reply,
             "ticket_id": str(m.ticket_id) if m.ticket_id else None, "task_id": str(m.task_id) if m.task_id else None,
             "direction": m.direction, "to_addrs": m.to_addrs, "answered_at": m.answered_at, "copy_error": m.copy_error,
             "zeko_rdv_pending": bool(m.zeko_rdv_proposal and m.zeko_rdv_proposal.get("status") == "pending"),
             "junk_at": m.junk_at, "junk_error": m.junk_error}
+
+
+@router.get("/address-book")
+async def address_book(q: str = Query("", max_length=100), db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Carnet d'adresses pour À / Cc (Philippe 2026-11-02 : « je veux mettre un Cc, mais je n'ai pas d'aide de recherche
+    comme avec les courriels adressés à... dès les premières lettres du nom de contact ou du courriel, mettre une petite
+    liste de choix ») : TOUS les contacts actifs (nom, prénom, adresse, adresse de travail, autres adresses), les adresses
+    générales des compagnies et nos boîtes partagées ; 15 au plus. La compagnie où l'on écrit est offerte avant (écran)."""
+    from sqlalchemy.orm import selectinload
+    from app.models.communication import ChannelType, CommunicationChannel
+    from app.models.contact_company import ContactCompany
+    from app.models.entity import Entity
+    t = q.strip()
+    if not t:
+        return []
+    import re
+    pat = f"%{t}%"
+    un = lambda col: func.unaccent(func.lower(col))
+    like = func.unaccent(func.lower(pat))
+    if len(t) <= 2:          # 1 ou 2 lettres : début d'un mot du nom, ou début de l'adresse / du domaine
+        rx = func.unaccent(func.lower("(^|[^a-z0-9])" + re.escape(t)))
+        name_ok = lambda col: un(col).op("~")(rx)
+        mail_ok = lambda col: func.lower(col).op("~")("(^|[@.])" + re.escape(t.lower()))
+    else:
+        name_ok = lambda col: un(col).ilike(like)
+        mail_ok = lambda col: func.lower(col).ilike(pat.lower())
+    out, seen = [], set()
+
+    def add(name, email, note=None):
+        e = (email or "").strip()
+        if e and "@" in e and e.lower() not in seen and len(out) < 15:
+            seen.add(e.lower())
+            out.append({"name": name or e, "email": e, "note": note})
+
+    ids = select(Contact.id).outerjoin(ContactCompany, ContactCompany.contact_id == Contact.id) \
+        .outerjoin(CommunicationChannel, CommunicationChannel.entity_id == Contact.id) \
+        .where(Contact.is_active.is_not(False), or_(
+            name_ok(func.concat(Contact.first_name, " ", Contact.last_name)), name_ok(func.concat(Contact.last_name, " ", Contact.first_name)),
+            mail_ok(Contact.email), mail_ok(Contact.email_other), mail_ok(ContactCompany.email),
+            and_(CommunicationChannel.channel_type == ChannelType.email, mail_ok(CommunicationChannel.value))))
+    contacts = (await db.execute(select(Contact).options(
+        selectinload(Contact.contact_companies).selectinload(ContactCompany.company),
+        selectinload(Contact.entity).selectinload(Entity.communication_channels))
+        .where(Contact.id.in_(ids)).order_by(Contact.first_name, Contact.last_name).limit(30))).scalars().all()
+    for c in contacts:
+        name = f"{c.first_name or ''} {c.last_name or ''}".strip()
+        links = [l for l in c.contact_companies if l.is_active is not False]
+        note = ", ".join(sorted({l.company.name for l in links if l.company})) or None
+        for e in [l.email for l in links] + [c.email, c.email_other] + [
+                ch.value for ch in (c.entity.communication_channels if c.entity else []) if ch.channel_type == ChannelType.email and ch.is_active]:
+            add(name, e, note)
+    cos = (await db.execute(select(Company.name, CommunicationChannel.value, CommunicationChannel.label)
+                            .join(CommunicationChannel, CommunicationChannel.entity_id == Company.id)
+                            .where(Company.is_active.is_(True), CommunicationChannel.channel_type == ChannelType.email,
+                                   CommunicationChannel.is_active.is_(True),
+                                   or_(name_ok(Company.name), mail_ok(CommunicationChannel.value)))
+                            .order_by(Company.name).limit(15))).all()
+    for name, email, label in cos:
+        add(name, email, label or "adresse de la compagnie")
+    for b in (await db.execute(select(Mailbox).where(Mailbox.is_active.is_(True), Mailbox.kind == "shared",
+                                                      or_(mail_ok(Mailbox.email), name_ok(func.coalesce(Mailbox.display_name, "")))))).scalars().all():
+        add(b.display_name or b.email, b.email, "boîte de Simple IP")
+    return out
 
 
 @router.get("/folders")
@@ -97,11 +160,17 @@ async def folders(db: AsyncSession = Depends(get_db), user: User = Depends(get_c
                                             MailMessage.contact_id.is_(None)))).scalar()
     junk = (await db.execute(select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
                              .where(_visible(user), MailMessage.junk_at.is_not(None)))).scalar()
-    return {"folders": out, "unclassified": unclassified, "junk": junk}
+    from app.core import mail_rules, notifications          # TASK-006.23 : « À vérifier »
+    days = (await notifications.load())["mail_review_days"]
+    review = (await db.execute(select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
+                               .where(_visible(user), ~Mailbox.functions.any("tickets"), mail_rules.to_review(days)))).scalar()
+    total = (await db.execute(select(func.count()).select_from(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
+                              .where(_visible(user), MailMessage.junk_at.is_(None), MailMessage.direction == "in"))).scalar()
+    return {"folders": out, "unclassified": unclassified, "junk": junk, "review": review, "review_days": days, "total": total}
 
 
 @router.get("")
-async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all", pattern="^(all|unread|unclassified|junk)$"),
+async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all", pattern="^(all|unread|unclassified|junk|verifier)$"),
                     company_id: uuid.UUID | None = None, contact_id: uuid.UUID | None = None, q: str | None = None,
                     direction: str | None = Query(None, pattern="^(in|out)$"),
                     limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0),
@@ -117,6 +186,9 @@ async def list_mail(mailbox_id: uuid.UUID | None = None, view: str = Query("all"
         qry = qry.where(MailMessage.is_read.is_(False))
     elif view == "unclassified":
         qry = qry.where(MailMessage.company_id.is_(None), MailMessage.contact_id.is_(None))
+    elif view == "verifier":                  # TASK-006.23 : ce que la cloche « Courriels à vérifier » compte
+        from app.core import mail_rules, notifications
+        qry = qry.where(mail_rules.to_review((await notifications.load())["mail_review_days"]), ~Mailbox.functions.any("tickets"))
     if company_id:
         qry = qry.where(MailMessage.company_id == company_id)
     if contact_id:
@@ -533,6 +605,8 @@ async def classify(mid: uuid.UUID, p: ClassifyIn, db: AsyncSession = Depends(get
             m.signature_status = "pending" if await zeko.enabled() else None
     m.company_id, m.contact_id = company_id, contact_id
     m.classified_by = "manual" if (company_id or contact_id) else None
+    if company_id or contact_id:
+        m.reviewed_at = mail_store.now()     # TASK-006.23 : classé à la main = vu
     moved = 0
     if p.remember and contact_id and m.from_email:
         known_c, known_p = await mail_match.by_address(db, m.from_email)
@@ -553,6 +627,85 @@ async def classify(mid: uuid.UUID, p: ClassifyIn, db: AsyncSession = Depends(get
     await db.commit()
     companies, contacts = await _names(db, [m])
     return {**_row(m, await db.get(Mailbox, m.mailbox_id), companies, contacts), "moved": moved}
+
+
+@router.put("/{mid}/reviewed")
+async def set_reviewed(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """« C'est bon » (TASK-006.23) : le classement de Zéko / le contact créé est accepté ; sort de « À vérifier »."""
+    m = await _get(db, mid, user)
+    m.reviewed_at = mail_store.now()
+    await db.commit()
+    companies, contacts = await _names(db, [m])
+    return _row(m, await db.get(Mailbox, m.mailbox_id), companies, contacts)
+
+
+class AutoReplyIn(BaseModel):
+    action: str                       # envoyer | annuler
+    a: str | None = None              # adresses modifiées (« Modifier »)
+    cc: str | None = None
+    objet: str | None = None
+
+
+@router.post("/{mid}/auto-reply")
+async def auto_reply(mid: uuid.UUID, p: AutoReplyIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """Réponse automatique préparée ou pas envoyée (TASK-006.24) : « Envoyer » (brouillon, recalculé si le client vient
+    d'être classé) ou « Ne pas envoyer »."""
+    from app.core import mail_autoreply
+    from app.models.mailbox import MailRule
+    m = await _get(db, mid, user)
+    ar = dict(m.auto_reply or {})
+    if ar.get("etat") not in ("preparee", "pas_envoyee", "attente"):
+        raise HTTPException(status_code=400, detail="Aucune réponse automatique à envoyer pour ce courriel")
+    if p.action == "annuler":
+        m.auto_reply = {**ar, "etat": "annulee", "raison": f"pas envoyée (décision de {user.full_name})"}
+        m.reviewed_at = mail_store.now()
+        await db.commit()
+        return {"auto_reply": m.auto_reply}
+    if p.action != "envoyer":
+        raise HTTPException(status_code=422, detail="envoyer ou annuler")
+    draft = ar.get("brouillon")
+    if not draft or ar.get("etat") == "pas_envoyee":
+        rule = await db.get(MailRule, uuid.UUID(ar["regle_id"])) if ar.get("regle_id") else None
+        if not rule:
+            raise HTTPException(status_code=400, detail="La règle de cette réponse n'existe plus")
+        draft, why = await mail_autoreply._draft(db, m, rule)
+        if why:
+            raise HTTPException(status_code=400, detail="Le client n'est pas encore connu : classe le courriel dans sa fiche" if why == "attendre" else why)
+    draft = {**draft, **{k: v for k, v in (("a", p.a), ("cc", p.cc), ("objet", p.objet)) if v is not None}}
+    try:
+        if not mail_send.addresses(draft["a"]):
+            raise ValueError("Indique au moins un destinataire")
+        mail_send.addresses(draft.get("cc") or "")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    try:
+        await mail_autoreply.send(db, m, draft, user.id)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Envoi impossible : {exc}")
+    m.reviewed_at = mail_store.now()
+    await db.commit()
+    return {"auto_reply": m.auto_reply}
+
+
+class JunkIn(BaseModel):
+    junk: bool
+
+
+@router.put("/{mid}/junk")
+async def set_junk(mid: uuid.UUID, p: JunkIn, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """« Jeter » ce courriel seulement (2026-11-02, Philippe : « quand on lit un courriel, on ne peut pas le jeter direct ») :
+    dans « À jeter » ici et dans la vraie boîte, sans mettre l'expéditeur en liste noire ; « Remettre » le ramène dans la
+    boîte de réception. Un courriel visé par la liste noire se remet en retirant l'expéditeur de la liste."""
+    m = await _get(db, mid, user)
+    if p.junk and not m.junk_at:
+        mail_junk.put_in_junk(m)
+    elif not p.junk and m.junk_at:
+        if mail_junk.match(m.from_email, await mail_junk.patterns(db)):
+            raise HTTPException(status_code=400, detail="L'expéditeur est en liste noire : retire-le de la liste pour remettre ses courriels")
+        m.junk_at, m.junk_error = None, None
+        m.junk_server = "restore" if m.junk_server == "done" else None
+    await db.commit()
+    return {"junk_at": m.junk_at}
 
 
 class ShareIn(BaseModel):

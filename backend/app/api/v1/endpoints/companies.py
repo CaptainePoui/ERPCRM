@@ -485,27 +485,30 @@ async def get_company_tabs(company_id: uuid.UUID, db: AsyncSession = Depends(get
 
 
 @router.get("/{company_id}/payables")
-async def get_company_payables(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def get_company_payables(company_id: uuid.UUID, summary_only: bool = False, db: AsyncSession = Depends(get_db),
+                               _: User = Depends(get_current_user)):
     """Comptes à payer de la fiche (TASK-002.13 étape 2) : factures de sa fiche fournisseur, paiements faits, avoirs et
-    dépenses -- les mêmes données qu'Achats (rien de copié), regroupées sur la compagnie. Privilège « achats »."""
+    dépenses -- les mêmes données qu'Achats (rien de copié), regroupées sur la compagnie. Privilège « achats ».
+    summary_only : seulement les totaux (carte « À payer » de Général), sans la liste."""
     from decimal import Decimal
     from sqlalchemy import or_
     from app.core import clock
     from app.models.purchases import Bill, Expense, Vendor, VendorCredit, VendorPayment, VendorPaymentAllocation
-    from app.api.v1.endpoints.purchases import _bill_balances, _bill_out, _credit_out, _expense_out, _payment_out
+    from sqlalchemy.orm import noload
+    from app.api.v1.endpoints.purchases import _bill_balances, _bill_out, _credit_out, _expense_out, _payments_out
     if not await db.get(Company, company_id):
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
     v = (await db.execute(select(Vendor).where(Vendor.company_id == company_id))).scalar_one_or_none()
     empty = {"balance_due": 0.0, "overdue": 0.0, "overdue_count": 0, "oldest_overdue_days": 0, "credits_available": 0.0, "last_payment": None}
     if not v:
         return {"vendor": None, "summary": empty, "transactions": []}
-    bills = (await db.execute(select(Bill).where(Bill.vendor_id == v.id))).scalars().all()
+    bills = (await db.execute(select(Bill).options(noload(Bill.lines)).where(Bill.vendor_id == v.id))).scalars().all()
     bal = await _bill_balances(db, [b.id for b in bills])
     # ses paiements, et les paiements groupés (sans fournisseur) qui règlent une de ses factures
     paid_bills = select(VendorPaymentAllocation.payment_id).where(VendorPaymentAllocation.bill_id.in_([b.id for b in bills]))
     pays = (await db.execute(select(VendorPayment).where(or_(VendorPayment.vendor_id == v.id, VendorPayment.id.in_(paid_bills))))).scalars().all()
     creds = (await db.execute(select(VendorCredit).where(VendorCredit.vendor_id == v.id))).scalars().all()
-    exps = (await db.execute(select(Expense).where(Expense.vendor_id == v.id))).scalars().all()
+    exps = [] if summary_only else (await db.execute(select(Expense).where(Expense.vendor_id == v.id))).scalars().all()
     today = clock.today()
     rows, due, overdue, n_over, oldest = [], Decimal(0), Decimal(0), 0, 0
     for b in bills:
@@ -527,8 +530,7 @@ async def get_company_payables(company_id: uuid.UUID, db: AsyncSession = Depends
                      "due_date": None, "total": o["total"], "paid": o["applied"], "remaining": o["remaining"], "overdue": False,
                      "description": o["description"]})
     mine = {str(b.id) for b in bills}
-    for p in pays:
-        o = await _payment_out(db, p)
+    for p, o in zip(pays, [] if summary_only else await _payments_out(db, pays)):
         allocs = o["allocations"] if p.vendor_id == v.id else [a for a in o["allocations"] if a["bill_id"] in mine]
         grouped = p.vendor_id != v.id         # paiement groupé : seulement la part qui règle ses factures
         amount = round(sum(a["amount"] for a in allocs), 2) if grouped else o["amount"]
@@ -548,7 +550,63 @@ async def get_company_payables(company_id: uuid.UUID, db: AsyncSession = Depends
             "summary": {"balance_due": float(due), "overdue": float(overdue), "overdue_count": n_over, "oldest_overdue_days": oldest,
                         "credits_available": float(credits_left),
                         "last_payment": {"date": last.payment_date, "amount": float(last.amount), "method": last.method} if last else None},
-            "transactions": rows}
+            "transactions": [] if summary_only else rows}
+
+
+@router.get("/{company_id}/email-recipients")
+async def email_recipients(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Destinataires offerts quand on écrit un courriel depuis la fiche (Philippe, 2026-11-01 : « je veux que les noms
+    des contacts apparaissent quand je clique sur le courriel à envoyer ») : contacts actifs de la compagnie avec leurs
+    adresses (celle de travail chez cette compagnie, puis les leurs), puis les adresses générales de la compagnie."""
+    from app.models.communication import ChannelType
+    co = (await db.execute(select(Company).options(selectinload(Company.entity).selectinload(Entity.communication_channels))
+                           .where(Company.id == company_id))).scalar_one_or_none()
+    if not co:
+        raise HTTPException(status_code=404, detail="Compagnie introuvable")
+    links = (await db.execute(select(ContactCompany).options(
+        selectinload(ContactCompany.contact).selectinload(Contact.entity).selectinload(Entity.communication_channels),
+        selectinload(ContactCompany.functions).selectinload(ContactCompanyFunction.function))
+        .where(ContactCompany.company_id == company_id, ContactCompany.is_active.is_(True)))).scalars().all()
+    out, seen = [], set()
+
+    def add(name, email, note=None, contact_id=None):
+        e = (email or "").strip()
+        if not e or "@" not in e or e.lower() in seen:
+            return
+        seen.add(e.lower())
+        out.append({"name": name, "email": e, "note": note, "contact_id": str(contact_id) if contact_id else None})
+
+    for cc in sorted(links, key=lambda l: (not l.is_primary, (l.contact.first_name or "").lower(), (l.contact.last_name or "").lower())):
+        c = cc.contact
+        if not c or c.is_active is False:
+            continue
+        name = f"{c.first_name or ''} {c.last_name or ''}".strip()
+        note = ", ".join(f.function.name for f in cc.functions) or None
+        for e in [cc.email, c.email, c.email_other] + [ch.value for ch in (c.entity.communication_channels if c.entity else [])
+                                                       if ch.channel_type == ChannelType.email and ch.is_active]:
+            add(name, e, note, c.id)
+    for ch in (co.entity.communication_channels if co.entity else []):
+        if ch.channel_type == ChannelType.email and ch.is_active:
+            add(co.name, ch.value, ch.label or "adresse de la compagnie")
+    return out
+
+
+@router.get("/{company_id}/specialties")
+async def company_specialties(company_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    """Ce que les gens de la compagnie font (TASK-002.18, Philippe 2026-11-02 : « que les fonctions des contacts se voient dans
+    l'entreprise, comme ça ça compléterait le profil, chaque contact ajouterait aux forces de l'entreprise sans doublon ») :
+    les spécialisations de ses contacts actifs, une seule fois chacune, avec qui."""
+    from app.models.function import Function
+    rows = (await db.execute(select(Function, Contact).join(ContactCompanyFunction, ContactCompanyFunction.function_id == Function.id)
+                             .join(ContactCompany, ContactCompany.id == ContactCompanyFunction.contact_company_id)
+                             .join(Contact, Contact.id == ContactCompany.contact_id)
+                             .where(ContactCompany.company_id == company_id, ContactCompany.is_active.is_not(False),
+                                    Contact.is_active.is_not(False)))).all()
+    out = {}
+    for f, c in rows:
+        e = out.setdefault(f.id, {"id": str(f.id), "name": f.name, "color": f.color, "contacts": []})
+        e["contacts"].append({"id": str(c.id), "name": f"{c.first_name or ''} {c.last_name or ''}".strip()})
+    return sorted(out.values(), key=lambda e: (-len(e["contacts"]), e["name"].lower()))
 
 
 @router.get("/{company_id}/connectivity")

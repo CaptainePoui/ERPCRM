@@ -17,6 +17,8 @@ class Status(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Onglets que cette pastille apporte sur la fiche compagnie (TASK-002.13, core/company_tabs.py)
     company_tabs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    # Onglets que cette pastille apporte sur la fiche contact (TASK-002.17, core/contact_tabs.py)
+    contact_tabs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     # À qui la pastille s'offre (TASK-002.14) : both | companies | contacts ; une fiche qui la porte déjà la garde
     applies_to: Mapped[str] = mapped_column(String(10), nullable=False, default="both", server_default="both")
 

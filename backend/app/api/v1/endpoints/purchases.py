@@ -730,8 +730,27 @@ class VendorPaymentIn(BaseModel):
     allocations: list[AllocIn] = []
 
 
+async def _alloc_bills(db: AsyncSession, payments) -> dict:
+    """{facture: Bill} des factures reglees par ces paiements, en UNE requete (sans leurs lignes)."""
+    from sqlalchemy.orm import noload
+    ids = {a.bill_id for p in payments for a in p.allocations}
+    if not ids:
+        return {}
+    return {b.id: b for b in (await db.execute(select(Bill).options(noload(Bill.lines)).where(Bill.id.in_(ids)))).scalars().all()}
+
+
+async def _payments_out(db: AsyncSession, payments) -> list[dict]:
+    """Comme _payment_out pour une liste : les factures lues une seule fois pour tous (avant : 4 requetes par paiement ;
+    fiche compagnie, 2026-11-01)."""
+    bills = await _alloc_bills(db, payments)
+    return [_payment_dict(p, bills) for p in payments]
+
+
 async def _payment_out(db: AsyncSession, p: VendorPayment) -> dict:
-    bills = {b.id: b for b in (await db.execute(select(Bill).where(Bill.id.in_([a.bill_id for a in p.allocations])))).scalars().all()} if p.allocations else {}
+    return _payment_dict(p, await _alloc_bills(db, [p]))
+
+
+def _payment_dict(p: VendorPayment, bills: dict) -> dict:
     return {"id": str(p.id), "payment_date": p.payment_date, "vendor_id": str(p.vendor_id) if p.vendor_id else None,
             "payee": p.vendor.name if p.vendor else p.payee_label, "payee_label": p.payee_label, "amount": float(p.amount),
             "method": p.method, "reference": p.reference, "notes": p.notes, "source": p.source,
@@ -766,7 +785,7 @@ async def _apply_allocations(db: AsyncSession, allocs: list[AllocIn], total: Dec
 @router.get("/payments")
 async def list_vendor_payments(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     rows = (await db.execute(select(VendorPayment).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc()))).scalars().all()
-    return [await _payment_out(db, p) for p in rows]
+    return await _payments_out(db, rows)           # factures lues en une fois (avant : une lecture par paiement, ~4,5 s)
 
 
 async def _save_payment(db: AsyncSession, p: VendorPaymentIn, vp: VendorPayment | None) -> VendorPayment:

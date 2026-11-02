@@ -1331,3 +1331,101 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 **Correction** : (1) corrigé auprès de Philippe et dans TASK-044.5. (2) les 5 factures correspondent à sa demande (« mets-le depuis le début ») ; l'effet sur les taxes des périodes déjà déclarées lui est expliqué avant toute autre action (aucune suppression sans demande).
 
 **Leçon (à ne pas refaire)** : (1) « aucun achat » = vérifier les 6 tables d'achats (dépenses, factures, et leurs périodiques, paiements, avoirs) ; (2) avant de créer un enregistrement « périodique » ou « en file », chercher ce qui le traite en arrière-plan dans TOUT `app/` (`grep -rn` sans liste de dossiers), et prévenir si ça agit sur des périodes passées.
+
+
+## TASK-006.18 — Serveur redémarré pendant que Zéko répondait à Philippe
+
+**2026-11-01 — image à ranger dans Gouvernement Canada / Qc**
+
+**On croyait** : qu'on pouvait redémarrer le backend dès qu'un correctif était prêt (règle « redémarrer tout de suite »), sans regarder si une réponse de Zéko était en cours.
+
+**Preuve** : conversation b4df7044… : Zéko avait trouvé la compagnie à 22:59:00 et réfléchissait à la suite ; redémarrage à 23:02:38 → réponse coupée, Philippe n'a rien reçu. De plus, un essai de Claude (22:55:44) partageait la même carte graphique pendant sa demande.
+
+**Correction** : cause expliquée à Philippe le 2026-11-02 ; l'image est toujours là.
+
+**Leçon (à ne pas refaire)** : avant de redémarrer le backend ou de lancer un essai de Zéko, regarder s'il y a un message de Philippe sans réponse dans les dernières minutes (`zeko_messages` : dernier message `user` ou `tool` sans `assistant` après) ; s'il y en a un, attendre qu'il finisse.
+
+**2026-11-02 — même erreur, refaite le lendemain (TASK-006.19)** : en relançant la demande de Philippe, Zéko écrivait encore sa réponse (étape d'outil à 12:46:23, rien d'autre enregistré pendant 5 min) ; ma vérification ne regardait que les messages des 3 dernières minutes → redémarrage à 12:51:38, réponse coupée, puis 409 « Zéko travaille encore » sur la relance suivante. **Leçon corrigée** : le bon test est `zeko_conversations.busy_since > now() - interval '30 seconds'` (signe de vie toutes les 2 s pendant une réponse), pas l'âge du dernier message : une réponse peut rester des minutes sans rien enregistrer.
+
+
+## TASK-006.22 — Règle enregistrée deux fois sans la question « aussi les anciens » ; migration autogénérée destructrice
+
+**2026-11-02 — règles des courriels**
+
+**On croyait** : (1) que l'aperçu de l'éditeur (« N courriels déjà reçus ») marchait dès qu'une condition était remplie ; (2) que `alembic revision --autogenerate` ne produirait que la nouvelle table.
+
+**Preuve** : (1) l'aperçu validait aussi les actions (« Au moins une action ») → 422 tant qu'aucune action n'était choisie → pas de nombre → « Enregistrer » ne posait pas la question et enregistrait ; mes deux essais Playwright ont créé deux fois la règle Patio Design. (2) la migration générée contenait des `drop_table('_account_numbers_45a500')`, des `drop_index` sur companies, entity_logs, payment_allocations, etc.
+
+**Correction** : (1) les deux règles supprimées par l'API (aucun courriel touché : 0 `rule_id`) ; l'aperçu ne valide plus les actions ; essai refait jusqu'à la question, puis Annuler. (2) migration réécrite à la main (seulement `mail_rules` et 4 colonnes), jamais appliquée dans sa forme générée.
+
+**Leçon (à ne pas refaire)** : (1) un essai de navigateur qui ENREGISTRE se fait sur des données d'essai, ou s'arrête avant le dernier clic : vérifier chaque étape (ici l'aperçu) avant de cliquer « Enregistrer » ; (2) toujours relire une migration autogénérée : ce projet a des écarts modèle/base connus, l'autogénération propose des suppressions.
+
+
+## TASK-006.19 — Un commentaire au milieu d'une ligne a masqué un argument (documents sans fiche)
+
+**2026-11-02 — ranger une image collée dans Zéko**
+
+**On croyait** : qu'ajouter un commentaire en fin de ligne par `python3 replace` était sans risque.
+
+**Preuve** : `status="archived",   # placé, pas dans la file des dépôts company_id=comp.id, stored_path="",` : le `#` a mis `company_id=comp.id` en commentaire ; 2 documents d'essai créés sans fiche (zeko_drops cc9283c5…, c50048f9…), vus parce que la liste des documents de la fiche était vide.
+
+**Correction** : argument remis sur sa propre ligne ; revérifié (document listé dans la fiche, 2e appel « rien de refait »). Les 2 lignes d'essai restent (pas de suppression par SQL) — question posée à Philippe.
+
+**Leçon (à ne pas refaire)** : un commentaire ajouté par remplacement de texte va sur sa propre ligne, jamais au milieu d'un appel ; vérifier le résultat attendu (ici : la fiche) et pas seulement « fait ».
+
+
+## TASK-047.8 / TASK-047.15 — Courriels reçus marqués « envoyés » ; doublons sans Message-ID
+
+**2026-11-02 — rapports Patio Design**
+
+**On croyait** : (1) qu'un courriel venant d'une de nos boîtes est toujours un envoi ; (2) que le Message-ID suffit pour ne jamais copier deux fois.
+
+**Preuve** : les rapports ScopServ partent de nepasrepondre@ (boîte « envoi seulement ») vers service@ : 37 copies du dossier « Patio desing » marquées « envoyées » et classées dans Simple IP inc. ; ces rapports n'ont pas de Message-ID : 22 copiés deux fois (boîte de réception, puis dossier après la règle Outlook). Philippe : « je crois que j'en ai juste 37 ».
+
+**Correction** : TASK-047.15 (même copie = expéditeur + objet + date ; de nos adresses ET adressé à la boîte = reçu) ; données corrigées par migration (37 remis reçus, 22 doublons retirés, vérifié avant : aucune dépendance).
+
+**Leçon (à ne pas refaire)** : « envoyé » se décide aussi par le destinataire ; ne jamais compter sur un identifiant facultatif (Message-ID) sans solution de rechange ; un nombre qui surprend (62) se vérifie avant de l'annoncer.
+
+
+## TASK-002.15 — Pastilles « pas sauvées » : la fiche réaffichait l'ancienne liste
+
+**2026-11-02**
+
+**On croyait** : que le sélecteur de pastilles partagé gardait la bonne liste.
+
+**Preuve** : journal du serveur : client, IT, Reseaux ajoutés (204), changement d'onglet, retour sur Général → la fiche réaffichait les pastilles du chargement ; Philippe les a rajoutées (POST deux fois). Même défaut sur la fiche compagnie.
+
+**Correction** : `StatusSelector` rend la nouvelle liste (`onChange(list)`), les fiches la gardent ; vérifié par aller-retour d'onglet.
+
+**Leçon (à ne pas refaire)** : un composant qui garde sa propre copie d'une donnée doit la remonter à la fiche ; tester « changer d'onglet et revenir » après une modification.
+
+
+## TASK-002.17 — Réglage de départ « client » sur les onglets d'un contact
+
+**2026-11-02**
+
+**On croyait** : que les réglages de départ des onglets du contact pouvaient suivre ceux des compagnies (client → Téléphonie…).
+
+**Preuve** : Philippe : « client ne devrait pas être dans contact, tu as analysé ça ? » — « client » est un type de compagnie ; je l'ai proposé sur un contact sans me demander si ça avait du sens pour une personne.
+
+**Correction** : TASK-002.18 (spécialisations = fonctions ; pastilles de type = compagnies) ; un contact a Téléphonie quand sa compagnie a une pastille qui l'apporte.
+
+**Leçon (à ne pas refaire)** : avant de copier un réglage d'un genre de fiche à un autre, se demander si la notion existe pour ce genre de fiche ; chercher d'abord si une notion équivalente existe déjà (ici les fonctions).
+
+
+## TASK-006.23 — Le modèle de Zéko invente (client « Patio Design », vérification jamais faite)
+
+**2026-11-02 — revue des courriels avec Zéko**
+
+**On croyait** : qu'une consigne (« vérifie le client avec chercher, ne propose jamais de créer un client ») suffisait.
+
+**Preuve** : gpt-oss:20b a proposé de créer les clients « Patio Design » et « Zoho CRM », « objet contient Appel manquer » (tous les clients), a écrit « fichier trouvé via chercher » sans appeler l'outil, et a ajouté de lui-même « déplacer dans À classer ». La réponse de l'outil était aussi coupée à 6 000 caractères (JSON invalide).
+
+**Correction** : le PROGRAMME trouve le client (adresse, domaine, nom ou ancien nom dans l'objet) et prépare la règle ; dossier non nommé par la personne retiré ; limite 16 000 et 12 groupes.
+
+**Leçon (à ne pas refaire)** : avec ce modèle, toute valeur qui engage (client, condition, dossier) est calculée ou vérifiée par le programme, jamais laissée au modèle ; vérifier que la réponse d'un outil tient dans la limite de `_out` (sinon JSON coupé).
+
+
+## TASK-002.16 — La recherche par fautes de frappe passait avant les anciens noms
+
+**2026-11-02** — « patio » montrait D Astous Auto, Patrick Morin… avant Construction Nationale (anciennement Patio Desing), et cet ancien nom n'avait jamais été gardé (renommage du 2026-10-02, avant la fonction des anciens noms). **Correction** : ancien nom ajouté (API), un ancien nom compte comme vraie correspondance. **Leçon** : quand une fonction nouvelle arrive (anciens noms), vérifier les données d'avant qui auraient dû en profiter (renommages dans le journal).

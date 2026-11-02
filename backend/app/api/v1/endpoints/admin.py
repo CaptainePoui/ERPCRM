@@ -33,6 +33,13 @@ class UserOut(BaseModel):
     is_active: bool
     created_at: datetime
     last_login: datetime | None
+    lock: dict = {}            # TASK-001.1 : bloqué, banni, essais ratés
+
+
+def _user_out(u) -> "UserOut":
+    from app.core import login_guard
+    return UserOut(id=u.id, email=u.email, full_name=u.full_name, role=u.role.value,
+                   is_active=u.is_active, created_at=u.created_at, last_login=u.last_login, lock=login_guard.state(u))
 
 class UserCreate(BaseModel):
     email: str
@@ -66,9 +73,7 @@ class PaymentMethodUpdate(BaseModel):
 async def list_users(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
     result = await db.execute(select(User).order_by(User.full_name))
     return [
-        UserOut(id=u.id, email=u.email, full_name=u.full_name, role=u.role.value,
-                is_active=u.is_active, created_at=u.created_at, last_login=u.last_login)
-        for u in result.scalars().all()
+        _user_out(u) for u in result.scalars().all()
     ]
 
 
@@ -88,8 +93,7 @@ async def create_user(payload: UserCreate, db: AsyncSession = Depends(get_db), _
     db.add(u)
     await db.commit()
     await db.refresh(u)
-    return UserOut(id=u.id, email=u.email, full_name=u.full_name, role=u.role.value,
-                   is_active=u.is_active, created_at=u.created_at, last_login=u.last_login)
+    return _user_out(u)
 
 
 @router.put("/users/{user_id}", response_model=UserOut)
@@ -117,8 +121,35 @@ async def update_user(user_id: uuid.UUID, payload: UserUpdate, db: AsyncSession 
     await privileges.ensure_someone_full(db)
     await db.commit()
     await db.refresh(u)
-    return UserOut(id=u.id, email=u.email, full_name=u.full_name, role=u.role.value,
-                   is_active=u.is_active, created_at=u.created_at, last_login=u.last_login)
+    return _user_out(u)
+
+
+@router.put("/users/{user_id}/unlock", response_model=UserOut)
+async def unlock_user(user_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    """Débloque un compte bloqué ou banni après des mauvais mots de passe (TASK-001.1)."""
+    from app.core import login_guard
+    u = await db.get(User, user_id)
+    if not u:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable")
+    login_guard.unlock(u)
+    await db.commit()
+    await db.refresh(u)
+    return _user_out(u)
+
+
+@router.get("/login-security")
+async def get_login_security(_: User = Depends(require_admin)):
+    from app.core import login_guard
+    return await login_guard.load(fresh=True)
+
+
+@router.put("/login-security")
+async def put_login_security(body: dict, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from app.core import login_guard
+    try:
+        return await login_guard.save(db, body)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
 
 
 @router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -172,6 +203,7 @@ class StatusAdminOut(BaseModel):
     is_active: bool
     used: int
     company_tabs: list[str] = []
+    contact_tabs: list[str] = []
     applies_to: str = "both"
 
 
@@ -180,6 +212,7 @@ class StatusAdminIn(BaseModel):
     color: str | None = None
     is_active: bool | None = None
     company_tabs: list[str] | None = None     # onglets apportés sur la fiche compagnie (TASK-002.13)
+    contact_tabs: list[str] | None = None     # onglets apportés sur la fiche contact (TASK-002.17)
     applies_to: str | None = None             # both | companies | contacts (TASK-002.14)
 
 
@@ -197,6 +230,12 @@ def _clean_status(payload: StatusAdminIn) -> dict:
         if unknown:
             raise HTTPException(status_code=422, detail=f"Onglet inconnu : {', '.join(unknown)}")
         data["company_tabs"] = clean(data["company_tabs"])
+    if data.get("contact_tabs") is not None:
+        from app.core import contact_tabs as ct
+        unknown = [t for t in data["contact_tabs"] if t not in ct.OPTIONAL]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Onglet inconnu : {', '.join(unknown)}")
+        data["contact_tabs"] = ct.clean(data["contact_tabs"])
     if data.get("applies_to") is not None and data["applies_to"] not in ("both", "companies", "contacts"):
         raise HTTPException(status_code=422, detail="S'offre à : compagnies, contacts ou les deux")
     return data
@@ -205,7 +244,7 @@ def _clean_status(payload: StatusAdminIn) -> dict:
 async def _status_out(db: AsyncSession, s: Status) -> StatusAdminOut:
     used = (await db.execute(select(func.count()).select_from(EntityStatus).where(EntityStatus.status_id == s.id))).scalar_one()
     return StatusAdminOut(id=s.id, name=s.name, color=s.color, is_active=s.is_active, used=used, company_tabs=s.company_tabs or [],
-                          applies_to=s.applies_to or "both")
+                          contact_tabs=s.contact_tabs or [], applies_to=s.applies_to or "both")
 
 
 async def _name_taken(db: AsyncSession, name: str, exclude: uuid.UUID | None = None) -> bool:
@@ -229,7 +268,8 @@ async def create_status(payload: StatusAdminIn, db: AsyncSession = Depends(get_d
     if await _name_taken(db, data["name"]):
         raise HTTPException(status_code=409, detail="Cette pastille existe déjà")
     s = Status(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True), is_system=False,
-               company_tabs=data.get("company_tabs") or [], applies_to=data.get("applies_to") or "both")
+               company_tabs=data.get("company_tabs") or [], contact_tabs=data.get("contact_tabs") or [],
+               applies_to=data.get("applies_to") or "both")
     db.add(s)
     await db.commit()
     await db.refresh(s)
@@ -250,3 +290,89 @@ async def update_status(status_id: uuid.UUID, payload: StatusAdminIn, db: AsyncS
     await db.commit()
     await db.refresh(s)
     return await _status_out(db, s)
+
+
+# ── Spécialisations des contacts (TASK-002.18) ────────────────────────────────
+# Les « fonctions » d'un contact chez une compagnie (TI, réseau, facturation, propriétaire…) : ajouter, renommer, couleur,
+# onglets de la fiche contact, désactiver. Jamais supprimées : désactivée = plus offerte, reste sur les contacts qui l'ont.
+
+class FunctionAdminOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    color: str | None
+    is_active: bool
+    contact_tabs: list[str] = []
+    used: int
+
+
+class FunctionAdminIn(BaseModel):
+    name: str | None = None
+    color: str | None = None
+    is_active: bool | None = None
+    contact_tabs: list[str] | None = None
+
+
+async def _function_out(db: AsyncSession, f) -> FunctionAdminOut:
+    from app.models.contact_company import ContactCompanyFunction
+    used = (await db.execute(select(func.count()).select_from(ContactCompanyFunction).where(ContactCompanyFunction.function_id == f.id))).scalar_one()
+    return FunctionAdminOut(id=f.id, name=f.name, color=f.color, is_active=f.is_active, contact_tabs=f.contact_tabs or [], used=used)
+
+
+def _clean_function(p: FunctionAdminIn) -> dict:
+    from app.core import contact_tabs as ct
+    data = p.model_dump(exclude_unset=True)
+    if "name" in data:
+        data["name"] = (data["name"] or "").strip()[:100]
+        if not data["name"]:
+            raise HTTPException(status_code=422, detail="Le nom est requis")
+    if data.get("color") is not None and not re.fullmatch(r"#[0-9A-Fa-f]{6}", data["color"]):
+        raise HTTPException(status_code=422, detail="Couleur invalide")
+    if data.get("contact_tabs") is not None:
+        unknown = [t for t in data["contact_tabs"] if t not in ct.OPTIONAL]
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Onglet inconnu : {', '.join(unknown)}")
+        data["contact_tabs"] = ct.clean(data["contact_tabs"])
+    return data
+
+
+@router.get("/functions", response_model=list[FunctionAdminOut])
+async def list_functions_admin(db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from app.models.function import Function
+    rows = (await db.execute(select(Function).order_by(func.lower(Function.name)))).scalars().all()
+    return [await _function_out(db, f) for f in rows]
+
+
+@router.post("/functions", response_model=FunctionAdminOut, status_code=status.HTTP_201_CREATED)
+async def create_function(payload: FunctionAdminIn, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from app.models.function import Function
+    data = _clean_function(payload)
+    if not data.get("name"):
+        raise HTTPException(status_code=422, detail="Le nom est requis")
+    if (await db.execute(select(Function.id).where(func.lower(Function.name) == data["name"].lower()))).first():
+        raise HTTPException(status_code=409, detail="Cette spécialisation existe déjà")
+    f = Function(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True),
+                 contact_tabs=data.get("contact_tabs") if data.get("contact_tabs") is not None else ["courriels"])
+    db.add(f)
+    await db.commit()
+    await db.refresh(f)
+    return await _function_out(db, f)
+
+
+@router.put("/functions/{function_id}", response_model=FunctionAdminOut)
+async def update_function(function_id: uuid.UUID, payload: FunctionAdminIn, db: AsyncSession = Depends(get_db), _: User = Depends(require_admin)):
+    from app.models.function import Function
+    f = await db.get(Function, function_id)
+    if not f:
+        raise HTTPException(status_code=404, detail="Spécialisation introuvable")
+    data = _clean_function(payload)
+    if "name" in data and (await db.execute(select(Function.id).where(func.lower(Function.name) == data["name"].lower(), Function.id != f.id))).first():
+        raise HTTPException(status_code=409, detail="Cette spécialisation existe déjà")
+    from app.core.late_fees import BILLING_FUNCTIONS
+    if "name" in data and f.name.lower() in BILLING_FUNCTIONS and data["name"].lower() != f.name.lower():
+        raise HTTPException(status_code=400, detail=f"« {f.name} » sert à trouver l'adresse des factures : son nom ne se change pas")
+    for k, v in data.items():
+        if v is not None:
+            setattr(f, k, v)
+    await db.commit()
+    await db.refresh(f)
+    return await _function_out(db, f)

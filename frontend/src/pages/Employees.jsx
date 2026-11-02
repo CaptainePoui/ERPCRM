@@ -333,7 +333,7 @@ function SignatureModal({ employee, onClose, onSaved }) {
           <button type="button" className={preview ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(true)}>Aperçu</button>
         </div>
         {html === null ? <div style={{ padding: 20, color: 'var(--c-faint)' }}>Chargement…</div>
-          : preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: 'var(--c-surface)' }} />
+          : preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: '#fff' }} />
           : <SignatureEditor value={html} onChange={setHtml} />}
         {error && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>{error}</div>}
         <div className="modal-actions">

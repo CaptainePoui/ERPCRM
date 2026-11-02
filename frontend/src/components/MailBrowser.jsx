@@ -6,6 +6,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import Autocomplete from './Autocomplete'
+import { MailRuleEditor } from './MailRules'
 import { openInMain } from '../utils/zekoBridge'
 import NewTicketModal from './NewTicketModal'
 import NewTaskModal from './NewTaskModal'
@@ -35,7 +36,7 @@ function MailBody({ html, text, danger }) {
     ? `<!doctype html><html><head><meta charset="utf-8"><base target="_blank"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;word-wrap:break-word}img{max-width:100%;height:auto}</style></head><body>${html}</body></html>`
     : `<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:14px;color:#111;margin:12px;white-space:pre-wrap;word-wrap:break-word}</style></head><body>${(text || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</body></html>`
   return <iframe title="Courriel" sandbox={danger ? '' : 'allow-popups allow-popups-to-escape-sandbox'} srcDoc={doc}
-    style={{ width: '100%', flex: 1, minHeight: 420, border: 'none', background: 'var(--c-surface)' }} />
+    style={{ width: '100%', flex: 1, minHeight: 420, border: 'none', background: '#fff' }} />   /* courriel fait pour du blanc : lisible en mode nuit */
 }
 
 function ClassifyModal({ mail, onClose, onSaved }) {
@@ -231,12 +232,57 @@ function ZekoRdvBox({ mail, onDone }) {
   )
 }
 
+// Réponse automatique d'une règle (TASK-006.24) : envoyée, préparée (Envoyer / Ne pas envoyer, adresses modifiables) ou
+// pas envoyée (raison ; « Envoyer » la refait, ex. après avoir classé le courriel dans la fiche du client)
+function AutoReplyBox({ mail, onDone }) {
+  const ar = mail.auto_reply || {}
+  const d = ar.brouillon || {}
+  const [to, setTo] = useState(d.a || '')
+  const [cc, setCc] = useState(d.cc || '')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  async function act(action) {
+    setBusy(true); setErr('')
+    try {
+      const body = action === 'envoyer' && d.a ? { action, a: to, cc } : { action }
+      const r = await api.post(`/v1/mail/${mail.id}/auto-reply`, body)
+      onDone(r.data.auto_reply)
+    } catch (e) { setErr(e.response?.data?.detail || 'Erreur') } finally { setBusy(false) }
+  }
+  const when = ar.le ? new Date(ar.le).toLocaleString('fr-CA') : ''
+  const box = { marginTop: 10, padding: '8px 12px', borderRadius: 8, fontSize: 13 }
+  if (ar.etat === 'envoyee') return <div style={{ ...box, background: 'var(--c-tint-green)', color: 'var(--c-on-green)' }}>✓ Réponse automatique envoyée le {when} à {d.a}{d.cc ? ` (Cc : ${d.cc})` : ''} — « {d.objet} »</div>
+  if (ar.etat === 'annulee') return <div style={{ ...box, background: 'var(--c-surface-3)', color: 'var(--c-muted)' }}>Réponse automatique : {ar.raison || 'pas envoyée'}</div>
+  if (ar.etat === 'attente') return <div style={{ ...box, background: 'var(--c-surface-3)', color: 'var(--c-muted)' }}>Réponse automatique en attente (le client du courriel n'est pas encore connu).</div>
+  return (
+    <div style={{ ...box, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>
+      <div style={{ fontWeight: 600 }}>{ar.etat === 'preparee' ? 'Réponse automatique prête à envoyer' : `Réponse automatique pas envoyée : ${ar.raison || ''}`}</div>
+      {d.a && <div style={{ display: 'grid', gridTemplateColumns: '40px 1fr', gap: 4, alignItems: 'center', margin: '6px 0' }}>
+        <span>À</span><input value={to} onChange={e => setTo(e.target.value)} style={{ fontSize: 13, padding: '3px 6px' }} />
+        <span>Cc</span><input value={cc} onChange={e => setCc(e.target.value)} style={{ fontSize: 13, padding: '3px 6px' }} />
+        <span>Objet</span><span>{d.objet}</span>
+      </div>}
+      {d.html && <div style={{ background: '#fff', color: '#111', borderRadius: 6, padding: 8, margin: '4px 0' }} dangerouslySetInnerHTML={{ __html: d.html }} />}
+      {err && <div style={{ color: '#DC2626', marginTop: 4 }}>{err}</div>}
+      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+        <button className="btn-primary" style={{ fontSize: 12, padding: '3px 12px' }} disabled={busy} onClick={() => act('envoyer')}>{busy ? '…' : 'Envoyer'}</button>
+        <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 12px' }} disabled={busy} onClick={() => act('annuler')}>Ne pas envoyer</button>
+      </div>
+    </div>
+  )
+}
+
 function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
   const routerNavigate = useNavigate()
   const navigate = go || routerNavigate     // TASK-047.11 : dans la fenêtre à part, les pages s'ouvrent dans la fenêtre ERPCRM
   const [m, setM] = useState(null)
   const [err, setErr] = useState('')
   const [classify, setClassify] = useState(false)
+  const [rule, setRule] = useState(null)            // TASK-006.22 : règle proposée depuis ce courriel
+  const [offerRule, setOfferRule] = useState(false) // « Toujours faire ça ? » après un classement à la main
+  const [ruleMsg, setRuleMsg] = useState('')
+  async function makeRule() { setRuleMsg(''); setOfferRule(false); const x = await api.get(`/v1/mail/rules/suggest/${m.id}`); setRule(x.data) }
+  useEffect(() => { setOfferRule(false); setRuleMsg(''); setRule(null) }, [id])
   const [making, setMaking] = useState(null)       // 'ticket' | 'task' | 'rdv'
   const [compose, setCompose] = useState(null)     // 'reply' | 'reply_all' | 'forward'
   const [sentMsg, setSentMsg] = useState('')
@@ -317,6 +363,16 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
     } catch (e) { setJunkMsg(e.response?.data?.detail || 'Erreur') }
   }
 
+  async function setJunk(junk) {            // « Jeter » ce courriel seulement (sans liste noire), ou le remettre
+    try {
+      await api.put(`/v1/mail/${m.id}/junk`, { junk })
+      const fresh = await api.get(`/v1/mail/${m.id}`)
+      update(fresh.data)
+      setJunkMsg(junk ? 'Courriel mis dans « À jeter » (l\'expéditeur n\'est pas en liste noire).' : 'Courriel remis dans la boîte de réception.')
+      onMoved?.()
+    } catch (e) { setJunkMsg(e.response?.data?.detail || 'Erreur') }
+  }
+
   async function toggleShare() {
     const r = await api.put(`/v1/mail/${m.id}/share`, { shared: !m.shared })
     update({ shared: r.data.shared })
@@ -343,10 +399,22 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
               {company && contact && ' · '}
               {contact && <a href={`/contacts/${contact.id}`} onClick={e => { e.preventDefault(); navigate(`/contacts/${contact.id}`) }}>{contact.label}</a>}
               {m.classified_by === 'zeko' && <span style={{ ...chip, marginLeft: 6 }} title="Classé par Zéko : « Changer » si c'est faux">par Zéko</span>}
+              {m.classified_by === 'regle' && <span style={{ ...chip, marginLeft: 6 }} title="Classé par une règle des courriels (Administration → Zéko → Règles des courriels)">par une règle</span>}
               {m.contact_created && <span style={{ ...chip, marginLeft: 6, background: 'var(--c-tint-green)', color: 'var(--c-on-green)' }}>contact créé à partir de ce courriel</span>}
             </span>
           ) : !m.junk_at && <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
           {!m.junk_at && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setClassify(true)}>{company || contact ? 'Changer' : 'Classer'}</button>}
+          {!m.junk_at && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} title="Règle comme dans Outlook : classer, marquer lu, déplacer les prochains courriels pareils" onClick={makeRule}>⚙ Créer une règle</button>}
+          {!m.junk_at && !m.reviewed_at && (m.classified_by === 'zeko' || m.contact_created) && (
+            <span style={{ fontSize: 13, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)', borderRadius: 6, padding: '3px 8px', display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              À vérifier : {m.classified_by === 'zeko' ? 'Zéko l\'a classé ici' : 'contact créé à partir de ce courriel'}
+              <a href="#" onClick={async e => { e.preventDefault(); const x = await api.put(`/v1/mail/${m.id}/reviewed`); update(x.data) }}>C'est bon</a>
+              <a href="#" onClick={e => { e.preventDefault(); setClassify(true) }}>Changer</a>
+              <a href="#" onClick={e => { e.preventDefault(); makeRule() }}>Toujours faire ça ?</a>
+            </span>
+          )}
+          {offerRule && <span style={{ fontSize: 13, background: 'var(--c-tint-blue)', borderRadius: 6, padding: '3px 8px' }}>Toujours faire ça pour les courriels pareils ? <a href="#" onClick={e => { e.preventDefault(); makeRule() }}>Créer une règle</a> · <a href="#" onClick={e => { e.preventDefault(); setOfferRule(false) }}>Non merci</a></span>}
+          {ruleMsg && <span style={{ fontSize: 13, color: 'var(--c-on-green)' }}>✓ {ruleMsg}</span>}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12 }}>
           <button className="btn-primary" onClick={() => setCompose('reply')}>↩ Répondre</button>
@@ -354,6 +422,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
           <button className="btn-secondary" onClick={() => setCompose('forward')}>➜ Transférer</button>
           <button className="btn-secondary" onClick={() => setMaking('rdv')}>📅 Créer un RDV</button>
         </div>
+        {m.auto_reply && <AutoReplyBox key={m.id} mail={m} onDone={ar => update({ auto_reply: ar, reviewed_at: new Date().toISOString() })} />}
         {m.zeko_rdv_proposal && <ZekoRdvBox key={m.id} mail={m} onDone={pr => update({ zeko_rdv_proposal: pr, zeko_rdv_pending: false })} />}
         {sentMsg && <div style={{ fontSize: 13, marginTop: 8, color: sentMsg.startsWith('Envoyé de') ? 'var(--c-on-green)' : 'var(--c-on-amber)' }}>✓ {sentMsg}</div>}
         {m.copy_error && !sentMsg && <div style={{ fontSize: 12, marginTop: 8, color: 'var(--c-on-amber)' }}>Envoyé, mais pas copié dans Envoyés de {m.mailbox} : {m.copy_error}</div>}
@@ -375,6 +444,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
             : <button className="btn-secondary" onClick={() => setMaking('task')}>✅ Faire une tâche</button>}
           {!out && <button className="btn-secondary" onClick={toggleRead}>{m.is_read ? 'Marquer non lu' : 'Marquer lu'}</button>}
           {m.can_share && <button className="btn-secondary" onClick={toggleShare}>{m.shared ? '🔒 Ne plus partager' : '👥 Partager avec l\'équipe'}</button>}
+          {!m.junk_at && <button className="btn-secondary" title="Ce courriel seulement, dans « À jeter » (effacé après 1 an)" onClick={() => setJunk(true)}>🗑 Jeter</button>}
           {!out && !m.junk_at && <button className="btn-secondary" onClick={() => setBlocking(true)}>🚫 Mettre en liste noire</button>}
         </div>
         {m.junk_at && (
@@ -383,6 +453,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
               🗑 À jeter{m.junk_block ? ` — liste noire : ${m.junk_block.pattern}` : ''} · effacé le {new Date(new Date(m.junk_at).getTime() + 365 * 86400000).toLocaleDateString('fr-CA')}
             </span>
             {m.junk_block && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={unblock}>Retirer de la liste noire</button>}
+            {!m.junk_block && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setJunk(false)}>Remettre dans la boîte de réception</button>}
             {m.junk_error && <span style={{ fontSize: 12, color: 'var(--c-on-amber)' }}>Pas encore déplacé dans la vraie boîte : {m.junk_error}</span>}
           </div>
         )}
@@ -408,7 +479,9 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
       {blocking && <BlockModal mail={m} onClose={() => setBlocking(false)} onDone={blocked} />}
       {askCompany && <CompanyAskModal mail={m} onDone={d => { setAskCompany(false); if (d) update({ ...d, company_choices: [] }) }} />}
       {classify && <ClassifyModal mail={m} onClose={() => setClassify(false)}
-        onSaved={d => { setClassify(false); update(d) }} />}
+        onSaved={d => { setClassify(false); update(d); if (d.company_id || d.contact_id) setOfferRule(true) }} />}
+      {rule && <MailRuleEditor initial={rule} onClose={() => setRule(null)}
+        onSaved={x => { setRule(null); setRuleMsg(`Règle « ${x.name} » créée${x.applied ? ` : ${x.applied.classes} ancien(s) classé(s)` : ''}`) }} />}
       {making === 'ticket' && <NewTicketModal prefillCompany={company} prefillContact={contact}
         prefillTitle={(m.subject || '').slice(0, 255)} prefillDescription={quote}
         onClose={() => setMaking(null)} onCreated={t => linked('ticket', t)} />}

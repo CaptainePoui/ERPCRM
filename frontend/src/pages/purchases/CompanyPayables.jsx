@@ -13,13 +13,14 @@ const KIND = { payment: ['Paiement', '#059669'], credit: ['Avoir', '#D97706'], e
 const OPEN = { bill: id => `/purchases/bills/${id}`, payment: id => `/purchases/payments?open=${id}`,
                credit: id => `/purchases/credits?open=${id}`, expense: id => `/purchases/expenses?open=${id}` }
 
-export function usePayables(companyId) {
+// summaryOnly : seulement les totaux (carte « À payer » de Général, plus rapide)
+export function usePayables(companyId, summaryOnly = false) {
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   useEffect(() => {
-    api.get(`/v1/companies/${companyId}/payables`).then(r => setData(r.data))
+    api.get(`/v1/companies/${companyId}/payables`, { params: summaryOnly ? { summary_only: true } : undefined }).then(r => setData(r.data))
       .catch(e => setError(e.response?.status === 403 ? 'Il faut le privilège « Achats » pour voir les comptes à payer.' : 'Lecture impossible'))
-  }, [companyId])
+  }, [companyId, summaryOnly])
   return { data, error }
 }
 

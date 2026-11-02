@@ -60,7 +60,7 @@ export default function MyAccount() {
               <button type="button" className={preview ? 'btn-secondary' : 'btn-primary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(false)}>Modifier</button>
               <button type="button" className={preview ? 'btn-primary' : 'btn-secondary'} style={{ fontSize: 12, padding: '4px 12px' }} onClick={() => setPreview(true)}>Aperçu</button>
             </div>
-            {preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: 'var(--c-surface)' }} />
+            {preview ? <iframe title="Aperçu de la signature" sandbox="" srcDoc={previewDoc} style={{ width: '100%', height: 300, border: '1px solid var(--c-border-strong)', borderRadius: 8, background: '#fff' }} />
               : <SignatureEditor value={html} onChange={setHtml} />}
             {msg && <div style={{ fontSize: 13, marginTop: 8, color: msg.ok ? '#059669' : '#DC2626' }}>{msg.text}</div>}
             <button className="btn-primary" onClick={saveSignature} disabled={saving} style={{ marginTop: 12 }}>{saving ? '…' : 'Enregistrer ma signature'}</button>

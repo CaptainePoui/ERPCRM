@@ -83,6 +83,7 @@ class MessageOut(BaseModel):
     tool_name: str | None
     author_name: str | None
     created_at: datetime
+    images: list[str] = []         # TASK-006.18 : images collees (GET /zeko/images/{nom})
 
 class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
@@ -102,7 +103,8 @@ class ProjectIn(BaseModel):
     name: str
 
 class SendMessage(BaseModel):
-    content: str
+    content: str = ""
+    images: list[str] = []         # TASK-006.18 : adresses data: du navigateur (collées, glissées ou choisies)
 
 
 def _now():
@@ -153,7 +155,8 @@ def _detail(c: ZekoConversation, client: str | None = None) -> ConversationDetai
     return ConversationDetail(
         **_out(c, client), busy=_busy(c),
         messages=[MessageOut(id=m.id, role=m.role, content=m.content if m.role != "tool" else "",
-                             tool_name=m.tool_name, author_name=m.user.full_name if m.user else None, created_at=m.created_at)
+                             tool_name=m.tool_name, author_name=m.user.full_name if m.user else None, created_at=m.created_at,
+                             images=m.images or [])
                   for m in c.messages if m.role != "assistant" or m.content or not m.tool_calls],
     )
 
@@ -279,8 +282,26 @@ async def get_conversation(cid: uuid.UUID, db: AsyncSession = Depends(get_db), c
 @router.delete("/conversations/{cid}", status_code=204)
 async def delete_conversation(cid: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     c = await _get_conv(db, cid, current_user)
+    from app.core import zeko_images
+    names = [n for m in c.messages for n in (m.images or [])]
     await db.delete(c)
     await db.commit()
+    zeko_images.remove(names)
+
+
+@router.get("/images/{name}")
+async def image_file(name: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Une image collee dans une conversation : seulement pour qui a acces a cette conversation."""
+    from fastapi.responses import FileResponse
+    from app.core import zeko_images
+    cid = (await db.execute(select(ZekoMessage.conversation_id).where(ZekoMessage.images.contains([name])).limit(1))).scalar()
+    if not cid:
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    await _get_conv(db, cid, current_user)
+    p = zeko_images.path_of(name)
+    if not p.exists():
+        raise HTTPException(status_code=404, detail="Image introuvable")
+    return FileResponse(p, media_type=zeko_images.MEDIA.get(p.suffix, "image/jpeg"))
 
 
 async def _ticket_context(db, ticket_id) -> str:
@@ -328,10 +349,32 @@ def _unanswered(msgs) -> set:
     return out
 
 
+_IMAGE_TURNS = 3       # images montrees au modele : celles des 3 derniers messages qui en ont (TASK-006.18)
+
+
+def _text(content) -> str:
+    """Le texte d'un message, qu'il soit une chaine ou des parties texte / image (TASK-006.18)."""
+    if isinstance(content, list):
+        return " ".join(p.get("text", "") for p in content if p.get("type") == "text")
+    return content or ""
+
+
+def _with_images(d: dict, names: list[str]) -> dict:
+    """Message de la personne + ses images, au format OpenAI (contenu en parties texte / image_url)."""
+    from app.core import zeko_images
+    urls = [u for u in (zeko_images.data_url(n) for n in names) if u]
+    if not urls:
+        return {**d, "content": f"{d['content']} [image(s) jointe(s), fichier introuvable]".strip()}
+    text = d["content"] or "Regarde cette image."
+    return {**d, "content": [{"type": "text", "text": text}] + [{"type": "image_url", "image_url": {"url": u}} for u in urls]}
+
+
 def _history(c: ZekoConversation) -> list[dict]:
-    """Messages deja echanges (outils compris), les plus recents dans la limite de taille."""
+    """Messages deja echanges (outils compris), les plus recents dans la limite de taille. Les images des
+    _IMAGE_TURNS derniers messages qui en ont sont jointes ; plus anciennes : seulement signalees."""
     out, size = [], 0
     pending = _unanswered(c.messages)
+    shown = 0
     for m in reversed(c.messages):
         if m.role == "assistant" and m.tool_calls:
             calls = json.loads(m.tool_calls)
@@ -346,6 +389,12 @@ def _history(c: ZekoConversation) -> list[dict]:
         size += len(json.dumps(d, ensure_ascii=False))
         if size > _HISTORY_CHARS and out:
             break
+        if m.role == "user" and m.images:
+            if shown < _IMAGE_TURNS:
+                d = _with_images(d, m.images)
+                shown += 1
+            else:
+                d = {**d, "content": f"{d['content']} [{len(m.images)} image(s) jointe(s) plus tôt, plus montrée(s)]".strip()}
         out.append(d)
     out.reverse()
     while out and out[0]["role"] == "tool":            # ne jamais commencer par une reponse d'outil orpheline
@@ -430,7 +479,24 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                 else:
                     if x["name"] == "mettre_agenda":
                         args = _asked(messages, args) if args.get("oui") is True else _said(messages, args)
-                    if x["name"] in zeko_tools.CONFIRM:          # TASK-006.17 : le oui vérifié par le programme
+                    if x["name"] == "ranger_image":             # TASK-006.19 : les images du dernier message qui en a
+                        args = {**args, "_images": await _last_images(s, cid)}
+                    if x["name"] == "ranger_image" and _named(messages, args.get("client")):
+                        # Philippe 2026-11-02 : « je lui ai demandé clairement… qu'il me réponde où il l'a classée, c'est
+                        # tout » : client nommé par la personne -> rangée tout de suite, sans question
+                        result = await zeko_tools.run(x["name"], args, s, user_id)
+                        try:
+                            done = json.loads(result).get("fait") if '"fait"' in result else None
+                        except (ValueError, AttributeError):
+                            done = None
+                        if done and len(calls) == 1:          # réponse tirée du résultat : pas un autre tour du modèle
+                            asked = f"C'est fait : {done.rstrip('.')}."
+                    elif x["name"] in zeko_tools.CONFIRM:          # TASK-006.17 : le oui vérifié par le programme
+                        if x["name"] == "creer_regle_courriel":      # TASK-006.23 : tout nommé par la personne ?
+                            if args.get("dossier") and not _named(messages, args["dossier"]):
+                                args = {**args, "dossier": None}         # dossier inventé par le modèle (« À classer ») : retiré
+                            said = [args.get(k) for k in ("client", "objet_contient", "texte_contient", "expediteur") if args.get(k)]
+                            args = {**args, "_nomme": bool(said) and all(_named(messages, v) for v in said)}
                         ok = _confirmed(messages, x["name"], args)
                         result = (await zeko_tools.run(x["name"], ok, s, user_id) if ok is not None
                                   else await zeko_tools.confirm_question(x["name"], args, s, user_id))
@@ -475,6 +541,26 @@ async def _turn(s, messages, tool_list, ext, user_id, cid, save, keep_errors=Fal
                 pass
 
 
+def _named(messages, name) -> bool:
+    """Le client a été nommé par la personne elle-même (chacun de ses mots de 3 lettres et plus est dans ce qu'elle a
+    écrit), pas déduit par Zéko (TASK-006.19)."""
+    import re
+    words = [w for w in re.findall(r"[a-z0-9]+", _plain(name)) if len(w) > 2]
+    said = set(re.findall(r"[a-z0-9]+", _plain(" ".join(_text(m["content"]) for m in messages if m["role"] == "user"))))
+    return bool(words) and all(w in said for w in words)
+
+
+async def _last_images(s, cid) -> list[str]:
+    """Images du dernier message de la personne qui en a, dans cette conversation (TASK-006.19). Jamais un nom donné par
+    le modèle : le programme les lit lui-même."""
+    if not cid:
+        return []
+    names = (await s.execute(select(ZekoMessage.images).where(ZekoMessage.conversation_id == cid, ZekoMessage.role == "user",
+                                                             func.jsonb_typeof(ZekoMessage.images) == "array")   # sans image = null JSON
+                             .order_by(ZekoMessage.created_at.desc()).limit(1))).scalar()
+    return list(names or [])
+
+
 _YES = {"oui", "ouais", "ouep", "yes", "yep", "ok", "okay", "go", "vas", "vasy", "parfait", "exact", "exactement", "confirme",
         "confirmer", "fais", "correct", "certain", "certainement", "absolument", "allez", "daccord"}
 _NO = {"non", "pas", "attends", "attend", "annule", "annuler", "arrete", "stop", "jamais", "nope", "change", "plutot", "mais"}
@@ -499,7 +585,7 @@ def _is_yes(text) -> bool:
 def _same(a: dict, b: dict) -> bool:
     """Mêmes valeurs (sans les vides, ni la note, sans égard à la casse et aux accents)."""
     norm = lambda d: {k: _plain(json.dumps(v, ensure_ascii=False, sort_keys=True)).strip()
-                      for k, v in (d or {}).items() if v not in (None, "", []) and k not in ("note", "oui")}
+                      for k, v in (d or {}).items() if v not in (None, "", []) and k not in ("note", "oui") and not k.startswith("_")}
     return norm(a) == norm(b)
 
 
@@ -508,7 +594,7 @@ def _confirmed(messages, name, args):
     ce changement, posée juste avant : (a) la question rédigée par le programme pour ce même outil et ces mêmes valeurs ;
     ou (b) une question « … ? » écrite par Zéko qui nomme chacune de ces valeurs. Sinon None : on demande d'abord."""
     users = [i for i, m in enumerate(messages) if m["role"] == "user"]
-    if not users or not _is_yes(messages[users[-1]]["content"]):
+    if not users or not _is_yes(_text(messages[users[-1]]["content"])):
         return None
     last, prev = users[-1], (users[-2] if len(users) > 1 else -1)
     between = messages[prev + 1:last]
@@ -523,6 +609,8 @@ def _confirmed(messages, name, args):
             return q["valeurs"]
     said = next((m["content"] for m in reversed(between) if m["role"] == "assistant" and (m.get("content") or "").strip()), "")
     if said.rstrip().endswith("?"):
+        if name in ("ranger_image", "creer_regle_courriel"):   # image exacte / anciens : seulement la question du programme
+            return None
         vals = [v for k, v in (args or {}).items() if isinstance(v, str) and len(v.strip()) > 2 and k not in ("note", "action", "genre")]
         if vals and all(_plain(v).strip() in _plain(said) for v in vals):
             return args
@@ -535,7 +623,7 @@ def _said(messages, args):
     titre, lieu : au moins un mot dit."""
     import re, unicodedata
     plain = lambda t: "".join(c for c in unicodedata.normalize("NFD", str(t or "").lower()) if unicodedata.category(c) != "Mn")
-    dit = set(re.findall(r"[a-z0-9]+", plain(" ".join(m["content"] for m in messages if m["role"] == "user"))))
+    dit = set(re.findall(r"[a-z0-9]+", plain(" ".join(_text(m["content"]) for m in messages if m["role"] == "user"))))
     out = dict(args)
     for k, tous in (("personne", True), ("titre", False), ("lieu", False)):
         mots = [w for w in re.findall(r"[a-z0-9]+", plain(out.get(k))) if len(w) > 2 and w not in ("rdv", "appel")]
@@ -671,17 +759,29 @@ async def stop_conversation(cid: uuid.UUID, db: AsyncSession = Depends(get_db), 
 
 @router.post("/conversations/{cid}/messages")
 async def send_message(cid: uuid.UUID, payload: SendMessage, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from app.core import zeko_images
     text = payload.content.strip()
-    if not text:
+    if not text and not payload.images:
         raise HTTPException(status_code=400, detail="Message vide")
+    if len(payload.images) > zeko_images.MAX_PER_MESSAGE:
+        raise HTTPException(status_code=400, detail=f"{zeko_images.MAX_PER_MESSAGE} images au plus par message")
+    if payload.images and not (await zeko.config(fresh=True))["model_vision"]:
+        raise HTTPException(status_code=400, detail="Aucun modèle ne lit les images : choisis le « Modèle des images » dans Administration → Zéko → Réglages")
     if not await zeko.enabled():
         raise HTTPException(status_code=400, detail="Zéko n'est pas configuré (Administration → Zéko)")
     c = await _get_conv(db, cid, current_user)
     if _busy(c):
         raise HTTPException(status_code=409, detail="Zéko travaille encore sur ta demande précédente.")
-    db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text))
+    names = []
+    try:
+        for img in payload.images:
+            names.append(zeko_images.save(img))
+    except ValueError as e:
+        zeko_images.remove(names)
+        raise HTTPException(status_code=400, detail=str(e))
+    db.add(ZekoMessage(conversation_id=c.id, user_id=current_user.id, role="user", content=text, images=names or None))
     if not c.title:
-        c.title = text[:80]
+        c.title = text[:80] or "Image"
     c.updated_at = _now()
     c.busy_since, c.stop_requested = _now(), False
     await db.commit()

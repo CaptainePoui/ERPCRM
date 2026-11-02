@@ -74,7 +74,17 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
         ).order_by(Company.is_active.desc(), Company.name).limit(6)
     )
     found = companies.scalars().all()
-    if not found and len(sq) >= 4:
+    # TASK-002.8 : anciens noms et anciennes coordonnees (« str » -> MDI innovations Inc., anciennement Strong-MDI)
+    from app.core import former_infos as fi
+    former = await fi.entities_matching(db, q)
+    seen = {c.id for c in found}
+    old_cos = []
+    if former:
+        old_cos = list((await db.execute(select(Company).where(Company.id.in_([e for e in former if e not in seen]))
+                                         .order_by(Company.is_active.desc(), Company.name).limit(6))).scalars().all())
+    # fautes de frappe seulement s'il n'y a aucune vraie correspondance, ancien nom compris (TASK-054.2 : « patio » doit
+    # montrer Construction Nationale, anciennement Patio Desing, pas D Astous Auto)
+    if not found and not old_cos and len(sq) >= 4:
         # fautes de frappe (« physoteque » -> Physotech) : ressemblance sur le nom sans accents ni ponctuation
         from difflib import SequenceMatcher
         allc = (await db.execute(select(Company))).scalars().all()
@@ -84,14 +94,8 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
             return max(SequenceMatcher(None, sq, p).ratio() for p in parts if p)
         scored = sorted(((score(c), c) for c in allc), key=lambda t: -t[0])
         found = [c for sc, c in scored if sc >= 0.66][:4]
-    # TASK-002.8 : anciens noms et anciennes coordonnees (« str » -> MDI innovations Inc., anciennement Strong-MDI)
-    from app.core import former_infos as fi
-    former = await fi.entities_matching(db, q)
-    seen = {c.id for c in found}
-    if former:
-        extra = (await db.execute(select(Company).where(Company.id.in_([e for e in former if e not in seen]))
-                                  .order_by(Company.is_active.desc(), Company.name).limit(6))).scalars().all()
-        found = list(found) + list(extra)
+        seen = {c.id for c in found}
+    found = list(found) + old_cos
     for c in found:
         olds = [f for f in former.get(c.id, []) if f.kind == "name"]
         sub = c.account_number

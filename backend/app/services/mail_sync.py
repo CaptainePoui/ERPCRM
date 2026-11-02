@@ -8,9 +8,9 @@ import asyncio
 import logging
 from datetime import timedelta
 
-from sqlalchemy import or_, select, text, update
+from sqlalchemy import func, or_, select, text, update
 
-from app.core import mail_junk, mail_match, mail_store, zeko, zeko_mail
+from app.core import mail_junk, mail_match, mail_rules, mail_store, zeko, zeko_mail
 from app.core.database import AsyncSessionLocal, engine
 
 log = logging.getLogger("mail_sync")
@@ -76,6 +76,8 @@ async def _sync_box(mb_id) -> int:
                     MailMessage.is_read.is_not(seen), MailMessage.flag_pending.is_(False)).values(is_read=seen))
         n = 0
         blocked = await mail_junk.patterns(db)
+        rules = await mail_rules.active(db) if res["new"] else []     # TASK-006.22 : règles des courriels
+        zeko_on = bool(res["new"]) and await zeko.enabled()
         for uid, raw, seen in res["new"]:
             exists = (await db.execute(select(MailMessage.id).where(MailMessage.mailbox_id == mb.id,
                                                                     MailMessage.uidvalidity == mb.uidvalidity, MailMessage.uid == uid))).first()
@@ -91,9 +93,18 @@ async def _sync_box(mb_id) -> int:
                     continue
                 try:
                     async with db.begin_nested():
-                        await mail_match.classify(db, msg, own, mb.email)
+                        if not mail_rules.run(rules, msg, mb.email):      # une règle classe : le classement par adresse ne passe pas
+                            await mail_match.classify(db, msg, own, mb.email)
                 except Exception as exc:
                     log.warning("Classement du courriel %s impossible : %s", uid, exc)
+                if msg.junk_at:                                  # une règle l'a mis dans « À jeter » : rien d'autre
+                    n += 1
+                    continue
+                # TASK-006.22 (Philippe : « pourquoi il ne passe pas par Zéko ? ») : ni règle ni adresse connue -> Zéko le lit
+                # (comme TASK-047.5, qui n'avait tourné qu'une fois sur les anciens) ; jamais nos propres adresses
+                if not (msg.company_id or msg.contact_id) and zeko_on and _recent(msg) \
+                        and mail_match.domain_of(msg.from_email) not in own and msg.zeko_classify is None:
+                    msg.zeko_classify = "pending"
                 # TASK-026.6 : courriel d'un client -> Zeko regarde s'il change un de ses RDV (proposition a confirmer)
                 if (msg.company_id or msg.contact_id) and mail_match.domain_of(msg.from_email) not in own and _recent(msg) \
                         and await zeko.enabled():
@@ -146,9 +157,18 @@ async def _sync_folders(mb_id) -> int:
                 if data["message_id"] and (await db.execute(select(MailMessage.id).where(
                         MailMessage.mailbox_id == mb.id, MailMessage.message_id == data["message_id"]).limit(1))).first():
                     continue                     # deja copie : envoye d'ici, ou deplace de la boite de reception
+                # TASK-047.15 : sans Message-ID (rapports du serveur téléphonique), la même copie = même expéditeur, objet
+                # et date d'envoi (ex. copié de la boîte de réception, puis déplacé par une règle Outlook dans un dossier)
+                if not data["message_id"] and data.get("sent_at") and (await db.execute(select(MailMessage.id).where(
+                        MailMessage.mailbox_id == mb.id, MailMessage.message_id.is_(None), MailMessage.sent_at == data["sent_at"],
+                        func.lower(MailMessage.from_email).is_not_distinct_from((data["from_email"] or "").lower() or None),
+                        MailMessage.subject.is_not_distinct_from(data["subject"])).limit(1))).first():
+                    continue
                 if (await db.execute(select(MailMessage.id).where(MailMessage.folder_id == f.id, MailMessage.folder_uid == uid).limit(1))).first():
                     continue
-                out = f.sent or (data["from_email"] or "") in own_addrs
+                # de nos adresses, mais adressé à cette boîte (ex. rapports de nepasrepondre@ vers service@) = reçu (TASK-047.15)
+                to_me = email_addr.lower() in f"{data.get('to_addrs') or ''},{data.get('cc_addrs') or ''}".lower()
+                out = f.sent or ((data["from_email"] or "") in own_addrs and not to_me)
                 if not out and mail_junk.match(data["from_email"], blocked):
                     continue                     # liste noire : jamais copie
                 msg = MailMessage(mailbox_id=mb.id, folder_id=f.id, folder_uid=uid, direction="out" if out else "in",
@@ -313,4 +333,10 @@ async def run_mail_sync() -> None:
             await sync_all()
         except Exception as exc:
             log.error("Copie des courriels : %s", exc)
+        try:                                     # TASK-006.24 : réponses automatiques en attente
+            from app.core import mail_autoreply
+            async with AsyncSessionLocal() as db:
+                await mail_autoreply.process(db)
+        except Exception as exc:
+            log.error("Réponses automatiques : %s", exc)
         await asyncio.sleep(_INTERVAL)

@@ -125,6 +125,12 @@ def _q(name: str) -> str:
 
 def _junk_folder(conn) -> str:
     """« A jeter » de cette boite, cree s'il n'existe pas ; sous INBOX quand les autres dossiers y sont (Dovecot)."""
+    return folder_named(conn, FOLDER)
+
+
+def folder_named(conn, wanted: str) -> str:
+    """Dossier de cette boite au nom donne (dernier niveau, sans egard a la casse ; « Archive » trouve « INBOX.Archive »),
+    cree s'il n'existe pas ; sous INBOX quand les autres dossiers y sont (Dovecot). TASK-006.22 : dossier d'une regle."""
     typ, data = conn.list()
     names, delim = [], "."
     for line in data or []:
@@ -134,14 +140,16 @@ def _junk_folder(conn) -> str:
         if m:
             delim = (m.group("d") or b".").decode() or delim
             names.append(m.group("n").decode().strip('"'))
-    enc = _utf7(FOLDER)
+    enc = _utf7(wanted)
+    same = [n for n in names if n.split(delim)[-1].lower() == enc.lower() or n.lower() == enc.lower()]
+    if same:
+        return same[0]
     under_inbox = any(n.upper().startswith("INBOX" + delim) for n in names)
     target = f"INBOX{delim}{enc}" if under_inbox else enc
-    if target not in names:
-        typ, d = conn.create(_q(target))
-        if typ != "OK":
-            raise RuntimeError(f"Dossier « {FOLDER} » impossible à créer : {d}")
-        conn.subscribe(_q(target))
+    typ, d = conn.create(_q(target))
+    if typ != "OK":
+        raise RuntimeError(f"Dossier « {wanted} » impossible à créer : {d}")
+    conn.subscribe(_q(target))
     return target
 
 
@@ -169,13 +177,34 @@ def _find(conn, message_id: str | None, uid: int | None) -> int | None:
     return None
 
 
-def server_sync(box: dict, moves: list, restores: list, purges: list) -> dict:
+def server_sync(box: dict, moves: list, restores: list, purges: list, folder_moves: list | None = None) -> dict:
     """moves : [(id, uid boite de reception)] ; restores : [(id, junk_uid, message_id)] ;
     purges : [(id, junk_server, junk_uid, uid, message_id)].
     Retour : {"moved": {id: junk_uid|None}, "restored": {id: uid|None}, "purged": [id], "errors": {id: texte}}."""
-    out = {"moved": {}, "restored": {}, "purged": [], "errors": {}}
+    out = {"moved": {}, "restored": {}, "purged": [], "errors": {}, "foldered": {}}
     conn = mail_store._connect(box)
     try:
+        if folder_moves:                      # TASK-006.22 : [(id, uid boite de reception, dossier d'une regle, lu)]
+            targets = {}
+            conn.select("INBOX")
+            for mid, uid, name, seen in folder_moves:
+                try:
+                    if name not in targets:
+                        targets[name] = folder_named(conn, name)
+                        conn.select("INBOX")
+                    if _find(conn, None, uid) is None:          # deja deplace ou efface dans la boite
+                        out["foldered"][mid] = None
+                        continue
+                    if seen:                                     # « marquer lu » d'abord : après, ce numéro n'existe plus ici
+                        conn.uid("STORE", str(uid), "+FLAGS", "(\\Seen)")
+                    typ, d = conn.uid("MOVE", str(uid), _q(targets[name]))
+                    if typ != "OK":
+                        raise RuntimeError(str(d)[:300])
+                    out["foldered"][mid] = targets[name]
+                except Exception as exc:
+                    out["errors"][mid] = str(exc)[:300]
+        if not (moves or restores or purges):
+            return out
         folder = _junk_folder(conn)
         if moves:
             conn.select("INBOX")
@@ -256,17 +285,25 @@ async def run_for_box(db, mb, box: dict) -> None:
     from app.models.mailbox import MailMessage
     same = (MailMessage.mailbox_id == mb.id, MailMessage.uidvalidity == mb.uidvalidity)
     mv = (await db.execute(select(MailMessage).where(*same, MailMessage.junk_server == "move").limit(200))).scalars().all()
+    fm = (await db.execute(select(MailMessage).where(*same, MailMessage.move_state == "move", MailMessage.junk_at.is_(None))
+                           .limit(200))).scalars().all()
     rs = (await db.execute(select(MailMessage).where(*same, MailMessage.junk_server == "restore").limit(200))).scalars().all()
     old = mail_store.now() - timedelta(days=KEEP_DAYS)
     pg = (await db.execute(select(MailMessage).where(MailMessage.mailbox_id == mb.id, MailMessage.junk_at < old,
                                                      ~_protected()).limit(200))).scalars().all()
-    if not (mv or rs or pg):
+    if not (mv or rs or pg or fm):
         return
     res = await asyncio.to_thread(server_sync, box, [(m.id, m.uid) for m in mv],
                                   [(m.id, m.junk_uid, m.message_id) for m in rs],
                                   [(m.id, m.junk_server, m.junk_uid, m.uid if m.uidvalidity == mb.uidvalidity else None,
-                                    m.message_id) for m in pg])
+                                    m.message_id) for m in pg],
+                                  [(m.id, m.uid, m.move_to, m.is_read) for m in fm])
     errs = res["errors"]
+    for m in fm:
+        if m.id in errs:
+            m.move_error = errs[m.id]                  # on reessaiera au prochain tour
+        elif m.id in res["foldered"]:
+            m.move_state, m.move_error, m.flag_pending = "done", None, False
     for m in mv:
         if m.id in errs:
             m.junk_error = errs[m.id]                  # on reessaiera au prochain tour

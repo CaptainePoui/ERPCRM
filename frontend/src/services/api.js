@@ -32,7 +32,8 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
+    // Sauf la connexion elle-même : son message (essais restants, blocage -- TASK-001.1) doit rester affiché
+    if (err.response?.status === 401 && !(err.config?.url || '').endsWith('/auth/login')) {
       clearToken()
       window.location.href = '/'
     }

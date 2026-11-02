@@ -120,7 +120,7 @@ function Group({ label, icon, count, open, onToggle, onDrop, drag, actions, chil
   )
 }
 
-export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone }) {
+export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone, ask }) {
   const navigate = useNavigate()
   const openPage = standalone ? openInMain : chemin => navigate(chemin)
   useEffect(() => {
@@ -152,6 +152,7 @@ export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone }
   useEffect(() => {
     api.get('/v1/zeko/status').then(r => setStatus(r.data)).catch(() => setStatus({ enabled: false }))
     if (ticketId) api.post('/v1/zeko/conversations', { ticket_id: ticketId }).then(r => setCurrent(r.data.id))
+    else if (ask) newConv()                  // TASK-006.23 : nouvelle conversation, la demande part toute seule
     else loadList(true)
   }, [ticketId])
   useEffect(() => { if (!ticketId) loadList(!!client) }, [client])
@@ -287,7 +288,7 @@ export default function ZekoPanel({ ticketId, ticketLabel, onClose, standalone }
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           {current
-            ? <ZekoChat conversationId={current} compact={!!ticketId} onOpenPage={openPage} onChanged={deleted => { if (!ticketId) loadList(!!deleted) }} />
+            ? <ZekoChat conversationId={current} compact={!!ticketId} onOpenPage={openPage} autoSend={ask} onChanged={deleted => { if (!ticketId) loadList(!!deleted) }} />
             : !ticketId && <div style={{ padding: 16 }}><button className="btn-primary" onClick={newConv}>Commencer une conversation</button></div>}
         </div>
       </div>

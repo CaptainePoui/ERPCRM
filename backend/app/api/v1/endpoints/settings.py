@@ -32,7 +32,7 @@ DEFAULTS = {
     "tax_lock_date": "",
     "tax_lock_auto": "",             # TASK-043.3 : « versement|date d'avant » quand un versement TPS/TVQ a avance la date
     # TASK-043.3 : portail ouvert pour produire la declaration (configurable : logiciel vendu a d'autres entreprises)
-    "tax_portal_url": "https://www.info.clicsequr.gouv.qc.ca/entreprises/",
+    "tax_portal_url": "https://www.revenuquebec.ca/fr/entreprises/mon-dossier-pour-les-entreprises/",   # Philippe, 2026-11-01
     # Rappels de declaration TPS/TVQ (core/tax_reminders.py) : vide = desactive
     "tax_filing_frequency": "trimestrielle",  # mensuelle | trimestrielle | annuelle (vide = pas de rappel)
     "tax_reminder_user_id": "",      # utilisateur qui recoit la tache et les rappels
@@ -64,6 +64,8 @@ DEFAULTS = {
     "zeko_url": "",
     "zeko_model_tasks": "",
     "zeko_model_chat": "",
+    "zeko_model_vision": "",            # TASK-006.18 : modele qui lit les images collees dans Zeko
+    "zeko_auto_statements": "true",     # TASK-006.20 : releve dont le compte est reconnu par son numero = importe sans question
     "zeko_url_backup": "",              # TASK-006.14 : serveur de secours si le principal ne repond pas
     "zeko_model_tasks_backup": "",
     "zeko_model_chat_backup": "",
@@ -141,6 +143,8 @@ class SettingsOut(BaseModel):
     zeko_url: str = ""
     zeko_model_tasks: str = ""
     zeko_model_chat: str = ""
+    zeko_model_vision: str = ""
+    zeko_auto_statements: bool = True
     zeko_url_backup: str = ""
     zeko_model_tasks_backup: str = ""
     zeko_model_chat_backup: str = ""
@@ -181,6 +185,8 @@ class SettingsIn(BaseModel):
     zeko_url: str | None = None
     zeko_model_tasks: str | None = None
     zeko_model_chat: str | None = None
+    zeko_model_vision: str | None = None
+    zeko_auto_statements: bool | None = None
     zeko_url_backup: str | None = None
     zeko_model_tasks_backup: str | None = None
     zeko_model_chat_backup: str | None = None
@@ -196,6 +202,7 @@ async def _zeko_out() -> dict:
     c = await zeko.config(fresh=True)
     e = c["ext"]
     return {"zeko_enabled": c["enabled"], "zeko_url": c["url"], "zeko_model_tasks": c["model_tasks"], "zeko_model_chat": c["model_chat"],
+            "zeko_model_vision": c["model_vision"], "zeko_auto_statements": (await get_setting_raw("zeko_auto_statements")) != "false",
             "zeko_url_backup": c["backup"]["url"], "zeko_model_tasks_backup": c["backup"]["model_tasks"],
             "zeko_model_chat_backup": c["backup"]["model_chat"],
             "zeko_ext_enabled": e["enabled"] or (await get_setting_raw("zeko_ext_enabled")) == "true", "zeko_ext_provider": e["provider"],
@@ -267,10 +274,12 @@ async def update_settings(payload: SettingsIn, db: AsyncSession = Depends(get_db
         await set_setting(db, "ticket_reminder_visual", "true" if payload.ticket_reminder_visual else "false")
     if payload.zeko_enabled is not None:
         await set_setting(db, "zeko_enabled", "true" if payload.zeko_enabled else "false")
-    for k in ("zeko_url", "zeko_model_tasks", "zeko_model_chat", "zeko_url_backup", "zeko_model_tasks_backup", "zeko_model_chat_backup"):
+    for k in ("zeko_url", "zeko_model_tasks", "zeko_model_chat", "zeko_model_vision", "zeko_url_backup", "zeko_model_tasks_backup", "zeko_model_chat_backup"):
         v = getattr(payload, k)
         if v is not None:
             await set_setting(db, k, v.strip())
+    if payload.zeko_auto_statements is not None:
+        await set_setting(db, "zeko_auto_statements", "true" if payload.zeko_auto_statements else "false")
     if payload.zeko_ext_enabled is not None:
         await set_setting(db, "zeko_ext_enabled", "true" if payload.zeko_ext_enabled else "false")
     if payload.zeko_ext_provider is not None:

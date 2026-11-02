@@ -6,7 +6,7 @@ import { showNotification } from './ticketReminder'
 // Cloche à côté de Zéko (TASK-047.6) : ce qui reste à régler, lu dans l'état réel par le serveur (une ligne disparaît
 // d'elle-même quand c'est réglé). Relue chaque minute et au retour sur l'onglet. Le menu se ferme au clic à côté : ce
 // n'est pas une fenêtre de saisie (rien à perdre).
-const ICONS = { mail: '✉', invoices: '$', tickets: '#', bank: '⌂' }
+const ICONS = { mail: '✉', invoices: '$', tickets: '#', bank: '⌂', mail_review: '?' }
 
 export default function NotificationBell() {
   const navigate = useNavigate()
@@ -83,6 +83,10 @@ export default function NotificationBell() {
               ))}
               {it.count > it.lines.length && <div onClick={() => go(it.path)} style={{ padding: '4px 14px 8px 42px', fontSize: 12, color: 'var(--brand)', cursor: 'pointer' }}>
                 Voir les {it.count}…</div>}
+              {it.zeko && <div style={{ padding: '2px 14px 10px 42px' }}>
+                <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }}
+                  onClick={() => { setOpen(false); window.dispatchEvent(new CustomEvent('zeko-ask', { detail: it.zeko })) }}>Z  Revoir avec Zéko</button>
+              </div>}
             </div>
           ))}
         </div>

@@ -277,6 +277,12 @@ function ActiveTimers() {
 export default function Layout({ user, onLogout, children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [zekoOpen, setZekoOpen] = useState(false)
+  const [zekoAsk, setZekoAsk] = useState(null)   // TASK-006.23 : « Revoir avec Zéko » (cloche, courriels, règles)
+  useEffect(() => {
+    const on = e => { setZekoAsk({ text: e.detail, at: Date.now() }); setZekoOpen(true) }
+    window.addEventListener('zeko-ask', on)
+    return () => window.removeEventListener('zeko-ask', on)
+  }, [])
   const zekoDrop = useZekoDropTarget()       // fichiers glissés sur le bouton Zéko (TASK-006.9)
   const location = useLocation()
   useNavTrail()
@@ -359,7 +365,7 @@ export default function Layout({ user, onLogout, children }) {
 
         {zekoDrop.err && <div role="alert" style={{ margin: '8px 16px 0', padding: '8px 12px', borderRadius: 6, background: 'var(--c-tint-red)',
           color: 'var(--c-on-red)', fontWeight: 600, fontSize: 13 }}>✗ Zéko : {zekoDrop.err}</div>}
-        {zekoOpen && <ZekoPanel onClose={() => setZekoOpen(false)} />}
+        {zekoOpen && <ZekoPanel key={zekoAsk?.at || 'z'} ask={zekoAsk?.text} onClose={() => { setZekoOpen(false); setZekoAsk(null) }} />}
         {can('zeko', 'modifier') && <ZekoDropPopup />}
         <main className="layout-main">
           {group && <GroupTabs groupKey={group} path={location.pathname} />}

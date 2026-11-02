@@ -8,11 +8,11 @@ import api from '../services/api'
 import MailBrowser from '../components/MailBrowser'
 
 export default function Mail() {
-  const [data, setData] = useState({ folders: [], unclassified: 0, junk: 0 })
+  const [data, setData] = useState({ folders: [], unclassified: 0, junk: 0, review: 0 })
   const [params, setParams] = useSearchParams()
-  const [sel, setSel] = useState({ view: params.get('view') === 'unread' ? 'unread' : 'all', mailbox_id: '' })
+  const [sel, setSel] = useState({ view: ['unread', 'verifier'].includes(params.get('view')) ? params.get('view') : 'all', mailbox_id: '' })
   // La cloche (TASK-047.6) ouvre /mail?view=unread, aussi quand on est déjà ici
-  useEffect(() => { if (params.get('view') === 'unread') { setSel({ view: 'unread', mailbox_id: '' }); setParams({}, { replace: true }) } }, [params])
+  useEffect(() => { const v = params.get('view'); if (['unread', 'verifier'].includes(v)) { setSel({ view: v, mailbox_id: '' }); setParams({}, { replace: true }) } }, [params])
   const [syncing, setSyncing] = useState(false)
 
   const loadFolders = () => api.get('/v1/mail/folders').then(r => setData(r.data))
@@ -31,7 +31,8 @@ export default function Mail() {
       cursor: 'pointer', fontSize: 13, background: active ? 'var(--c-tint-blue)' : 'transparent', color: active ? 'var(--c-on-blue)' : 'var(--c-text)', fontWeight: active ? 600 : 400 }}>
       <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}{sub && <span style={{ color: 'var(--c-muted)', fontWeight: 400 }}> {sub}</span>}</span>
       {warn && <span title={warn} style={{ color: '#DC2626' }}>⚠</span>}
-      {count > 0 && <span style={{ fontSize: 11, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 10, padding: '1px 7px' }}>{count}</span>}
+      {count > 0 && <span title={label === 'Non lus' || label.endsWith('@') ? `${count} non lu${count > 1 ? 's' : ''}` : `${count} courriel${count > 1 ? 's' : ''}`}
+        style={{ fontSize: 11, fontWeight: 700, background: 'var(--brand)', color: '#fff', borderRadius: 10, padding: '1px 7px' }}>{count}</span>}
     </button>
   )
 
@@ -40,14 +41,15 @@ export default function Mail() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Courriels</h1>
-          <p className="page-sub">{unread} non lu{unread > 1 ? 's' : ''} · copiés de vos boîtes chaque minute, Outlook et cellulaire restent à jour</p>
+          <p className="page-sub">{data.total ? `${data.total} reçus · ` : ''}{unread} non lu{unread > 1 ? 's' : ''} · copiés de vos boîtes chaque minute, Outlook et cellulaire restent à jour</p>
         </div>
         <button className="btn-secondary" onClick={syncNow} disabled={syncing}>{syncing ? 'Actualisation…' : '↻ Actualiser'}</button>
       </div>
       <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start' }}>
         <div style={{ width: 220, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', unread)}
+          {item(sel.view === 'all' && !sel.mailbox_id, () => setSel({ view: 'all', mailbox_id: '' }), 'Tous les courriels', data.total)}
           {item(sel.view === 'unread', () => setSel({ view: 'unread', mailbox_id: '' }), 'Non lus', unread)}
+          {item(sel.view === 'verifier', () => setSel({ view: 'verifier', mailbox_id: '' }), 'À vérifier', data.review)}
           {item(sel.view === 'unclassified', () => setSel({ view: 'unclassified', mailbox_id: '' }), 'À classer', data.unclassified)}
           {item(sel.view === 'sent', () => setSel({ view: 'sent', mailbox_id: '' }), 'Envoyés d’ici', 0)}
           {item(sel.view === 'junk', () => setSel({ view: 'junk', mailbox_id: '' }), '🗑 À jeter', 0, data.junk ? `· ${data.junk}` : '')}
@@ -58,6 +60,12 @@ export default function Mail() {
           {!data.folders.length && <div style={{ fontSize: 12, color: 'var(--c-muted)', padding: '0 10px' }}>Aucune boîte : ajoutez-les dans Administration → Intégrations.</div>}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
+          {sel.view === 'verifier' && (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10, padding: '8px 12px', borderRadius: 8, background: 'var(--c-tint-blue)', fontSize: 13 }}>
+              <span style={{ flex: 1 }}>Courriels classés par Zéko, contacts créés et courriels à classer des {data.review_days || 30} derniers jours : « C'est bon », « Changer » ou « Toujours faire ça ? » dans chaque courriel.</span>
+              <button className="btn-secondary" style={{ fontSize: 12 }} onClick={() => window.dispatchEvent(new CustomEvent('zeko-ask', { detail: 'Regarde avec moi mes courriels à vérifier et propose-moi des règles' }))}>Z  Revoir avec Zéko</button>
+            </div>
+          )}
           <MailBrowser filter={sel.view === 'sent' ? { direction: 'out' }
             : { view: sel.view, mailbox_id: sel.mailbox_id, ...(sel.view === 'unclassified' || sel.view === 'junk' ? {} : { direction: 'in' }) }} onCounts={loadFolders} />
         </div>

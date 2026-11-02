@@ -1,7 +1,7 @@
 import uuid
 import enum
 from datetime import datetime, timezone
-from sqlalchemy import String, Boolean, DateTime, Text, Enum as SAEnum, ForeignKey
+from sqlalchemy import String, Boolean, DateTime, Integer, Text, Enum as SAEnum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from app.core.database import Base
@@ -26,6 +26,11 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Blocage après des mauvais mots de passe (TASK-001.1, core/login_guard.py)
+    failed_logins: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    lock_step: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    banned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Derniere presence d'un ecran ERPCRM ouvert (battement toutes les 30 s, TASK-006.5) : sans presence depuis
     # 5 min, ses chronos de ticket se mettent en pause a l'heure de cette derniere presence.
     presence_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

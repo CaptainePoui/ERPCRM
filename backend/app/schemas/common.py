@@ -17,6 +17,8 @@ class FunctionOut(BaseModel):
     id: uuid.UUID
     name: str
     is_active: bool
+    color: str | None = None          # TASK-002.18 : spécialisation du contact
+    contact_tabs: list[str] = []
 
     model_config = {"from_attributes": True}
 

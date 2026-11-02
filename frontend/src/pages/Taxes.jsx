@@ -62,7 +62,9 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
   const [error, setError] = useState(null)
   const [filing, setFiling] = useState(null)        // periode dont la declaration est en train de se produire
 
-  function produce(p) { openPortal(data.portal_url); setFiling(p) }
+  // Un clic choisit la période (pour la marquer déclarée, ajouter un ajustement…) ; un double clic ouvre les montants
+  // à copier, avec Ouvrir Mon dossier et Copier le lien. Le portail ne s'ouvre plus tout seul (Philippe, 2026-11-01).
+  function produce(p) { setSelected(p); setFiling(p) }
 
   async function load(f = freq) {
     const r = await api.get('/v1/taxes/periods', { params: { count: 8, frequency: f || undefined } })
@@ -112,7 +114,7 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
           {data.periods.map(p => {
             const active = selected && p.start === selected.start && p.end === selected.end
             return (
-              <tr key={p.start} onClick={() => { setSelected(p); if (p.state === 'a_produire') produce(p) }} title={p.state === 'a_produire' ? 'Ouvre le portail du gouvernement et les montants à copier' : undefined} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? 'var(--c-tint-blue)' : undefined }}>
+              <tr key={p.start} onClick={() => setSelected(p)} onDoubleClick={() => { window.getSelection()?.removeAllRanges(); produce(p) }} title="Clic : choisir la période · double clic : ouvrir les montants à copier" style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer', background: active ? 'var(--c-tint-blue)' : undefined }}>
                 <td style={{ ...td, fontWeight: active ? 600 : 400, minWidth: 110 }}>{fmtD(p.start)}<div style={{ fontSize: 12, color: C.muted }}>au {fmtD(p.end)}</div></td>
                 <td style={td}><Badge state={p.state} /></td>
                 <td style={{ ...td, whiteSpace: 'nowrap', color: p.state === 'a_produire' ? 'var(--c-on-amber)' : undefined }}>{fmtD(p.deadline)}</td>
@@ -140,7 +142,6 @@ function DeclarationSection({ onAddAdjustment, onAddPayment, refreshKey }) {
               <button className="btn-secondary" onClick={() => onAddAdjustment(selected)} disabled={selected.state === 'declaree'}>+ Ajustement</button>
               <button className="btn-secondary" onClick={() => onAddPayment(selected)}>+ Paiement de taxe</button>
               {selected.state === 'a_produire' && <button className="btn-secondary" onClick={declare} title="Se fait tout seul quand le versement ou le remboursement est rattaché dans Banque">Marquer comme déclarée</button>}
-              {selected.state === 'a_produire' && data.portal_url && <button className="btn-primary" onClick={() => produce(selected)}>Produire la déclaration</button>}
             </div>
           </div>
           {error && <div style={{ color: C.red, fontSize: 13, marginBottom: 10 }}>{error}</div>}
@@ -236,6 +237,17 @@ export function openPortal(url) {
   window.open(url, 'erpcrm-declaration', `popup,width=${w},height=${h},left=${window.screen.availWidth - w},top=0`)
 }
 
+// Ouvrir le portail des taxes (Mon dossier pour les entreprises) ou copier son adresse, dans la fenêtre des montants
+// (double clic sur la période) ; adresse dans les réglages de la compagnie (« Portail pour produire la déclaration »).
+function PortalButtons({ url }) {
+  const [copied, setCopied] = useState(false)
+  return <>
+    <button className="btn-secondary" onClick={() => openPortal(url)} title={url}>Ouvrir Mon dossier</button>
+    <button className="btn-secondary" onClick={async () => { await copyText(url); setCopied(true); setTimeout(() => setCopied(false), 2000) }} title={url}>
+      {copied ? '✓ Lien copié' : 'Copier le lien'}</button>
+  </>
+}
+
 async function copyText(t) {
   try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(t); return } } catch { /* refuse : ancienne methode */ }
   const a = document.createElement('textarea')       // page non securisee (http) ou presse-papiers refuse
@@ -277,7 +289,7 @@ function FilingHelper({ period, portalUrl, onClose }) {
                   display: 'flex', flexDirection: 'column', background: 'var(--c-surface)', border: '1px solid var(--c-border-strong)', borderRadius: 12, boxShadow: '0 12px 40px rgba(0,0,0,.35)' }}>
       <div style={{ padding: '14px 16px 8px' }}>
         <div style={{ fontSize: 16, fontWeight: 700 }}>Déclaration du {periodLabel(period)}</div>
-        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Le portail est ouvert dans sa fenêtre. Copie chaque montant dans la case du même numéro.</div>
+        <div style={{ fontSize: 12, color: C.muted, marginTop: 4 }}>Ouvre Mon dossier (ou copie le lien), puis copie chaque montant dans la case du même numéro.</div>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px', fontSize: 13 }}>
         {!form ? <div style={{ color: C.muted }}>Calcul...</div> : <>
@@ -291,7 +303,7 @@ function FilingHelper({ period, portalUrl, onClose }) {
         </>}
       </div>
       <div className="modal-actions" style={{ padding: '10px 16px', margin: 0 }}>
-        <button className="btn-secondary" onClick={() => openPortal(portalUrl)}>Rouvrir le portail</button>
+        {portalUrl && <PortalButtons url={portalUrl} />}
         <button className="btn-primary" onClick={onClose}>Fermer</button>
       </div>
     </div>

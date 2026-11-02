@@ -19,6 +19,8 @@ DEFAULTS = {
     "ticket_statuses": ["ouvert", "en_cours", "en_attente_client"],
     "bank": True,                 # rappel d'importer le relevé
     "bank_days": 5,               # jours après le dernier import ; jour fermé (horaire, férié) -> dernier jour ouvert d'avant
+    "mail_review": True,          # TASK-006.23 : courriels à vérifier (classés par Zéko, contacts créés, à classer)
+    "mail_review_days": 30,       # « À classer » reçus depuis combien de jours
     "browser": False,             # notification du navigateur en plus de la cloche (Philippe : la cloche seulement pour l'instant)
 }
 KEY = "notifications_config"
@@ -49,12 +51,16 @@ async def load(fresh: bool = False) -> dict:
 
 def validate(data: dict) -> dict:
     cfg = _merge(data)
-    for k in ("mail", "invoices", "tickets", "bank", "browser"):
+    for k in ("mail", "invoices", "tickets", "bank", "browser", "mail_review"):
         cfg[k] = bool(cfg[k])
     st = [s for s in cfg["ticket_statuses"] or [] if s in TICKET_STATUSES]
     if cfg["tickets"] and not st:
         raise ValueError("Tickets pas finis : coche au moins un statut")
     cfg["ticket_statuses"] = st
+    try:
+        cfg["mail_review_days"] = max(1, min(365, int(cfg["mail_review_days"])))
+    except (TypeError, ValueError):
+        raise ValueError("Courriels à vérifier : un nombre de jours de 1 à 365")
     try:
         cfg["bank_days"] = int(cfg["bank_days"])
     except (TypeError, ValueError):
@@ -111,6 +117,18 @@ async def collect(db, user) -> dict:
             out.append({"kind": "mail", "label": "Courriels non lus", "count": n, "path": "/mail?view=unread",
                         "lines": [{"text": f"{m.from_name or m.from_email or '?'} : {m.subject or '(sans objet)'}",
                                    "path": "/mail?view=unread"} for m in rows]})
+
+    if cfg["mail_review"] and privileges.allows(privs, "courriels"):     # TASK-006.23
+        from app.core import mail_rules
+        q = (select(MailMessage).join(Mailbox, Mailbox.id == MailMessage.mailbox_id)
+             .where(_visible(user), ~Mailbox.functions.any("tickets"), mail_rules.to_review(cfg["mail_review_days"])))
+        n = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar()
+        if n:
+            rows = (await db.execute(q.order_by(MailMessage.sent_at.desc().nulls_last()).limit(5))).scalars().all()
+            out.append({"kind": "mail_review", "label": "Courriels à vérifier", "count": n, "path": "/mail?view=verifier",
+                        "zeko": "Regarde avec moi mes courriels à vérifier et propose-moi des règles",
+                        "lines": [{"text": f"{mail_rules.review_reason(m)} · {m.from_name or m.from_email or '?'} : {m.subject or '(sans objet)'}",
+                                   "path": "/mail?view=verifier"} for m in rows]})
 
     if cfg["invoices"] and privileges.allows(privs, "ventes"):
         q = (select(Invoice, Company.name).join(Company, Company.id == Invoice.company_id, isouter=True)

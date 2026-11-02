@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select
 from jose import JWTError
 from app.core.database import get_db
-from app.core import audit
+from app.core import audit, login_guard
 from app.core.config import settings
 from app.core.security import verify_password, create_access_token, decode_token, hash_password
 from app.models.user import User
@@ -22,13 +22,22 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(func.lower(User.email) == (payload.email or "").strip().lower()))
     user = result.scalar_one_or_none()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Identifiants invalides")
+    # TASK-001.1 : compte bloqué -> refusé, même avec le bon mot de passe
+    blocked = login_guard.refusal(user)
+    if blocked:
+        raise HTTPException(status_code=blocked[0], detail=blocked[1])
+    if not verify_password(payload.password, user.hashed_password):
+        msg = login_guard.failed(user, await login_guard.load())
+        await db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=msg)
 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Compte desactive")
 
     audit.set_user(user.id)          # la connexion est inscrite au nom de la personne
+    login_guard.succeeded(user)
     user.last_login = datetime.now(timezone.utc)
     await db.commit()
 

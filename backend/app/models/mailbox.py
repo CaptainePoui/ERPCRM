@@ -80,7 +80,17 @@ class MailMessage(Base):
     flag_pending: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)   # lu/non lu change ici, pas encore ecrit dans la boite
     company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
     contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
-    classified_by: Mapped[str | None] = mapped_column(String(10))     # auto | manual
+    classified_by: Mapped[str | None] = mapped_column(String(10))     # auto | manual | zeko | regle
+    # TASK-006.22 : la regle qui a agi sur ce courriel ; dossier de la boite ou une regle le deplace (move_state : move = a
+    # faire au prochain tour, done = deplace ; move_error = dernier echec, reessaye a chaque tour)
+    rule_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_rules.id", ondelete="SET NULL"))
+    move_to: Mapped[str | None] = mapped_column(String(255))
+    move_state: Mapped[str | None] = mapped_column(String(10))
+    move_error: Mapped[str | None] = mapped_column(String(500))
+    # TASK-006.23 : classement par Zeko ou contact cree a partir de ce courriel, vu et accepte (« C'est bon », « Changer »)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # TASK-006.24 : réponse automatique d'une règle (core/mail_autoreply.py) : etat, regle_id, brouillon, raison, le
+    auto_reply: Mapped[dict | None] = mapped_column(JSONB)
     # TASK-047.4 : contact lie a plusieurs compagnies, compagnie pas trouvee -> popup a la lecture ; « Me le rappeler
     # plus tard » = true sur CE courriel seulement : le prochain courriel du fil (recu ou envoye) redemande.
     company_ask_later: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
@@ -136,3 +146,31 @@ class MailBlock(Base):
     pattern: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)     # en minuscules, sans « @ » devant
     created_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class MailRule(Base):
+    """Regle des courriels, comme celles d'Outlook (TASK-006.22, Philippe 2026-11-02 : « j'aimerais le même système que
+    les règles de Outlook : on peut choisir juste l'expéditeur ou le titre ou plein d'autres options, et on peut même en
+    choisir plusieurs ; on pourrait aussi choisir de les mettre lus ou de les déplacer... consulter ses règles dans les
+    settings, les modifier ou les enlever si un bug survient »).
+
+    Appliquee par le PROGRAMME a l'arrivee d'un courriel (core/mail_rules.py), avant le classement par adresse ; creee a la
+    main (Administration -> Zeko -> Regles des courriels), depuis un courriel (« Toujours faire ça ? ») ou par Zeko.
+    conditions : [{champ, op, valeur}] ; correspondance : toutes | une ; actions : {compagnie_id, contact_id, lu,
+    a_jeter, arreter}. Jamais supprimee en silence : desactivable, modifiable, supprimable par la personne."""
+    __tablename__ = "mail_rules"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    match: Mapped[str] = mapped_column(String(10), nullable=False, default="toutes", server_default="toutes")
+    conditions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
+    actions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict, server_default="{}")
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="manuel", server_default="manuel")   # manuel | zeko
+    hits: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    last_hit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                                                 onupdate=lambda: datetime.now(timezone.utc))
