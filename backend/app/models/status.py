@@ -21,6 +21,9 @@ class Status(Base):
     contact_tabs: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
     # À qui la pastille s'offre (TASK-002.14) : both | companies | contacts ; une fiche qui la porte déjà la garde
     applies_to: Mapped[str] = mapped_column(String(10), nullable=False, default="both", server_default="both")
+    # TASK-002.20 : pastille-menu déroulant (« Système numérique » -> Norstar MICS…) ; [{"group": str|None, "options": [str]}]
+    choice_menu: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    choices: Mapped[list] = mapped_column(JSONB, nullable=False, default=list, server_default="[]")
 
     entity_statuses: Mapped[list["EntityStatus"]] = relationship("EntityStatus", back_populates="status")
 
@@ -32,6 +35,7 @@ class EntityStatus(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("entities.id", ondelete="CASCADE"), primary_key=True)
     status_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("statuses.id", ondelete="CASCADE"), primary_key=True)
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    choice: Mapped[str | None] = mapped_column(String(200))     # TASK-002.20 : choix du menu de la pastille
 
     entity: Mapped["Entity"] = relationship("Entity", back_populates="statuses")
     status: Mapped["Status"] = relationship("Status", back_populates="entity_statuses")

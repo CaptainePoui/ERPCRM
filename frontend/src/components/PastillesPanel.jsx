@@ -1,11 +1,25 @@
 // Administration -> Pastilles (TASK-002.3, 2026-10-10) : les pastilles des compagnies et des contacts (client,
 // fournisseur, sous-traitant...). Ajouter, renommer, changer la couleur, désactiver. Jamais supprimées : une pastille
 // désactivée ne s'offre plus sur les fiches, mais reste sur celles qui la portent.
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import api from '../services/api'
 import { contrastText } from '../utils/color'
 
-const EMPTY = { name: '', color: '#6B7280', company_tabs: [], contact_tabs: [], applies_to: 'both' }
+const EMPTY = { name: '', color: '#6B7280', company_tabs: [], contact_tabs: [], applies_to: 'both', choice_menu: false, choicesText: '' }
+// TASK-002.20 (2026-11-04) : menu déroulant d'une pastille, écrit un choix par ligne ; une ligne qui finit par « : » = groupe
+const toText = groups => (groups || []).map(g => (g.group ? `${g.group} :\n` : '') + g.options.join('\n')).join('\n\n')
+function toGroups(text) {
+  const out = []
+  let cur = null
+  for (const raw of (text || '').split('\n')) {
+    const line = raw.trim()
+    if (!line) continue
+    if (line.endsWith(':')) { cur = { group: line.slice(0, -1).trim(), options: [] }; out.push(cur); continue }
+    if (!cur) { cur = { group: null, options: [] }; out.push(cur) }
+    cur.options.push(line)
+  }
+  return out.filter(g => g.options.length)
+}
 // TASK-002.14 : à qui la pastille s'offre (une fiche qui la porte déjà la garde)
 const APPLIES = [['both', 'Compagnies et contacts'], ['companies', 'Compagnies'], ['contacts', 'Contacts']]
 const appliesLabel = Object.fromEntries(APPLIES)
@@ -33,14 +47,17 @@ export default function PastillesPanel() {
   function start(r) {
     setError('')
     setEditing(r ? r.id : 'new')
-    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active, company_tabs: r.company_tabs || [], contact_tabs: r.contact_tabs || [], applies_to: r.applies_to || 'both' } : EMPTY)
+    setForm(r ? { name: r.name, color: r.color || '#6B7280', is_active: r.is_active, company_tabs: r.company_tabs || [], contact_tabs: r.contact_tabs || [], applies_to: r.applies_to || 'both', choice_menu: !!r.choice_menu, choicesText: toText(r.choices) } : EMPTY)
   }
 
   async function save() {
     setSaving(true); setError('')
     try {
-      if (editing === 'new') await api.post('/v1/admin/statuses', form)
-      else await api.put(`/v1/admin/statuses/${editing}`, form)
+      const { choicesText, ...rest } = form
+      const body = { ...rest, choices: toGroups(choicesText) }
+      if (body.choice_menu && !body.choices.length) { setError('Menu déroulant : écris au moins un choix'); return }
+      if (editing === 'new') await api.post('/v1/admin/statuses', body)
+      else await api.put(`/v1/admin/statuses/${editing}`, body)
       setEditing(null)
       load()
     } catch (e) { setError(e.response?.data?.detail || 'Erreur') } finally { setSaving(false) }
@@ -107,6 +124,26 @@ export default function PastillesPanel() {
     </>
   )
 
+  const nChoices = toGroups(form.choicesText).reduce((n, g) => n + g.options.length, 0)
+  const menuRow = (
+    <tr>
+      <td colSpan={7} style={{ paddingTop: 0 }}>
+        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.choice_menu} onChange={e => setForm(p => ({ ...p, choice_menu: e.target.checked }))} />
+          Menu déroulant : en posant la pastille, on choisit dans une liste (ex. « Système numérique » → Norstar MICS)
+        </label>
+        {form.choice_menu && (
+          <div style={{ marginTop: 6 }}>
+            <textarea value={form.choicesText} onChange={e => setForm(p => ({ ...p, choicesText: e.target.value }))} rows={14}
+              placeholder={'Un choix par ligne. Une ligne qui finit par « : » commence un groupe, par exemple :\nNortel / Norstar :\nNorstar CICS\nNorstar MICS\n\nToshiba :\nStrata CIX40'}
+              style={{ width: '100%', minWidth: 'min(640px, 90vw)', fontSize: 13, fontFamily: 'inherit', padding: 8, boxSizing: 'border-box' }} />
+            <div style={{ fontSize: 12, color: 'var(--c-faint)' }}>{nChoices} choix. Un choix retiré de la liste reste sur les fiches qui l'ont déjà.</div>
+          </div>
+        )}
+      </td>
+    </tr>
+  )
+
   return (
     <div>
       <div className="adm-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -130,12 +167,13 @@ export default function PastillesPanel() {
         <table className="adm-table">
           <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th title="Pastille de contact : onglets de sa fiche. Pastille de compagnie : onglets donnés aux fiches de ses contacts.">Onglets sur la fiche contact</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
           <tbody>
-            {editing === 'new' && <tr>{editRow}</tr>}
+            {editing === 'new' && <><tr>{editRow}</tr>{menuRow}</>}
             {rows.map(r => (
-              <tr key={r.id}>
+              <Fragment key={r.id}>
+              <tr>
                 {editing === r.id ? editRow : (
                   <>
-                    <td>{chip(r.name, r.color, !r.is_active)}</td>
+                    <td>{chip(r.name, r.color, !r.is_active)}{r.choice_menu && <span style={{ fontSize: 12, color: 'var(--c-muted)', marginLeft: 6, whiteSpace: 'nowrap' }}>▾ {(r.choices || []).reduce((n, g) => n + g.options.length, 0)} choix</span>}</td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13, whiteSpace: 'nowrap' }}>{appliesLabel[r.applies_to] || appliesLabel.both}</td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>
                       {(r.company_tabs || []).length ? TABS.filter(([k]) => r.company_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
@@ -151,6 +189,8 @@ export default function PastillesPanel() {
                   </>
                 )}
               </tr>
+              {editing === r.id && menuRow}
+              </Fragment>
             ))}
           </tbody>
         </table>

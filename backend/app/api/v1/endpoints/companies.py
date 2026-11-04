@@ -34,6 +34,8 @@ from app.models.user import User
 from app.schemas.company import CompanyCreate, CompanyUpdate, CompanyOut, CompanyListItem, ContactInCompanyOut, VendorRef
 from app.schemas.contact import ContactCompanyLink, ContactCompanyUpdate
 
+from app.schemas.common import status_out
+
 router = APIRouter()
 
 
@@ -96,7 +98,7 @@ def _build_company_out(company: Company) -> CompanyOut:
         tvq_applicable=company.tvq_applicable,
         created_at=entity.created_at,
         updated_at=entity.updated_at,
-        statuses=[es.status for es in entity.statuses],
+        statuses=[status_out(es) for es in entity.statuses],
         addresses=entity.addresses,
         communications=entity.communication_channels,
         contacts=contacts_out,
@@ -186,7 +188,7 @@ async def list_companies(db: AsyncSession = Depends(get_db), _: User = Depends(g
             industry=c.industry,
             is_active=c.is_active,
             created_at=c.entity.created_at,
-            statuses=[es.status for es in c.entity.statuses],
+            statuses=[status_out(es) for es in c.entity.statuses],
             internal_manager=c.internal_manager,
             city=city,
             sipv_enabled=c.sipv_enabled,
@@ -707,23 +709,36 @@ async def set_group(company_id: uuid.UUID, payload: GroupIn, db: AsyncSession = 
     return {**await get_group(company_id, db, current_user), "warnings": warnings}
 
 
+class StatusChoiceIn(BaseModel):
+    choice: str | None = None      # TASK-002.20 : choix du menu de la pastille (vide = à choisir plus tard)
+
+
 @router.post("/{company_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def assign_status(company_id: uuid.UUID, status_id: uuid.UUID, payload: StatusChoiceIn | None = None,
+                        db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     result = await db.execute(select(Company).where(Company.id == company_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Compagnie introuvable")
-    existing = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == company_id, EntityStatus.status_id == status_id))
-    if not existing.scalar_one_or_none():
-        await status_scope.check(db, [status_id], "companies")       # TASK-002.14
-        db.add(EntityStatus(entity_id=company_id, status_id=status_id))
-        st = await db.execute(select(Status).where(Status.id == status_id))
-        st_obj = st.scalar_one_or_none()
-        _log(db, company_id, current_user, "status_added",
-             description=f"Pastille « {st_obj.name if st_obj else status_id} » ajoutée")
-        if status_id == await vendors_core.supplier_status_id(db):    # TASK-044.6 : apparaît dans Achats -> Fournisseurs
-            await db.flush()
-            await vendors_core.ensure_vendor(db, await db.get(Company, company_id))
-        await db.commit()
+    existing = (await db.execute(select(EntityStatus).where(EntityStatus.entity_id == company_id, EntityStatus.status_id == status_id))).scalar_one_or_none()
+    st_obj = await db.get(Status, status_id)
+    if not st_obj:
+        raise HTTPException(status_code=404, detail="Pastille introuvable")
+    choice = status_scope.check_choice(st_obj, payload.choice if payload else None)
+    if existing:                     # déjà portée : changer le choix de son menu
+        if payload is not None and existing.choice != choice:
+            _log(db, company_id, current_user, "status_changed",
+                 description=f"Pastille « {st_obj.name} » : {existing.choice or '(aucun choix)'} → {choice or '(aucun choix)'}")
+            existing.choice = choice
+            await db.commit()
+        return
+    await status_scope.check(db, [status_id], "companies")       # TASK-002.14
+    db.add(EntityStatus(entity_id=company_id, status_id=status_id, choice=choice))
+    _log(db, company_id, current_user, "status_added",
+         description=f"Pastille « {st_obj.name}{f' · {choice}' if choice else ''} » ajoutée")
+    if status_id == await vendors_core.supplier_status_id(db):    # TASK-044.6 : apparaît dans Achats -> Fournisseurs
+        await db.flush()
+        await vendors_core.ensure_vendor(db, await db.get(Company, company_id))
+    await db.commit()
 
 
 @router.delete("/{company_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)

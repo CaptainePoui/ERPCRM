@@ -22,6 +22,8 @@ from app.models.user import User
 from app.schemas.contact import ContactCreate, ContactUpdate, ContactOut, ContactListItem, CompanyInContactOut
 from pydantic import BaseModel
 
+from app.schemas.common import status_out
+
 router = APIRouter()
 
 
@@ -72,7 +74,7 @@ def _build_contact_out(contact: Contact) -> ContactOut:
         is_active=contact.is_active,
         created_at=contact.entity.created_at,
         updated_at=contact.entity.updated_at,
-        statuses=[es.status for es in contact.entity.statuses],
+        statuses=[status_out(es) for es in contact.entity.statuses],
         companies=companies_out,
     )
 
@@ -153,7 +155,7 @@ async def list_contacts(
         last_name=c.last_name,
         is_active=c.is_active,
         created_at=c.entity.created_at,
-        statuses=[es.status for es in c.entity.statuses],
+        statuses=[status_out(es) for es in c.entity.statuses],
         companies=[CompanyInContactOut(
             contact_company_id=cc.id,
             company_id=cc.company.id,
@@ -984,10 +986,10 @@ async def company_statuses(contact_id: uuid.UUID, db: AsyncSession = Depends(get
     for cc in sorted(links, key=lambda l: not l.is_primary):
         if not cc.company:
             continue
-        sts = (await db.execute(select(Status).join(EntityStatus, EntityStatus.status_id == Status.id)
-                                .where(EntityStatus.entity_id == cc.company_id).order_by(Status.name))).scalars().all()
+        sts = (await db.execute(select(Status, EntityStatus.choice).join(EntityStatus, EntityStatus.status_id == Status.id)
+                                .where(EntityStatus.entity_id == cc.company_id).order_by(Status.name))).all()
         out.append({"company_id": str(cc.company_id), "company_name": cc.company.name, "is_primary": cc.is_primary,
-                    "statuses": [{"name": s.name, "color": s.color} for s in sts]})
+                    "statuses": [{"name": s.name, "color": s.color, "choice": ch} for s, ch in sts]})
     return out
 
 
@@ -1001,16 +1003,30 @@ async def contact_tabs(contact_id: uuid.UUID, db: AsyncSession = Depends(get_db)
     return out
 
 
+class StatusChoiceIn(BaseModel):
+    choice: str | None = None      # TASK-002.20 : choix du menu de la pastille
+
+
 @router.post("/{contact_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def assign_status(contact_id: uuid.UUID, status_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def assign_status(contact_id: uuid.UUID, status_id: uuid.UUID, payload: StatusChoiceIn | None = None,
+                        db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+    from app.core import status_scope
+    from app.models.status import Status
     if not (await db.execute(select(Contact).where(Contact.id == contact_id))).scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Contact introuvable")
-    existing = await db.execute(select(EntityStatus).where(EntityStatus.entity_id == contact_id, EntityStatus.status_id == status_id))
-    if not existing.scalar_one_or_none():
-        from app.core import status_scope
-        await status_scope.check(db, [status_id], "contacts")        # TASK-002.14
-        db.add(EntityStatus(entity_id=contact_id, status_id=status_id))
-        await db.commit()
+    st_obj = await db.get(Status, status_id)
+    if not st_obj:
+        raise HTTPException(status_code=404, detail="Pastille introuvable")
+    choice = status_scope.check_choice(st_obj, payload.choice if payload else None)
+    existing = (await db.execute(select(EntityStatus).where(EntityStatus.entity_id == contact_id, EntityStatus.status_id == status_id))).scalar_one_or_none()
+    if existing:
+        if payload is not None and existing.choice != choice:
+            existing.choice = choice
+            await db.commit()
+        return
+    await status_scope.check(db, [status_id], "contacts")        # TASK-002.14
+    db.add(EntityStatus(entity_id=contact_id, status_id=status_id, choice=choice))
+    await db.commit()
 
 
 @router.delete("/{contact_id}/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)

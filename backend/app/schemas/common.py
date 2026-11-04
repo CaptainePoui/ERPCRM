@@ -9,8 +9,16 @@ class StatusOut(BaseModel):
     color: str | None
     is_system: bool
     applies_to: str = "both"
+    choice_menu: bool = False          # TASK-002.20 : pastille-menu déroulant
+    choices: list = []                 # [{"group": str|None, "options": [str]}]
+    choice: str | None = None          # choix gardé sur la fiche (entity_statuses.choice)
 
     model_config = {"from_attributes": True}
+
+
+def status_out(es) -> StatusOut:
+    """Pastille portée par une fiche, avec le choix de son menu (TASK-002.20)."""
+    return StatusOut.model_validate(es.status).model_copy(update={"choice": es.choice})
 
 
 class FunctionOut(BaseModel):

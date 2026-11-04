@@ -205,6 +205,8 @@ class StatusAdminOut(BaseModel):
     company_tabs: list[str] = []
     contact_tabs: list[str] = []
     applies_to: str = "both"
+    choice_menu: bool = False
+    choices: list = []
 
 
 class StatusAdminIn(BaseModel):
@@ -214,6 +216,8 @@ class StatusAdminIn(BaseModel):
     company_tabs: list[str] | None = None     # onglets apportés sur la fiche compagnie (TASK-002.13)
     contact_tabs: list[str] | None = None     # onglets apportés sur la fiche contact (TASK-002.17)
     applies_to: str | None = None             # both | companies | contacts (TASK-002.14)
+    choice_menu: bool | None = None           # menu déroulant (TASK-002.20)
+    choices: list | None = None               # [{"group": str|None, "options": [str]}]
 
 
 def _clean_status(payload: StatusAdminIn) -> dict:
@@ -238,13 +242,17 @@ def _clean_status(payload: StatusAdminIn) -> dict:
         data["contact_tabs"] = ct.clean(data["contact_tabs"])
     if data.get("applies_to") is not None and data["applies_to"] not in ("both", "companies", "contacts"):
         raise HTTPException(status_code=422, detail="S'offre à : compagnies, contacts ou les deux")
+    if data.get("choices") is not None:
+        from app.core.status_scope import clean_choices
+        data["choices"] = clean_choices(data["choices"])
     return data
 
 
 async def _status_out(db: AsyncSession, s: Status) -> StatusAdminOut:
     used = (await db.execute(select(func.count()).select_from(EntityStatus).where(EntityStatus.status_id == s.id))).scalar_one()
     return StatusAdminOut(id=s.id, name=s.name, color=s.color, is_active=s.is_active, used=used, company_tabs=s.company_tabs or [],
-                          contact_tabs=s.contact_tabs or [], applies_to=s.applies_to or "both")
+                          contact_tabs=s.contact_tabs or [], applies_to=s.applies_to or "both",
+                          choice_menu=bool(s.choice_menu), choices=s.choices or [])
 
 
 async def _name_taken(db: AsyncSession, name: str, exclude: uuid.UUID | None = None) -> bool:
@@ -269,7 +277,8 @@ async def create_status(payload: StatusAdminIn, db: AsyncSession = Depends(get_d
         raise HTTPException(status_code=409, detail="Cette pastille existe déjà")
     s = Status(name=data["name"], color=data.get("color") or "#6B7280", is_active=data.get("is_active", True), is_system=False,
                company_tabs=data.get("company_tabs") or [], contact_tabs=data.get("contact_tabs") or [],
-               applies_to=data.get("applies_to") or "both")
+               applies_to=data.get("applies_to") or "both",
+               choice_menu=bool(data.get("choice_menu")), choices=data.get("choices") or [])
     db.add(s)
     await db.commit()
     await db.refresh(s)
