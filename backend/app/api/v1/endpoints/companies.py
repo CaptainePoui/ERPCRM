@@ -900,14 +900,17 @@ class PhotoOut(BaseModel):
     caption: str | None
     uploaded_by: str | None
     created_at: datetime
+    ticket_id: uuid.UUID | None = None        # TASK-024.2 : image gardée pour ce ticket (ne se retire pas ici)
+    ticket_number: str | None = None
 
     model_config = {"from_attributes": True}
 
 
-def _photo_out(p: InstallationPhoto) -> PhotoOut:
+def _photo_out(p: InstallationPhoto, ticket=None) -> PhotoOut:
     return PhotoOut(
         id=p.id, url=f"/uploads/installation_photos/{p.filename}", caption=p.caption,
         uploaded_by=p.uploaded_by.full_name if p.uploaded_by else None, created_at=p.created_at,
+        ticket_id=ticket[0] if ticket else None, ticket_number=ticket[1] if ticket else None,
     )
 
 
@@ -917,7 +920,12 @@ async def list_photos(company_id: uuid.UUID, db: AsyncSession = Depends(get_db),
         select(InstallationPhoto).options(selectinload(InstallationPhoto.uploaded_by))
         .where(InstallationPhoto.company_id == company_id).order_by(InstallationPhoto.created_at.desc())
     )
-    return [_photo_out(p) for p in result.scalars().all()]
+    photos = result.scalars().all()
+    from app.models.ticket import Ticket, TicketAttachment, TicketMessage
+    links = {f[len("photo:"):]: (tid, num) for f, tid, num in (await db.execute(
+        select(TicketAttachment.filename, Ticket.id, Ticket.number).join(TicketMessage, TicketMessage.id == TicketAttachment.message_id)
+        .join(Ticket, Ticket.id == TicketMessage.ticket_id).where(Ticket.company_id == company_id, TicketAttachment.filename.like("photo:%")))).all()}
+    return [_photo_out(p, links.get(p.filename)) for p in photos]
 
 
 @router.post("/{company_id}/photos", response_model=PhotoOut, status_code=status.HTTP_201_CREATED)

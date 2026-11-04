@@ -43,6 +43,11 @@ api.interceptors.response.use(
     if (err.response?.status === 403 && (err.config?.method || 'get') !== 'get' && typeof detail === 'string') {
       window.dispatchEvent(new CustomEvent('erpcrm-refus', { detail }))
     }
+    // Suppression refusée (2026-11-04, Philippe : « quand ça refuse de deleter, ça le dit ? impossible, appartient à
+    // ticket xxxx ou à RDV date ou autre ») : la raison donnée par le serveur s'affiche toujours, partout
+    else if ((err.config?.method || '') === 'delete' && [400, 409, 422].includes(err.response?.status) && typeof detail === 'string') {
+      window.dispatchEvent(new CustomEvent('erpcrm-refus', { detail: `Suppression refusée : ${detail}` }))
+    }
     return Promise.reject(err)
   }
 )

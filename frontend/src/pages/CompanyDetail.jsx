@@ -1603,7 +1603,7 @@ function PhotosTab({ companyId }) {
 
   async function remove(photoId) {
     if (!await askConfirm('Retirer cette photo ?')) return
-    await api.delete(`/v1/companies/${companyId}/photos/${photoId}`)
+    try { await api.delete(`/v1/companies/${companyId}/photos/${photoId}`) } catch { /* la raison s'affiche en haut (services/api.js) */ }
     load()
   }
 
@@ -1647,6 +1647,8 @@ function PhotosTab({ companyId }) {
               </a>
               <div style={{ padding: '8px 10px' }}>
                 <div style={{ fontSize: 13, color: 'var(--c-text-2)' }}>{p.caption || <span style={{ color: 'var(--c-faint)' }}>Sans légende</span>}</div>
+                {p.ticket_id && <a href={`/tickets/${p.ticket_id}`} title="Image gardée pour ce ticket : elle se retire depuis le ticket"
+                  style={{ display: 'inline-block', fontSize: 11, fontWeight: 600, marginTop: 4, padding: '1px 8px', borderRadius: 10, background: 'var(--c-tint-blue)', color: 'var(--c-on-blue)', textDecoration: 'none' }}>Ticket {p.ticket_number}</a>}
                 <div style={{ fontSize: 11, color: 'var(--c-faint)', marginTop: 4, display: 'flex', justifyContent: 'space-between' }}>
                   <span>{p.uploaded_by || '—'} · {new Date(p.created_at).toLocaleDateString('fr-CA')}</span>
                   <button onClick={() => remove(p.id)} style={{ color: '#DC2626', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11 }}>Retirer</button>
