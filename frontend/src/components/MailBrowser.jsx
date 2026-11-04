@@ -232,6 +232,82 @@ function ZekoRdvBox({ mail, onDone }) {
   )
 }
 
+// Expéditeur déjà contact ? (2026-11-02, Philippe : « un check sur les signatures, à savoir s'il est déjà un contact, et
+// sinon un bouton pour l'ajouter quand je lis un courriel ») : ✓ et lien vers sa fiche, sinon « + Ajouter ce contact »
+// pré-rempli (nom de l'expéditeur, téléphones lus dans sa signature, compagnie du courriel ou de son domaine).
+function SenderCheck({ mail, onAdded, navigate }) {
+  const [info, setInfo] = useState(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => { setInfo(null); api.get(`/v1/mail/${mail.id}/sender`).then(r => setInfo(r.data)).catch(() => setInfo(null)) }, [mail.id, mail.contact_id])
+  if (!info || info.own) return null
+  if (info.contact) return (
+    <span style={{ fontSize: 12, color: 'var(--c-on-green)' }} title="L'expéditeur est déjà un contact">
+      ✓ contact : <a href={`/contacts/${info.contact.id}`} onClick={e => { e.preventDefault(); navigate(`/contacts/${info.contact.id}`) }}>{info.contact.name}</a>{info.contact.company ? ` (${info.contact.company})` : ''}
+    </span>
+  )
+  return <>
+    <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} title="L'expéditeur n'est pas encore un contact" onClick={() => setOpen(true)}>+ Ajouter ce contact</button>
+    {open && <AddSenderModal mail={mail} s={info.suggestion} onClose={() => setOpen(false)} onDone={d => { setOpen(false); onAdded(d) }} />}
+  </>
+}
+
+function AddSenderModal({ mail, s, onClose, onDone }) {
+  const [f, setF] = useState({ first_name: s.first_name || '', last_name: s.last_name || '', email: s.email || '', phone: s.phone || '', extension: s.extension || '', mobile: s.mobile || '' })
+  const [companies, setCompanies] = useState([])
+  const [company, setCompany] = useState(s.company_id ? { id: s.company_id, label: s.company } : null)
+  const [dup, setDup] = useState(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  useEffect(() => { api.get('/v1/companies').then(r => setCompanies(r.data)) }, [])
+  const set = (k, v) => setF(p => ({ ...p, [k]: v }))
+  async function save(allow) {
+    setBusy(true); setErr('')
+    try {
+      const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, (v || '').trim() || null]))
+      const c = (await api.post('/v1/contacts', { ...body, first_name: body.first_name || '', last_name: body.last_name || '', allow_duplicate: !!allow,
+        notes_internal: `Ajouté à partir d'un courriel reçu le ${(mail.sent_at || '').slice(0, 10)} (« ${(mail.subject || '').slice(0, 80)} »).` })).data
+      if (company) await api.post(`/v1/companies/${company.id}/contacts`, { contact_id: c.id }).catch(() => {})
+      const r = await api.put(`/v1/mail/${mail.id}/classify`, { company_id: company?.id || null, contact_id: c.id, remember: true })
+      onDone(r.data)
+    } catch (e) {
+      const d = e.response?.data?.detail
+      if (e.response?.status === 409 && d?.matches) setDup(d.matches)
+      else setErr(typeof d === 'string' ? d : 'Création impossible')
+    } finally { setBusy(false) }
+  }
+  const row = (label, k, ph) => (
+    <div className="form-group" style={{ marginBottom: 8 }}>
+      <label className="ifield-label">{label}</label>
+      <input value={f[k]} onChange={e => set(k, e.target.value)} placeholder={ph} style={{ width: '100%' }} />
+    </div>
+  )
+  return (
+    <div className="modal-overlay" style={{ zIndex: 300 }}>
+      <div className="modal-box" style={{ maxWidth: 520 }} onClick={e => e.stopPropagation()}>
+        <h3 className="modal-title">Ajouter l'expéditeur aux contacts</h3>
+        <p style={{ fontSize: 12, color: 'var(--c-muted)', marginTop: -6 }}>Pré-rempli avec son nom et les numéros lus dans sa signature : vérifie avant d'enregistrer.</p>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 10px' }}>
+          {row('Prénom', 'first_name')}{row('Nom', 'last_name')}
+          {row('Courriel', 'email')}{row('Cellulaire', 'mobile')}
+          {row('Téléphone', 'phone')}{row('Poste', 'extension')}
+        </div>
+        <Autocomplete label="Compagnie" items={companies.map(c => ({ id: c.id, label: c.name, sub: c.account_number }))} value={company} onSelect={setCompany} placeholder="(aucune)" />
+        {dup && (
+          <div style={{ fontSize: 13, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)', borderRadius: 6, padding: 8, marginTop: 8 }}>
+            Existe peut-être déjà : {dup.map(m => `${m.nom}${m.courriel ? ' <' + m.courriel + '>' : ''}`).join(' ; ')}.
+            <button className="btn-secondary" style={{ fontSize: 12, marginLeft: 8 }} disabled={busy} onClick={() => save(true)}>Créer quand même</button>
+          </div>
+        )}
+        {err && <div style={{ color: '#DC2626', fontSize: 13, marginTop: 8 }}>{err}</div>}
+        <div className="modal-actions">
+          <button className="btn-secondary" onClick={onClose}>Annuler</button>
+          <button className="btn-primary" disabled={busy || !(f.first_name.trim() || f.last_name.trim())} onClick={() => save(false)}>{busy ? '…' : 'Ajouter'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Réponse automatique d'une règle (TASK-006.24) : envoyée, préparée (Envoyer / Ne pas envoyer, adresses modifiables) ou
 // pas envoyée (raison ; « Envoyer » la refait, ex. après avoir classé le courriel dans la fiche du client)
 function AutoReplyBox({ mail, onDone }) {
@@ -404,6 +480,7 @@ function Reader({ id, onChanged, onClose, onOpen, onSent, onMoved, go }) {
             </span>
           ) : !m.junk_at && <span style={{ ...chip, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)' }}>À classer</span>}
           {!m.junk_at && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} onClick={() => setClassify(true)}>{company || contact ? 'Changer' : 'Classer'}</button>}
+          {!m.junk_at && m.direction !== 'out' && <SenderCheck mail={m} navigate={navigate} onAdded={d => update(d)} />}
           {!m.junk_at && <button className="btn-secondary" style={{ padding: '2px 10px', fontSize: 12 }} title="Règle comme dans Outlook : classer, marquer lu, déplacer les prochains courriels pareils" onClick={makeRule}>⚙ Créer une règle</button>}
           {!m.junk_at && !m.reviewed_at && (m.classified_by === 'zeko' || m.contact_created) && (
             <span style={{ fontSize: 13, background: 'var(--c-tint-amber)', color: 'var(--c-on-amber)', borderRadius: 6, padding: '3px 8px', display: 'inline-flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>

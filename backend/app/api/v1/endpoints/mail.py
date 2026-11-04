@@ -639,6 +639,66 @@ async def set_reviewed(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user:
     return _row(m, await db.get(Mailbox, m.mailbox_id), companies, contacts)
 
 
+_PHONE = None
+
+
+def _signature_lines(body: str | None) -> list[str]:
+    """Les lignes de la signature : le bas du message, avant le courriel cité (« De : », « From: », « Le … a écrit », « > »)."""
+    import re
+    lines = []
+    for ln in (body or "").splitlines():
+        t = ln.strip()
+        if t.startswith(">") or re.match(r"^(de|from|envoyé|sent|le .+ a écrit|on .+ wrote|-----\s*(original|message))", t, re.I):
+            break
+        lines.append(t)
+    return [l for l in lines if l][-15:]
+
+
+def _read_signature(m) -> dict:
+    """Téléphone, poste, cellulaire et fonction lus dans la signature PAR LE PROGRAMME (recopiés tels qu'écrits, jamais
+    devinés) — pour pré-remplir « Ajouter ce contact »."""
+    import re
+    rx = re.compile(r"(\+?1[\s.-]?)?\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})(?:\s*\(?\s*(?:poste|post\.?|ext\.?|x)\s*[.:#]?\s*(\d{1,6})\)?)?", re.I)
+    out = {}
+    for ln in _signature_lines(m.body_text):
+        for g in rx.finditer(ln):
+            num = f"{g.group(2)}-{g.group(3)}-{g.group(4)}"
+            low = ln.lower()
+            if any(k in low for k in ("cell", "mobile", "cel.", "cel ")) and "mobile" not in out:
+                out["mobile"] = num
+            elif any(k in low for k in ("fax", "téléc", "telec")):
+                continue
+            elif "phone" not in out:
+                out["phone"] = num
+                if g.group(5):
+                    out["extension"] = g.group(5)
+    return out
+
+
+@router.get("/{mid}/sender")
+async def mail_sender(mid: uuid.UUID, db: AsyncSession = Depends(get_db), user: User = Depends(get_current_user)):
+    """L'expéditeur est-il déjà un contact ? (2026-11-02, Philippe : « un check sur les signatures, à savoir s'il est déjà
+    un contact, et sinon un bouton pour l'ajouter quand je lis un courriel ») -> {contact} ou {suggestion} pré-remplie
+    (nom de l'expéditeur, signature, compagnie du courriel ou de son domaine) ; rien pour nos propres adresses."""
+    m = await _get(db, mid, user)
+    addr = (m.from_email or "").strip().lower()
+    own = {b.email.rsplit("@", 1)[-1].lower() for b in (await db.execute(select(Mailbox))).scalars().all() if "@" in b.email}
+    if m.direction == "out" or not addr or addr.rsplit("@", 1)[-1] in own:
+        return {"own": True}
+    company_id, contact_id = await mail_match.by_address(db, addr)
+    if contact_id:
+        c = await db.get(Contact, contact_id)
+        co = await db.get(Company, company_id) if company_id else None
+        return {"contact": {"id": str(c.id), "name": f"{c.first_name or ''} {c.last_name or ''}".strip(),
+                            "company_id": str(co.id) if co else None, "company": co.name if co else None}}
+    first, last = mail_match._split_name(m.from_name, addr)
+    cid = m.company_id or company_id or (None if addr.rsplit("@", 1)[-1] in mail_match.PUBLIC_DOMAINS
+                                         else await mail_match.by_domain(db, addr.rsplit("@", 1)[-1]))
+    co = await db.get(Company, cid) if cid else None
+    return {"suggestion": {"first_name": first, "last_name": last, "email": addr, **_read_signature(m),
+                           "company_id": str(co.id) if co else None, "company": co.name if co else None}}
+
+
 class AutoReplyIn(BaseModel):
     action: str                       # envoyer | annuler
     a: str | None = None              # adresses modifiées (« Modifier »)

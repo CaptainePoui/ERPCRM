@@ -569,7 +569,7 @@ async def add_message(
         data = await f.read()
         if len(data) > ticket_attachments.MAX_BYTES:
             raise HTTPException(status_code=400, detail=f"{f.filename or 'Fichier'} : plus de 15 Mo")
-        ticket_attachments.save(db, msg.id, data, f.filename, f.content_type)
+        ticket_attachments.save(db, msg.id, data, f.filename, f.content_type, ticket=t, user=current_user)
     t.draft_message = None
     t.updated_at = _now()
     await db.commit()

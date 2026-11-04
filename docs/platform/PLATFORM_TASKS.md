@@ -3314,6 +3314,12 @@ sans erreur (vérifié dans les logs du service `erpcrm-frontend`).
 - Fait (`CompanyDetail.jsx`, `PhotosTab`) : Ctrl+V d'une image dans l'onglet Photos → ajoutée tout de suite (sans légende à taper ; plusieurs images = toutes) ; pas quand on écrit dans un champ (la conversation Zéko garde son collage) ; indice « ou Ctrl+V pour coller une capture d'écran » à côté de « + Ajouter une photo ».
 - Vérifié (navigateur, collage simulé d'une image PNG sur Simple IP inc.) : 0 → 1 photo, aucune erreur ; photo d'essai supprimée par l'API (204).
 
+### TASK-024.2 [x] Captures d'écran dans les tickets ; les images des tickets sont gardées dans les Photos de la compagnie
+- **Date de demande** : 2026-11-03 (Philippe : « je ne peux pas copier de capture d'écran dans le ticket, arrange-moi ça, et les images des tickets se gardent dans Photos, comme ça le ticket n'est pas lourd, avec le nom de la photo avec les infos d'où elle a été copiée et la date »). Date de travail : 2026-11-03 / 04.
+- Constaté : le message d'un ticket acceptait déjà Ctrl+V ; pas la fenêtre « Nouveau ticket » (description en texte seulement) ; les images allaient dans `storage/ticket_attachments`.
+- Fait : `core/ticket_attachments.save` : une image d'un ticket qui a une compagnie est enregistrée UNE fois dans les Photos de la compagnie (`InstallationPhoto`, légende « Collée dans le ticket T-xxxxx « titre » le AAAA-MM-JJ HH:MM par <qui> ») et la pièce jointe pointe ce fichier (`photo:<nom>`) ; supprimer le message laisse la photo ; supprimer la photo est refusé tant qu'un ticket l'utilise ; `NewTicketModal.jsx` : Ctrl+V / glisser dans la description, vignettes avec ✕, jointes au ticket à sa création ; migration `e2b7c4d9f1a8` : l'ancienne image de ticket (T-11001, AAA Compagnie test) déplacée dans les Photos avec sa légende.
+- Vérifié : navigateur (AAA Compagnie test) : nouveau ticket + capture collée → T-11017 avec l'image ; une seule copie, dans les Photos (« Collée dans le ticket T-11017 « ESSAI capture TASK-024.2 » le 2026-11-04 03:30 par Philippe Normandeau ») ; image du ticket lue (200) ; ticket et photo d'essai supprimés par l'API ; T-11001 : image toujours lisible (200, 1,2 Mo) après le déplacement ; suppression de sa photo refusée (« dans le ticket T-11001 »).
+
 ## TASK-025 [ERPCRM] [x] Nouveau module Devis (backend + frontend)
 Classification: HISTORICAL
 
@@ -7398,6 +7404,11 @@ Date(s) de travail : 2026-10-29
 - Constaté : le 78 était le nombre de NON LUS (facturation@ 33, service@ 35, philippe@ 10) ; reçus = 553 ; à classer 327 (dont 67 envoyés) ; à vérifier 116.
 - Fait : `GET /mail/folders` → `total` (reçus visibles, pas à jeter) ; « Tous les courriels · 553 » + pastille des non lus (info-bulle « 78 non lus ») ; en-tête « 553 reçus · 78 non lus ». Vérifié (navigateur).
 - Précision de Philippe (2026-11-02) : « non lus a bien 78, mais tous les courriels doit être tous les courriels » → la pastille de « Tous les courriels » montre le total (553), celle de « Non lus » les non lus (78). Vérifié (navigateur) : Tous les courriels 553 | Non lus 78.
+
+### TASK-047.19 [x] Courriel lu : l'expéditeur est-il déjà un contact ? Sinon « + Ajouter ce contact »
+- **Date de demande** : 2026-11-02 (Philippe : « j'aimerais avoir un check sur les signatures, à savoir s'il est déjà un contact, et si non un bouton pour l'ajouter quand je lis un courriel »). Date de travail : 2026-11-03.
+- Fait : `GET /mail/{id}/sender` (rien pour nos propres adresses ou un envoyé ; contact connu par son adresse → `contact` ; sinon `suggestion` : nom de l'expéditeur, téléphone / poste / cellulaire lus dans la signature PAR LE PROGRAMME (bas du message avant le courriel cité, numéros recopiés tels qu'écrits, télécopieur ignoré, formats « poste 23 », « x 12 », « (ext.: 402) »), compagnie du courriel ou de son domaine) ; `MailBrowser.jsx` : « ✓ contact : Nom (compagnie) » avec lien vers sa fiche, sinon « + Ajouter ce contact » → fenêtre pré-remplie (prénom, nom, courriel, téléphone, poste, cellulaire, compagnie), avertissement « existe peut-être déjà » avec « Créer quand même », puis contact relié à la compagnie et courriel classé (adresse retenue).
+- Vérifié : API (Yoann Corriveau → contact ; Michael McGurn → Michael McGurn, 450-441-5005, poste 402, PAD) ; navigateur : bouton et fenêtre pré-remplie (Annuler, rien créé) ; aucune erreur.
 
 ## TASK-048 [ERPCRM+SIPV] [ ] Installation chez un client : un seul endroit pour savoir quoi changer
 Date de demande : 2026-10-09 (Philippe, après TASK-S055.8 : « c'est important d'être dynamique : si on installe chez un client, il faut savoir quoi changer et ne pas chercher partout dans le projet »)

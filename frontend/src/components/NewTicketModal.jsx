@@ -33,6 +33,14 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
   const [quickContact, setQuickContact] = useState(null)
   const [quickCompany, setQuickCompany] = useState(null)
   const [form, setForm] = useState({ title: prefillTitle, priority: 'normal', description: prefillDescription })
+  // Captures d'écran collées (Ctrl+V) ou glissées dans la description (2026-11-03, Philippe : « je ne peux pas copier de
+  // capture d'écran dans le ticket ») : jointes au ticket à sa création, gardées dans les Photos de la compagnie (TASK-024.2)
+  const [shots, setShots] = useState([])
+  const addShots = list => {
+    const imgs = Array.from(list || []).filter(f => f && f.type.startsWith('image/'))
+    if (imgs.length) setShots(p => [...p, ...imgs.map((f, i) => ({ file: f.name && f.name !== 'image.png' ? f : new File([f], `capture-${Date.now()}-${i}.png`, { type: f.type || 'image/png' }), url: URL.createObjectURL(f) }))])
+  }
+  useEffect(() => () => shots.forEach(x => URL.revokeObjectURL(x.url)), [])
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -95,6 +103,12 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
         priority: form.priority,
         description: form.description || null,
       })
+      if (shots.length) {
+        const fd = new FormData()
+        fd.append('body', '')
+        shots.forEach(x => fd.append('files', x.file))
+        await api.post(`/v1/tickets/${r.data.id}/messages`, fd).catch(() => {})
+      }
       onCreated(r.data)
     } finally { setSaving(false) }
   }
@@ -138,7 +152,21 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
           </div>
           <div className="form-group">
             <label>Description</label>
-            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3} />
+            <textarea value={form.description} onChange={e => setForm(p => ({ ...p, description: e.target.value }))} rows={3}
+              onPaste={e => { const f = Array.from(e.clipboardData?.items || []).filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean); if (f.length) { e.preventDefault(); addShots(f) } }}
+              onDragOver={e => e.preventDefault()} onDrop={e => { if (e.dataTransfer.files.length) { e.preventDefault(); addShots(e.dataTransfer.files) } }}
+              placeholder="Ctrl+V ou glisser pour joindre une capture d'écran" />
+            {shots.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                {shots.map((x, i) => (
+                  <span key={i} style={{ position: 'relative' }}>
+                    <img src={x.url} alt="" style={{ height: 60, borderRadius: 4, border: '1px solid var(--c-border)' }} />
+                    <button type="button" title="Retirer" onClick={() => setShots(p => p.filter((_, j) => j !== i))}
+                      style={{ position: 'absolute', top: -6, right: -6, borderRadius: 10, border: 'none', background: '#DC2626', color: '#fff', cursor: 'pointer', fontSize: 11, width: 18, height: 18 }}>✕</button>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={onClose}>Annuler</button>

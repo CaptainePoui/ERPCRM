@@ -950,6 +950,13 @@ async def delete_photo(company_id: uuid.UUID, photo_id: uuid.UUID, db: AsyncSess
     p = result.scalar_one_or_none()
     if not p:
         raise HTTPException(status_code=404, detail="Photo introuvable")
+    # TASK-024.2 : une image d'un ticket est gardée ici ; la retirer briserait le ticket -> on le dit
+    from app.models.ticket import Ticket, TicketAttachment, TicketMessage
+    used = (await db.execute(select(Ticket.number).join(TicketMessage, TicketMessage.ticket_id == Ticket.id)
+                             .join(TicketAttachment, TicketAttachment.message_id == TicketMessage.id)
+                             .where(TicketAttachment.filename == "photo:" + p.filename).limit(1))).scalar()
+    if used:
+        raise HTTPException(status_code=400, detail=f"Cette image est dans le ticket {used} : retire-la du ticket d'abord")
     path = PHOTO_UPLOAD_DIR / p.filename
     if path.exists():
         path.unlink()
