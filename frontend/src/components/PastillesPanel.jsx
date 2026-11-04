@@ -14,7 +14,7 @@ const appliesLabel = Object.fromEntries(APPLIES)
 const TABS = [['tickets', 'Tickets'], ['telephonie', 'Téléphonie'], ['transactions', 'Transactions'], ['entente', 'Entente'],
               ['inventaire', 'Inventaire'], ['conversations', 'Conversations'], ['photos', 'Photos']]   // ordre de la fiche
 // TASK-002.17 : onglets de la fiche contact (Général y est toujours). Même liste que core/contact_tabs.py OPTIONAL.
-const CTABS = [['telephonie', 'Téléphonie'], ['courriels', 'Courriels'], ['provisionnement', 'Provisionnement']]
+const CTABS = [['telephonie', 'Téléphonie'], ['courriels', 'Courriels'], ['provisionnement', 'Provisionnement'], ['conversations', 'Conversations']]
 
 export default function PastillesPanel() {
   const [rows, setRows] = useState(null)
@@ -82,7 +82,8 @@ export default function PastillesPanel() {
         </div>
       </td>
       <td>
-        {form.applies_to !== 'companies' ? (
+        {/* 2026-11-04 : une pastille de compagnie apporte ces onglets aux contacts de la compagnie (p. ex. Hébergé -> Provisionnement) */}
+        {(
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
             {CTABS.map(([k, l]) => (
               <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, whiteSpace: 'nowrap', cursor: 'pointer' }}>
@@ -91,7 +92,7 @@ export default function PastillesPanel() {
               </label>
             ))}
           </div>
-        ) : <span style={{ color: 'var(--c-faint)', fontSize: 13 }}>—</span>}
+        )}
       </td>
       <td />
       <td style={{ textAlign: 'center' }}>
@@ -121,12 +122,13 @@ export default function PastillesPanel() {
         <b>Onglets</b> : ceux que la pastille ajoute sur la fiche d'une compagnie. La fiche montre les onglets de toutes ses
         pastilles. Général, Contacts, Courriels et Journal sont toujours là ; un onglet qui contient déjà des données reste
         visible ; une compagnie sans pastille, et la compagnie du propriétaire, montrent tous les onglets. Même chose pour la
-        fiche d'un contact (Général toujours là ; un contact sans pastille montre tous ses onglets).
+        fiche d'un contact (Général toujours là ; un contact sans pastille montre tous ses onglets, sauf Provisionnement).
+        Une pastille de compagnie peut aussi donner des onglets aux fiches de ses contacts (par exemple « Hébergé » → Provisionnement).
       </p>
       {error && <div className="form-error">{error}</div>}
       <div style={{ overflowX: 'auto' }}>
         <table className="adm-table">
-          <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th>Onglets sur la fiche contact</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
+          <thead><tr><th>Pastille</th><th>S'offre à</th><th>Onglets sur la fiche compagnie</th><th title="Pastille de contact : onglets de sa fiche. Pastille de compagnie : onglets donnés aux fiches de ses contacts.">Onglets sur la fiche contact</th><th>Fiches</th><th style={{ textAlign: 'center' }}>Active</th><th></th></tr></thead>
           <tbody>
             {editing === 'new' && <tr>{editRow}</tr>}
             {rows.map(r => (
@@ -139,7 +141,7 @@ export default function PastillesPanel() {
                       {(r.company_tabs || []).length ? TABS.filter(([k]) => r.company_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
                     </td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>
-                      {r.applies_to === 'companies' ? '—' : (r.contact_tabs || []).length ? CTABS.filter(([k]) => r.contact_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
+                      {(r.contact_tabs || []).length ? CTABS.filter(([k]) => r.contact_tabs.includes(k)).map(([, l]) => l).join(', ') : <span style={{ color: 'var(--c-faint)' }}>aucun</span>}
                     </td>
                     <td style={{ color: 'var(--c-muted)', fontSize: 13 }}>{r.used}</td>
                     <td style={{ textAlign: 'center' }}>

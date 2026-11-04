@@ -1,5 +1,6 @@
 """Conversations enregistrees depuis un ticket (TASK-055 etape 3, 2026-10-23) : enregistrement par morceaux,
 transcription et voix reconnues sur le serveur, consultation dans le ticket, la compagnie et le contact."""
+import asyncio
 import uuid
 from datetime import datetime, timezone
 
@@ -79,7 +80,13 @@ async def list_conversations(ticket_id: uuid.UUID | None = None, company_id: uui
                         Conversation.id.in_(select(ConversationSegment.conversation_id).where(ConversationSegment.contact_id == contact_id))))
     else:
         raise HTTPException(400, "ticket_id, company_id ou contact_id requis")
-    return [_out(c) for c in (await db.execute(q.limit(200))).scalars().all()]
+    rows = (await db.execute(q.limit(200))).scalars().all()
+    missing = [c for c in rows if c.duration is None and c.status != "recording"]
+    for c in missing:            # duree pas encore connue (son recu avant 2026-11-04, ou transcription pas finie)
+        c.duration = await asyncio.to_thread(convs.probe_duration, c)
+    if missing:
+        await db.commit()
+    return [_out(c) for c in rows]
 
 
 @router.post("", status_code=201)
@@ -118,6 +125,7 @@ async def finish(cid: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = D
     c = await _get(db, cid)
     if c.status == "recording":
         c.status = "pending"
+        c.duration = await asyncio.to_thread(convs.probe_duration, c)   # la duree s'affiche tout de suite
         await db.commit()
     return _out(c)
 

@@ -1452,3 +1452,13 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 ## TASK-006.21 (suite) — Le test de nuit a échoué au démarrage
 
 **2026-11-03 05:00 UTC** — lancé par `systemd-run --user`, le script partait du dossier personnel : `app.core.config` ne trouvait pas `backend/.env` (« DATABASE_URL Field required ») ; rien mesuré. Mon essai de la veille n'avait appelé que `machine()` et `image_data_url()`, jamais `main()` dans les conditions de la nuit. **Correction** : `os.chdir(backend)` dans le script ; option `--verifier` lancée par systemd exactement comme la nuit (« démarrage OK ») ; reprogrammé. **Leçon** : un travail programmé se vérifie en le lançant de la même façon que le planificateur (même lanceur, même dossier de départ), pas en important une partie du script.
+
+
+## TASK-055 — Ordre de la file de transcription changé sans demande
+
+**2026-11-04** — en ajoutant le téléversement d'enregistrements d'appel, j'ai changé l'ordre de la file de transcription (de la plus vieille date d'appel à l'ordre d'arrivée) en pensant éviter qu'un vieil appel passe devant. Philippe : « c'est en effet le plus vieil appel en premier que je veux!!! pourquoi tu as changé ça sans m'en parler ». Annulé. J'ai d'abord dit à Philippe que le changement n'avait jamais été actif : FAUX — il avait été chargé au premier redémarrage (11:04 UTC, après le téléversement) et a fait transcrire l'appel de 11 min avant le plus vieux (92 min) ; vu au redémarrage suivant (11:31) dans `systemctl show` / journal, corrigé auprès de Philippe. **Leçons** : un comportement existant qui n'est pas dans la demande ne se change pas, même pour « améliorer » ; si un effet de bord semble gênant, le signaler et demander. Avant d'affirmer qu'un code « n'a jamais été actif », vérifier l'heure du dernier démarrage du service contre l'heure du changement.
+
+
+## TASK-003.6 — Contact d'un nouveau ticket jamais relié à la compagnie du ticket
+
+**2026-11-04** — Yoann Corriveau, choisi (« Utiliser ce contact ») en créant un ticket pour Groupe Lion force, est resté sans compagnie : `NewTicketModal.jsx` et `Tasks.jsx` mettaient le contact sur le ticket sans le relier à la compagnie choisie, alors que la fiche compagnie et le panneau Connectivité le faisaient. Découvert par Philippe (onglets et liens incohérents). **Leçon** : une fenêtre de création rapide (`QuickNewContact`) réutilisée à plusieurs endroits : vérifier chaque appelant pour ce qu'il fait APRÈS (relier, sélectionner), pas seulement la fenêtre elle-même.

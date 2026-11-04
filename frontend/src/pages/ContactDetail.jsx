@@ -327,8 +327,8 @@ function ContactCdrTab({ id, companyId, sipExt, sipExtLoading }) {
   )
 }
 
-const CONTACT_TABS = ['Général', 'Téléphonie', 'Courriels', 'Provisionnement']
-const CONTACT_TAB_KEYS = ['general', 'telephonie', 'courriels', 'provisionnement']   // core/contact_tabs.py ORDER
+const CONTACT_TABS = ['Général', 'Téléphonie', 'Courriels', 'Provisionnement', 'Conversations']
+const CONTACT_TAB_KEYS = ['general', 'telephonie', 'courriels', 'provisionnement', 'conversations']   // core/contact_tabs.py ORDER
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ContactDetail({ isNew }) {
@@ -913,7 +913,9 @@ export default function ContactDetail({ isNew }) {
       )}
 
       <div className="detail-body">
-        {isNew ? <NewContactForm /> : tab === 3 ? (
+        {isNew ? <NewContactForm /> : tab === 4 ? (
+          <ConversationsSection contactId={id} />
+        ) : tab === 3 ? (
           phone ? <PhoneProvisioningTab contactId={id} phone={phone} account={sipExt?.username?.split('-')[0] || null} onPhoneChange={setPhone} />
             : <div className="empty-tab">Aucun téléphone attribué à ce poste (bouton « Bouton » dans l'onglet Général pour en attribuer un).</div>
         ) : tab === 2 ? (
@@ -923,9 +925,6 @@ export default function ContactDetail({ isNew }) {
           <div>
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Voix</div>
             <VoiceSection contactId={c.id} name={`${c.first_name} ${c.last_name}`.trim()} />
-
-            <div className="ifield-section-title" style={{ marginTop: 20 }}>Conversations enregistrées</div>
-            <ConversationsSection contactId={c.id} />
 
             <div className="ifield-section-title" style={{ marginTop: 20 }}>Synchronisation SIPV</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0' }}>

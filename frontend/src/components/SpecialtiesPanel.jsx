@@ -6,7 +6,7 @@ import api from '../services/api'
 import { contrastText } from '../utils/color'
 
 const EMPTY = { name: '', color: '#6B7280', contact_tabs: ['courriels'], is_active: true }
-const CTABS = [['telephonie', 'Téléphonie'], ['courriels', 'Courriels'], ['provisionnement', 'Provisionnement']]   // core/contact_tabs.py
+const CTABS = [['telephonie', 'Téléphonie'], ['courriels', 'Courriels'], ['provisionnement', 'Provisionnement'], ['conversations', 'Conversations']]   // core/contact_tabs.py
 
 export default function SpecialtiesPanel() {
   const [rows, setRows] = useState(null)

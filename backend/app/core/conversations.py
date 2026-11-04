@@ -41,6 +41,17 @@ def append(conv: Conversation, data: bytes) -> None:
         f.write(data)
 
 
+def probe_duration(conv: Conversation) -> float | None:
+    """Duree du son recu (ffprobe), pour l'afficher a cote de la date avant la fin de la transcription."""
+    import subprocess
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path_of(conv))],
+                             capture_output=True, text=True, timeout=30).stdout.strip()
+        return round(float(out), 1) if out and out != "N/A" else None
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
 def remove_file(conv: Conversation) -> None:
     path_of(conv).unlink(missing_ok=True)
 
@@ -240,7 +251,7 @@ async def _next(db):
                                                 Conversation.last_chunk_at < now - STALE).values(status="pending"))
     await db.commit()
     return (await db.execute(select(Conversation.id).where(Conversation.status == "pending")
-                             .order_by(Conversation.created_at).limit(1))).scalar_one_or_none()
+                             .order_by(Conversation.started_at).limit(1))).scalar_one_or_none()
 
 
 async def run_conversation_poller():

@@ -73,7 +73,15 @@ export default function NewTicketModal({ onClose, onCreated, prefillCompany = nu
     setPickerCompanies(null)
   }
 
-  function afterContactCreated(contact) {
+  async function afterContactCreated(contact) {
+    // 2026-11-04 (Philippe : « je l'avais pourtant créé avec le ticket… j'avais inscrit la compagnie ») : le contact
+    // créé ou choisi (« Utiliser ce contact ») est relié à la compagnie du ticket ; avant, il restait sans compagnie.
+    if (selectedCompany && !(contact.companies || []).some(co => co.company_id === selectedCompany.id)) {
+      try {
+        await api.post(`/v1/companies/${selectedCompany.id}/contacts`, { contact_id: contact.id })
+        contact = (await api.get(`/v1/contacts/${contact.id}`)).data
+      } catch (e) { if (e.response?.status !== 409) throw e }
+    }
     const item = {
       id: contact.id,
       label: `${contact.first_name} ${contact.last_name}`.trim(),

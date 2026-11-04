@@ -1538,7 +1538,14 @@ export function GoogleEventModal({ data, onClose, onSaved }) {
     setQuickCompanyName(null)
     setSelectedCompany({ id: company.id, label: company.name })
   }
-  function afterContactCreated(contact) {
+  async function afterContactCreated(contact) {
+    // 2026-11-04 : relié à la compagnie choisie (avant, il restait sans compagnie ; même défaut que le nouveau ticket)
+    if (selectedCompany && !(contact.companies || []).some(co => co.company_id === selectedCompany.id)) {
+      try {
+        await api.post(`/v1/companies/${selectedCompany.id}/contacts`, { contact_id: contact.id })
+        contact = (await api.get(`/v1/contacts/${contact.id}`)).data
+      } catch (e) { if (e.response?.status !== 409) throw e }
+    }
     setContacts(prev => [...prev, contact])
     setQuickContactName(null)
     setSelectedContact({ id: contact.id, label: `${contact.first_name} ${contact.last_name}`.trim() })

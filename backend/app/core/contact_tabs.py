@@ -9,8 +9,13 @@ import uuid
 from sqlalchemy import exists, select
 
 ALWAYS = ["general"]
-OPTIONAL = {"telephonie": "Téléphonie", "courriels": "Courriels", "provisionnement": "Provisionnement"}
-ORDER = ["general", "telephonie", "courriels", "provisionnement"]     # ordre de ContactDetail.jsx CONTACT_TABS
+OPTIONAL = {"telephonie": "Téléphonie", "courriels": "Courriels", "provisionnement": "Provisionnement",
+            "conversations": "Conversations"}
+ORDER = ["general", "telephonie", "courriels", "provisionnement", "conversations"]     # ordre de ContactDetail.jsx CONTACT_TABS
+# Philippe 2026-11-04 : « pourquoi Yoann a provisioning, il doit apparaître quand tu es hébergé (nouvelle pastille) » ->
+# Provisionnement seulement si le contact a un poste, ou si une pastille (la sienne, ou celle d'une de ses compagnies,
+# p. ex. « Hébergé ») l'apporte ; jamais par défaut.
+ON_DEMAND = {"provisionnement"}
 
 
 def clean(tabs) -> list[str]:
@@ -19,13 +24,19 @@ def clean(tabs) -> list[str]:
 
 
 async def tabs_with_data(db, contact) -> set[str]:
-    """Téléphonie et Provisionnement : le contact a un poste (SIPV) ; Courriels : des courriels classés sur lui."""
+    """Téléphonie et Provisionnement : le contact a un poste (SIPV) ; Courriels : des courriels classés sur lui ;
+    Conversations : une conversation de son ticket, ou où sa voix a été reconnue."""
+    from app.models.conversation import Conversation, ConversationSegment
     from app.models.mailbox import MailMessage
+    from app.models.ticket import Ticket
     found = set()
     if contact.sipv_sync:
         found.update({"telephonie", "provisionnement"})
     if (await db.execute(select(exists().where(MailMessage.contact_id == contact.id)))).scalar():
         found.add("courriels")
+    if (await db.execute(select(exists().where(Conversation.ticket_id == Ticket.id, Ticket.contact_id == contact.id)))).scalar() \
+            or (await db.execute(select(exists().where(ConversationSegment.contact_id == contact.id)))).scalar():
+        found.add("conversations")
     return found
 
 
@@ -45,15 +56,19 @@ async def visible_tabs(db, contact_id: uuid.UUID) -> dict | None:
                               .where(ContactCompany.contact_id == contact_id, ContactCompany.is_active.is_not(False)))).scalars().all()
     # Philippe 2026-11-02 : « ou juste quand je vais mettre sa compagnie en client » -> une pastille de ses compagnies qui
     # apporte Téléphonie (client, mauvais payeur, prospect…) donne au contact Téléphonie et Provisionnement
-    co_tabs = set()
-    for tabs in (await db.execute(select(Status.company_tabs).join(EntityStatus, EntityStatus.status_id == Status.id)
-                                  .join(ContactCompany, ContactCompany.company_id == EntityStatus.entity_id)
-                                  .where(ContactCompany.contact_id == contact_id, ContactCompany.is_active.is_not(False)))).scalars().all():
+    # Une pastille de compagnie peut aussi apporter des onglets à ses contacts (statuses.contact_tabs, p. ex. « Hébergé »
+    # -> Provisionnement, Philippe 2026-11-04)
+    co_tabs, given = set(), set()
+    for tabs, ctabs in (await db.execute(select(Status.company_tabs, Status.contact_tabs).join(EntityStatus, EntityStatus.status_id == Status.id)
+                                         .join(ContactCompany, ContactCompany.company_id == EntityStatus.entity_id)
+                                         .where(ContactCompany.contact_id == contact_id, ContactCompany.is_active.is_not(False)))).all():
         co_tabs.update(tabs or [])
-    from_company = {"telephonie", "provisionnement"} if "telephonie" in co_tabs else set()
+        given.update(ctabs or [])
+    from_company = ({"telephonie"} if "telephonie" in co_tabs else set()) | set(clean(given))
     with_data = await tabs_with_data(db, contact) | from_company
     if not worn and not specs:
-        return {"tabs": list(ORDER), "by_status": [], "with_data": clean(with_data), "all": True}
+        return {"tabs": [t for t in ORDER if t not in ON_DEMAND or t in with_data], "by_status": [],
+                "with_data": clean(with_data), "all": True}
     by_status = set()
     for s in list(worn) + list(specs):
         by_status.update(s.contact_tabs or [])
