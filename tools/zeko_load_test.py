@@ -24,6 +24,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(ROOT))
+import os
+os.chdir(ROOT)              # la configuration (.env) se lit depuis backend/ (la 1re nuit, lancé ailleurs : échec au démarrage)
 OUT = ROOT / "storage" / "zeko_load_test"
 API = "http://127.0.0.1:8010/api/v1"
 USER_ID = "d1ba78ea-f3b6-47f9-9e64-c85e1b5aea4e"      # Philippe (administrateur)
@@ -95,6 +97,11 @@ async def main() -> int:
     report = {"debut": datetime.now().isoformat(timespec="seconds"), "machine_avant": machine(), "scenarios": []}
     async with AsyncSessionLocal() as db:
         busy = (await db.execute(text("select count(*) from zeko_conversations where busy_since > now() - interval '30 seconds'"))).scalar()
+    if "--verifier" in sys.argv:            # vérifier le démarrage seulement (configuration, base, API), sans rien mesurer
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(f"{API}/zeko/status", headers={"Authorization": "Bearer " + create_access_token({"sub": USER_ID, "role": "admin"}, expires_minutes=5)})
+        print(f"démarrage OK : base lue (occupé : {busy}), API {r.status_code}, machine : {machine()['gpu']}")
+        return 0
     if busy:
         report["annule"] = "quelqu'un parlait à Zéko : test pas fait"
     else:

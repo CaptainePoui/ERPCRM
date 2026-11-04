@@ -1447,3 +1447,8 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 ## TASK-006.21 — Test de nuit programmé à 00:00 UTC (19 h chez Philippe)
 
 **2026-11-02** — `systemd-run --on-calendar="2026-11-03 00:00:00"` sans fuseau : le serveur est en UTC → 19 h heure de l'Est, quand Philippe travaille. Vu en lisant la liste des minuteries (« dans 5 h 40 ») ; reprogrammé avec « America/Toronto » (05:00 UTC). **Leçon** : toute heure donnée par Philippe est l'heure du Québec ; toujours écrire le fuseau dans une programmation et vérifier l'heure UTC affichée.
+
+
+## TASK-006.21 (suite) — Le test de nuit a échoué au démarrage
+
+**2026-11-03 05:00 UTC** — lancé par `systemd-run --user`, le script partait du dossier personnel : `app.core.config` ne trouvait pas `backend/.env` (« DATABASE_URL Field required ») ; rien mesuré. Mon essai de la veille n'avait appelé que `machine()` et `image_data_url()`, jamais `main()` dans les conditions de la nuit. **Correction** : `os.chdir(backend)` dans le script ; option `--verifier` lancée par systemd exactement comme la nuit (« démarrage OK ») ; reprogrammé. **Leçon** : un travail programmé se vérifie en le lançant de la même façon que le planificateur (même lanceur, même dossier de départ), pas en important une partie du script.
