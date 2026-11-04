@@ -24,7 +24,10 @@ from app.models.user import User
 log = logging.getLogger("conversations")
 
 DIR = Path(__file__).resolve().parents[2] / "storage" / "conversations"
-EXT = {"audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".mp4"}
+EXT = {"audio/webm": ".webm", "audio/ogg": ".ogg", "audio/mp4": ".mp4",
+       # enregistrements d'appel deja faits, televerses (TASK-055, 2026-11-04) ; ffmpeg et PyAV les lisent tous
+       "audio/mpeg": ".mp3", "audio/wav": ".wav", "audio/x-wav": ".wav", "audio/wave": ".wav", "audio/x-m4a": ".m4a",
+       "audio/aac": ".aac", "audio/flac": ".flac", "audio/x-flac": ".flac", "audio/amr": ".amr", "audio/x-ms-wma": ".wma"}
 STALE = timedelta(minutes=15)       # enregistrement sans nouveau morceau depuis 15 min : la page a ete fermee
 
 
@@ -237,7 +240,7 @@ async def _next(db):
                                                 Conversation.last_chunk_at < now - STALE).values(status="pending"))
     await db.commit()
     return (await db.execute(select(Conversation.id).where(Conversation.status == "pending")
-                             .order_by(Conversation.started_at).limit(1))).scalar_one_or_none()
+                             .order_by(Conversation.created_at).limit(1))).scalar_one_or_none()
 
 
 async def run_conversation_poller():

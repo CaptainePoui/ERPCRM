@@ -26,6 +26,7 @@ MAX_CHUNK = 10 * 1024 * 1024
 class ConversationIn(BaseModel):
     ticket_id: uuid.UUID
     mime: str = "audio/webm"
+    started_at: datetime | None = None       # fichier televerse : date de l'appel (sinon : maintenant)
 
 
 class SpeakerIn(BaseModel):
@@ -88,6 +89,8 @@ async def start(body: ConversationIn, db: AsyncSession = Depends(get_db), user: 
     mime = body.mime.split(";")[0].strip()
     c = Conversation(ticket_id=body.ticket_id, user_id=user.id, mime=mime if mime in convs.EXT else "audio/webm",
                      last_chunk_at=datetime.now(timezone.utc))
+    if body.started_at:
+        c.started_at = body.started_at if body.started_at.tzinfo else body.started_at.replace(tzinfo=timezone.utc)
     db.add(c)
     await db.commit()
     return {"id": str(c.id)}

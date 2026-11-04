@@ -72,11 +72,98 @@ function Recorder({ ticketId, onChanged }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12 }}>
       {state === 'idle' && <button className="btn-secondary" onClick={begin}>🎙️ Enregistrer la conversation</button>}
+      {state === 'idle' && <Uploader ticketId={ticketId} onChanged={onChanged} />}
       {state === 'recording' && <button className="btn-secondary" style={{ color: C.red, borderColor: '#FCA5A5' }} onClick={stop}>⏹ Arrêter · {clock(secs)}</button>}
       {state === 'stopping' && <span style={{ fontSize: 13, color: C.muted }}>Envoi de la fin…</span>}
       {notice && <span style={{ fontSize: 12, color: C.amber }}>{notice}</span>}
       {naming && <NameDeviceModal onClose={() => setNaming(false)} onDone={d => { setNaming(false); start(d) }} />}
     </div>
+  )
+}
+
+// ── Téléverser des enregistrements d'appel déjà faits (2026-11-04) ─────────
+// Même transcription et mêmes voix que l'enregistrement en direct ; la date de l'appel se corrige avant l'envoi.
+const AUDIO_EXT = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', mp4: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
+  oga: 'audio/ogg', opus: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac', amr: 'audio/amr', wma: 'audio/x-ms-wma' }
+const SLICE = 8 * 1024 * 1024        // morceaux de 8 Mo (le serveur refuse plus de 10 Mo par morceau)
+const pad = n => String(n).padStart(2, '0')
+const localInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }
+const mimeOf = f => AUDIO_EXT[(f.name.split('.').pop() || '').toLowerCase()] || f.type || 'audio/webm'
+
+function Uploader({ ticketId, onChanged }) {
+  const [files, setFiles] = useState(null)       // [{ file, when, state, error }]
+  const [sending, setSending] = useState(false)
+  const input = useRef(null)
+
+  function pick(e) {
+    const list = [...e.target.files].map(file => ({ file, when: localInput(file.lastModified || Date.now()), state: '', error: null }))
+    e.target.value = ''
+    if (list.length) setFiles(list)
+  }
+  const set = (i, patch) => setFiles(p => p.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+
+  async function send() {
+    setSending(true)
+    for (let i = 0; i < files.length; i++) {
+      const { file, when, state } = files[i]
+      if (state === 'ok') continue
+      try {
+        set(i, { state: 'Envoi…', error: null })
+        const { id } = (await api.post('/v1/conversations', { ticket_id: ticketId, mime: mimeOf(file), started_at: new Date(when).toISOString() })).data
+        for (let off = 0; off < file.size; off += SLICE) {
+          const fd = new FormData(); fd.append('audio', file.slice(off, off + SLICE), 'morceau')
+          await api.post(`/v1/conversations/${id}/chunk`, fd)
+          set(i, { state: `Envoi… ${Math.min(100, Math.round(((off + SLICE) / file.size) * 100))} %` })
+        }
+        await api.post(`/v1/conversations/${id}/finish`)
+        set(i, { state: 'ok' })
+      } catch (e) {
+        set(i, { state: 'error', error: e.response?.data?.detail || e.message || 'Erreur' })
+      }
+    }
+    setSending(false)
+    onChanged()
+    setFiles(p => (p.every(x => x.state === 'ok') ? null : p))
+  }
+
+  return (
+    <>
+      <button className="btn-secondary" onClick={() => input.current.click()}>📤 Téléverser un enregistrement</button>
+      <input ref={input} type="file" accept="audio/*,.mp3,.wav,.m4a,.aac,.ogg,.opus,.flac,.amr,.wma,.webm" multiple hidden onChange={pick} />
+      {files && (
+        <div className="modal-overlay">
+          <div className="modal-box" style={{ width: 'auto', minWidth: 'min(520px, 92vw)', maxWidth: '92vw' }}>
+            <div className="modal-title">Téléverser des enregistrements d'appel</div>
+            <p style={{ fontSize: 13, color: C.muted, margin: '0 0 12px' }}>
+              Chaque fichier devient une conversation de ce ticket : transcription et voix reconnues comme un enregistrement fait ici.
+              Vérifie la date de chaque appel (proposée : la date du fichier).
+            </p>
+            <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
+              <thead><tr><th style={{ textAlign: 'left', padding: 4 }}>Fichier</th><th style={{ textAlign: 'left', padding: 4 }}>Date de l'appel</th><th /></tr></thead>
+              <tbody>
+                {files.map((x, i) => (
+                  <tr key={i}>
+                    <td style={{ padding: 4, whiteSpace: 'nowrap' }}>{x.file.name} <span style={{ color: C.faint }}>({(x.file.size / 1048576).toFixed(1)} Mo)</span></td>
+                    <td style={{ padding: 4 }}>
+                      <input type="datetime-local" value={x.when} disabled={sending || x.state === 'ok'} onChange={e => set(i, { when: e.target.value })} />
+                    </td>
+                    <td style={{ padding: 4, whiteSpace: 'nowrap', color: x.state === 'error' ? C.red : x.state === 'ok' ? '#059669' : C.muted }}>
+                      {x.state === 'ok' ? '✓ envoyé' : x.state === 'error' ? x.error : x.state}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="modal-actions">
+              <button className="btn-secondary" disabled={sending} onClick={() => { setFiles(null); onChanged() }}>{files.some(x => x.state === 'ok') ? 'Fermer' : 'Annuler'}</button>
+              <button className="btn-primary" disabled={sending || files.some(x => !x.when)} onClick={send}>
+                {sending ? 'Envoi…' : files.some(x => x.state === 'error') ? 'Réessayer' : 'Envoyer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
