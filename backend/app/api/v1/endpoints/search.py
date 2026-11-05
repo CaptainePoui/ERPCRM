@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func
 from sqlalchemy.orm import selectinload
 from app.core.database import get_db
+from app.core import clock
 from app.api.v1.endpoints.auth import get_current_user
 from app.models.company import Company
 from app.models.contact import Contact
@@ -22,7 +23,7 @@ def _normalize(s: str) -> str:
 
 class SearchResult(BaseModel):
     id: uuid.UUID
-    type: str                       # company | contact | invoice | payment | conversation (id = ticket)
+    type: str                       # company | contact | invoice | payment | conversation (id = enregistrement)
     label: str
     sub: str | None
     company_id: uuid.UUID | None = None   # facture / paiement : ouverts dans la fiche du client (TASK-002.9)
@@ -164,20 +165,18 @@ async def search(q: str = Query(min_length=1), db: AsyncSession = Depends(get_db
         for cp, cname in rows:
             results.append(SearchResult(id=cp.id, type="payment", label=f"Paiement {cp.amount:.2f} $", company_id=cp.company_id,
                                         sub=f"{cname} · {cp.received_at or ''} · {cp.method_name}"))
-    # TASK-055 : ce qui a ete dit dans une conversation enregistree -> son ticket
+    # TASK-055 : ce qui a ete dit dans une conversation enregistree (texte corrigeable, sans nom) -> sa page
     if len(q.strip()) >= 3:
-        from app.models.conversation import Conversation, ConversationSegment
+        from app.models.conversation import Conversation
         from app.models.ticket import Ticket
-        rows = (await db.execute(select(ConversationSegment, Conversation.started_at, Ticket.id, Ticket.title, Company.name)
-                                 .join(Conversation, Conversation.id == ConversationSegment.conversation_id)
-                                 .join(Ticket, Ticket.id == Conversation.ticket_id).join(Company, Company.id == Ticket.company_id)
-                                 .where(func.unaccent(func.lower(ConversationSegment.text)).ilike(term))
-                                 .order_by(Conversation.started_at.desc()).limit(20))).all()
-        seen_t = set()
-        for seg, when, tid, title, cname in rows:
-            if tid in seen_t or len(seen_t) >= 5:
-                continue
-            seen_t.add(tid)
-            results.append(SearchResult(id=tid, type="conversation", label=f"« {seg.text[:80]} »",
-                                        sub=f"{seg.speaker} · {cname} · {title} · {when:%Y-%m-%d}"))
+        rows = (await db.execute(select(Conversation.id, Conversation.text, Conversation.started_at, Ticket.title, Company.name)
+                                 .join(Ticket, Ticket.id == Conversation.ticket_id)
+                                 .outerjoin(Company, Company.id == Conversation.company_id)
+                                 .where(func.unaccent(func.lower(Conversation.text)).ilike(term))
+                                 .order_by(Conversation.started_at.desc()).limit(5))).all()
+        for cid, txt, when, title, cname in rows:
+            at = _normalize(txt).find(_normalize(q.strip()))      # meme longueur : NFD sans accents garde 1 lettre = 1 lettre
+            i = max(0, at - 30)
+            results.append(SearchResult(id=cid, type="conversation", label=f"« {txt[i:i + 80].strip()} »",
+                                        sub=f"{cname or ''} · {title} · {when.astimezone(clock.business_tz()):%Y-%m-%d}"))
     return results

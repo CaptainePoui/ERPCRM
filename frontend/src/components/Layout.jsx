@@ -117,7 +117,7 @@ function GlobalSearch() {
     navigate(result.type === 'company' ? `/companies/${result.id}`
       : result.type === 'invoice' ? `/companies/${result.company_id}?tab=transactions&facture=${result.id}`
       : result.type === 'payment' ? `/companies/${result.company_id}?tab=transactions&paiement=${result.id}`
-      : result.type === 'conversation' ? `/tickets/${result.id}`
+      : result.type === 'conversation' ? `/conversations/${result.id}`
       : `/contacts/${result.id}`)
   }
 

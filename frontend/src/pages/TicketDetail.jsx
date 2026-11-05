@@ -420,7 +420,8 @@ export default function TicketDetail() {
         </div>
       )}
 
-      <div className="tkt-detail-grid">
+      {/* Deux cartes sous le titre : infos à gauche, enregistrements à droite (TASK-055, Philippe 2026-11-05) */}
+      <div className="tkt-detail-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 380px), 1fr))', alignItems: 'start' }}>
         <div className="tkt-section">
           <div className="tkt-info-row"><span>Compagnie</span><strong><EntityLink kind="company" id={ticket.company_id}>{ticket.company_name}</EntityLink></strong></div>
           {ticket.contact_name && (
@@ -477,15 +478,13 @@ export default function TicketDetail() {
             </div>
           )}
         </div>
+        <div className="tkt-section">
+          <div className="tkt-section-title">Enregistrements</div>
+          <ConversationsSection ticketId={id} />
+        </div>
       </div>
 
       <TicketTachesSection ticketId={id} onNewTask={() => setShowTaskModal(true)} refreshKey={taskRefreshKey} />
-
-      {/* ── Conversations enregistrees (TASK-055) ── */}
-      <div className="tkt-entries-section" style={{ marginTop: 0 }}>
-        <div className="tkt-section-title" style={{ marginBottom: 12 }}>Conversations enregistrées</div>
-        <ConversationsSection ticketId={id} />
-      </div>
 
       {/* ── La conversation ── */}
       <div className="tkt-entries-section" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>

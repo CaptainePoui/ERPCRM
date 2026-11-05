@@ -22,7 +22,8 @@ from app.models.former_info import FormerInfo
 # (table, colonne, libelle pour l'ecran) -- tout ce qui pointe vers la fiche ; les cas a contrainte d'unicite a part
 _CONTACT_REFS = [
     ("tickets", "contact_id", "tickets"), ("tasks", "contact_id", "tâches"), ("appointments", "contact_id", "rendez-vous"),
-    ("mail_messages", "contact_id", "courriels"), ("conversation_segments", "contact_id", "passages de conversations enregistrées"),
+    ("mail_messages", "contact_id", "courriels"), ("conversations", "contact_id", "enregistrements d'appel"),
+    ("conversation_segments", "contact_id", "passages de conversations enregistrées"),
     ("zeko_conversations", "contact_id", "conversations avec Zéko"), ("portal_users", "contact_id", "accès au portail"),
     ("sales_reps", "contact_id", "fiche vendeur"), ("companies", "vendor_id", "compagnies dont il est le vendeur"),
     ("companies", "internet_contact_id", "compagnies (contact internet)"), ("companies", "network_contact_id", "compagnies (contact réseau)"),
@@ -40,7 +41,7 @@ _COMPANY_REFS = [
     ("bank_transactions", "company_id", "transactions bancaires"), ("bank_transactions", "ai_company_id", None),
     ("commission_entries", "company_id", "commissions"), ("ecom_orders", "company_id", "commandes en ligne"),
     ("purchase_orders", "company_id", "commandes fournisseurs"), ("vendors", "company_id", "fiche fournisseur"),
-    ("cdr_report_schedules", "company_id", "rapports d'appels"), ("zeko_conversations", "company_id", "conversations avec Zéko"),
+    ("cdr_report_schedules", "company_id", "rapports d'appels"), ("conversations", "company_id", "enregistrements d'appel"), ("zeko_conversations", "company_id", "conversations avec Zéko"),
     ("zeko_proposals", "company_id", None), ("zeko_rules", "company_id", None),
     ("companies", "parent_company_id", "compagnies dont elle est la maison mère"), ("companies", "bill_to_company_id", "compagnies facturées à elle"),
     ("companies", "internet_company_id", None), ("companies", "network_company_id", None),

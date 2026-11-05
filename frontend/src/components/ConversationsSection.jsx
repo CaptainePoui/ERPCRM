@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import api from '../services/api'
+import { Link } from 'react-router-dom'
 import { askConfirm } from './Dialog'
-import EntityLink from './EntityLink'
 import { NameDeviceModal, localStorageBlocked } from './MicButton'
 import { currentDevice, openMic } from '../utils/audioDevice'
 
@@ -9,14 +9,9 @@ import { currentDevice, openMic } from '../utils/audioDevice'
 // voix reconnues sur le serveur (rien ne sort). Le son part par morceaux de 10 s pendant l'enregistrement : une page
 // fermee par erreur garde ce qui a deja ete recu. Visible aussi dans la fiche de la compagnie et du contact.
 const C = { border: 'var(--c-border)', muted: 'var(--c-muted)', faint: 'var(--c-faint)', red: '#DC2626', amber: '#B45309' }
-const PALETTE = ['#2563EB', '#16A34A', '#9333EA', '#EA580C', '#0891B2', '#DB2777']
-const STATUS = { recording: 'Enregistrement en cours…', pending: 'Transcription en attente…', transcribing: 'Transcription en cours…' }
+export const STATUS = { recording: 'Enregistrement en cours…', pending: 'Transcription en attente…', transcribing: 'Transcription en cours…' }
 
-function me() {
-  try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null') } catch { return null }
-}
-function clock(s) { s = Math.floor(s || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
-const unknownLabel = s => !s.user_id && !s.contact_id
+export function clock(s) { s = Math.floor(s || 0); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` }
 
 // ── Enregistreur ────────────────────────────────────────────────────────────
 function Recorder({ ticketId, onChanged }) {
@@ -86,8 +81,13 @@ function Recorder({ ticketId, onChanged }) {
 const AUDIO_EXT = { mp3: 'audio/mpeg', wav: 'audio/wav', m4a: 'audio/x-m4a', mp4: 'audio/mp4', aac: 'audio/aac', ogg: 'audio/ogg',
   oga: 'audio/ogg', opus: 'audio/ogg', webm: 'audio/webm', flac: 'audio/flac', amr: 'audio/amr', wma: 'audio/x-ms-wma' }
 const SLICE = 8 * 1024 * 1024        // morceaux de 8 Mo (le serveur refuse plus de 10 Mo par morceau)
-const pad = n => String(n).padStart(2, '0')
-const localInput = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}` }
+// Date de l'appel à l'heure de l'entreprise (Montréal), pas à celle de l'ordinateur qui envoie (2026-11-05) : le
+// serveur lit la date sans fuseau à l'heure de l'entreprise.
+const localInput = (ms, tz) => {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: tz || undefined, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(ms)).map(x => [x.type, x.value]))
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`
+}
 const mimeOf = f => AUDIO_EXT[(f.name.split('.').pop() || '').toLowerCase()] || f.type || 'audio/webm'
 
 function Uploader({ ticketId, onChanged }) {
@@ -95,9 +95,11 @@ function Uploader({ ticketId, onChanged }) {
   const [sending, setSending] = useState(false)
   const input = useRef(null)
 
-  function pick(e) {
-    const list = [...e.target.files].map(file => ({ file, when: localInput(file.lastModified || Date.now()), state: '', error: null }))
+  async function pick(e) {
+    const picked = [...e.target.files]
     e.target.value = ''
+    const tz = await api.get('/v1/settings/timezones').then(r => r.data.current).catch(() => undefined)
+    const list = picked.map(file => ({ file, when: localInput(file.lastModified || Date.now(), tz), state: '', error: null }))
     if (list.length) setFiles(list)
   }
   const set = (i, patch) => setFiles(p => p.map((x, j) => (j === i ? { ...x, ...patch } : x)))
@@ -109,7 +111,7 @@ function Uploader({ ticketId, onChanged }) {
       if (state === 'ok') continue
       try {
         set(i, { state: 'Envoi…', error: null })
-        const { id } = (await api.post('/v1/conversations', { ticket_id: ticketId, mime: mimeOf(file), started_at: new Date(when).toISOString() })).data
+        const { id } = (await api.post('/v1/conversations', { ticket_id: ticketId, mime: mimeOf(file), started_at: `${when}:00` })).data
         for (let off = 0; off < file.size; off += SLICE) {
           const fd = new FormData(); fd.append('audio', file.slice(off, off + SLICE), 'morceau')
           await api.post(`/v1/conversations/${id}/chunk`, fd)
@@ -136,7 +138,7 @@ function Uploader({ ticketId, onChanged }) {
             <div className="modal-title">Téléverser des enregistrements d'appel</div>
             <p style={{ fontSize: 13, color: C.muted, margin: '0 0 12px' }}>
               Chaque fichier devient une conversation de ce ticket : transcription et voix reconnues comme un enregistrement fait ici.
-              Vérifie la date de chaque appel (proposée : la date du fichier).
+              Vérifie la date de chaque appel, à l'heure de l'entreprise (proposée : la date du fichier).
             </p>
             <table style={{ borderCollapse: 'collapse', fontSize: 13, width: '100%' }}>
               <thead><tr><th style={{ textAlign: 'left', padding: 4 }}>Fichier</th><th style={{ textAlign: 'left', padding: 4 }}>Date de l'appel</th><th /></tr></thead>
@@ -167,120 +169,23 @@ function Uploader({ ticketId, onChanged }) {
   )
 }
 
-// ── « Qui est-ce ? » ────────────────────────────────────────────────────────
-function WhoIsIt({ conv, label, onDone }) {
-  const [people, setPeople] = useState(null)
-  const [pick, setPick] = useState('')
-  const [error, setError] = useState(null)
-  useEffect(() => {
-    const u = me()
-    Promise.all([
-      api.get('/v1/admin/users').then(r => r.data.filter(x => x.is_active !== false)).catch(() => (u ? [{ id: u.id, full_name: u.full_name }] : [])),
-      api.get('/v1/contacts', { params: { company_id: conv.ticket.company_id } }).then(r => r.data).catch(() => []),
-    ]).then(([users, contacts]) => setPeople({ users, contacts }))
-  }, [conv.ticket.company_id])
-  async function save() {
-    setError(null)
-    const [kind, id] = pick.split(':')
-    try {
-      await api.put(`/v1/conversations/${conv.id}/speaker`, { label, [kind === 'u' ? 'user_id' : 'contact_id']: id })
-      onDone()
-    } catch (e) { setError(e.response?.data?.detail || 'Erreur') }
-  }
-  if (!people) return <span style={{ fontSize: 12, color: C.muted }}>…</span>
-  return (
-    <span style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-      <select value={pick} onChange={e => setPick(e.target.value)} style={{ fontSize: 12, padding: '3px 6px', maxWidth: 220 }}>
-        <option value="">« {label} », c'est…</option>
-        {people.contacts.length > 0 && <optgroup label="Contacts du client">
-          {people.contacts.map(c => <option key={c.id} value={`c:${c.id}`}>{`${c.first_name} ${c.last_name}`.trim()}</option>)}</optgroup>}
-        <optgroup label="Équipe">{people.users.map(u => <option key={u.id} value={`u:${u.id}`}>{u.full_name}</option>)}</optgroup>
-      </select>
-      <button className="btn-primary" style={{ fontSize: 12, padding: '3px 10px' }} disabled={!pick} onClick={save}>OK</button>
-      {error && <span style={{ fontSize: 12, color: C.red }}>{error}</span>}
-    </span>
-  )
+// ── Liste des enregistrements : une ligne-lien chacun (2026-11-05) ────────
+// Philippe : « pas de transcription, juste les enregistrements, et c'est des liens ». Le texte s'ouvre sur la page
+// de la conversation ; heures au fuseau de l'entreprise (Montréal), pas celui du navigateur ni du serveur.
+export function fmtWhen(conv) {
+  return new Date(conv.started_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short', timeZone: conv.tz || undefined })
 }
 
-// ── Une conversation ────────────────────────────────────────────────────────
-function ConversationCard({ conv, showTicket, onChanged }) {
-  const [src, setSrc] = useState(null)
-  const [editing, setEditing] = useState(null)      // id de la phrase
-  const [draft, setDraft] = useState('')
-  const [asking, setAsking] = useState(null)        // etiquette
-  const audioRef = useRef(null)
-  useEffect(() => () => { if (src) URL.revokeObjectURL(src) }, [src])
-
-  async function listen(at) {
-    let url = src
-    if (!url) {
-      const r = await api.get(`/v1/conversations/${conv.id}/audio`, { responseType: 'blob' })
-      url = URL.createObjectURL(r.data); setSrc(url)
-    }
-    setTimeout(() => { const a = audioRef.current; if (a) { if (at != null) a.currentTime = at; a.play().catch(() => {}) } }, 50)
-  }
-  async function saveText(seg) {
-    await api.put(`/v1/conversations/segments/${seg.id}`, { text: draft }); setEditing(null); onChanged()
-  }
-  async function remove() {
-    if (!await askConfirm('Supprimer cette conversation (son et transcription) ? Elle ne pourra pas être récupérée.')) return
-    await api.delete(`/v1/conversations/${conv.id}`); onChanged()
-  }
-  async function retry() { await api.post(`/v1/conversations/${conv.id}/retry`); onChanged() }
-  async function redo() {
-    if (!await askConfirm('Refaire la transcription ? Les voix apprises depuis seront reconnues ; les corrections faites à la main dans le texte seront perdues.')) return
-    retry()
-  }
-
-  const speakers = [...new Set(conv.segments.map(s => s.speaker))]
-  const color = s => PALETTE[speakers.indexOf(s) % PALETTE.length]
-  const unknown = [...new Set(conv.segments.filter(unknownLabel).map(s => s.speaker))]
-  const when = new Date(conv.started_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short' })
-
+function RecordingLine({ conv, showTicket }) {
   return (
-    <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, padding: 12, marginBottom: 10 }}>
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
-        <span style={{ fontWeight: 600 }}>🎙️ {when}</span>
-        {conv.duration ? <span style={{ color: C.muted }}>{clock(conv.duration)}</span> : null}
-        {conv.recorded_by && <span style={{ color: C.muted }}>par {conv.recorded_by}</span>}
-        {showTicket && <EntityLink kind="ticket" id={conv.ticket.id}>{conv.ticket.number} {conv.ticket.title}</EntityLink>}
-        <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {conv.status === 'done' && <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => listen(null)}>▶ Écouter</button>}
-          {conv.status === 'done' && <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} title="Refaire la transcription (reconnaît les voix apprises depuis ; les corrections de texte sont perdues)" onClick={redo}>↻ Refaire</button>}
-          {conv.status !== 'transcribing' && conv.status !== 'recording' && <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px', color: C.red }} onClick={remove}>Supprimer</button>}
-        </span>
-      </div>
-      {STATUS[conv.status] && <div style={{ fontSize: 13, color: C.muted, marginTop: 6 }}>{STATUS[conv.status]} {conv.status !== 'recording' && <span style={{ color: C.faint }}>La transcription prend un peu plus que la durée de l'enregistrement sur le serveur actuel.</span>}</div>}
-      {conv.status === 'error' && <div style={{ fontSize: 13, color: C.red, marginTop: 6 }}>Transcription échouée : {conv.error} <button className="btn-secondary" style={{ fontSize: 12, padding: '2px 8px' }} onClick={retry}>Réessayer</button></div>}
-      {src && <audio ref={audioRef} src={src} controls style={{ width: '100%', marginTop: 8 }} />}
-      {unknown.length > 0 && (
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginTop: 8, fontSize: 12, color: C.muted }}>
-          {unknown.map(l => asking === l
-            ? <WhoIsIt key={l} conv={conv} label={l} onDone={() => { setAsking(null); onChanged() }} />
-            : <button key={l} className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setAsking(l)}>Qui est « {l} » ?</button>)}
-          <span>Sa voix sera reconnue les prochaines fois.</span>
-        </div>
-      )}
-      {conv.segments.length > 0 && (
-        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {conv.segments.map(s => (
-            <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', fontSize: 14, minWidth: 0 }}>
-              <button onClick={() => listen(s.start)} title="Écouter à partir d'ici" style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', fontSize: 11, padding: 0, flexShrink: 0 }}>{clock(s.start)}</button>
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <span style={{ fontWeight: 600, color: color(s.speaker), marginRight: 6 }}>{s.speaker}</span>
-                {editing === s.id ? (
-                  <span style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 4 }}>
-                    <input value={draft} onChange={e => setDraft(e.target.value)} autoFocus style={{ flex: '1 1 200px', minWidth: 0 }} />
-                    <button className="btn-secondary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => setEditing(null)}>Annuler</button>
-                    <button className="btn-primary" style={{ fontSize: 12, padding: '3px 10px' }} onClick={() => saveText(s)}>Enregistrer</button>
-                  </span>
-                ) : <span style={{ overflowWrap: 'anywhere', cursor: 'text' }} title="Cliquer pour corriger" onClick={() => { setEditing(s.id); setDraft(s.text) }}>{s.text}</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+    <Link to={`/conversations/${conv.id}`} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline', padding: '7px 0',
+      borderBottom: `1px solid var(--c-surface-3)`, fontSize: 14, color: 'inherit', textDecoration: 'none' }}>
+      <span style={{ color: 'var(--brand)', fontWeight: 600 }}>🎙️ {fmtWhen(conv)}</span>
+      {conv.duration ? <span style={{ color: C.muted }}>{clock(conv.duration)}</span> : null}
+      {showTicket && <span style={{ color: C.muted }}>{conv.ticket.number} {conv.ticket.title}</span>}
+      {STATUS[conv.status] && <span style={{ color: C.faint, fontSize: 12 }}>{STATUS[conv.status]}</span>}
+      {conv.status === 'error' && <span style={{ color: C.red, fontSize: 12 }}>Transcription échouée</span>}
+    </Link>
   )
 }
 
@@ -299,8 +204,8 @@ export default function ConversationsSection({ ticketId, companyId, contactId })
   return (
     <div>
       {ticketId && <Recorder ticketId={ticketId} onChanged={load} />}
-      {rows.length === 0 && !ticketId && <div style={{ fontSize: 13, color: C.faint }}>Aucune conversation enregistrée. Elles s'enregistrent depuis un ticket (🎙️).</div>}
-      {rows.map(c => <ConversationCard key={c.id} conv={c} showTicket={!ticketId} onChanged={load} />)}
+      {rows.length === 0 && <div style={{ fontSize: 13, color: C.faint }}>{ticketId ? 'Aucun enregistrement.' : 'Aucun enregistrement. Ils se font depuis un ticket (🎙️ ou 📤).'}</div>}
+      {rows.map(c => <RecordingLine key={c.id} conv={c} showTicket={!ticketId} />)}
     </div>
   )
 }

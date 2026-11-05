@@ -17,6 +17,7 @@ import Devis from './pages/Devis'
 import DevisDetail from './pages/DevisDetail'
 import Tickets from './pages/Tickets'
 import TicketDetail from './pages/TicketDetail'
+import ConversationDetail from './pages/ConversationDetail'
 import PurchaseOrderDetail from './pages/PurchaseOrderDetail'
 import Commandes from './pages/Commandes'
 import Admin from './pages/Admin'
@@ -101,6 +102,7 @@ function InternalApp() {
         <Route path="/devis/:id" element={<DevisDetail />} />
         <Route path="/tickets" element={<Tickets />} />
         <Route path="/tickets/:id" element={<TicketDetail />} />
+        <Route path="/conversations/:id" element={<ConversationDetail />} />
         <Route path="/commandes" element={<Commandes />} />
         <Route path="/purchase-orders" element={<Navigate to="/purchases/orders" replace />} />
         <Route path="/purchase-orders/:id" element={<PurchaseOrderDetail />} />

@@ -56,6 +56,12 @@ def remove_file(conv: Conversation) -> None:
     path_of(conv).unlink(missing_ok=True)
 
 
+def plain(texts) -> str:
+    """Texte de la conversation, sans nom (Philippe 2026-11-05 : « juste les mots avec la ponctuation ») : les voix
+    ne sont pas reconnues sur les appels, un nom serait faux."""
+    return " ".join(t.strip() for t in texts if t and t.strip())
+
+
 def contact_name(c) -> str:
     return f"{c.first_name} {c.last_name}".strip()
 
@@ -216,7 +222,7 @@ async def process(conv_id) -> None:
                                            user_id=s["user"].id if s["user"] else None,
                                            contact_id=s["contact"].id if s["contact"] else None))
             conv.duration = result["duration"]
-            conv.text = "\n".join(f"{s['speaker']} : {s['text']}" for s in segs)
+            conv.text = plain([s["text"] for s in segs])
             conv.status, conv.error = "done", None
             conv.transcribed_at = datetime.now(timezone.utc)
         except Exception as e:
@@ -240,7 +246,6 @@ async def learn(db, conv: Conversation, label: str, user: User | None, contact) 
         else:
             emb, n = voices.merge(embs[0], 0, embs)
             db.add(VoicePrint(user_id=user.id if user else None, contact_id=contact.id if contact else None, embedding=emb, samples=n))
-    conv.text = "\n".join(f"{s.speaker} : {s.text}" for s in conv.segments)
     return len(segs)
 
 

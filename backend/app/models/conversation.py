@@ -1,7 +1,8 @@
 """Conversations enregistrees avec un client (TASK-055 etape 3, 2026-10-23 ; Philippe : « enregistrer a partir du
 ticket quand un client me parle, qu'il sache la distinction de moi et le client… si je peux associer la voix a un
-contact c'est super »). Une conversation appartient a un ticket (donc a sa compagnie et a son contact -- pas de
-copie) ; son son est garde dans storage/conversations, sa transcription est decoupee en phrases avec qui parle.
+contact c'est super »). Une conversation est reliee a son ticket, a sa compagnie et a son contact (2026-11-05 : remplis
+depuis le ticket a la creation, corrigeables) ; son son est garde dans storage/conversations, sa transcription est
+decoupee en phrases ; `text` = le texte seul, sans nom (corrigeable).
 Rien ne sort du serveur : transcription et voix reconnues localement."""
 import uuid
 from datetime import datetime, timezone
@@ -17,11 +18,13 @@ class Conversation(Base):
     __tablename__ = "conversations"
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    company_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="SET NULL"), index=True)
+    contact_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("contacts.id", ondelete="SET NULL"), index=True)
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
     status: Mapped[str] = mapped_column(String(15), nullable=False, default="recording")
     mime: Mapped[str] = mapped_column(String(50), nullable=False, default="audio/webm")
     duration: Mapped[float | None] = mapped_column(Float)
-    text: Mapped[str | None] = mapped_column(Text)                   # transcription complete (recherche)
+    text: Mapped[str | None] = mapped_column(Text)                   # transcription complete, sans nom (page, recherche, Zeko)
     error: Mapped[str | None] = mapped_column(Text)
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     last_chunk_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -30,6 +33,8 @@ class Conversation(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     ticket: Mapped["Ticket"] = relationship("Ticket")
+    company: Mapped["Company | None"] = relationship("Company")
+    contact: Mapped["Contact | None"] = relationship("Contact")
     user: Mapped["User | None"] = relationship("User")
     segments: Mapped[list["ConversationSegment"]] = relationship("ConversationSegment", order_by="ConversationSegment.idx",
                                                                   cascade="all, delete-orphan")

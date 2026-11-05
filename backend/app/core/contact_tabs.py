@@ -25,17 +25,15 @@ def clean(tabs) -> list[str]:
 
 async def tabs_with_data(db, contact) -> set[str]:
     """Téléphonie et Provisionnement : le contact a un poste (SIPV) ; Courriels : des courriels classés sur lui ;
-    Conversations : une conversation de son ticket, ou où sa voix a été reconnue."""
-    from app.models.conversation import Conversation, ConversationSegment
+    Conversations : un enregistrement relié à lui (2026-11-05)."""
+    from app.models.conversation import Conversation
     from app.models.mailbox import MailMessage
-    from app.models.ticket import Ticket
     found = set()
     if contact.sipv_sync:
         found.update({"telephonie", "provisionnement"})
     if (await db.execute(select(exists().where(MailMessage.contact_id == contact.id)))).scalar():
         found.add("courriels")
-    if (await db.execute(select(exists().where(Conversation.ticket_id == Ticket.id, Ticket.contact_id == contact.id)))).scalar() \
-            or (await db.execute(select(exists().where(ConversationSegment.contact_id == contact.id)))).scalar():
+    if (await db.execute(select(exists().where(Conversation.contact_id == contact.id)))).scalar():
         found.add("conversations")
     return found
 
