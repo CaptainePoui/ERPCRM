@@ -65,6 +65,7 @@ class InvoiceOut(BaseModel):
     transmission_status: str | None = None
     transmitted_at: datetime | None = None    # TASK-005.32 : quand et a qui elle a ete transmise
     transmitted_to: str | None = None
+    credited: float = 0                       # TASK-005.32 : montant regle par des avoirs (« Créditée »)
     last_opened_at: datetime | None = None
     open_count: int = 0
     barter_settlement: bool = False          # TASK-005.14 : « a regler en troc », jamais de frais de retard
@@ -87,6 +88,7 @@ class InvoiceListItem(BaseModel):
     credit_of_id: uuid.UUID | None
     site_label_snapshot: str | None = None
     transmission_status: str | None = None
+    credited: float = 0                     # TASK-005.32 : montant regle par des avoirs (« Créditée »)
     last_opened_at: datetime | None = None
     open_count: int = 0
     barter_settlement: bool = False
@@ -213,6 +215,7 @@ async def _check_can_delete_issued(inv: Invoice, db: AsyncSession) -> None:
 
 
 async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
+    from app.api.v1.endpoints.payments import credited_amounts
     stats = await get_open_stats(db, "invoice", [inv.id])
     last_opened_at, open_count = stats.get(inv.id, (None, 0))
     return InvoiceOut(
@@ -243,6 +246,7 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         site_label_snapshot=inv.site_label_snapshot,
         site_address_snapshot=inv.site_address_snapshot,
         transmission_status=inv.transmission_status, transmitted_at=inv.transmitted_at, transmitted_to=inv.transmitted_to,
+        credited=float((await credited_amounts(db, [inv.id])).get(inv.id) or 0),
         lines=[LineOut.model_validate(l) for l in inv.lines],
         last_opened_at=last_opened_at, open_count=open_count,
         offered_at=inv.offered_at, has_original_pdf=bool(inv.original_pdf) and inv.status == "payee",   # meme regle que original_bytes
@@ -288,6 +292,8 @@ async def list_invoices(
     open_stats = await get_open_stats(db, "invoice", [i.id for i in invs])
     from app.api.v1.endpoints.payments import settled_amounts
     settled = await settled_amounts(db, [i.id for i in invs])
+    from app.api.v1.endpoints.payments import credited_amounts
+    credited = await credited_amounts(db, [i.id for i in invs])
     return [InvoiceListItem(
         paid=float(settled.get(i.id) or 0),
         id=i.id, number=i.number, company_id=i.company_id,
@@ -300,7 +306,7 @@ async def list_invoices(
         offered_at=i.offered_at,
         bell_ignored_at=i.bell_ignored_at,
         site_label_snapshot=i.site_label_snapshot,
-        transmission_status=i.transmission_status,
+        transmission_status=i.transmission_status, credited=float(credited.get(i.id) or 0),
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
         open_count=open_stats.get(i.id, (None, 0))[1],
     ) for i in invs]

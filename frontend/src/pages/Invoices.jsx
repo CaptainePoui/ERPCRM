@@ -20,6 +20,11 @@ const STATUS_LABELS = {
 // « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
 const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
+// Philippe 2026-11-05 : facture payée réglée par un avoir -> « Créditée » (tout par avoir) ou « Payée/Créditée » (paiement + avoir)
+const CREDITED = { label: 'Créditée', color: '#059669' }
+const PAID_CREDITED = { label: 'Payée/Créditée', color: '#059669' }
+const creditedLabel = inv => (!inv.credit_of_id && inv.status === 'payee' && inv.credited > 0
+  ? (inv.credited >= inv.total - 0.005 ? CREDITED : PAID_CREDITED) : null)
 
 // Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Crédité = entierement applique
 const CREDIT_STATUS_LABELS = {
@@ -137,7 +142,7 @@ export default function Invoices({ creditsOnly = false }) {
             </thead>
             <tbody>
               {filtered.map(inv => {
-                const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : isSent(inv) ? SENT : ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
+                const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : isSent(inv) ? SENT : creditedLabel(inv) || ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
                 return (
                   <tr key={inv.id} className="inv-row" onClick={e => sel.rowClick(e, inv.id, () => navigate(`/invoices/${inv.id}`))}
                     onMouseDown={sel.noTextSelect} style={sel.selected.has(inv.id) ? { background: 'var(--c-tint-blue)' } : undefined}>

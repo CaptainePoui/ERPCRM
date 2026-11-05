@@ -38,6 +38,11 @@ const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouil
 // « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
 const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
+// Philippe 2026-11-05 : facture payée réglée par un avoir -> « Créditée » (tout par avoir) ou « Payée/Créditée » (paiement + avoir)
+const CREDITED = { label: 'Créditée', color: '#059669' }
+const PAID_CREDITED = { label: 'Payée/Créditée', color: '#059669' }
+const creditedLabel = inv => (!inv.credit_of_id && inv.status === 'payee' && inv.credited > 0
+  ? (inv.credited >= inv.total - 0.005 ? CREDITED : PAID_CREDITED) : null)
 
 // Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Crédité une fois tout appliqué
 const CREDIT_STATUS_LABELS = {
@@ -292,7 +297,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
 
   const isCredit = !!inv.credit_of_id
   const labels = isCredit ? CREDIT_STATUS_LABELS : STATUS_LABELS
-  const s = inv.offered_at ? OFFERED : isSent(inv) ? SENT : (labels[inv.status] || STATUS_LABELS.brouillon)
+  const s = inv.offered_at ? OFFERED : isSent(inv) ? SENT : creditedLabel(inv) || (labels[inv.status] || STATUS_LABELS.brouillon)
   const transitions = (isCredit && inv.credit_of_id && inv.status === 'brouillon') ? [] : (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
   const canOffer = !isCredit && inv.status === 'brouillon'
   const editable = inv.status === 'brouillon'

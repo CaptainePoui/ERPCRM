@@ -148,6 +148,15 @@ async def settled_amounts(db: AsyncSession, invoice_ids: list) -> dict:
     return out
 
 
+async def credited_amounts(db: AsyncSession, invoice_ids: list) -> dict:
+    """Montant regle par des avoirs, par facture (TASK-005.32 : « Créditée » / « Payée/Créditée »)."""
+    if not invoice_ids:
+        return {}
+    return {iid: Decimal(s) for iid, s in (await db.execute(
+        select(CreditAllocation.invoice_id, func.sum(CreditAllocation.amount))
+        .where(CreditAllocation.invoice_id.in_(invoice_ids)).group_by(CreditAllocation.invoice_id))).all()}
+
+
 async def recalc_credit_status(credit_id: uuid.UUID, db: AsyncSession) -> None:
     """Un avoir entierement applique passe « payee » ; sinon il reste emis (envoyee)."""
     c = await db.get(Invoice, credit_id)
