@@ -21,6 +21,7 @@ export function askConfirm(message, opts = {}) {
 
 // Choix a plusieurs boutons : askChoice('message', [['cancel', 'Annuler'], ['custom', 'Personnaliser'], ['ok', 'OK']])
 // -> la cle du bouton clique ('cancel' avec Echap). Le dernier bouton est le bouton principal (Entree).
+// opts.check = 'libellé' : petite case discrète sous les boutons -> { choice, checked } (avoir « Donner », 2026-11-05).
 export function askChoice(message, buttons, opts = {}) {
   return open({ kind: 'choice', message, buttons, ...opts })
 }
@@ -39,6 +40,8 @@ export default function DialogHost() {
     return () => { push = null }
   }, [])
   const cur = items[0]
+  const [checked, setChecked] = useState(false)
+  useEffect(() => { setChecked(false) }, [cur])
   useEffect(() => {
     if (!cur) return
     const onKey = e => {
@@ -51,7 +54,7 @@ export default function DialogHost() {
   function close(v) {
     if (!cur) return
     if (cur.kind === 'choice') v = v === true ? cur.buttons[cur.buttons.length - 1][0] : v === false ? 'cancel' : v
-    cur.resolve(cur.kind === 'confirm' || cur.kind === 'choice' ? v : undefined)
+    cur.resolve(cur.kind === 'choice' && cur.check ? { choice: v, checked } : cur.kind === 'confirm' || cur.kind === 'choice' ? v : undefined)
     setItems(list => list.slice(1))
   }
   if (!cur) return null
@@ -72,6 +75,11 @@ export default function DialogHost() {
             <button autoFocus className={danger ? 'btn-danger' : 'btn-primary'} onClick={() => close(true)}>{cur.okLabel || 'OK'}</button>
           </>}
         </div>
+        {cur.check && (
+          <label style={{ alignSelf: 'center', fontSize: 12, color: 'var(--c-muted)', display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
+            <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} /> {cur.check}
+          </label>
+        )}
       </div>
     </div>
   )

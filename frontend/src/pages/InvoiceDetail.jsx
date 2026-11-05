@@ -259,11 +259,13 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   // Avoir (Philippe, 2026-10-16) : Annuler = rien ; OK = avoir cree, emis et applique a cette facture ;
   // Personnaliser = brouillon d'avoir a modifier (puis Annuler / Creer un brouillon / OK)
   async function createCredit() {
-    const choice = await askChoice('Créer un avoir (note de crédit) pour cette facture ?', [['cancel', 'Annuler'], ['custom', 'Personnaliser'], ['ok', 'OK']])
+    // « Donner » (Philippe 2026-11-05, rare) : l'avoir n'est pas envoyé ; le client reçoit la facture étampée PAYÉ
+    const { choice, checked: gift } = await askChoice('Créer un avoir (note de crédit) pour cette facture ?', [['cancel', 'Annuler'], ['custom', 'Personnaliser'], ['ok', 'OK']],
+      { check: 'Donner la facture (l\'avoir ne sera pas envoyé au client)' })
     if (choice === 'cancel') return
     setActioning(true)
     try {
-      const r = await api.post(`/v1/invoices/${id}/credit`)
+      const r = await api.post(`/v1/invoices/${id}/credit`, { gift })
       if (choice === 'custom') { go(r.data.id); return }
       await api.put(`/v1/invoices/${r.data.id}`, { status: 'envoyee' })     // emis -> applique a cette facture
       const fresh = await api.get(`/v1/invoices/${id}`)
@@ -393,6 +395,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               <option value="autre">Remise autrement</option>
               <option value="zoho">Envoyée par Zoho</option>
               <option value="autre_crm">Envoyée par un autre CRM</option>
+              {isCredit && <option value="donnee">Non envoyé (facture donnée)</option>}
             </select>
             {inv.transmitted_at && <span style={{ fontSize: 12, color: 'var(--c-muted)', marginLeft: 8 }}>
               le {new Date(inv.transmitted_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz })}{inv.transmitted_to ? ` à ${inv.transmitted_to}` : ''}

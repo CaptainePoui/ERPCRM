@@ -160,6 +160,9 @@ export default function Invoices({ creditsOnly = false }) {
                       {inv.transmission_status === 'zoho' && (
                         <span title="Envoyée au client par Zoho (copie du courriel reçue)" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Par Zoho</span>
                       )}
+                      {inv.transmission_status === 'donnee' && (
+                        <span title="Avoir d'une facture donnée : pas envoyé au client (il reçoit la facture étampée PAYÉ)" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Facture donnée</span>
+                      )}
                       {inv.transmission_status === 'autre_crm' && (
                         <span title="Envoyée au client par l'ancien logiciel, avant Zoho" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Autre CRM</span>
                       )}

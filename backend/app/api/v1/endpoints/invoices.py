@@ -400,7 +400,7 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
 async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
     updates = payload.model_dump(exclude_unset=True)
-    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre", "zoho", "autre_crm"):
+    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre", "zoho", "autre_crm", "donnee"):
         raise HTTPException(status_code=400, detail="État de transmission invalide")
     if updates.get("transmission_status") == "non_transmise":     # remise a « non transmise » : plus de date ni destinataire
         inv.transmitted_at = inv.transmitted_to = inv.transmitted_mail_id = None
@@ -730,8 +730,13 @@ async def mark_overdue(db: AsyncSession = Depends(get_db), _: User = Depends(get
     return {"updated": len(overdue)}
 
 
+class CreditIn(BaseModel):
+    gift: bool = False          # « Donner la facture » (Philippe 2026-11-05)
+
+
 @router.post("/{invoice_id}/credit", response_model=InvoiceOut, status_code=status.HTTP_201_CREATED)
-async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def create_credit(invoice_id: uuid.UUID, payload: CreditIn | None = None, db: AsyncSession = Depends(get_db),
+                        _: User = Depends(get_current_user)):
     original = await _get_inv(invoice_id, db)
     if original.credit_of_id is not None:
         raise HTTPException(status_code=400, detail="Un avoir ne peut pas être crédité")
@@ -747,6 +752,8 @@ async def create_credit(invoice_id: uuid.UUID, db: AsyncSession = Depends(get_db
         tvq_rate=original.tvq_rate,
         is_recurring=False,
         credit_of_id=original.id,
+        # « Donner » (TASK-005.32) : l'avoir d'une facture donnee n'est pas envoye ; le client recoit la facture PAYÉ
+        transmission_status="donnee" if payload and payload.gift else None,
     )
     db.add(credit)
     await db.flush()
