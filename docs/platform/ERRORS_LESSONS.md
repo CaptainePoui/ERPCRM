@@ -1462,3 +1462,12 @@ Document canonique — `docs/platform/`, dépôt ERPCRM. Erreurs significatives 
 ## TASK-003.6 — Contact d'un nouveau ticket jamais relié à la compagnie du ticket
 
 **2026-11-04** — Yoann Corriveau, choisi (« Utiliser ce contact ») en créant un ticket pour Groupe Lion force, est resté sans compagnie : `NewTicketModal.jsx` et `Tasks.jsx` mettaient le contact sur le ticket sans le relier à la compagnie choisie, alors que la fiche compagnie et le panneau Connectivité le faisaient. Découvert par Philippe (onglets et liens incohérents). **Leçon** : une fenêtre de création rapide (`QuickNewContact`) réutilisée à plusieurs endroits : vérifier chaque appelant pour ce qu'il fait APRÈS (relier, sélectionner), pas seulement la fenêtre elle-même.
+
+
+## TASK-005.32 — Demande mal comprise : « Crédité / Payée/Créditée » appliqué aux avoirs au lieu des factures
+
+**2026-11-05** — Philippe : « tu as mis Fermé pour les factures créditées, je veux Crédité ou Payée/Crédité ». J'ai seulement renommé l'état des AVOIRS entièrement appliqués (« Fermé » → « Crédité »), puis j'ai défendu l'accord grammatical (« Crédité » pour un avoir) quand il a demandé « Créditée ». Philippe : « Payée/Créditée, c'est pour les factures qui ont été payées et créditées, tu avais bien compris ? » — non. Corrigé : factures réglées par avoir « Créditée » (305) / « Payée/Créditée » (22). Même jour, même tâche : « je veux les avoirs sur les factures » avait déjà été mal compris (numéro de l'avoir à mettre après la compagnie dans la liste). **Leçon** : quand Philippe nomme deux choix (« X ou Y ») et parle de « factures », reformuler sur QUELLES lignes ça s'applique avant de coder ; un « Fermé » vu sur un avoir peut viser l'objet que lui considère (la facture créditée), pas la ligne où le mot apparaît.
+
+## TASK-057 — Jargon technique (« dessiner les lignes »)
+
+**2026-11-05** — en expliquant la lenteur des listes, j'ai écrit « 3,5 s pour dessiner les lignes ». Philippe : « pourquoi les dessiner ?? inscrit dans la page tu veux dire ?? pour moi dessiner c'est que tu crées les PDF des factures ». **Leçon** : dire « afficher dans la page », jamais « dessiner / rendre ».

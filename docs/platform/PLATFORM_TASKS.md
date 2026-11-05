@@ -8,14 +8,13 @@ Scope explicite par tâche : `[ERPCRM]`/`[SIPV]`/`[ARCH]` (voir `documentation-s
 
 ---
 
-## ⏸ Reprise — à faire et questions en attente (mise à jour 2026-11-02, 2e fin de conversation)
+## ⏸ Reprise — à faire et questions en attente (mise à jour 2026-11-05, fin de conversation)
 À relire au début de la prochaine conversation ; chaque point renvoie à sa tâche.
-- **Test de charge de Zéko (TASK-006.21)** : 1re nuit ratée (corrigé), reprogrammé la nuit du 4 au 5 nov., 00:00 heure de l'Est ; lire `backend/storage/zeko_load_test/*.md` et en faire le compte rendu à Philippe.
-- **Réponses automatiques (TASK-006.24)** : Philippe a demandé « que veux-tu dire ? » sur {montant} / liens cliquables → réexpliqué en fin de conversation ; réponse attendue. 1er envoi réel conseillé en mode « préparer ».
-- **2 documents d'essai sans fiche** (`zeko_drops` cc9283c5…, c50048f9…) : Philippe « ne sait pas de quoi tu parles » → réexpliqué ; proposer de les retirer par migration.
-- **GO reçus (« go go go »), pas encore faits** (gros ou besoin de Philippe) : TASK-044.2 (il faut les relevés de la Mastercard) ; TASK-047.9 (navigateur jetable) ; TASK-006.7 (renvoi vers un cellulaire dans SIPV : à faire avec un vrai appel d'essai) ; TASK-006.10 étape 3 (questions du banc à valider par Philippe) ; TASK-043.4 (rapports comptables complets) et TASK-043.5 (paie québécoise) : gros chantiers à découper avec lui.
-- **API ScopServ pour les textos** : en tâche (Philippe : « laisse-le en task, on va y arriver bientôt ») — servira aux alertes (TASK-047.12).
-- Faits au 2e tour du 2026-11-02 : DEC/CED supprimée, recherche « désactivée », poste 104 (AAA test), TASK-001.2, TASK-047.12 (RDV + alertes), TASK-005.30, TASK-005.31, TASK-044.5, TASK-006.12 vérifiée.
+- **Prochain sujet (Philippe 2026-11-05) : le portail du client** — à préciser avec lui au début de la conversation (voir TASK-001.2 pour le blocage des accès du portail, déjà fait).
+- **TASK-005.32 (factures / Zoho)** : questions ouvertes — CN-00325 (Jardin-Idéal, sur INV-112280, créé par Philippe le 2026-11-05 à 09:56) est-il une facture donnée ? Copier dans les fiches les courriels de facturation des listes Zoho (« Primary Contact EmailID ») ? Philippe doit cocher dans Zoho l'envoi d'une copie des factures à facturation@ (sinon, coller ses listes Zoho comme le 2026-11-05). Brouillons Zoho voulus : INV-112260 (D'Astous), INV-112261 (Physotech, « on va régler ça bientôt »). INV-112251 (MGB) absente d'ERPCRM.
+- **TASK-055 (conversations enregistrées)** : séparation des voix en pause (« on arrête la transcription ») — modèle pyannote segmentation-3.0 à proposer (GO requis, rien installé) ; date d'appel des 4 appels de Groupe Lion force (5 h 43-5 h 52 heure de Montréal) à confirmer ; un ticket qui change de compagnie : ses enregistrements gardent l'ancienne — à décider.
+- **Toujours en attente du 2026-11-02** : test de charge de Zéko (TASK-006.21, compte rendu de la nuit du 4 au 5 nov. à faire : `backend/storage/zeko_load_test/*.md`) ; réponses automatiques (TASK-006.24) ; 2 documents d'essai sans fiche (`zeko_drops` cc9283c5…, c50048f9…) ; GO reçus pas faits : TASK-044.2, 047.9, 006.7, 006.10 étape 3, 043.4, 043.5 ; API ScopServ pour les textos (TASK-047.12).
+- Faits le 2026-11-05 : TASK-055 (enregistrements reliés compagnie/contact/ticket, 2 cartes dans le ticket, page de la conversation, heures de Montréal), TASK-005.32 (Émise / Envoyée / Par Zoho / Autre CRM / Facture donnée / Créditée / Payée/Créditée, avoirs après la compagnie, case « Donner »), TASK-057 (listes en 40 lignes puis le reste, < 1 s).
 
 # PLATFORM_TASKS.md — Section ERPCRM
 
