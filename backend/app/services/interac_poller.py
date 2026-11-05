@@ -69,4 +69,9 @@ async def run_interac_poller():
             await card_receipts.run_once()
         except Exception:
             log.exception("Lecture des recus de carte echouee")
+        try:        # factures envoyees par Zoho, reconnues par la copie du courriel (TASK-005.32)
+            from app.core import zoho_sent
+            await zoho_sent.run_once()
+        except Exception:
+            log.exception("Lecture des copies de factures envoyees par Zoho echouee")
         await asyncio.sleep(_POLL_INTERVAL)

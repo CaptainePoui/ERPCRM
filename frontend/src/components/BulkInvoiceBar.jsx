@@ -46,7 +46,7 @@ export default function BulkInvoiceBar({ items, onClear, onDone }) {
   const deletable = items.filter(i => !i.is_credit)
   async function removeAll() {
     const list = deletable.map(i => i.number).join(', ')
-    const sent = deletable.filter(i => ['courriel', 'autre'].includes(i.transmission_status))
+    const sent = deletable.filter(i => ['courriel', 'autre', 'zoho'].includes(i.transmission_status))
     if (sent.length) {            // envoyées au client : proposer l'avoir plutôt que la suppression
       const k = await askChoice(`${sent.length > 1 ? `Ces ${sent.length} factures ont été envoyées` : `La facture ${sent[0].number} a été envoyée`} au client : ${sent.map(i => i.number).join(', ')}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
         [['cancel', 'Annuler'], ['delete', 'Supprimer quand même'], ['credit', 'Faire un avoir']])

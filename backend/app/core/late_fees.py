@@ -14,7 +14,7 @@ de la compagnie (sinon le principal, sinon le premier avec un courriel) ; sans c
 l'ancien logiciel (factures de retard reliees par la migration 8e756bdf15d8), comptent : jamais deux avis au meme
 client a moins de 30 jours ; les periodes manquees ne sont pas rattrapees d'un coup.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from sqlalchemy import select, func
@@ -155,6 +155,7 @@ async def send_notice(db, inv) -> str | None:
                              lines=[{"description": l.description, "qty": l.qty, "unit_price": l.unit_price, "line_total": l.line_total} for l in inv.lines],
                              total=inv.total)
     inv.transmission_status = "courriel"
+    inv.transmitted_at, inv.transmitted_to = datetime.now(timezone.utc), to[:500]     # TASK-005.32
     return to
 
 

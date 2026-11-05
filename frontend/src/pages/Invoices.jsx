@@ -9,12 +9,17 @@ import './Invoices.css'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
-  envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
+  envoyee:    { label: 'Émise',      color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   partiellement_payee: { label: 'Partielle', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
   annulee:    { label: 'Annulée',    color: '#9CA3AF' },
 }
+
+// TASK-005.32 (Philippe 2026-11-05) : « Émise » = finie et créée, pas encore envoyée (tag « Non transmise ») ;
+// « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
+const SENT = { label: 'Envoyée', color: 'var(--brand)' }
+const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho'].includes(inv.transmission_status)
 
 // Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Fermé = entierement applique
 const CREDIT_STATUS_LABELS = {
@@ -27,7 +32,7 @@ const CREDIT_FILTERS = [['', 'Tous'], ['brouillon', 'Brouillon'], ['envoyee', 'O
 const FILTERS = [
   ['', 'Toutes'],
   ['brouillon', 'Brouillon'],
-  ['envoyee', 'Envoyée'],
+  ['envoyee', 'Émises'],
   ['payee', 'Payée'],
   ['partiellement_payee', 'Partielle'],
   ['en_retard', 'En retard'],
@@ -132,7 +137,7 @@ export default function Invoices({ creditsOnly = false }) {
             </thead>
             <tbody>
               {filtered.map(inv => {
-                const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
+                const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : isSent(inv) ? SENT : ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
                 return (
                   <tr key={inv.id} className="inv-row" onClick={e => sel.rowClick(e, inv.id, () => navigate(`/invoices/${inv.id}`))}
                     onMouseDown={sel.noTextSelect} style={sel.selected.has(inv.id) ? { background: 'var(--c-tint-blue)' } : undefined}>
@@ -144,6 +149,9 @@ export default function Invoices({ creditsOnly = false }) {
                       <span className="inv-badge" style={{ background: s.color }}>{s.label}</span>
                       {inv.transmission_status === 'non_transmise' && inv.status !== 'brouillon' && (
                         <span title="Le PDF n'a pas été transmis au client" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-on-amber)', border: '1px solid #FCD34D', background: 'var(--c-tint-amber)', borderRadius: 10, padding: '1px 7px' }}>Non transmise</span>
+                      )}
+                      {inv.transmission_status === 'zoho' && (
+                        <span title="Envoyée au client par Zoho (copie du courriel reçue)" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Par Zoho</span>
                       )}
                     </td>
                     <td className={inv.status === 'en_retard' ? 'overdue' : ''} style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.due_date)}</td>

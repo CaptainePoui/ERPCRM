@@ -14,7 +14,7 @@ import { askConfirm, askChoice, showAlert } from '../components/Dialog'
 
 const STATUS_LABELS = {
   brouillon:  { label: 'Brouillon',  color: '#6B7280' },
-  envoyee:    { label: 'Envoyée',    color: 'var(--brand)' },
+  envoyee:    { label: 'Émise',      color: 'var(--brand)' },
   payee:      { label: 'Payée',      color: '#059669' },
   partiellement_payee: { label: 'Partiellement payée', color: '#D97706' },
   en_retard:  { label: 'En retard',  color: '#DC2626' },
@@ -34,6 +34,11 @@ const STATUS_TRANSITIONS = {
 
 // Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Fermé une fois tout appliqué
 const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouillon offert au client (statut annulee)
+
+// TASK-005.32 (Philippe 2026-11-05) : « Émise » = finie et créée, pas encore envoyée (tag « Non transmise ») ;
+// « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
+const SENT = { label: 'Envoyée', color: 'var(--brand)' }
+const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho'].includes(inv.transmission_status)
 
 const CREDIT_STATUS_LABELS = {
   ...STATUS_LABELS,
@@ -74,6 +79,8 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   const go = otherId => embedded && onOpenInvoice ? onOpenInvoice(otherId) : navigate(`/invoices/${otherId}`)
   const back = () => embedded && onBack ? onBack() : navigate('/invoices')
   const [inv, setInv] = useState(null)
+  const [tz, setTz] = useState()       // fuseau de l'entreprise (date d'envoi, TASK-005.32)
+  useEffect(() => { api.get('/v1/settings/timezones').then(r => setTz(r.data.current)).catch(() => {}) }, [])
   const [loading, setLoading] = useState(true)
   const [catalogue, setCatalogue] = useState([])
   const [addingLine, setAddingLine] = useState(false)
@@ -215,8 +222,8 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   async function deleteInvoice() {
     const issued = inv.status !== 'brouillon'
     // Facture envoyée au client (2026-10-26, Philippe) : proposer l'avoir plutôt que la suppression
-    if (issued && !inv.credit_of_id && ['courriel', 'autre'].includes(inv.transmission_status)) {
-      const k = await askChoice(`La facture ${inv.number} a été envoyée au client${inv.transmission_status === 'courriel' ? ' par courriel' : ''}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
+    if (issued && !inv.credit_of_id && ['courriel', 'autre', 'zoho'].includes(inv.transmission_status)) {
+      const k = await askChoice(`La facture ${inv.number} a été envoyée au client${inv.transmission_status === 'courriel' ? ' par courriel' : inv.transmission_status === 'zoho' ? ' par Zoho' : ''}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
         [['cancel', 'Annuler'], ['delete', 'Supprimer quand même'], ['credit', 'Faire un avoir']])
       if (k === 'credit') { createCredit(); return }
       if (k !== 'delete') return
@@ -285,7 +292,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
 
   const isCredit = !!inv.credit_of_id
   const labels = isCredit ? CREDIT_STATUS_LABELS : STATUS_LABELS
-  const s = inv.offered_at ? OFFERED : (labels[inv.status] || STATUS_LABELS.brouillon)
+  const s = inv.offered_at ? OFFERED : isSent(inv) ? SENT : (labels[inv.status] || STATUS_LABELS.brouillon)
   const transitions = (isCredit && inv.credit_of_id && inv.status === 'brouillon') ? [] : (isCredit ? CREDIT_TRANSITIONS : STATUS_TRANSITIONS)[inv.status] || []
   const canOffer = !isCredit && inv.status === 'brouillon'
   const editable = inv.status === 'brouillon'
@@ -379,7 +386,11 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               <option value="non_transmise">Non transmise</option>
               <option value="courriel">Envoyée par courriel</option>
               <option value="autre">Remise autrement</option>
+              <option value="zoho">Envoyée par Zoho</option>
             </select>
+            {inv.transmitted_at && <span style={{ fontSize: 12, color: 'var(--c-muted)', marginLeft: 8 }}>
+              le {new Date(inv.transmitted_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz })}{inv.transmitted_to ? ` à ${inv.transmitted_to}` : ''}
+            </span>}
           </div>
           <div className="inv-info-row">
             <span>Courriel ouvert</span>

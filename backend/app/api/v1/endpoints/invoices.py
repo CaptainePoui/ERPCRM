@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from dateutil.relativedelta import relativedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
@@ -63,6 +63,8 @@ class InvoiceOut(BaseModel):
     site_address_snapshot: str | None
     lines: list[LineOut]
     transmission_status: str | None = None
+    transmitted_at: datetime | None = None    # TASK-005.32 : quand et a qui elle a ete transmise
+    transmitted_to: str | None = None
     last_opened_at: datetime | None = None
     open_count: int = 0
     barter_settlement: bool = False          # TASK-005.14 : « a regler en troc », jamais de frais de retard
@@ -118,7 +120,7 @@ class InvoiceUpdate(BaseModel):
     recurrence_next_date: date | None = None
     site_id: uuid.UUID | None = None
     clear_site: bool = False  # distingue "site_id absent du payload" de "retirer la succursale"
-    transmission_status: str | None = None  # non_transmise | courriel | autre (TASK-005.8)
+    transmission_status: str | None = None  # non_transmise | courriel | autre | zoho (TASK-005.8, 005.32)
     barter_settlement: bool | None = None   # « a regler en troc » (TASK-005.14)
 
 
@@ -240,7 +242,7 @@ async def _build_out(inv: Invoice, db: AsyncSession) -> InvoiceOut:
         site_id=inv.site_id,
         site_label_snapshot=inv.site_label_snapshot,
         site_address_snapshot=inv.site_address_snapshot,
-        transmission_status=inv.transmission_status,
+        transmission_status=inv.transmission_status, transmitted_at=inv.transmitted_at, transmitted_to=inv.transmitted_to,
         lines=[LineOut.model_validate(l) for l in inv.lines],
         last_opened_at=last_opened_at, open_count=open_count,
         offered_at=inv.offered_at, has_original_pdf=bool(inv.original_pdf) and inv.status == "payee",   # meme regle que original_bytes
@@ -375,6 +377,7 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
         total=inv.total,
     )
     inv.transmission_status = "courriel"
+    inv.transmitted_at, inv.transmitted_to = datetime.now(timezone.utc), payload.to_email[:500]   # TASK-005.32
     if inv.status == "brouillon":
         inv.status = "envoyee"
         await db.flush()
@@ -389,8 +392,10 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
 async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
     updates = payload.model_dump(exclude_unset=True)
-    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre"):
+    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre", "zoho"):
         raise HTTPException(status_code=400, detail="État de transmission invalide")
+    if updates.get("transmission_status") == "non_transmise":     # remise a « non transmise » : plus de date ni destinataire
+        inv.transmitted_at = inv.transmitted_to = inv.transmitted_mail_id = None
     if updates.get("barter_settlement"):
         from app.api.v1.endpoints.settings import require_barter
         await require_barter(db)

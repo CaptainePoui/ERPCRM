@@ -16,8 +16,12 @@ class Invoice(Base):
 
     status: Mapped[str] = mapped_column(String(20), default="brouillon")
     # TASK-005.8 : transmission au client, separee du statut de paiement.
-    # non_transmise | courriel | autre ; NULL = inconnu (factures importees de Zoho)
+    # non_transmise | courriel | autre | zoho ; NULL = inconnu (factures importees de Zoho)
     transmission_status: Mapped[str | None] = mapped_column(String(20))
+    # TASK-005.32 : « zoho » = envoyee par Zoho (copie du courriel recue dans ERPCRM) pendant la transition
+    transmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    transmitted_to: Mapped[str | None] = mapped_column(String(500))
+    transmitted_mail_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("mail_messages.id", ondelete="SET NULL"))
     # statuts: brouillon envoyee payee partiellement_payee en_retard annulee
 
     issue_date: Mapped[date] = mapped_column(Date, nullable=False)

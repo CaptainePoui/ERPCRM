@@ -99,7 +99,7 @@ function Switch({ checked, onChange, label }) {
 }
 
 const STATUS_INV = {
-  envoyee: 'Envoyée', en_retard: 'En retard', partiellement_payee: 'Partielle', payee: 'Payée',
+  envoyee: 'Émise', en_retard: 'En retard', partiellement_payee: 'Partielle', payee: 'Payée',
 }
 const fmtD = d => d ? fmtDate(d + 'T00:00:00') : EMPTY
 const SOURCE_LABEL = { zoho_import: 'Paiement antérieur', portal: 'Déclaré au portail', manual: 'Encaissement manuel', bank_import: 'Banque' }
