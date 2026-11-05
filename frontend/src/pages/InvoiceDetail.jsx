@@ -38,7 +38,7 @@ const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouil
 // TASK-005.32 (Philippe 2026-11-05) : « Émise » = finie et créée, pas encore envoyée (tag « Non transmise ») ;
 // « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
-const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho'].includes(inv.transmission_status)
+const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
 
 const CREDIT_STATUS_LABELS = {
   ...STATUS_LABELS,
@@ -222,8 +222,8 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
   async function deleteInvoice() {
     const issued = inv.status !== 'brouillon'
     // Facture envoyée au client (2026-10-26, Philippe) : proposer l'avoir plutôt que la suppression
-    if (issued && !inv.credit_of_id && ['courriel', 'autre', 'zoho'].includes(inv.transmission_status)) {
-      const k = await askChoice(`La facture ${inv.number} a été envoyée au client${inv.transmission_status === 'courriel' ? ' par courriel' : inv.transmission_status === 'zoho' ? ' par Zoho' : ''}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
+    if (issued && !inv.credit_of_id && ['courriel', 'autre', 'zoho', 'autre_crm'].includes(inv.transmission_status)) {
+      const k = await askChoice(`La facture ${inv.number} a été envoyée au client${inv.transmission_status === 'courriel' ? ' par courriel' : inv.transmission_status === 'zoho' ? ' par Zoho' : inv.transmission_status === 'autre_crm' ? ' par un autre CRM' : ''}.\nVoulez-vous plutôt faire un avoir (crédit) ?`,
         [['cancel', 'Annuler'], ['delete', 'Supprimer quand même'], ['credit', 'Faire un avoir']])
       if (k === 'credit') { createCredit(); return }
       if (k !== 'delete') return
@@ -387,6 +387,7 @@ export default function InvoiceDetail({ invoiceId, embedded = false, onBack, onO
               <option value="courriel">Envoyée par courriel</option>
               <option value="autre">Remise autrement</option>
               <option value="zoho">Envoyée par Zoho</option>
+              <option value="autre_crm">Envoyée par un autre CRM</option>
             </select>
             {inv.transmitted_at && <span style={{ fontSize: 12, color: 'var(--c-muted)', marginLeft: 8 }}>
               le {new Date(inv.transmitted_at).toLocaleString('fr-CA', { dateStyle: 'medium', timeStyle: 'short', timeZone: tz })}{inv.transmitted_to ? ` à ${inv.transmitted_to}` : ''}

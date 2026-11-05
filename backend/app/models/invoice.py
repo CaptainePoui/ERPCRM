@@ -16,7 +16,7 @@ class Invoice(Base):
 
     status: Mapped[str] = mapped_column(String(20), default="brouillon")
     # TASK-005.8 : transmission au client, separee du statut de paiement.
-    # non_transmise | courriel | autre | zoho ; NULL = inconnu (factures importees de Zoho)
+    # non_transmise | courriel | autre | zoho | autre_crm (ancien logiciel avant Zoho) ; NULL = inconnu
     transmission_status: Mapped[str | None] = mapped_column(String(20))
     # TASK-005.32 : « zoho » = envoyee par Zoho (copie du courriel recue dans ERPCRM) pendant la transition
     transmitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

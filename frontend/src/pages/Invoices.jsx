@@ -19,7 +19,7 @@ const STATUS_LABELS = {
 // TASK-005.32 (Philippe 2026-11-05) : « Émise » = finie et créée, pas encore envoyée (tag « Non transmise ») ;
 // « Envoyée » = partie par courriel (le tag s'en va) ; envoyée par Zoho : tag « Par Zoho » pendant la transition.
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
-const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho'].includes(inv.transmission_status)
+const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
 
 // Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Fermé = entierement applique
 const CREDIT_STATUS_LABELS = {
@@ -152,6 +152,9 @@ export default function Invoices({ creditsOnly = false }) {
                       )}
                       {inv.transmission_status === 'zoho' && (
                         <span title="Envoyée au client par Zoho (copie du courriel reçue)" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Par Zoho</span>
+                      )}
+                      {inv.transmission_status === 'autre_crm' && (
+                        <span title="Envoyée au client par l'ancien logiciel, avant Zoho" style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: 'var(--c-muted)', border: '1px solid var(--c-border)', borderRadius: 10, padding: '1px 7px' }}>Autre CRM</span>
                       )}
                     </td>
                     <td className={inv.status === 'en_retard' ? 'overdue' : ''} style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.due_date)}</td>

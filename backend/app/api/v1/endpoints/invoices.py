@@ -120,7 +120,7 @@ class InvoiceUpdate(BaseModel):
     recurrence_next_date: date | None = None
     site_id: uuid.UUID | None = None
     clear_site: bool = False  # distingue "site_id absent du payload" de "retirer la succursale"
-    transmission_status: str | None = None  # non_transmise | courriel | autre | zoho (TASK-005.8, 005.32)
+    transmission_status: str | None = None  # non_transmise | courriel | autre | zoho | autre_crm (TASK-005.8, 005.32)
     barter_settlement: bool | None = None   # « a regler en troc » (TASK-005.14)
 
 
@@ -392,7 +392,7 @@ async def send_invoice(invoice_id: uuid.UUID, payload: SendInvoicePayload, db: A
 async def update_invoice(invoice_id: uuid.UUID, payload: InvoiceUpdate, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     inv = await _get_inv(invoice_id, db)
     updates = payload.model_dump(exclude_unset=True)
-    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre", "zoho"):
+    if updates.get("transmission_status") not in (None, "non_transmise", "courriel", "autre", "zoho", "autre_crm"):
         raise HTTPException(status_code=400, detail="État de transmission invalide")
     if updates.get("transmission_status") == "non_transmise":     # remise a « non transmise » : plus de date ni destinataire
         inv.transmitted_at = inv.transmitted_to = inv.transmitted_mail_id = None
