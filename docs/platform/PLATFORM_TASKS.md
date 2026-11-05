@@ -41,6 +41,11 @@ Travail antérieur à la convention TASK-XXX telle qu'utilisée aujourd'hui — 
 
 ---
 
+## TASK-057 [ERPCRM] [ ] Listes : 40 premières lignes tout de suite, le reste après l'ouverture de la page (toutes les pages de liste)
+Date de demande : 2026-11-05 (Philippe : « la liste des factures est longue à loader, on avait pas dit qu'on en loadait 40 avec la page et le reste après la page ouverte ?? je veux ce système pour toutes les pages de liste ») — aucune trace d'une entente antérieure trouvée dans ce fichier.
+- Mesuré 2026-11-05 (navigateur, temps jusqu'à la fin) : Factures 4,7-7 s (2 489 lignes, 1,25 Mo ; API 0,6 s, ~3,5 s de dessin) ; Ventes → Avoirs 2,6 s (télécharge TOUTES les factures pour 310 avoirs) ; Ventes → Paiements 2,4 s (887 Ko) ; Achats → Dépenses 2,4 s, Paiements 2,4 s, Factures 1,8 s (345 Ko pour 31 lignes) ; Compagnies 2,6 s ; Catalogue 3,2 s ; les autres ≤ 2 s avec peu de lignes. Ventes/Paiements, Achats/Dépenses et Achats/Paiements affichent déjà au plus 500 lignes (+ recherche).
+- Plan (rien de codé) : `limit`/`offset` (ordre stable, id en dernier) sur les listes (`/invoices` + `credits_only`, `/payments`, `/purchases/expenses|payments|bills`, `/companies`, `/catalogue`, puis les autres) ; calculs par ligne (payé, avoirs, ouvertures, soldes) seulement pour la page demandée ; crochet commun `useProgressiveList` : 40 lignes, puis le reste ajouté par paquets sans figer la page ; un rechargement après modification remplace tout d'un coup.
+
 ## TASK-001 [ERPCRM] [x] Auth — Login JWT, get_current_user, sessions
 Classification: HISTORICAL
 
