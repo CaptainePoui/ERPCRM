@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useBack } from '../../components/navTrail'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import useProgressiveList, { useReveal } from '../../hooks/useProgressiveList'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import {
@@ -52,11 +53,12 @@ export function PurchaseBills() {
   const navigate = useNavigate()
   const [params] = useSearchParams()
   const { vendors } = useRefs()
-  const [rows, setRows] = useState(null)
+  const list = useProgressiveList('/v1/purchases/bills')        // TASK-057 : 40 lignes avec la page, le reste en arriere-plan
+  const rows = list.loading ? null : list.rows
+  const setRows = list.setRows
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('topay')
   const vendorId = params.get('vendor')
-  useEffect(() => { api.get('/v1/purchases/bills').then(r => setRows(r.data)) }, [])
 
   const q = search.trim().toLowerCase()
   const shown = (rows || [])
@@ -66,6 +68,7 @@ export function PurchaseBills() {
   const due = shown.reduce((s, b) => s + b.balance, 0)
   const vendorName = vendors.find(v => v.id === vendorId)?.name
 
+  const revealed = useReveal(shown, 100, shown.length)   // affichees au defilement, par 100
   return (
     <div className="page">
       <div className="page-header">
@@ -89,7 +92,7 @@ export function PurchaseBills() {
             </tr></thead>
             <tbody>
               {rows === null && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
-              {shown.slice(0, 500).map(b => {
+              {revealed.shown.map(b => {
                 const [sl, sc] = BILL_STATUS[b.status] || [b.status, C.muted]
                 return (
                   <tr key={b.id} style={rowStyle} onClick={() => navigate(`/purchases/bills/${b.id}`)}>
@@ -106,7 +109,8 @@ export function PurchaseBills() {
               {rows && !shown.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucune facture.</td></tr>}
             </tbody>
           </table>
-          {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premières affichées — utilisez la recherche.</div>}
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>…</div>}
+          {!list.complete && <div style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>Chargement des autres factures…</div>}
         </div>
       </Card>
     </div>

@@ -1,19 +1,19 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import useProgressiveList, { useReveal } from '../hooks/useProgressiveList'
 import { contrastText } from '../utils/color'
 import './Companies.css'
 
 export default function Companies() {
-  const [companies, setCompanies] = useState([])
-  const [loading, setLoading] = useState(true)
+  const list = useProgressiveList('/v1/companies')       // TASK-057 : 40 lignes avec la page, le reste en arriere-plan
+  const { rows: companies, loading, complete } = list
   const [search, setSearch] = useState('')
   const [pastille, setPastille] = useState('')
   const [statuses, setStatuses] = useState([])
   const navigate = useNavigate()
 
   useEffect(() => {
-    api.get('/v1/companies').then(r => setCompanies(r.data)).finally(() => setLoading(false))
     api.get('/v1/ref/statuses', { params: { for: 'companies' } }).then(r => setStatuses(r.data))   // TASK-002.14
   }, [])
 
@@ -22,13 +22,14 @@ export default function Companies() {
     (c.city || '').toLowerCase().includes(search.toLowerCase())) &&
     (!pastille || c.statuses.some(s => s.id === pastille))
   )
+  const revealed = useReveal(filtered, 100, `${search}|${pastille}`)
 
   return (
     <div className="page">
       <div className="page-header">
         <div>
           <h1 className="page-title">Compagnies</h1>
-          <p className="page-sub">{companies.length} compagnie{companies.length !== 1 ? 's' : ''}</p>
+          <p className="page-sub">{companies.length}{complete ? '' : '…'} compagnie{companies.length !== 1 ? 's' : ''}</p>
         </div>
         <button className="btn-primary" onClick={() => navigate('/companies/new')}>
           + Nouvelle compagnie
@@ -66,7 +67,7 @@ export default function Companies() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={5} className="empty-row">Aucune compagnie trouvée</td></tr>
-              ) : filtered.map(c => (
+              ) : revealed.shown.map(c => (
                 <tr key={c.id} className="clickable-row" onClick={() => navigate(`/companies/${c.id}`)}>
                   <td>
                     <div className="company-name">{c.name}</div>
@@ -90,6 +91,7 @@ export default function Companies() {
               ))}
             </tbody>
           </table>
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ padding: 10, textAlign: 'center', fontSize: 12, color: 'var(--c-faint)' }}>…</div>}
         </div>
       )}
     </div>

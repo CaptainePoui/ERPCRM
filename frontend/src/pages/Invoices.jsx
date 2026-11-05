@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import EntityLink from '../components/EntityLink'
 import useRowSelection from '../hooks/useRowSelection'
+import useProgressiveList, { useReveal } from '../hooks/useProgressiveList'
 import BulkInvoiceBar from '../components/BulkInvoiceBar'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
@@ -46,8 +47,6 @@ const FILTERS = [
 
 // creditsOnly : menu Ventes > Factures d'avoir (avoirs seulement)
 export default function Invoices({ creditsOnly = false }) {
-  const [invoices, setInvoices] = useState([])
-  const [loading, setLoading] = useState(true)
   const [params] = useSearchParams()
   const [filter, setFilter] = useState(params.get('status') || '')
   useEffect(() => { if (params.get('status')) setFilter(params.get('status')) }, [params])   // la cloche : ?status=en_retard (TASK-047.6)
@@ -56,20 +55,13 @@ export default function Invoices({ creditsOnly = false }) {
   const [marking, setMarking] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    load()
-  }, [filter])
-
-  async function load() {
-    setLoading(true)
-    // « Non transmises » : emises mais pas encore envoyees au client (ex. creees par la facturation periodique automatique)
-    const params = filter && filter !== 'non_transmise' ? `?status=${filter}` : ''
-    const r = await api.get(`/v1/invoices${params}`)
-    setInvoices(filter === 'non_transmise'
-      ? r.data.filter(i => i.transmission_status === 'non_transmise' && !['brouillon', 'annulee'].includes(i.status))
-      : r.data)
-    setLoading(false)
-  }
+  // TASK-057 : 40 lignes avec la page, le reste en arriere-plan ; Ventes > Avoirs ne demande que les avoirs
+  // « Non transmises » : emises mais pas encore envoyees au client (ex. creees par la facturation periodique automatique)
+  const list = useProgressiveList('/v1/invoices', { ...(filter && filter !== 'non_transmise' ? { status: filter } : {}), ...(creditsOnly ? { credits_only: true } : {}) })
+  const { loading, complete, reload: load } = list
+  const invoices = filter === 'non_transmise'
+    ? list.rows.filter(i => i.transmission_status === 'non_transmise' && !['brouillon', 'annulee'].includes(i.status))
+    : list.rows
 
   async function markOverdue() {
     setMarking(true)
@@ -85,6 +77,7 @@ export default function Invoices({ creditsOnly = false }) {
   )
   // Selection multiple (TASK-046) : case, Ctrl+clic, Maj+clic -> barre d'actions en bas
   const sel = useRowSelection(filtered)
+  const { shown, more, sentinelRef } = useReveal(filtered, 100, `${filter}|${search}`)
   const picked = sel.visible.map(i => ({ ...i, paid: i.paid || 0, is_credit: !!i.credit_of_id, late_fee: !!i.late_fee_for_id,
     remaining: i.credit_of_id || ['brouillon', 'annulee'].includes(i.status) ? 0 : Math.max(0, Math.round((i.total - (i.paid || 0)) * 100) / 100) }))
 
@@ -107,7 +100,7 @@ export default function Invoices({ creditsOnly = false }) {
       <div className="page-header">
         <div>
           <h1 className="page-title">{creditsOnly ? "Factures d'avoir" : 'Factures'}</h1>
-          <p className="page-sub">{creditsOnly ? `${invoices.filter(i => i.credit_of_id).length} avoir(s) — créer un avoir depuis la facture visée (« Créer un avoir »), puis l'appliquer` : `${invoices.length} facture${invoices.length !== 1 ? 's' : ''}`}</p>
+          <p className="page-sub">{creditsOnly ? `${invoices.filter(i => i.credit_of_id).length}${complete ? '' : '…'} avoir(s) — créer un avoir depuis la facture visée (« Créer un avoir »), puis l'appliquer` : `${invoices.length}${complete ? '' : '…'} facture${invoices.length !== 1 ? 's' : ''}`}</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={markOverdue} disabled={marking} style={{ fontSize: 13 }}>{marking ? '...' : 'Marquer en retard'}</button>
@@ -141,7 +134,7 @@ export default function Invoices({ creditsOnly = false }) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(inv => {
+              {shown.map(inv => {
                 const s = inv.offered_at ? { label: 'Offerte', color: '#8B5CF6' } : isSent(inv) ? SENT : creditedLabel(inv) || ((inv.credit_of_id ? CREDIT_STATUS_LABELS : STATUS_LABELS)[inv.status] || STATUS_LABELS.brouillon)
                 return (
                   <tr key={inv.id} className="inv-row" onClick={e => sel.rowClick(e, inv.id, () => navigate(`/invoices/${inv.id}`))}
@@ -181,6 +174,8 @@ export default function Invoices({ creditsOnly = false }) {
               )}
             </tbody>
           </table>
+          {more && <div ref={sentinelRef} style={{ padding: 10, textAlign: 'center', fontSize: 12, color: 'var(--c-faint)' }}>…</div>}
+          {!complete && <div style={{ padding: 10, textAlign: 'center', fontSize: 12, color: 'var(--c-faint)' }}>Chargement des autres factures…</div>}
         </div>
       )}
 

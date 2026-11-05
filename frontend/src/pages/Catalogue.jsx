@@ -1,28 +1,27 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../services/api'
+import useProgressiveList, { useReveal } from '../hooks/useProgressiveList'
 import './Catalogue.css'
 
 const API_BASE = '/api'   // photos servies sous /api/uploads : visibles au bureau comme a l'exterieur
 
 export default function Catalogue() {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(true)
+  const list = useProgressiveList('/v1/catalogue')       // TASK-057 : 40 articles avec la page, le reste en arriere-plan
+  const { rows: items, setRows: setItems, loading } = list
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
   const [editing, setEditing] = useState(null)
   const [classifying, setClassifying] = useState(false)
   const navigate = useNavigate()
 
-  useEffect(() => {
-    api.get('/v1/catalogue').then(r => setItems(r.data)).finally(() => setLoading(false))
-  }, [])
 
   const filtered = items.filter(i => {
     const matchType = filter === 'all' || i.type === filter
     const matchSearch = i.name.toLowerCase().includes(search.toLowerCase())
     return matchType && matchSearch
   })
+  const revealed = useReveal(filtered, 60, `${filter}|${search}`)
 
   async function saveEdit(id, field, value) {
     await api.put(`/v1/catalogue/${id}`, { [field]: value })
@@ -53,9 +52,10 @@ export default function Catalogue() {
 
       {loading ? <div className="loading">Chargement...</div> : (
         <div className="cat-grid">
-          {filtered.map(item => (
+          {revealed.shown.map(item => (
             <CatalogueCard key={item.id} item={item} onSave={saveEdit} onDetail={() => navigate(`/catalogue/${item.id}`)} />
           ))}
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ padding: 10, textAlign: 'center', fontSize: 12, color: 'var(--c-faint)' }}>…</div>}
           {filtered.length === 0 && <div className="empty-cat">Aucun résultat</div>}
         </div>
       )}

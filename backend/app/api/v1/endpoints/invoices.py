@@ -280,15 +280,20 @@ async def _get_inv(invoice_id: uuid.UUID, db: AsyncSession) -> Invoice:
 async def list_invoices(
     company_id: uuid.UUID | None = Query(default=None),
     status: str | None = Query(default=None),
+    credits_only: bool = False,             # Ventes -> Avoirs : seulement les avoirs (avant : toutes les factures)
+    limit: int | None = None, offset: int | None = None,     # TASK-057 : 40 lignes, puis le reste
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    q = select(Invoice).options(selectinload(Invoice.company)).order_by(Invoice.created_at.desc())
+    from app.core.paging import page
+    q = select(Invoice).options(selectinload(Invoice.company)).order_by(Invoice.created_at.desc(), Invoice.id.desc())
+    if credits_only:
+        q = q.where(Invoice.credit_of_id.is_not(None))
     if company_id:
         q = q.where(Invoice.company_id == company_id)
     if status:
         q = q.where(Invoice.status == status)
-    result = await db.execute(q)
+    result = await db.execute(page(q, limit, offset))
     invs = result.scalars().all()
     open_stats = await get_open_stats(db, "invoice", [i.id for i in invs])
     from app.api.v1.endpoints.payments import settled_amounts

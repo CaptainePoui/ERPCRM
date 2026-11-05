@@ -168,11 +168,13 @@ async def create_company(payload: CompanyCreate, db: AsyncSession = Depends(get_
 
 
 @router.get("", response_model=list[CompanyListItem])
-async def list_companies(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(
+async def list_companies(limit: int | None = None, offset: int | None = None, db: AsyncSession = Depends(get_db),
+                         _: User = Depends(get_current_user)):
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    result = await db.execute(page(
         select(Company)
         .options(*_load_opts())
-        .order_by(Company.name)
+        .order_by(Company.name, Company.id), limit, offset)
     )
     companies = result.scalars().all()
     items = []

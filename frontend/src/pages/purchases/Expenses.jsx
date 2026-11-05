@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import useProgressiveList, { useReveal } from '../../hooks/useProgressiveList'
 import api from '../../services/api'
 import AutoRecurringToggle from '../../components/AutoRecurringToggle'
 import { ReceiptDrop, openReceipt, LINE_CLASSES } from './Receipts'
@@ -51,14 +52,15 @@ const num = v => parseFloat(v)
 
 export function PurchaseExpenses() {
   const refs = useRefs()
-  const [rows, setRows] = useState(null)
+  const list = useProgressiveList('/v1/purchases/expenses')        // TASK-057 : 40 lignes avec la page, le reste en arriere-plan
+  const rows = list.loading ? null : list.rows
+  const setRows = list.setRows
   const [search, setSearch] = useState('')
   const [cat, setCat] = useState('')
   const [year, setYear] = useState('')
   const [edit, setEdit] = useState(null)
   const [error, setError] = useState('')
-  const load = () => api.get('/v1/purchases/expenses').then(r => setRows(r.data))
-  useEffect(() => { load() }, [])
+  const load = list.reload
 
   const years = [...new Set((rows || []).map(e => e.expense_date.slice(0, 4)))].sort().reverse()
   const q = search.trim().toLowerCase()
@@ -97,6 +99,7 @@ export function PurchaseExpenses() {
     setEdit(null); load()
   }
 
+  const revealed = useReveal(shown, 100, shown.length)   // affichees au defilement, par 100
   return (
     <div className="page">
       <div className="page-header">
@@ -124,7 +127,7 @@ export function PurchaseExpenses() {
             </tr></thead>
             <tbody>
               {rows === null && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
-              {shown.slice(0, 500).map(e => (
+              {revealed.shown.map(e => (
                 <tr key={e.id} style={rowStyle} onClick={() => open(e)}>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(e.expense_date)}</td>
                   <td style={td}>{e.category_name || EMPTY}</td>
@@ -137,7 +140,8 @@ export function PurchaseExpenses() {
               {rows && !shown.length && <tr><td colSpan={6} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucune dépense.</td></tr>}
             </tbody>
           </table>
-          {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premières affichées — filtrez par année ou recherchez.</div>}
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>…</div>}
+          {!list.complete && <div style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>Chargement des autres dépenses…</div>}
         </div>
       </Card>
 

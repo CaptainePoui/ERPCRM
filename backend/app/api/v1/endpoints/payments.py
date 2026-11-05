@@ -226,7 +226,8 @@ async def update_method(method_id: uuid.UUID, payload: PaymentMethodUpdate, db: 
 # ── Paiements recus (liste globale, menu Ventes) ─────────────────────────────
 
 @router.get("")
-async def list_all_payments(company_id: uuid.UUID | None = None, db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
+async def list_all_payments(company_id: uuid.UUID | None = None, limit: int | None = None, offset: int | None = None,
+                            db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
     """Tous les encaissements clients, les plus recents d'abord, avec compagnie et factures couvertes ;
     ?company_id= : ceux d'un client (onglet Transactions de sa fiche, TASK-002.9)."""
     from app.models.company import Company
@@ -234,16 +235,21 @@ async def list_all_payments(company_id: uuid.UUID | None = None, db: AsyncSessio
     q = select(ClientPayment, Company.name).join(Company, Company.id == ClientPayment.company_id)
     if company_id:
         q = q.where(ClientPayment.company_id == company_id)
-    rows = (await db.execute(q.order_by(ClientPayment.received_at.desc().nulls_first(), ClientPayment.created_at.desc()))).all()
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    rows = (await db.execute(page(q.order_by(ClientPayment.received_at.desc().nulls_first(), ClientPayment.created_at.desc(),
+                                             ClientPayment.id.desc()), limit, offset))).all()
+    ids = [cp.id for cp, _n in rows]
     nums: dict = {}
     refs: dict = {}         # n° et id de chaque facture payee : liens vers la facture (TASK-054)
     for pid, num, iid in (await db.execute(
         select(PaymentAllocation.payment_id, Invoice.number, Invoice.id).join(Invoice, Invoice.id == PaymentAllocation.invoice_id)
+        .where(PaymentAllocation.payment_id.in_(ids))
     )).all():
         nums.setdefault(pid, []).append(num)
         refs.setdefault(pid, []).append({"id": str(iid), "number": num})
-    banked = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.is_not(None)))).scalars().all())
-    docs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).group_by(PaymentDocument.payment_id))).all())
+    banked = set((await db.execute(select(BankTransaction.client_payment_id).where(BankTransaction.client_payment_id.in_(ids)))).scalars().all())
+    docs = dict((await db.execute(select(PaymentDocument.payment_id, func.count()).where(PaymentDocument.payment_id.in_(ids))
+                                  .group_by(PaymentDocument.payment_id))).all())
     return [{
         "id": str(cp.id), "company_id": str(cp.company_id), "company_name": name, "amount": float(cp.amount),
         "status": cp.status, "source": cp.source, "method_name": cp.method_name, "reference": cp.reference,

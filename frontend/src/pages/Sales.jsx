@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import EntityLink, { InvoiceLinks } from '../components/EntityLink'
 import { useNavigate } from 'react-router-dom'
+import useProgressiveList, { useReveal } from '../hooks/useProgressiveList'
 import api from '../services/api'
 import { C, EMPTY, fmtMoney, fmtDate } from './Bank'
 
@@ -37,17 +38,19 @@ export function ModulePlaceholder({ title, newLabel, columns, note }) {
 
 export function SalesPayments() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState(null)
+  const list = useProgressiveList('/v1/payments')        // TASK-057 : 40 lignes avec la page, le reste en arriere-plan
+  const rows = list.loading ? null : list.rows
+  const setRows = list.setRows
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState('all')
-  const reload = () => api.get('/v1/payments').then(r => setRows(r.data))
-  useEffect(() => { reload() }, [])
+  const reload = list.reload
   const q = search.trim().toLowerCase()
   const shown = (rows || [])
     .filter(p => filter === 'all' || (filter === 'pending' ? ['pending', 'processing'].includes(p.status) : filter === 'unbanked' ? p.status === 'confirmed' && !p.bank_matched && p.source !== 'zoho_import' : p.status === filter))
     .filter(p => !q || [p.company_name, p.reference, p.method_name, ...p.invoice_numbers, String(p.amount), p.lost_invoice ? `facture perdue ${p.lost_invoice_number || ''}` : ''].some(v => (v || '').toLowerCase().includes(q)))
   const total = shown.filter(p => p.status === 'confirmed').reduce((s, p) => s + p.amount, 0)
   const FILTERS = [['all', 'Tous'], ['confirmed', 'Confirmés'], ['pending', 'En attente'], ['unbanked', 'Pas encore vus en banque'], ['rejected', 'Rejetés']]
+  const revealed = useReveal(shown, 100, shown.length)   // affichees au defilement, par 100
   return (
     <div className="page">
       <div className="page-header">
@@ -65,7 +68,7 @@ export function SalesPayments() {
             </tr></thead>
             <tbody>
               {rows === null && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
-              {shown.slice(0, 500).map(p => {
+              {revealed.shown.map(p => {
                 const [sl, sc] = STATUS[p.status] || [p.status, C.muted]
                 return (
                   <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }} onClick={() => navigate(`/companies/${p.company_id}?tab=transactions&paiement=${p.id}`)}>
@@ -85,7 +88,8 @@ export function SalesPayments() {
               {rows && !shown.length && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucun paiement.</td></tr>}
             </tbody>
           </table>
-          {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premiers affichés — utilisez la recherche.</div>}
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>…</div>}
+          {!list.complete && <div style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>Chargement des autres paiements…</div>}
         </div>
       </div>
     </div>

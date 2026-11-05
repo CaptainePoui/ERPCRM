@@ -305,8 +305,11 @@ def _apply_expense_lines(e, p: ExpenseIn) -> None:
 
 
 @router.get("/expenses")
-async def list_expenses(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    rows = (await db.execute(select(Expense).order_by(Expense.expense_date.desc(), Expense.created_at.desc()))).scalars().all()
+async def list_expenses(limit: int | None = None, offset: int | None = None, db: AsyncSession = Depends(get_db),
+                        _: User = Depends(get_current_user)):
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    rows = (await db.execute(page(select(Expense).order_by(Expense.expense_date.desc(), Expense.created_at.desc(), Expense.id.desc()),
+                                  limit, offset))).scalars().all()
     receipts = dict((await db.execute(select(ReceiptDocument.expense_id, ReceiptDocument.id).where(ReceiptDocument.expense_id.is_not(None)))).all())
     return [_expense_out(e, receipts.get(e.id)) for e in rows]
 
@@ -541,9 +544,11 @@ def _apply_bill(b: Bill, p: BillIn) -> None:
 
 
 @router.get("/bills")
-async def list_bills(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    bills = (await db.execute(select(Bill).order_by(Bill.bill_date.desc(), Bill.created_at.desc()))).scalars().all()
-    bal = await _bill_balances(db)
+async def list_bills(limit: int | None = None, offset: int | None = None, db: AsyncSession = Depends(get_db),
+                     _: User = Depends(get_current_user)):
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    bills = (await db.execute(page(select(Bill).order_by(Bill.bill_date.desc(), Bill.created_at.desc(), Bill.id.desc()), limit, offset))).scalars().all()
+    bal = await _bill_balances(db, [b.id for b in bills])
     return [_bill_out(b, bal.get(b.id, ZERO)) for b in bills]
 
 
@@ -783,8 +788,11 @@ async def _apply_allocations(db: AsyncSession, allocs: list[AllocIn], total: Dec
 
 
 @router.get("/payments")
-async def list_vendor_payments(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    rows = (await db.execute(select(VendorPayment).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc()))).scalars().all()
+async def list_vendor_payments(limit: int | None = None, offset: int | None = None, db: AsyncSession = Depends(get_db),
+                               _: User = Depends(get_current_user)):
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    rows = (await db.execute(page(select(VendorPayment).order_by(VendorPayment.payment_date.desc(), VendorPayment.created_at.desc(),
+                                                                 VendorPayment.id.desc()), limit, offset))).scalars().all()
     return await _payments_out(db, rows)           # factures lues en une fois (avant : une lecture par paiement, ~4,5 s)
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
+import useProgressiveList, { useReveal } from '../../hooks/useProgressiveList'
 import api from '../../services/api'
 import {
   C, EMPTY, fmtMoney, fmtD, today, th, thR, td, tdR, headRow, rowStyle, Card, Modal, Field, VendorPicker,
@@ -119,7 +120,9 @@ export function PaymentModal({ payment, presetVendorId, presetBillId, onClose, o
 
 export function PurchasePayments() {
   const navigate = useNavigate()
-  const [rows, setRows] = useState(null)
+  const list = useProgressiveList('/v1/purchases/payments')        // TASK-057 : 40 lignes avec la page, le reste en arriere-plan
+  const rows = list.loading ? null : list.rows
+  const setRows = list.setRows
   const [search, setSearch] = useState('')
   const [edit, setEdit] = useState(undefined)   // undefined = ferme, null = nouveau, objet = modification
   // ?open=<id> : ouvert depuis la fiche de la compagnie, onglet Transactions -> Comptes à payer (TASK-002.13)
@@ -128,14 +131,14 @@ export function PurchasePayments() {
     const id = params.get('open'), p = id && (rows || []).find(x => x.id === id)
     if (p) { setEdit(p); setParams({}, { replace: true }) }
   }, [rows])
-  const load = () => api.get('/v1/purchases/payments').then(r => setRows(r.data))
-  useEffect(() => { load() }, [])
+  const load = list.reload
 
   const q = search.trim().toLowerCase()
   const shown = (rows || []).filter(p => !q || [p.payee, p.method, p.reference, p.notes, String(p.amount), ...p.allocations.map(a => a.bill_number), ...p.allocations.map(a => a.vendor_name)]
     .some(x => (x || '').toLowerCase().includes(q)))
   const total = shown.reduce((s, p) => s + p.amount, 0)
 
+  const revealed = useReveal(shown, 100, shown.length)   // affichees au defilement, par 100
   return (
     <div className="page">
       <div className="page-header">
@@ -153,7 +156,7 @@ export function PurchasePayments() {
             </tr></thead>
             <tbody>
               {rows === null && <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: C.muted }}>Chargement...</td></tr>}
-              {shown.slice(0, 500).map(p => (
+              {revealed.shown.map(p => (
                 <tr key={p.id} style={rowStyle} onClick={() => setEdit(p)}>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>{fmtD(p.payment_date)}</td>
                   <td style={{ ...td, fontWeight: 600 }}>{p.payee || EMPTY}</td>
@@ -173,7 +176,8 @@ export function PurchasePayments() {
               {rows && !shown.length && <tr><td colSpan={5} style={{ ...td, textAlign: 'center', color: C.faint, padding: 24 }}>Aucun paiement.</td></tr>}
             </tbody>
           </table>
-          {shown.length > 500 && <div style={{ fontSize: 12, color: C.muted, padding: 8 }}>500 premiers affichés — utilisez la recherche.</div>}
+          {revealed.more && <div ref={revealed.sentinelRef} style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>…</div>}
+          {!list.complete && <div style={{ fontSize: 12, color: C.muted, padding: 8, textAlign: 'center' }}>Chargement des autres paiements…</div>}
         </div>
       </Card>
       {edit !== undefined && <PaymentModal payment={edit} onClose={() => setEdit(undefined)} onSaved={() => { setEdit(undefined); load() }} />}

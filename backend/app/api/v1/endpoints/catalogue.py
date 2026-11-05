@@ -54,8 +54,10 @@ class CatalogueUpdate(BaseModel):
 
 
 @router.get("", response_model=list[CatalogueOut])
-async def list_items(db: AsyncSession = Depends(get_db), _: User = Depends(get_current_user)):
-    result = await db.execute(select(CatalogueItem).order_by(CatalogueItem.name))
+async def list_items(limit: int | None = None, offset: int | None = None, db: AsyncSession = Depends(get_db),
+                     _: User = Depends(get_current_user)):
+    from app.core.paging import page        # TASK-057 : 40 lignes, puis le reste
+    result = await db.execute(page(select(CatalogueItem).order_by(CatalogueItem.name, CatalogueItem.id), limit, offset))
     return result.scalars().all()
 
 
