@@ -149,7 +149,9 @@ export default function Invoices({ creditsOnly = false }) {
                     <td onClick={e => e.stopPropagation()}><input type="checkbox" checked={sel.selected.has(inv.id)} onChange={e => sel.toggle(inv.id, e.nativeEvent)} /></td>
                     <td style={{ whiteSpace: 'nowrap' }}>{fmtDate(inv.issue_date)}</td>
                     <td className="inv-number" style={{ whiteSpace: 'nowrap' }}>{inv.credit_of_id ? '[Avoir] ' : ''}{inv.number}{inv.is_recurring ? ' ↺' : ''}</td>
-                    <td><EntityLink kind="company" id={inv.company_id}>{inv.company_name}</EntityLink>{inv.site_label_snapshot && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{inv.site_label_snapshot}</div>}</td>
+                    <td><EntityLink kind="company" id={inv.company_id}>{inv.company_name}</EntityLink>
+                      {inv.credits?.map(c => <span key={c.id} style={{ marginLeft: 10, fontSize: 13, color: 'var(--c-muted)', whiteSpace: 'nowrap' }}>[Avoir] <EntityLink kind="credit" id={c.id}>{c.number}</EntityLink></span>)}
+                      {inv.site_label_snapshot && <div style={{ fontSize: 11, color: 'var(--c-faint)' }}>{inv.site_label_snapshot}</div>}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       <span className="inv-badge" style={{ background: s.color }}>{s.label}</span>
                       {inv.transmission_status === 'non_transmise' && inv.status !== 'brouillon' && (

@@ -157,6 +157,20 @@ async def credited_amounts(db: AsyncSession, invoice_ids: list) -> dict:
         .where(CreditAllocation.invoice_id.in_(invoice_ids)).group_by(CreditAllocation.invoice_id))).all()}
 
 
+async def credit_numbers(db: AsyncSession, invoice_ids: list) -> dict:
+    """Avoirs appliques sur chaque facture : [{id, number}] (liste des factures, Philippe 2026-11-05 : « s'ils ont des
+    avoirs dessus, les associer, juste le mettre après le nom de compagnie, ça va être facilement retrouvable »)."""
+    if not invoice_ids:
+        return {}
+    out: dict = {}
+    for iid, cid, num in (await db.execute(
+        select(CreditAllocation.invoice_id, Invoice.id, Invoice.number).join(Invoice, Invoice.id == CreditAllocation.credit_invoice_id)
+        .where(CreditAllocation.invoice_id.in_(invoice_ids)).order_by(Invoice.number))).all():
+        if all(x["id"] != str(cid) for x in out.get(iid, [])):
+            out.setdefault(iid, []).append({"id": str(cid), "number": num})
+    return out
+
+
 async def recalc_credit_status(credit_id: uuid.UUID, db: AsyncSession) -> None:
     """Un avoir entierement applique passe « payee » ; sinon il reste emis (envoyee)."""
     c = await db.get(Invoice, credit_id)

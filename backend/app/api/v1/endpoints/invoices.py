@@ -89,6 +89,7 @@ class InvoiceListItem(BaseModel):
     site_label_snapshot: str | None = None
     transmission_status: str | None = None
     credited: float = 0                     # TASK-005.32 : montant regle par des avoirs (« Créditée »)
+    credits: list[dict] = []                # avoirs appliques : [{id, number}]
     last_opened_at: datetime | None = None
     open_count: int = 0
     barter_settlement: bool = False
@@ -292,8 +293,9 @@ async def list_invoices(
     open_stats = await get_open_stats(db, "invoice", [i.id for i in invs])
     from app.api.v1.endpoints.payments import settled_amounts
     settled = await settled_amounts(db, [i.id for i in invs])
-    from app.api.v1.endpoints.payments import credited_amounts
+    from app.api.v1.endpoints.payments import credited_amounts, credit_numbers
     credited = await credited_amounts(db, [i.id for i in invs])
+    credits = await credit_numbers(db, [i.id for i in invs])
     return [InvoiceListItem(
         paid=float(settled.get(i.id) or 0),
         id=i.id, number=i.number, company_id=i.company_id,
@@ -306,7 +308,7 @@ async def list_invoices(
         offered_at=i.offered_at,
         bell_ignored_at=i.bell_ignored_at,
         site_label_snapshot=i.site_label_snapshot,
-        transmission_status=i.transmission_status, credited=float(credited.get(i.id) or 0),
+        transmission_status=i.transmission_status, credited=float(credited.get(i.id) or 0), credits=credits.get(i.id, []),
         last_opened_at=open_stats.get(i.id, (None, 0))[0],
         open_count=open_stats.get(i.id, (None, 0))[1],
     ) for i in invs]
