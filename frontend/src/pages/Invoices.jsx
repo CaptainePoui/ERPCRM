@@ -21,13 +21,13 @@ const STATUS_LABELS = {
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
 const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
 
-// Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Fermé = entierement applique
+// Avoirs (TASK-005.10) : Ouvert = reste un montant a appliquer, Crédité = entierement applique
 const CREDIT_STATUS_LABELS = {
   ...STATUS_LABELS,
   envoyee: { label: 'Ouvert', color: 'var(--brand)' },
-  payee:   { label: 'Fermé',  color: '#059669' },
+  payee:   { label: 'Crédité', color: '#059669' },   // Philippe 2026-11-05 : « Crédité », pas « Fermé »
 }
-const CREDIT_FILTERS = [['', 'Tous'], ['brouillon', 'Brouillon'], ['envoyee', 'Ouvert'], ['payee', 'Fermé']]
+const CREDIT_FILTERS = [['', 'Tous'], ['brouillon', 'Brouillon'], ['envoyee', 'Ouvert'], ['payee', 'Crédité']]
 
 const FILTERS = [
   ['', 'Toutes'],

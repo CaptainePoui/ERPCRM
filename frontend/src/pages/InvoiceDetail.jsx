@@ -32,7 +32,6 @@ const STATUS_TRANSITIONS = {
   annulee:   [],
 }
 
-// Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Fermé une fois tout appliqué
 const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouillon offert au client (statut annulee)
 
 // TASK-005.32 (Philippe 2026-11-05) : « Émise » = finie et créée, pas encore envoyée (tag « Non transmise ») ;
@@ -40,10 +39,11 @@ const OFFERED = { label: 'Offerte', color: '#8B5CF6' }   // TASK-005.22 : brouil
 const SENT = { label: 'Envoyée', color: 'var(--brand)' }
 const isSent = inv => !inv.credit_of_id && inv.status === 'envoyee' && ['courriel', 'zoho', 'autre_crm'].includes(inv.transmission_status)
 
+// Avoirs (TASK-005.10) : le statut suit l'application -- Ouvert tant qu'il reste un montant, Crédité une fois tout appliqué
 const CREDIT_STATUS_LABELS = {
   ...STATUS_LABELS,
   envoyee: { label: 'Ouvert', color: 'var(--brand)' },
-  payee:   { label: 'Fermé',  color: '#059669' },
+  payee:   { label: 'Crédité', color: '#059669' },   // Philippe 2026-11-05 : « Crédité », pas « Fermé »
 }
 const CREDIT_TRANSITIONS = { brouillon: ['envoyee'], envoyee: ['brouillon'], payee: [], annulee: [] }
 
